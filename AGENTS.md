@@ -118,6 +118,10 @@ re-reading a web page.
   code, or the report will cite it — it moves somewhere durable and the move is
   recorded. `temp/` is a staging area, not a library, and it can be deleted at
   any time without warning.
+- **The durable home is `context/lit/<topic>/<author_year>/`**, tracked in git,
+  for example
+  `context/lit/landslide/nowicki_jessee_2018/nowicki-jessee-2018-global-seismic-landslide-model.pdf`.
+  Each topic folder carries a `SOURCES.md` in the same form as the `temp/` one.
 - Do not put anything in `temp/reference/` that may not be redistributed inside
   T+T. Public reports and papers are fine; a client's confidential document is
   not.
