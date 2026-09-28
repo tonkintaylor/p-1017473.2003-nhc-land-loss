@@ -419,18 +419,56 @@ paper's.
   (section 3.4, equation 7) propagates the regression's standard errors, and
   the authors state it ignores input uncertainty, ShakeMap uncertainty
   included, and so underestimates the true spread.
-- **It has already been run on Kaikōura, and it overpredicted.** Allstadt,
-  Jibson et al. (2018) applied three global models, this one included, to
-  Kaikōura. Their abstract reports **significant overprediction of landslides
-  by all three**. The Nowicki Jessee paper adds that the result depended
-  strongly on the ShakeMap version, and found the right area of highest hazard
-  only once a finite rupture replaced the point source. This is the one New
-  Zealand test of the model, it points the wrong way for an unadjusted
-  application, and it is the first thing to read before we repeat the test.
+- **It has already been run on Kaikōura, and it overpredicted.** See the next
+  section.
 - The USGS runs the model in its Ground Failure product with slopes below 5°
   excluded, probabilities below 0.002 dropped, and adjusted coefficients for
   unconsolidated sediments and mixed sedimentary rocks — a precedent for
   modifying the published coefficients.
+
+### What Allstadt et al. (2018) found on Kaikōura
+
+Allstadt, Jibson et al. (2018) ran three global models against the GNS
+Kaikōura inventory: this one (cited there as Jessee 2017, the thesis version of
+the same model, run through equation 9 to areal coverage), Nowicki et al.
+(2014) and Godt et al. (2008). The paper is in the repository at
+`context/lit/landslide/allstadt_2018/allstadt-2018-kaikoura-near-real-time-landslide-models.pdf`.
+
+- **There is an observed total to calibrate against.** Summed over cells with
+  ShakeMap PGA ≥ 0.1 g, the inventory's landslide area — source and debris
+  trail together — is **about 20 km²** (their aggregate hazard `H_agg`). The
+  inventory is considered complete above 500 m².
+- **All three models "dramatically overpredicted"** that total. Once the
+  multi-fault rupture was in the ShakeMap, the observed `H_agg` was not inside
+  any model's ±1σ ground-motion range. On a cell-by-cell plot of predicted
+  against observed coverage, every model was steeper than 1:1 and predicted
+  non-zero hazard where none was observed.
+- **The pattern was roughly right; the decay was wrong.** The models found the
+  worst-affected areas once a rupture plane replaced the point source, but
+  hazard stayed elevated tens of kilometres from any actual landslide. Most
+  Kaikōura landslides were within 2.5 km of a fault that ruptured (Massey et
+  al. 2018), and nothing in the model represents distance to rupture.
+- **The overprediction is not blamed on the shaking.** The ShakeMap bias
+  correction for PGA was only −0.03 magnitude units. The authors suggest
+  instead that Wenchuan contributes most of the training polygons and may
+  dominate the fit, and that peak ground motion misses the frequency and
+  duration that control triggering. They suggest Arias intensity.
+- **Greywacke over-predicted where it mattered most.** The highest peaks of the
+  Seaward Kaikōura Range were predicted high hazard, were shaken above 1 g
+  nearby, and produced almost no landslides. The authors conclude "there is some
+  change in susceptibility that the model inputs are not currently able to
+  capture". At the same time many of the largest landslides were in Tertiary
+  sediment in the gentler country seaward of the range, and 44 large ones,
+  including the eight largest, sat on surface ruptures.
+- **The coverage includes runout.** The training inventories merged source and
+  debris trail, so equation 9 predicts the fraction of a cell touched by any
+  part of a landslide, not the fraction that is source.
+- **Ground-motion uncertainty was propagated, and it matters.** Varying the
+  shaking by ±1σ left the spatial pattern stable but moved `H_agg`
+  substantially, which the authors present as a distribution rather than a
+  single value. That is the same wrapping our requirement 2 needs.
+- **Slope breaks, ridge noses, terrace edges and coastal cliffs** concentrated
+  failures in the field, consistent with topographic amplification (item 6).
 
 ### What the numbers look like for Wellington
 
@@ -453,10 +491,18 @@ Three things follow.
    landslide less, because its training inventories are rural and towns sit on
    flatter, drier ground. That is the opposite of what the cut and fill
    literature leads us to expect for Wellington's hill suburbs.
-2. **The greywacke crosswalk barely matters.** Siliciclastic sedimentary
-   (−1.92) and metamorphic (−1.87) differ by 0.05 in the logit, so whichever
-   class Torlesse greywacke is mapped to, the answer is the same. Only mixed
-   sedimentary (−1.36) would move it noticeably.
+2. **This model is nearly blind to how greywacke is classed — which is a
+   weakness of the model, not a reason to deprioritise the crosswalk.**
+   Siliciclastic sedimentary (−1.92) and metamorphic (−1.87) differ by only 0.05
+   in the logit, because GLiM's top-level classes lump all greywacke together.
+   Other models see a large effect. Massey et al. (2018, 2020) found geology
+   among the strongest Kaikōura predictors. Allstadt et al. found the model
+   overpredicted the greywacke peaks and underplayed the Tertiary cover. Kingsbury
+   (1995) splits greywacke by crushing. Newmark approaches depend on greywacke
+   `c′` and `φ′` directly, and Godt et al. (2008) assigns them by lithology and
+   age. **Mapping Wellington's geology onto classes that carry a real strength
+   difference stays high priority.** That means greywacke by weathering and
+   crushing, Tertiary sediments, and the valley deposits.
 3. **Slope is measured at ~250 m.** A 30° slope at 250 m is steep country. Our
    hill suburbs will mostly read 10–25° at that scale even where individual cut
    faces are near vertical.
@@ -467,7 +513,9 @@ Three things follow.
    Run it at its native ~250 m over the study area for the scenario PGV and sum
    `LP × cell area`. This replaces the "order of 1%" figure in
    `s1_landslide_realisation_method.md` with a number computed for
-   Wellington's actual slopes and shaking.
+   Wellington's actual slopes and shaking. Treat the result as an upper bound:
+   the model overpredicted Kaikōura, and its coverage includes runout, so it
+   should be compared with our source plus runout area, not source alone.
 2. **As the coarse "how much" layer, downscaled for "where".** Treat each
    ~250 m cell's `LP × cell area` as a landslide area budget, and allocate that
    budget to fine cells inside it by a fine-scale susceptibility (1–10 m slope,
@@ -500,17 +548,25 @@ Three things follow.
 3. **CTI at ~1 km**, computed from a DEM coarsened to 30 arc-seconds. Computed
    from the 1 m DEM it would have a different distribution and the 0.03
    coefficient would not apply.
-4. **A lithology crosswalk** from the GNS geological map units to GLiM
-   classes. Low stakes for greywacke (see above); it matters for the Tertiary
-   and Quaternary cover sequences and the valley sediments.
+4. **A geology classification with real strength contrast — high
+   priority.** First, a crosswalk from the GNS geological map units to GLiM
+   classes, so the published model can be run at all. Second, and more
+   important, a finer split that GLiM cannot express: greywacke by weathering
+   and crushing (item 4, item 5), Tertiary sediments, and the valley deposits.
+   That split feeds the fine-scale allocation in route 2 and any refit in
+   route 3. The published model is insensitive to the greywacke class, but that
+   is the model's limitation (see "What the numbers look like"), not evidence
+   that geology does not matter.
 5. **A land cover crosswalk** from LCDB v6.0 (`get_nz_land_cover`) to
    GlobCover 2009 classes. Higher stakes: the coefficients run from 0.30
    (artificial) to 1.71 (needleleaved forest).
-6. **The Kaikōura PGV field** (the USGS ShakeMap for the 2016 event is public)
-   and **Allstadt, Jibson et al. (2018)**, so the model can be run over the
-   Kaikōura inventory already in `landloss.io.kaikoura` and scored against a
-   published run. That is the one test of whether it transfers to New Zealand
-   greywacke.
+6. **The Kaikōura PGV field** (USGS ShakeMap version 16, the final one with
+   the Bradley et al. 2017 rupture), so the model can be run over the Kaikōura
+   inventory already in `landloss.io.kaikoura`. Allstadt et al. (2018) give the
+   target: about 20 km² of source plus debris trail above 0.1 g. Reproducing
+   their overprediction first confirms our implementation. The ratio between
+   our run and 20 km² is then a first New Zealand correction factor, and the
+   residuals by geological unit show whether greywacke needs its own treatment.
 
 ### What we need to modify
 
@@ -527,16 +583,29 @@ Three things follow.
    underperformed on Tohoku. Either carry this as a stated limitation, or add a
    magnitude or significant-duration adjustment fitted to the subduction events
    in the wider inventory set, and say which.
-4. **Lithology coefficients**, following the USGS precedent, if the Kaikōura
-   test shows the greywacke class systematically over- or under-predicts.
-5. **Spatial correlation.** Like every cell-by-cell model, it gives an expected
+4. **Lithology coefficients**, following the USGS precedent. Allstadt et al.
+   already show the greywacke peaks over-predicted, so expect to change them
+   rather than merely test them.
+5. **Overall level.** The model overpredicted Kaikōura across the board.
+   Calibrate an overall scaling of `LP` against the 20 km² Kaikōura total
+   before applying it to Wellington, and state it.
+6. **Source against runout.** Equation 9 coverage includes debris trails. In
+   route 2 either split the budget into source and runout using the Kaikōura
+   source to trail area ratio, or let our runout step (item 11) generate the
+   trail and allocate only the source share.
+7. **Distance to rupture.** Hazard in the model does not decay with distance
+   from the fault, whereas Kaikōura landslides were concentrated within 2.5 km
+   of ruptured traces. For a Wellington Fault scenario the rupture trace is
+   known, so a distance-to-rupture term fitted on Kaikōura is a feasible
+   addition (item 5).
+8. **Spatial correlation.** Like every cell-by-cell model, it gives an expected
    coverage per cell and says nothing about which cells fail together. Our step
    has to add that (item 12) whichever route is taken.
-6. **Probabilistic wrapping.** The model is conditional on one PGV field and
+9. **Probabilistic wrapping.** The model is conditional on one PGV field and
    its own intervals cover coefficient error only. Run it inside PGV
    realisations — the PGV analogue of `beta_pga_realisation` — so that ground
    motion uncertainty reaches the loss distribution.
-7. **Topographic amplification is already in it.** The ln(PGV) × Slope term is
+10. **Topographic amplification is already in it.** The ln(PGV) × Slope term is
    the model's proxy for amplification, so applying the item 6 factor on top
    would count it twice. Pick one.
 
@@ -614,10 +683,10 @@ obtained, with the reason.
 - Allstadt, K.E., Jibson, R.W., Thompson, E.M., Massey, C.I., Wald, D.J.,
   Godt, J.W. & Rengers, F.K. (2018). Improving near-real-time coseismic
   landslide models: lessons learned from the 2016 Kaikōura, New Zealand,
-  earthquake. *BSSA* 108(3B), 1649–1664.
-  <https://pubs.geoscienceworld.org/ssa/bssa/article/108/3B/1649/529880/Improving-Near-Real-Time-Coseismic-Landslide>
-  The Kaikōura run of the global models; only the abstract has been read.
-  **Not in temp** — GeoScienceWorld refuses scripted downloads; save by hand.
+  earthquake. *BSSA* 108(3B), 1649–1664. <https://doi.org/10.1785/0120170297>
+  The Kaikōura run of the global models, including this one.
+  **In the repository** (tracked, not temp) —
+  `context/lit/landslide/allstadt_2018/allstadt-2018-kaikoura-near-real-time-landslide-models.pdf`.
 - Rosser, B., Massey, C., Lukovic, B., Dellow, S. & Hill, M. (2021).
   Development of a rainfall-induced landslide forecast tool for New Zealand. In
   *Understanding and Reducing Landslide Disaster Risk*, Springer, 273–277.
