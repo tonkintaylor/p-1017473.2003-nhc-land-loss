@@ -678,8 +678,12 @@ obtained, with the reason.
   <https://doi.org/10.1029/2017JF004494>
   **In the repository** (tracked, not temp) —
   `context/lit/landslide/nowicki_jessee_2018/nowicki-jessee-2018-global-seismic-landslide-model.pdf`.
-  The supporting information (Tables S1–S3) is not included. Operational implementation notes are from the USGS Ground Failure background
-  page, <https://earthquake.usgs.gov/data/ground-failure/background.php>.
+  Supporting information alongside it:
+  `nowicki-jessee-2018-supporting-information.pdf` (Figures S1–S4, Tables
+  S1–S2; Figures S4I–L are the blind tests on the four New Zealand events) and
+  `nowicki-jessee-2018-table-s3-model-selection.xls` (all model combinations
+  tested, ranked by AIC). Operational implementation notes are from the USGS
+  Ground Failure background page, <https://earthquake.usgs.gov/data/ground-failure/background.php>.
 - Allstadt, K.E., Jibson, R.W., Thompson, E.M., Massey, C.I., Wald, D.J.,
   Godt, J.W. & Rengers, F.K. (2018). Improving near-real-time coseismic
   landslide models: lessons learned from the 2016 Kaikōura, New Zealand,
