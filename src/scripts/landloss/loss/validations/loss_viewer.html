@@ -308,7 +308,7 @@ const BASEMAPS = {
     attribution: "&copy; OpenStreetMap contributors", max: 19,
   },
 };
-let MAP = null, TILES = null, DOTS = null;
+let MAP = null, TILES = null, DOTS = null, MARKERS = null, ROWS = [];
 
 // How a dot is coloured, and the legend that names the colours. Kept apart from
 // the drawing so the same rule serves the map and its key.
@@ -356,18 +356,34 @@ function drawMap(rows) {
   }
 
   const [fill, legend] = colouring(rows, document.getElementById("colourBy").value);
-  if (DOTS) MAP.removeLayer(DOTS);
-  DOTS = L.layerGroup(rows.map(r => L.circleMarker([+r.lat, +r.lon], {
-      radius: 3.4, weight: 0.6, color: "#ffffff", opacity: 0.9,
-      fillColor: fill(r), fillOpacity: 0.85,
-    }).bindTooltip(
-      `<b>${r.type}</b><br>settled ${money(r.settlement)}<br>` +
-      `repair ${money(r.repair)} &middot; cap ${money(r.cap)}<br>${r.basis}` +
-      `${+r.has_damaged_wall ? " &middot; damaged wall" : ""}`,
-      {direction: "top", opacity: 0.95}))).addTo(MAP);
+
+  // Markers are built once per file and restyled after that. Rebuilding them
+  // on every keystroke is what made the controls crawl at region scale, and
+  // `bindTooltip` was the worst of it -- one tooltip object per claim, a
+  // hundred thousand of them. One shared handler reads the row off the marker
+  // instead, and nothing is allocated on hover.
+  if (!MARKERS || MARKERS.length !== rows.length) {
+    if (DOTS) MAP.removeLayer(DOTS);
+    MARKERS = rows.map(r => L.circleMarker([+r.lat, +r.lon], {
+      radius: 3.4, weight: 0.6, color: "#ffffff", opacity: 0.9, fillOpacity: 0.85,
+    }).on("mouseover", onDot).on("mouseout", hide));
+    DOTS = L.layerGroup(MARKERS).addTo(MAP);
+  }
+  for (let i = 0; i < rows.length; i++) {
+    MARKERS[i].claim = rows[i];
+    MARKERS[i].setStyle({fillColor: fill(rows[i])});
+  }
 
   d3.select("#mapLegend").html(legend.map(([label, colour]) =>
     `<span><i style="background:${colour}"></i>${label}</span>`).join(""));
+}
+
+function onDot(e) {
+  const r = e.target.claim;
+  show(e.originalEvent,
+    `<b>${r.type}</b><br>settled ${money(r.settlement)}<br>` +
+    `repair ${money(r.repair)} &middot; cap ${money(r.cap)}<br>${r.basis}` +
+    `${+r.has_damaged_wall ? " &middot; damaged wall" : ""}`);
 }
 
 function show(e, html) {
@@ -377,10 +393,13 @@ function show(e, html) {
 const hide = () => tip.style("opacity", 0);
 
 // ---- render -------------------------------------------------------------
-function render() {
+function render({resettle = true} = {}) {
   if (!RAW.length) return;
-  const s = settings();
-  const rows = RAW.map(r => settle(r, s));
+  if (resettle || !ROWS.length) {
+    const s = settings();
+    ROWS = RAW.map(r => settle(r, s));
+  }
+  const rows = ROWS;
   const paid = rows.filter(r => r.settlement > 0);
 
   const total = d3.sum(rows, r => r.settlement);
@@ -410,8 +429,22 @@ function render() {
     `<span><i style="background:${TYPE_FILL[t]}"></i>${t}</span>`).join(""));
 }
 
+// Typing "12500" in a box is five keystrokes. Without this the page settles the
+// whole portfolio five times and throws four of the answers away, which at
+// region scale is most of a second each.
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+const rerender = debounce(() => render(), 180);
+
 function load(text) {
   RAW = d3.csvParse(text, d3.autoType);
+  MARKERS = null;
+  ROWS = [];
   document.getElementById("drop").textContent = `${RAW.length.toLocaleString()} claims loaded`;
   render();
 }
@@ -426,8 +459,12 @@ file.onchange = e => e.target.files[0].text().then(load);
   e.preventDefault(); drop.classList.remove("over");
 }));
 drop.addEventListener("drop", e => e.dataTransfer.files[0].text().then(load));
-d3.selectAll("aside input, aside select").on("input", render);
-window.addEventListener("resize", () => RAW.length && render());
+// A policy control changes the answer, so it re-settles -- debounced, because
+// it is the expensive one. Changing how the map is coloured or which basemap is
+// under it changes neither the settlements nor the charts, so it repaints only.
+d3.selectAll("aside input").on("input", rerender);
+d3.selectAll("#colourBy, #basemap").on("input", () => render({resettle: false}));
+window.addEventListener("resize", debounce(() => RAW.length && render({resettle: false}), 200));
 </script>
 </body>
 </html>
