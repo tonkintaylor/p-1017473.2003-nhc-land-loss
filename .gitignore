@@ -176,3 +176,13 @@ fig/
 # Generated weekly update PDFs; the .typ is the deliverable
 release_updates/*.pdf
 temp_*.*
+
+# Compiled reports, on the same footing as the weekly update above: the
+# .typ is the deliverable and the PDF is rebuilt from it.
+report/**/*.pdf
+
+# Stress-test data. Regenerated in seconds by gen_viewer_stress_data.py,
+# eleven megabytes, and synthetic -- nothing in it should be read as a
+# result, let alone carried in the history for ever.
+report/**/*SYNTHETIC*
+

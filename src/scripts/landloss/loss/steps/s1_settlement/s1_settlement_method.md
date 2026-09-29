@@ -12,14 +12,22 @@
 
 Every line rests on an assumption, and each is named here rather than buried.
 
-- **A damaged retaining wall** is replaced: beta flat rate × face area ×
-  (1 + site multiplier). Face area is the size class's set height by
-  `rw_length`.
-- **Damaged land on a claim that also has a damaged wall costs nothing extra.**
-  Repairing the wall is taken to reinstate the ground it retained, so charging
-  for both would pay for the same work twice.
-- **Damaged land on a claim with no damaged wall** is repaired by building a
-  wall that was never there. Its size comes from
+- **A damaged retaining wall** is replaced: beta wall rate × face area ×
+  (1 + site multiplier). The rate is concrete for 30% of walls (chosen by id)
+  and otherwise the timber pole rate for the wall's height. Face area is the
+  size class's set height by `rw_length`.
+- **One wall per property.** Where a retaining wall is already there it is
+  assumed damaged, is replaced, and that replacement is the whole of the wall
+  cost; where there is none, one is invented for the ground. The two are never
+  both charged (2026-09-29) — doing so priced the same structure twice.
+- **A replacement is never smaller than the wall it replaces, but a landslide
+  can make it larger** (2026-09-30). Where the claim has landslide ground, the
+  wall the slip would need is sized as below, and the replacement takes the
+  larger size class and the longer length of the two. Only a claim's largest
+  damaged wall is compared. Concrete stays concrete; a timber wall takes the
+  pile its new height calls for. UDV stays on the wall as it was.
+- **Damaged land on a property with no wall** is repaired by building a wall
+  that was never there. Its size comes from
   `classify_landslide_wall_size()`, on the damaged area and — where an
   inundated depth makes one available — the volume, taking the **larger** of
   the two classes. Its length follows the **width of the failure**: ground goes
@@ -84,7 +92,8 @@ their bands marked as invented.
 - **The Canterbury costs are 2010/2011 dollars and are not inflated**, only
   grossed up for GST. They are compared against land values and wall rates in
   today's dollars. Nothing in the repository supplies an index to correct it.
-- Every wall is the beta flat rate; no construction type is modelled.
+- Every wall is the beta wall rate; no construction type is modelled, and the
+  timber pole height bands are assumed.
 - **T-27**: the Canterbury rates may already include retaining wall damage, in
   which case a claim carrying both a liquefaction state and a damaged wall is
   charged for the wall twice. 107 pilot claims carry both.

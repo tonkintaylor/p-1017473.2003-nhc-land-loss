@@ -374,23 +374,29 @@ def settle(claim: DamagedClaim, *, policy: PolicySettings) -> Settlement:
     Examples:
         The explainer's Example 3 -- $45,000 of damaged land and a modest timber
         pole wall, so the sub-cap never binds and the repair cost is what is
-        paid, less the excess:
+        paid, less the excess of $500 for its one dwelling:
 
         >>> from landloss.loss.policy import PolicySettings
-        >>> result = settle(
-        ...     DamagedClaim(
-        ...         repair_cost_incl_gst_nzd=58_000.0,
-        ...         damaged_area_m2=60.0,
-        ...         land_rate_incl_gst_nzd_per_m2=750.0,
-        ...         retaining_wall_udv_incl_gst_nzd=30_000.0,
-        ...         n_dwellings=1,
-        ...     ),
-        ...     policy=PolicySettings(),
+        >>> example_3 = DamagedClaim(
+        ...     repair_cost_incl_gst_nzd=58_000.0,
+        ...     damaged_area_m2=60.0,
+        ...     land_rate_incl_gst_nzd_per_m2=750.0,
+        ...     retaining_wall_udv_incl_gst_nzd=30_000.0,
+        ...     n_dwellings=1,
         ... )
+        >>> result = settle(example_3, policy=PolicySettings())
         >>> float(result.land_cover_cap_nzd)
         75000.0
         >>> float(result.settlement_nzd)
         57500.0
+
+        The rule Virginie Lacrosse described takes 10% of the $58,000 payable
+        instead, held to its $5,000 ceiling. The two contradict each other
+        (**Q-12**); ``PolicySettings(excess_per_dwelling_nzd=None)`` runs it:
+
+        >>> by_rate = PolicySettings(excess_per_dwelling_nzd=None)
+        >>> float(settle(example_3, policy=by_rate).settlement_nzd)
+        53000.0
     """
     dwellings = _as_dwelling_count(claim.n_dwellings)
     repair = _as_amount(claim.repair_cost_incl_gst_nzd, name="repair_cost_incl_gst_nzd")
@@ -413,11 +419,14 @@ def settle(claim: DamagedClaim, *, policy: PolicySettings) -> Settlement:
         n_dwellings=dwellings,
         policy=policy,
     )
-    excess = policy.excess_nzd(dwellings)
+    # The excess is taken off what would otherwise be paid, so the comparison
+    # happens before it is worked out rather than after.
+    payable = np.minimum(repair, cap)
+    excess = policy.excess_nzd(payable, dwellings)
 
     # Floored at zero: where the excess exceeds what would otherwise be paid,
     # the claim settles at nothing rather than owing NHC money.
-    settlement = np.maximum(np.minimum(repair, cap) - excess, 0.0)
+    settlement = np.maximum(payable - excess, 0.0)
 
     return Settlement(
         land_cover_cap_nzd=cap,

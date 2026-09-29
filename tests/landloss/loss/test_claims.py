@@ -132,12 +132,13 @@ def test_the_count_feeds_straight_into_a_settlement():
     assert list(result.retaining_wall_sub_cap_bound) == [True, True]
 
 
-def test_the_excess_stops_growing_where_the_sub_caps_do_not():
-    # Ten dwellings reach the excess ceiling; the sub-caps keep scaling.
+def test_the_sub_caps_and_the_excess_scale_with_dwellings():
+    # The dwelling count reaches both sub-caps and the excess, which is $500 a
+    # dwelling and stops growing at ten.
     table = property_table({"c1": 20})
     counts = dwelling_counts(["c1"], table)
-    assert ACT.excess_nzd(counts) == pytest.approx(5_000.0)
     assert ACT.retaining_wall_limit_nzd(counts) == pytest.approx(20 * 57_500.0)
+    assert ACT.excess_nzd(6_000.0, counts) == pytest.approx(5_000.0)
 
 
 # ---------------------------------------------------------------------------

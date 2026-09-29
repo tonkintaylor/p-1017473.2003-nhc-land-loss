@@ -44,9 +44,20 @@ REPLACEMENT_SPEC_UPLIFT = 0.20
 RETAINING_WALL_SUB_CAP_NZD = 50_000.0
 BRIDGE_CULVERT_SUB_CAP_NZD = 25_000.0
 
-# The land excess is $500 per dwelling capped at $5,000, so it stops growing at
-# ten dwellings.
+# The land excess is **$500 per dwelling, capped at $5,000**, so it stops
+# growing at ten dwellings. That is the explainer's rule, and all three of its
+# worked examples settle on it.
+#
+# Virginie Lacrosse described a different one on 2026-09-25: 10% of what would
+# otherwise be paid, once per claim, floored at $500 and capped at $5,000. The
+# module ran that from 2026-09-25 to 2026-09-30 and has gone back to the
+# explainer's. The two disagree by $4,500 on the explainer's own first example
+# and nobody has yet said which NHC applies, so the other is kept runnable:
+# setting `excess_per_dwelling_nzd` to ``None`` charges the rate instead. See
+# **Q-12**.
 LAND_EXCESS_PER_DWELLING_NZD = 500.0
+LAND_EXCESS_RATE = 0.10
+LAND_EXCESS_MIN_NZD = 500.0
 LAND_EXCESS_MAX_NZD = 5_000.0
 
 # Damaged land is valued over the lesser of the district plan minimum area and
@@ -66,7 +77,16 @@ class PolicySettings:
             excluding GST.
         bridge_culvert_sub_cap_nzd: Bridge and culvert sub-cap per dwelling,
             excluding GST.
-        excess_per_dwelling_nzd: Land excess charged per dwelling.
+        excess_per_dwelling_nzd: The land excess charged per dwelling, the
+            explainer's rule. ``None`` charges :attr:`excess_rate` of what is
+            payable instead, which is what Virginie Lacrosse described. The two
+            contradict each other; see **Q-12**.
+        excess_rate: The land excess as a fraction of what would otherwise
+            be paid. Used only when :attr:`excess_per_dwelling_nzd` is
+            ``None``.
+        excess_min_nzd: The least the rate-based excess can be on a claim that
+            is paid anything. Used only when :attr:`excess_per_dwelling_nzd` is
+            ``None``.
         excess_max_nzd: The most the land excess can reach however many
             dwellings there are.
         area_cap_m2: The largest area of damaged land that is valued. Damage
@@ -85,7 +105,9 @@ class PolicySettings:
     gst_rate: float = GST_RATE
     retaining_wall_sub_cap_nzd: float = RETAINING_WALL_SUB_CAP_NZD
     bridge_culvert_sub_cap_nzd: float = BRIDGE_CULVERT_SUB_CAP_NZD
-    excess_per_dwelling_nzd: float = LAND_EXCESS_PER_DWELLING_NZD
+    excess_per_dwelling_nzd: float | None = LAND_EXCESS_PER_DWELLING_NZD
+    excess_rate: float = LAND_EXCESS_RATE
+    excess_min_nzd: float = LAND_EXCESS_MIN_NZD
     excess_max_nzd: float = LAND_EXCESS_MAX_NZD
     area_cap_m2: float = AREA_CAP_M2
     replacement_spec_uplift: float = REPLACEMENT_SPEC_UPLIFT
@@ -98,7 +120,8 @@ class PolicySettings:
             "gst_rate": self.gst_rate,
             "retaining_wall_sub_cap_nzd": self.retaining_wall_sub_cap_nzd,
             "bridge_culvert_sub_cap_nzd": self.bridge_culvert_sub_cap_nzd,
-            "excess_per_dwelling_nzd": self.excess_per_dwelling_nzd,
+            "excess_rate": self.excess_rate,
+            "excess_min_nzd": self.excess_min_nzd,
             "excess_max_nzd": self.excess_max_nzd,
             "replacement_spec_uplift": self.replacement_spec_uplift,
         }
@@ -113,6 +136,12 @@ class PolicySettings:
             not np.isfinite(self.total_cap_nzd) or self.total_cap_nzd < 0
         ):
             msg = "total_cap_nzd must be finite and not negative, or None"
+            raise ValueError(msg)
+        if self.excess_per_dwelling_nzd is not None and (
+            not np.isfinite(self.excess_per_dwelling_nzd)
+            or self.excess_per_dwelling_nzd < 0
+        ):
+            msg = "excess_per_dwelling_nzd must be finite and not negative, or None"
             raise ValueError(msg)
 
     def retaining_wall_limit_nzd(
@@ -143,17 +172,45 @@ class PolicySettings:
         gross = self.bridge_culvert_sub_cap_nzd * (1.0 + self.gst_rate)
         return np.asarray(n_dwellings, dtype=float) * gross
 
-    def excess_nzd(self, n_dwellings: np.ndarray | float) -> np.ndarray | float:
-        """Return the land excess for a residential building.
+    def excess_nzd(
+        self,
+        payable_nzd: np.ndarray | float,
+        n_dwellings: np.ndarray | float = 1.0,
+    ) -> np.ndarray | float:
+        """Return the land excess on a claim.
+
+        :attr:`excess_per_dwelling_nzd` for every dwelling in the residential
+        building, capped at :attr:`excess_max_nzd` -- so it scales with dwellings
+        the way the sub-caps do, and stops growing at ten.
+
+        A claim with nothing payable is charged nothing, so an undamaged claim
+        does not acquire a $500 debt. The settlement is floored at zero either
+        way; this keeps the excess reported against a claim to one that was
+        actually taken.
+
+        Setting :attr:`excess_per_dwelling_nzd` to ``None`` runs the rule
+        Virginie Lacrosse described instead: :attr:`excess_rate` of what would
+        otherwise be paid, once per claim, held between :attr:`excess_min_nzd`
+        and :attr:`excess_max_nzd`. It is taken on the amount payable --
+        ``min(repair cost, cap)`` -- rather than on the repair cost, so a claim
+        is never charged an excess on cost NHC is not bearing. It is kept so the
+        contradiction (**Q-12**) can be run both ways rather than argued about.
 
         Args:
+            payable_nzd: What would be paid before the excess.
             n_dwellings: Dwellings in the residential building.
 
         Returns:
-            The excess, which stops growing once it reaches
-            :attr:`excess_max_nzd`.
+            The excess.
         """
-        per_dwelling = np.asarray(n_dwellings, dtype=float)
-        return np.minimum(
-            per_dwelling * self.excess_per_dwelling_nzd, self.excess_max_nzd
-        )
+        payable = np.asarray(payable_nzd, dtype=float)
+        if self.excess_per_dwelling_nzd is not None:
+            dwellings = np.asarray(n_dwellings, dtype=float)
+            excess = np.minimum(
+                dwellings * self.excess_per_dwelling_nzd, self.excess_max_nzd
+            )
+        else:
+            excess = np.clip(
+                payable * self.excess_rate, self.excess_min_nzd, self.excess_max_nzd
+            )
+        return np.where(payable > 0, excess, 0.0)

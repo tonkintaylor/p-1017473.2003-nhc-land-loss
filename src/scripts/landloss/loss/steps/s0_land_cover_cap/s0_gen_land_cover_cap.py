@@ -53,6 +53,7 @@ from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     beta_wall_face_area_m2,
+    beta_wall_height_m,
     beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_udv_incl_gst_nzd,
 )
@@ -140,7 +141,8 @@ def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
             "udv": beta_wall_udv_incl_gst_nzd(
                 face_area,
                 rate_excl_gst_nzd_per_m2=beta_wall_rate_excl_gst_nzd_per_m2(
-                    damaged[RW_ID_COLUMN].to_numpy()
+                    damaged[RW_ID_COLUMN].to_numpy(),
+                    beta_wall_height_m(damaged[RW_SIZE_COLUMN].to_numpy()),
                 ),
                 policy=policy,
             ),
