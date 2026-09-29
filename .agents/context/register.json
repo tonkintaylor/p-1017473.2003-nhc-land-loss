@@ -598,6 +598,20 @@
       "Affects": "Insured land extent, and every hazard measured against it",
       "Source": "Insured land extent rebuild 2026-09-23",
       "Status": "Open"
+    },
+    {
+      "ID": "L-36",
+      "Limitation": "The study does not account for horizontal tectonic movement, such as lateral offset across a fault rupture. For scale, the last Wellington Fault rupture is noted as having had approximately 7 m of horizontal movement.",
+      "Affects": "Hazard scope, all phases",
+      "Source": "Maxim Millen 2026-09-29",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-37",
+      "Limitation": "The study does not account for tsunami or seiche effects. For scale, the 1855 Wairarapa earthquake generated a tsunami approximately 10 m high, with several further tsunamis in later aftershocks.",
+      "Affects": "Hazard scope, all phases",
+      "Source": "Maxim Millen 2026-09-29",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -800,6 +814,14 @@
       "Asked of": "Chris Ewens",
       "Answer": "Not answered. 20 m3 and 200 m3 adopted as a working assumption on 2026-09-23 so the chain could run, reasoned from plant capability rather than from any source, and explicitly not confirmed by NHC.",
       "Source": "Inundation removal 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-12",
+      "Question": "Does the T+T database of engineering characteristics of weathered and unweathered greywacke still exist, and where is it held? A T+T capability statement claims 'an extensive database of the engineering characteristics of the weathered and unweathered greywacke rock', built up through geotechnical investigation, instrumentation and laboratory testing; if it survives it could inform the greywacke strength and weathering assumptions in the landslide work.",
+      "Asked of": "Unassigned",
+      "Answer": "",
+      "Source": "Capability statement, T+T archive job 28971 (presentation/Capability.docx)",
       "Status": "Open"
     }
   ]

@@ -19,11 +19,11 @@ quantity is per property, so `rate_basis` says so.
 The rates are **flat land only**. Nothing here masks the hill properties out,
 because the liquefaction hazard grid covers flat land alone and a hill property
 comes back with no state at all; if that ever changes, this step needs a mask.
-A property off the grid is written as state 1, None, at **no cost**: it is not
-liquefiable ground, so it is undamaged rather than unknown. The Canterbury cost
-of state 1 is not charged to it, because that is the cost of surveyed flat land
-that showed no damage, not of land that cannot liquefy. `on_liq_grid` keeps the
-two apart.
+A property off the grid is written with a null state named N/A, at **no cost**.
+It is not given state 1, None, because that is surveyed flat land that showed no
+damage and carries a Canterbury cost; land that cannot liquefy has no
+liquefaction damage state at all. `on_liq_grid` records the same split as a
+flag.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -62,8 +62,9 @@ OUT_STEM = "liq-land-damage"
 CAUSE = str(constants.Cause.LIQUEFACTION)
 STATE_COLUMN = "ld_state"
 ON_GRID_COLUMN = "on_liq_grid"
-# The state a property off the liquefaction grid is written as: None, no damage.
-OFF_GRID_STATE = 1
+# The state name a property off the liquefaction grid is written with. Its
+# ld_state is null, so the loss module reads it as not liquefied.
+OFF_GRID_STATE_NAME = "N/A"
 RULE = "-" * 72
 
 
@@ -81,8 +82,8 @@ def describe_damage(damage, properties, percentile):
     print(f"  {int(known.sum()):,} sampled a liquefaction land damage state")
     print(
         f"  {properties - int(known.sum()):,} sit off the hazard grid, which "
-        f"covers flat land only, and are written as state {OFF_GRID_STATE} at "
-        "no cost"
+        f"covers flat land only, and are written as state {OFF_GRID_STATE_NAME} "
+        "at no cost"
     )
     if not known.any():
         return
@@ -110,21 +111,22 @@ def main(*, pilot, realisation_ids, cost_percentile):
         print(f"Sampling {raster} at {len(insured):,} properties ...", flush=True)
         sampled = sample_at_points(raster, points).to_numpy()
         on_grid = ~np.isnan(sampled)
-        # The cost is looked up on the sampled state, so a property off the grid
-        # costs nothing rather than the Canterbury cost of state 1.
+        # A property off the grid has no state and costs nothing, rather than
+        # the Canterbury cost of state 1.
         cost = np.nan_to_num(
             ld_cost_nzd(sampled, percentile=cost_percentile, costs=costs)
         )
-        states = np.where(on_grid, sampled, OFF_GRID_STATE).astype(int)
+        states = pd.Series(sampled).astype("Int64")
+        state_names = states.map(names).astype("string").fillna(OFF_GRID_STATE_NAME)
         damage = pd.DataFrame(
             {
                 "realisation_id": realisation_id,
                 LAND_ID_COLUMN: insured[LAND_ID_COLUMN].to_numpy(),
                 CLAIM_ID_COLUMN: insured[CLAIM_ID_COLUMN].to_numpy(),
                 "cause": CAUSE,
-                STATE_COLUMN: states,
+                STATE_COLUMN: states.array,
                 ON_GRID_COLUMN: on_grid,
-                "state_name": pd.Series(states).map(names).to_numpy(),
+                "state_name": state_names.to_numpy(),
                 "area_m2": insured["area_m2"].to_numpy(),
                 LAND_RATE_INCL_GST_COLUMN: insured[
                     LAND_RATE_INCL_GST_COLUMN

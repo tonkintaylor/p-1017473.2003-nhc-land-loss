@@ -22,6 +22,8 @@ from pathlib import Path
 
 import dotenv
 import geopandas as gpd
+import pandas as pd
+import requests
 from shapely import box, make_valid
 from ttpy.gis.koop import KoordinatesConnection, get_latest_layer
 
@@ -29,6 +31,10 @@ from landloss.domain import constants
 from landloss.io import koopcache_dir
 
 dotenv.load_dotenv()
+
+# How long to wait on one ArcGIS REST page before giving up, in seconds. Council
+# services are slower than Koordinates, and a full page is a real download.
+ARCGIS_TIMEOUT_SECONDS = 120
 
 
 def resolve_api_key(domain: str) -> str:
@@ -840,6 +846,211 @@ def get_gwd_median_depth() -> Path:
         The path to the grid, as a GeoTIFF with NaN nodata.
     """
     return get_koordinates_raster(constants.GWD_MEDIAN_DEPTH_LAYER_ID)
+
+
+def arcgis_cache_path(
+    service_url: str,
+    layer: int,
+    crs: int | str,
+    bbox: tuple[float, float, float, float] | None,
+) -> Path:
+    """Return the file one ArcGIS layer read is cached at."""
+    key = f"{service_url}|{layer}|{crs}|{bbox}"
+    digest = hashlib.sha256(key.encode()).hexdigest()[:16]
+    return koopcache_dir("arcgis") / f"arcgis_{layer}_{digest}.gpkg"
+
+
+def get_arcgis_feature_layer(
+    service_url: str,
+    layer: int,
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+    page_size: int = 1000,
+) -> gpd.GeoDataFrame:
+    """Read a layer from an ArcGIS REST map or feature service.
+
+    The sibling of :func:`get_koordinates_layer_extent` for the services that
+    are not on Koordinates at all. Councils publish a good deal this way and it
+    needs no key, but it also has no bulk download: the service caps how many
+    features one request may return, so this pages through with ``resultOffset``
+    until a page comes back short.
+
+    Asking the service to project is deliberate. ``outSR`` makes it return the
+    coordinate system wanted, so the geometry is never reprojected twice, and a
+    bounding box is sent in that same system rather than converted here.
+
+    Args:
+        service_url: The service, up to and including ``MapServer`` or
+            ``FeatureServer``.
+        layer: The sub-layer id within that service.
+        bbox: The extent to fetch (minx, miny, maxx, maxy) in ``crs``. Omitting
+            it fetches the whole layer. **Features are selected by intersection
+            and returned whole**, not cut at the box, which is the opposite of
+            :func:`get_koordinates_layer_extent`. Clip afterwards if the
+            difference matters.
+        crs: The coordinate reference system to return the features in. Must be
+            one the service can project to, which in practice means an EPSG code.
+        use_cache: Whether to read and write the on-disk cache for this extent.
+        page_size: How many features to ask for per request.
+
+    Returns:
+        A GeoDataFrame of the layer's features, in ``crs``. Empty if the layer
+        has nothing in the extent.
+
+    Raises:
+        ValueError: If the service reports an error, which it does with an
+            ordinary HTTP 200 and so would otherwise pass unnoticed.
+    """
+    cache_path = arcgis_cache_path(service_url, layer, crs, bbox)
+    if use_cache and cache_path.exists():
+        return gpd.read_file(cache_path)
+
+    query_url = f"{service_url.rstrip('/')}/{layer}/query"
+    out_sr = str(crs).removeprefix("EPSG:")
+
+    params: dict[str, str | int] = {
+        "where": "1=1",
+        "outFields": "*",
+        "f": "geojson",
+        "outSR": out_sr,
+        "returnGeometry": "true",
+    }
+    if bbox is not None:
+        minx, miny, maxx, maxy = bbox
+        params["geometry"] = f"{minx},{miny},{maxx},{maxy}"
+        params["geometryType"] = "esriGeometryEnvelope"
+        params["inSR"] = out_sr
+        params["spatialRel"] = "esriSpatialRelIntersects"
+
+    pages = []
+    offset = 0
+    while True:
+        page = _read_arcgis_page(query_url, params, offset=offset, page_size=page_size)
+        if page.empty:
+            break
+
+        pages.append(page)
+
+        # A short page is the last page. Services disagree about whether they
+        # set exceededTransferLimit, so the length is what is trusted.
+        if len(page) < page_size:
+            break
+        offset += len(page)
+
+    if not pages:
+        return gpd.GeoDataFrame(geometry=[], crs=crs)
+
+    features = gpd.GeoDataFrame(
+        pd.concat(pages, ignore_index=True), geometry="geometry", crs=crs
+    )
+
+    if use_cache:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        features.to_file(cache_path)
+
+    return features
+
+
+def _read_arcgis_page(
+    query_url: str,
+    params: dict[str, str | int],
+    *,
+    offset: int,
+    page_size: int,
+) -> gpd.GeoDataFrame:
+    """Read one page of an ArcGIS query, as a GeoDataFrame."""
+    response = requests.get(
+        query_url,
+        params={**params, "resultOffset": offset, "resultRecordCount": page_size},
+        timeout=ARCGIS_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+    # An ArcGIS service answers an error with HTTP 200 and an "error" object, so
+    # raise_for_status above does not see it.
+    if "error" in payload:
+        message = payload["error"].get("message", payload["error"])
+        msg = f"{query_url} returned an error: {message}"
+        raise ValueError(msg)
+
+    if not payload.get("features"):
+        return gpd.GeoDataFrame(geometry=[])
+
+    return gpd.GeoDataFrame.from_features(payload["features"])
+
+
+def get_slide_interpreted_materials(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load GNS's SLIDE near-surface materials mapping of urban Wellington.
+
+    Sub-layer 3 of :data:`landloss.domain.constants.GNS_SLIDE_SERVICE_URL`:
+    9,215 polygons over 111 km2, each carrying the substrate or regolith
+    material in ``Type`` and how sure the mapper was in ``confidence``. Mapped
+    at nominally 1:500 from aerial photographs, LiDAR and limited fieldwork
+    (GNS Science report 2019/28).
+
+    Fourteen material classes, of which "Rock at/near surface" is 41% of the
+    mapped area, then mixed fill and rock, fill, colluvium, alluvium, loess,
+    talus, boulders and water. That is the finest statement this study can get
+    of what is at the ground surface, and the nearest thing to a weathering map
+    that exists for Wellington: where rock is at or near the surface there is no
+    weathered regolith mantle to fail.
+
+    **It is not a weathering grade map.** Nothing published for Wellington
+    grades the weathering of the greywacke spatially. The grade is recorded
+    borehole by borehole in the New Zealand Geotechnical Database and nowhere
+    aggregated into a surface.
+
+    Coverage is the catch. The SLIDE study area is 114.6 km2 and reaches 38% of
+    Wellington City and none of Porirua, Lower Hutt or Upper Hutt, so a model
+    reading this needs something coarser to fall back on -- which for this study
+    is :func:`get_nlm_geomorphology`.
+
+    This is a different layer from the SLIDE polygons mirrored on the T+T
+    instance. Those say what *process* formed the ground -- cut slope, fill
+    body, landslide -- and this says what the ground is *made of*. They come
+    from the same study and are meant to be read together.
+
+    Licence:
+        Copyright MBIE, which funded the SLIDE programme, served publicly by
+        Wellington City Council with no licence statement on the service
+        itself. Credit GNS Science and MBIE in anything published from it, and
+        confirm the terms with GNS before a derived layer is delivered to NHC.
+
+    Source:
+        GNS Science, "SLIDE (Wellington): geomorphological characterisation of
+        the Wellington urban area", GNS Science report 2019/28, served from
+        Wellington City Council's ArcGIS instance. No DOI on the service.
+
+    Args:
+        bbox: The extent to fetch (minx, miny, maxx, maxy) in ``crs``. Polygons
+            are selected by intersection and returned whole, so clip afterwards
+            if the extent has to be exact. Omitting it fetches the whole mapped
+            area, which is only 111 km2 and takes a few seconds.
+        crs: The coordinate reference system to return the polygons in.
+        use_cache: Whether to read and write the on-disk cache for this extent.
+
+    Returns:
+        A GeoDataFrame of material polygons carrying ``Type`` and
+        ``confidence``. Read the confidence: over the whole layer it is 51%
+        "low", 45% "medium" and 4% "high", so a single polygon is a mapper's
+        best guess from imagery far more often than it is a verified
+        observation.
+    """
+    return get_arcgis_feature_layer(
+        constants.GNS_SLIDE_SERVICE_URL,
+        constants.GNS_SLIDE_INTERPRETED_MATERIALS_SUBLAYER,
+        bbox=bbox,
+        crs=crs,
+        use_cache=use_cache,
+    )
 
 
 def get_nz_land_cover(

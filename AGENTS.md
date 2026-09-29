@@ -99,6 +99,33 @@ Record the publisher and any DOI in a `Source:` section alongside it. Layer IDs
 belong in `landloss.domain.constants` with the portal URL in a comment, never
 inline in the reader.
 
+## Reference documents
+
+A paper, report or map booklet that the method is being read out of gets
+**downloaded into `temp/reference/<topic>/`** rather than linked and re-fetched.
+`temp/` is gitignored, so none of it is tracked and none of it is a licensing
+decision — it is a working copy, kept because a URL that answered today is not
+guaranteed to answer next month, and because searching a local PDF beats
+re-reading a web page.
+
+- Name the file so it says what it is without being opened:
+  `{author}-{year}-{short-title}.pdf`, for example
+  `kingsbury-1995-eq-slope-failure-wellington-WRC-PP-T-95-06.pdf`.
+- Keep a `SOURCES.md` in each topic folder listing every file, one line on what
+  it is, and the URL it came from. A PDF whose provenance has been lost is worth
+  less than no PDF.
+- **If a document turns out to be genuinely relied on** — its numbers are in the
+  code, or the report will cite it — it moves somewhere durable and the move is
+  recorded. `temp/` is a staging area, not a library, and it can be deleted at
+  any time without warning.
+- **The durable home is `context/lit/<topic>/<author_year>/`**, tracked in git,
+  for example
+  `context/lit/landslide/nowicki_jessee_2018/nowicki-jessee-2018-global-seismic-landslide-model.pdf`.
+  Each topic folder carries a `SOURCES.md` in the same form as the `temp/` one.
+- Do not put anything in `temp/reference/` that may not be redistributed inside
+  T+T. Public reports and papers are fine; a client's confidential document is
+  not.
+
 ## Project context
 
 Background on what this project is for lives in `.agents/context`. Read these

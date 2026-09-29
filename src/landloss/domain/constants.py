@@ -150,6 +150,25 @@ NLM_GEOMORPHOLOGY_LAYER_ID = 121398
 # as nodata.
 GWD_MEDIAN_DEPTH_LAYER_ID = 120794
 
+# GNS Science's SLIDE geomorphology mapping of the Wellington urban area, served
+# by Wellington City Council's ArcGIS instance. Public, no key, and the only
+# place the near-surface materials layer is published -- the T+T instance
+# mirrors only the morphology and genesis layers of the same study.
+#
+# Four sub-layers: 0 morphology (lines), 1 study area, 2 genesis, 3 interpreted
+# materials. Mapped at nominally 1:500 from aerial photographs, LiDAR and
+# limited fieldwork; see GNS Science report 2019/28. The study area is 114.6 km2
+# and covers 38% of Wellington City and none of Porirua, Lower Hutt or Upper
+# Hutt, so anything reading it needs a fallback off that footprint.
+GNS_SLIDE_SERVICE_URL = (
+    "https://gis.wcc.govt.nz/arcgis/rest/services/Environment/"
+    "GNSSLIDEMorphologicalData/MapServer"
+)
+GNS_SLIDE_MORPHOLOGY_SUBLAYER = 0
+GNS_SLIDE_STUDY_AREA_SUBLAYER = 1
+GNS_SLIDE_GENESIS_SUBLAYER = 2
+GNS_SLIDE_INTERPRETED_MATERIALS_SUBLAYER = 3
+
 
 class Cause(StrEnum):
     """The causes of financial land loss the model carries a damage measure for.

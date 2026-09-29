@@ -16,6 +16,7 @@ from landloss.io.readers import (
     get_nz_addresses,
     get_nz_land_cover,
     get_nz_river_name_lines,
+    get_slide_interpreted_materials,
     get_wcc_cut_areas,
     get_wcc_fill_areas,
     resolve_api_key,
@@ -641,3 +642,134 @@ def test_get_wcc_cut_areas_applies_the_bbox(
     result = get_wcc_cut_areas(bbox=BBOX)
 
     assert "outside" not in set(result["name"])
+
+
+# --- ArcGIS REST ---------------------------------------------------------------
+
+
+class FakeResponse:
+    """Stands in for a requests Response carrying one page of GeoJSON."""
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.payload
+
+
+def geojson_page(names):
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"Type": name},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]],
+                    ],
+                },
+            }
+            for name in names
+        ],
+    }
+
+
+@pytest.fixture
+def fake_arcgis(monkeypatch):
+    """Serve two pages then an empty one, recording every request made."""
+    calls = []
+    pages = [geojson_page(["a", "b"]), geojson_page(["c"])]
+
+    def fake_get(url, params, timeout):
+        calls.append({"url": url, "params": params, "timeout": timeout})
+        index = len(calls) - 1
+        payload = pages[index] if index < len(pages) else geojson_page([])
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(readers.requests, "get", fake_get)
+    return calls
+
+
+def test_arcgis_pages_until_a_short_page(fake_arcgis, tmp_path):
+    """The service caps a page, so one request is never the whole layer."""
+    result = readers.get_arcgis_feature_layer(
+        "https://example.test/MapServer", 3, page_size=2, use_cache=False
+    )
+
+    assert list(result["Type"]) == ["a", "b", "c"]
+    assert len(fake_arcgis) == 2
+
+
+def test_arcgis_advances_the_offset_between_pages(fake_arcgis):
+    """Without the offset moving, the same page comes back for ever."""
+    readers.get_arcgis_feature_layer(
+        "https://example.test/MapServer", 3, page_size=2, use_cache=False
+    )
+
+    offsets = [call["params"]["resultOffset"] for call in fake_arcgis]
+    assert offsets == [0, 2]
+
+
+def test_arcgis_asks_the_service_for_the_crs(fake_arcgis):
+    """outSR avoids reprojecting geometry that the service can project itself."""
+    result = readers.get_arcgis_feature_layer(
+        "https://example.test/MapServer", 3, page_size=2, use_cache=False
+    )
+
+    assert fake_arcgis[0]["params"]["outSR"] == "2193"
+    assert result.crs.to_string() == constants.DEFAULT_CRS
+
+
+def test_arcgis_sends_the_bbox_in_the_same_crs(fake_arcgis):
+    """A box in one system and geometry in another would silently select nothing."""
+    readers.get_arcgis_feature_layer(
+        "https://example.test/MapServer",
+        3,
+        bbox=(1.0, 2.0, 3.0, 4.0),
+        page_size=2,
+        use_cache=False,
+    )
+
+    params = fake_arcgis[0]["params"]
+    assert params["geometry"] == "1.0,2.0,3.0,4.0"
+    assert params["inSR"] == params["outSR"]
+
+
+def test_arcgis_raises_on_a_service_error(monkeypatch):
+    """ArcGIS answers an error with HTTP 200, so it has to be checked for."""
+    payload = {"error": {"code": 400, "message": "Invalid or missing input"}}
+    monkeypatch.setattr(
+        readers.requests, "get", lambda url, params, timeout: FakeResponse(payload)
+    )
+
+    with pytest.raises(ValueError, match="Invalid or missing input"):
+        readers.get_arcgis_feature_layer(
+            "https://example.test/MapServer", 3, use_cache=False
+        )
+
+
+def test_slide_materials_points_at_the_wcc_service(fake_arcgis):
+    """The materials layer is sub-layer 3, and is not on Koordinates at all."""
+    get_slide_interpreted_materials(use_cache=False)
+
+    assert fake_arcgis[0]["url"].startswith(constants.GNS_SLIDE_SERVICE_URL)
+    assert fake_arcgis[0]["url"].endswith(
+        f"/{constants.GNS_SLIDE_INTERPRETED_MATERIALS_SUBLAYER}/query"
+    )
+
+
+def test_the_slide_sublayers_are_distinct():
+    """Genesis says what formed the ground, materials what it is made of."""
+    sublayers = {
+        constants.GNS_SLIDE_MORPHOLOGY_SUBLAYER,
+        constants.GNS_SLIDE_STUDY_AREA_SUBLAYER,
+        constants.GNS_SLIDE_GENESIS_SUBLAYER,
+        constants.GNS_SLIDE_INTERPRETED_MATERIALS_SUBLAYER,
+    }
+
+    assert len(sublayers) == 4

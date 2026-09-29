@@ -9,14 +9,16 @@
   `ld_state_path()`, sampled at each property's **representative point** with
   `landloss.common.utils.terrain.sample_at_points`. A property therefore carries
   one state rather than a mixture of the states under it.
-- **A property outside the grid is state 1, None, at no cost.** The
+- **A property outside the grid has damage state N/A, at no cost.** The
   liquefaction model covers flat land, as expected, so over the Wellington pilot
   roughly two properties in five sit off it. Off the grid is ground that cannot
-  liquefy, so it is undamaged rather than unknown, and it is written as
-  `OFF_GRID_STATE` in `gen_liq_land_damage.py`. The cost is looked up on the
-  sampled state before that fill, so the Canterbury cost of state 1 (surveyed
-  flat land showing no damage) is not charged to it. `on_liq_grid` records
-  which properties were sampled, and the run prints the split.
+  liquefy, so it has no liquefaction damage state at all: `ld_state` is null
+  (a nullable integer column) and `state_name` is `OFF_GRID_STATE_NAME`, "N/A",
+  in `gen_liq_land_damage.py`. It is deliberately not state 1, None, which is
+  surveyed flat land showing no damage and carries a Canterbury cost. The null
+  state passes through to `Liq_LD_state` in the land table, which the loss
+  module reads as not liquefied. `on_liq_grid` records which properties were
+  sampled, and the run prints the split.
 - Costs are looked up, not modelled, by `landloss.vul.liquefaction.costs`. They
   are what NHC settled for land damage after the 2010 and 2011 Canterbury
   earthquakes, grouped by the damage state surveyed on the ground, and shipped

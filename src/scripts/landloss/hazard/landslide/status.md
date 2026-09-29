@@ -104,6 +104,35 @@ cannot be signed off while they are open.
   own largest technical risk. The raw source area and debris trail polygons are
   now readable, via `landloss.io.kaikoura` — the fit itself is still to do.
 
+### An option not yet taken: build a weathering surface from the NZGD
+
+Kingsbury's geology factor turns on the weathering grade of the greywacke, and
+**no published layer maps that for Wellington**. The step currently assigns one
+value to all bedrock hill country, which is defensible but flat.
+
+The grade is recorded, though — borehole by borehole, logged to the NZ
+Geotechnical Society field guidelines, in the **New Zealand Geotechnical
+Database**. There are thousands of Wellington holes; the Semmens et al. (2011)
+subsoil class work used 1,025 and the layer built from it cites 2,422. Depth to
+highly-or-less weathered bedrock is a real, logged quantity: T+T's own Hornsey
+Road work found it at 2.1 to 4.4 m along one hillside road.
+
+So the option is to pull the logs, take depth to a given weathering grade as the
+value, and interpolate it into a surface — the same shape of exercise as several
+scripts in this repo already do. What makes it a decision rather than a task:
+
+- The NZGD is not open. Access needs registration through MBIE, and the terms on
+  redistributing anything derived need checking before the work starts.
+- Point-to-surface interpolation over hill country is a modelling choice in its
+  own right, and boreholes cluster where people build rather than where slopes
+  fail.
+- The prize is capped. The factor is weighted 2, so it spans 20 of 150 points,
+  and the gap between the two classes that would realistically be in play is 8
+  points. It would have to change a lot of cells to move a zone boundary.
+
+Worth doing if the weathering distinction turns out to matter to the loss
+answer; not worth doing speculatively.
+
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.
 
