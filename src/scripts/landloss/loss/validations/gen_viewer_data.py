@@ -33,10 +33,10 @@ from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
-    BETA_WALL_RATE_EXCL_GST_NZD_PER_M2,
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
+    timber_pole_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
@@ -47,6 +47,8 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     LIQ_REPAIR_COLUMN,
     NEW_WALL_HEIGHT_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
+    REPLACEMENT_WALL_FACE_COLUMN,
+    REPLACEMENT_WALL_RATE_COLUMN,
     SPOIL_VOLUME_COLUMN,
     WALL_REPAIR_COLUMN,
     settlement_path,
@@ -119,6 +121,10 @@ def viewer_rows(claims: pd.DataFrame, walls: pd.DataFrame) -> pd.DataFrame:
         The viewer's rows.
     """
     height = walls["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
+    new_height = claims[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
+    new_rate = np.where(
+        new_height > 0, timber_pole_rate_excl_gst_nzd_per_m2(new_height), 0.0
+    )
     return pd.DataFrame(
         {
             "dwellings": claims["dwelling_count"].astype(int),
@@ -127,15 +133,21 @@ def viewer_rows(claims: pd.DataFrame, walls: pd.DataFrame) -> pd.DataFrame:
             # Wall geometry and rate, not a wall price.
             "wall_face_m2": (height * walls["wall_length_m"].fillna(0.0)).round(6),
             "wall_rate_excl_gst": walls["wall_rate_excl_gst"].fillna(0.0).round(6),
+            # What the damaged wall is replaced at, which a landslide can make
+            # larger than the wall that was there. The value above builds the
+            # cap; this builds the repair.
+            "replacement_face_m2": claims[REPLACEMENT_WALL_FACE_COLUMN].round(6),
+            "replacement_rate_excl_gst": claims[REPLACEMENT_WALL_RATE_COLUMN].round(6),
             "new_wall_face_m2": (
                 claims[NEW_WALL_HEIGHT_COLUMN] * claims[NEW_WALL_LENGTH_COLUMN]
             ).round(6),
-            # An invented wall is priced at the timber pole average rather than
-            # at the claim's own wall rate -- it has no wall of its own to take
-            # a construction from, and a claim needing one often has no damaged
-            # wall at all, so there is no rate to borrow. Carried separately so
-            # the page does not silently price it at zero.
-            "new_wall_rate_excl_gst": round(BETA_WALL_RATE_EXCL_GST_NZD_PER_M2, 6),
+            # An invented wall is priced at the timber pole rate its height
+            # calls for rather than at the claim's own wall rate -- it has no
+            # wall of its own to take a construction from, and a claim needing
+            # one often has no damaged wall at all, so there is no rate to
+            # borrow. Carried separately so the page does not silently price it
+            # at zero.
+            "new_wall_rate_excl_gst": np.round(new_rate, 6),
             "spoil_m3": claims[SPOIL_VOLUME_COLUMN].round(6),
             # The Canterbury cost is a settled amount, so it arrives whole --
             # but before GST, which is a control.
@@ -170,7 +182,13 @@ def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFram
     mult = 1.0 + rows["site_multiplier"]
 
     udv = rows["wall_face_m2"] * rows["wall_rate_excl_gst"] * gst
-    wall = udv * mult * spec
+    wall = (
+        rows["replacement_face_m2"]
+        * rows["replacement_rate_excl_gst"]
+        * gst
+        * mult
+        * spec
+    )
     new_wall = (
         rows["new_wall_face_m2"] * rows["new_wall_rate_excl_gst"] * gst * mult * spec
     )
@@ -193,8 +211,9 @@ def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFram
     repair = wall + new_wall + spoil + fees + rows["liq_cost_excl_gst"] * gst
     repair = repair + crossing_limit
     payable = np.minimum(repair, cap)
-    excess = np.clip(
-        payable * policy.excess_rate, policy.excess_min_nzd, policy.excess_max_nzd
+    excess = np.minimum(
+        rows["dwellings"].clip(lower=1) * policy.excess_per_dwelling_nzd,
+        policy.excess_max_nzd,
     ) * (payable > 0)
     return pd.DataFrame(
         {

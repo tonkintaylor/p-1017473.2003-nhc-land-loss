@@ -1,8 +1,8 @@
 # Loss: status
 
 **Status:** The module settles. Step 0 caps the 4,388 pilot claims and step 1
-prices the repair and pays `min(repair, cap)` less the excess — $10.1 m over
-2,027 claims. Every repair cost rests on a named placeholder: the wall rate, the
+prices the repair and pays `min(repair, cap)` less the excess — $13.7 m over
+2,031 claims. Every repair cost rests on a named placeholder: the wall rate, the
 three site ratings, and the wall invented to reinstate landslide ground.
 
 **Updated:** 2026-09-24
@@ -30,7 +30,7 @@ build proceeds against it rather than waiting.
   damage state for walls, culverts and bridges rather than a cost, so both the
   repair cost and the undepreciated value are worked out here. Retaining wall
   both a wall's repair cost and its undepreciated value are built on the costing
-  tool's own rates, on a beta flat rate until a wall type mapping is settled.
+  tool's own rates, on a beta rate until a wall type mapping is settled.
   Culverts and bridges are not priced.
 - [ ] **Aggregate four tables to a claim.** `vul` hands over land, retaining
   walls, culverts and bridges as separate tables, each carrying `claim_id` and
@@ -73,10 +73,14 @@ The settlement core is built and is the only part that needed no upstream data.
   at 0%, 5% and 10% to a ceiling of 30%. A wall's repair cost is rate × face
   area × (1 + multiplier), grossed up to GST-inclusive. This closed **Q-03** and
   **Q-04**.
-- Every wall is priced at `BETA_WALL_RATE_EXCL_GST_NZD_PER_M2`, $766.6375 per m²
-  excluding GST — the average of the four non-driven timber pole rates — because
-  nothing maps a modelled wall onto a construction type. Size reaches the cost
-  through face area rather than through the rate, and initial condition does not
+- Nothing maps a modelled wall onto a construction type, so 30% of walls
+  (chosen by id) are priced as reinforced concrete and the rest as timber pole,
+  with the pile set by height (`TIMBER_POLE_HEIGHT_BANDS_M`, 2026-09-30): below
+  1 m is 175 mm SED, 1–2 m is 250 mm, 2–3 m is 300 mm, 3 m and above is 350 mm.
+  With set heights per size class, small is $643.19, medium $744.69 and large
+  $798.80 per m² excluding GST, and the 350 mm rate is never reached. A wall
+  invented for a landslide takes the same timber rate for its height. Size
+  reaches the cost through both face area and rate; initial condition does not
   reach it at all.
 - `tests/landloss/loss/test_settlement.py` runs the three worked examples in
   `.agents/context/nhi-act-land-cover-explainer.md` plus the misreadings the
@@ -110,7 +114,7 @@ The settlement core is built and is the only part that needed no upstream data.
 
 ## Next
 
-1. Replace the beta flat rate with a real mapping from size class and initial
+1. Replace the beta wall rate with a real mapping from size class and initial
    condition onto a construction type. The rates span a factor of 21, so this
    decides more of the answer than anything else in the module.
 2. Generate the three site ratings, without which no wall prices at all
@@ -151,9 +155,9 @@ The settlement core is built and is the only part that needed no upstream data.
 - **Which wall types the study runs.** The costing tool prices 29 construction
   types and `vul` hands over a size class, so something has to choose. The team
   agreed at the costing tool demo to run three types with simple numbers; which
-  three is not recorded. A flat average of the non-driven timber pole rates
-  stands in, which prices a population that is really part concrete and part
-  steel below what it would settle at.
+  three is not recorded. A 30% concrete share and a timber pole rate banded by
+  height stand in, which prices a population that is really part steel below
+  what it would settle at. The height bands are themselves assumed.
 - **Whether a set height per size class is enough (I-14).** `vul` sends
   `rw_size` and `rw_length`, and the rate is charged on wall face, so a band has
   to become a height. Settled for now as 0.75 m, 1.75 m and 2.75 m — the middle
@@ -267,6 +271,11 @@ Raised by Perrie Gilbert, 2026-09-24. Not yet numbered in
   replaced, and that replacement holds the ground; a property with no wall
   gets one invented. Never both. The earlier allowance -- a metre of
   reinstated ground per metre of wall -- is removed with it.
+- **Decided 2026-09-30: the replacement is sized against the slip.** It takes
+  the larger size class and the longer length of the existing wall and the wall
+  the slip would need, so it is never smaller than what was there but can be
+  larger. Where a claim has several damaged walls only the largest is compared.
+  Four of the pilot's five such claims are enlarged, adding $123k of repair.
 - **Open:** nothing says whether a slip and a wall are in the same place. `vul`
   sends the landslide extent as an area with no polygon, so a property with a
   slip at the back and a shaken wall at the front cannot be told from one

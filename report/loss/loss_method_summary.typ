@@ -87,13 +87,15 @@ work from published QV average residential land values.
 === Retaining walls
 
 #a[5] Nothing in the data says what a wall is made of. 30% are priced as
-reinforced concrete and the rest take one of four timber pole rates, spread
-evenly. Which wall gets which is fixed by its identity, so it is the same in
-every run. The costing tool's 29 rates span a factor of 21, so this is the
+reinforced concrete and the rest as timber pole, with the pile size set by the
+wall's height: below 1 m is 175 mm SED, 1 to 2 m is 250 mm, 2 to 3 m is 300 mm,
+and 3 m and above is 350 mm. Which walls are concrete is fixed by their
+identity, so it is the same in every run. The costing tool's 29 rates span a factor of 21, so this is the
 largest single assumption in any wall cost.
 
 #a[6] A wall's height comes from its size class — 0.75 m, 1.75 m or 2.75 m —
-rather than from the wall itself.
+rather than from the wall itself. So small, medium and large timber walls take
+the 175, 250 and 300 mm rates, and the 350 mm rate is not reached.
 
 #a[7] A damaged wall is *replaced, not repaired*. Partial repair is about 1% of
 real cases and is not modelled.
@@ -131,6 +133,13 @@ and that replacement holds the ground as well. Where there is none, one is
 invented. The two are never both charged — doing so priced the same structure
 twice, once at \$74,302 against a slip of 1.4 square metres.
 
+#a[13a] *A replacement is never smaller than the wall it replaces, but a
+landslide can make it larger.* Where the claim also has landslide ground, the
+wall that slip would need is sized as for a property with no wall, and the
+replacement takes the larger size class and the longer length of the two. A
+concrete wall is replaced in concrete; a timber wall takes the pile its new
+height calls for. The wall's undepreciated value stays on the wall as it was.
+
 #a[14] Where the property had no wall, landslide ground is held by *building a
 retaining wall that was never there*. Its size comes from the area lost and the
 depth of the deposit; its length from the width of the failure, plus a margin,
@@ -157,16 +166,15 @@ putting it right.
 
 === The excess
 
-#a[19] The excess is *10% of what would otherwise be paid, once per claim*,
-with a \$500 floor and a \$5,000 ceiling. It is taken on the amount payable
-rather than on the repair cost, so a claim is never charged an excess against
-cost NHC is not bearing.
+#a[19] The excess is *\$500 per dwelling, capped at \$5,000*, so it stops
+growing at ten dwellings. A claim with nothing payable is charged nothing.
 
 #q[
-  *Open question.* NHC's own explainer states a flat "\$500 per dwelling, capped
-  at \$5,000" and works all three of its examples that way, which disagrees with
-  the above by \$4,500 on its own first example. Both rules can be run; the
-  study currently uses the 10% rule. *This needs settling before any figure is
+  *Open question.* NHC described a different rule on 2026-09-25: 10% of what
+  would otherwise be paid, once per claim, floored at \$500 and capped at
+  \$5,000. It disagrees with the explainer's rule above by \$4,500 on the
+  explainer's own first example. Both rules can be run; the study currently
+  uses the per-dwelling rule. *This needs settling before any figure is
   issued.*
 ]
 

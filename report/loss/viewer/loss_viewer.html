@@ -88,9 +88,8 @@
     <input type="number" id="totalCap" placeholder="none" step="10000"></label>
 
   <h2>Excess</h2>
-  <label>Share of what is payable
-    <input type="number" id="exRate" value="0.10" step="0.01" min="0" max="1"></label>
-  <label>Floor ($)<input type="number" id="exFloor" value="500" step="100"></label>
+  <label>Per dwelling ($)
+    <input type="number" id="exEach" value="500" step="100" min="0"></label>
   <label>Ceiling ($)<input type="number" id="exCeil" value="5000" step="500"></label>
 
   <h2>Costs</h2>
@@ -169,7 +168,7 @@ function settings() {
   return {
     areaCap: num("areaCap"), rwSub: num("rwSub"), bcSub: num("bcSub"),
     totalCap: raw === "" ? null : +raw,
-    exRate: num("exRate"), exFloor: num("exFloor"), exCeil: num("exCeil"),
+    exEach: num("exEach"), exCeil: num("exCeil"),
     gst: num("gst"), spec: num("spec"), fees: num("fees"), spoilRate: num("spoilRate"),
   };
 }
@@ -181,7 +180,7 @@ function settle(r, s) {
   const dwellings = Math.max(1, nz(r.dwellings));
 
   const udv = nz(r.wall_face_m2) * nz(r.wall_rate_excl_gst) * gst;
-  const wall = udv * mult * spec;
+  const wall = nz(r.replacement_face_m2) * nz(r.replacement_rate_excl_gst) * gst * mult * spec;
   const newWall = nz(r.new_wall_face_m2) * nz(r.new_wall_rate_excl_gst) * gst * mult * spec;
   const spoil = nz(r.spoil_m3) * s.spoilRate * gst;
   const walled = nz(r.has_damaged_wall) > 0 || nz(r.has_new_wall) > 0;
@@ -196,8 +195,7 @@ function settle(r, s) {
 
   const repair = wall + newWall + spoil + fees + liq + crossing;
   const payable = Math.min(repair, cap);
-  const excess = payable > 0
-    ? Math.min(Math.max(payable * s.exRate, s.exFloor), s.exCeil) : 0;
+  const excess = payable > 0 ? Math.min(dwellings * s.exEach, s.exCeil) : 0;
   const settlement = Math.max(0, payable - excess);
 
   const type = liq > 0 && walled ? TYPE.both : liq > 0 ? TYPE.liq : walled ? TYPE.wall : TYPE.none;

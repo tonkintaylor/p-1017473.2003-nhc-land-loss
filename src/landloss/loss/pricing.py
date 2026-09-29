@@ -71,10 +71,11 @@ obtained rather than because it was decided against:
   agreed basis meanwhile, not a stand-in for something better specified.
 - **Which wall type a modelled wall is.** The rates are keyed on construction
   type, and :mod:`landloss.exposure.rw.beta_population` emits a size class and
-  an initial condition instead. Until the study settles that mapping, every
-  wall is priced at :data:`BETA_WALL_RATE_EXCL_GST_NZD_PER_M2`, a flat rate
-  standing in for the whole population -- see the note on it below, because the
-  choice of type moves the answer further than anything else in this module.
+  an initial condition instead. Until the study settles that mapping, a share
+  of walls is priced as concrete and the rest as a timber pole wall whose pile
+  size is set by its height, :data:`TIMBER_POLE_HEIGHT_BANDS_M` -- see the note
+  on it below, because the choice of type moves the answer further than
+  anything else in this module.
 - **Enabling works, and the compliance items.** Chris Ewens was explicit that
   the wall rates carry no enabling works allowance. Whether enabling works is a
   separate line on the scope of works, or is what the constructability and
@@ -133,16 +134,15 @@ WALL_RATE_EXCL_GST_NZD_PER_M2 = {
 WALL_RATES_AS_AT = "2026-09-23"
 
 # The beta's stand-in for a construction type. Nothing maps a modelled wall onto
-# one of the 29 types, so a share of walls is priced as concrete and the rest is
-# spread across the four timber pole rates rather than averaged.
+# one of the 29 types, so a share of walls is priced as concrete and the rest as
+# timber pole, with the pile size set by the wall's height
+# (:data:`TIMBER_POLE_HEIGHT_BANDS_M`).
 #
-# The point is the **spread, not the mean**. Every wall at one rate gives a
+# The point is a **spread, not a mean**. Every wall at one rate gives a
 # population with no cheap walls and no dear ones, so no wall ever approaches a
 # sub-cap and the question of whether the sub-caps bind is answered by the
-# averaging rather than by the evidence. Spreading the timber rates leaves the
-# mean where it was -- the four are drawn evenly, so their average is still
-# :data:`BETA_WALL_RATE_EXCL_GST_NZD_PER_M2` -- and gives the population a tail
-# at each end. Agreed with Maxim Millen on 2026-09-24. **The share is assumed.**
+# averaging rather than by the evidence. Agreed with Maxim Millen on 2026-09-24.
+# **The share is assumed.**
 BETA_CONCRETE_SHARE = 0.30
 BETA_CONCRETE_WALL_TYPE = "Reinforced Concrete"
 
@@ -159,31 +159,31 @@ RATING_MARKUP = {EASY: 0.00, MODERATE: 0.05, DIFFICULT: 0.10}
 # line items cap at. Named so a test can assert the formula never exceeds it.
 MAX_SITE_MULTIPLIER = 3 * RATING_MARKUP[DIFFICULT]
 
-# The wall types the beta rate averages: the four non-driven timber pole walls,
-# which differ only in pile diameter. The driven timber pole rates are a
-# separate and cheaper family in the tool and are deliberately left out.
-BETA_WALL_TYPES = (
-    "Timber Pole: 175mm SED",
-    "Timber Pole: 250mm SED",
-    "Timber Pole: 300mm SED",
-    "Timber Pole: 350mm SED",
-)
-
-# One rate for every wall in the study, standing in for a mapping from the wall
-# population's size class and initial condition onto a construction type. That
-# mapping is not settled, and pricing every wall as a mid-range timber pole is
-# the agreed first cut rather than a modelling result.
+# The timber pole wall a wall of a given retained height is built as, by pile
+# size. A taller wall retains more ground and needs a stiffer pile, so the pile
+# is chosen off the height rather than drawn: below 1 m it is 175 mm SED, 1 to
+# 2 m is 250 mm, 2 to 3 m is 300 mm, and 3 m and above is 350 mm. Each upper
+# bound is exclusive, so a wall of exactly 1 m takes the 250 mm pile. These are
+# the non-driven timber pole walls; the driven ones are a separate and cheaper
+# family in the tool and are deliberately left out.
 #
-# What it costs: the tool's rates span a factor of 21, so a population that is
-# really part concrete and part steel is priced well below what it would settle
-# at. Size still moves the cost, but through face area rather than through the
-# rate, and initial condition does not move it at all -- condition belongs to
+# **The bands are assumed**, set on 2026-09-30 as a first cut rather than taken
+# from a design guide. Every wall of a size class is priced at one height
+# (:data:`BETA_SIZE_CLASS_HEIGHT_M`), so each class lands in one band -- small
+# on 175 mm, medium on 250 mm, large on 300 mm -- and the 350 mm rate is not
+# reached until heights are drawn rather than set (**I-14**).
+#
+# What the stand-in costs: the tool's rates span a factor of 21, so a population
+# that is really part steel is priced well below what it would settle at.
+# Initial condition does not move the rate at all -- condition belongs to
 # whether the wall fails, which is `vul`'s question, not to what replacing it
-# costs. Derived from the rates rather than written out, so a rate revision
-# carries through.
-BETA_WALL_RATE_EXCL_GST_NZD_PER_M2 = sum(
-    WALL_RATE_EXCL_GST_NZD_PER_M2[wall_type] for wall_type in BETA_WALL_TYPES
-) / len(BETA_WALL_TYPES)
+# costs.
+TIMBER_POLE_HEIGHT_BANDS_M = (
+    (1.0, "Timber Pole: 175mm SED"),
+    (2.0, "Timber Pole: 250mm SED"),
+    (3.0, "Timber Pole: 300mm SED"),
+    (np.inf, "Timber Pole: 350mm SED"),
+)
 
 # The retained height each size class is priced at. `vul` sends a size class and
 # a length, and the rate is charged on wall face, so a band has to become a
@@ -198,10 +198,11 @@ BETA_WALL_RATE_EXCL_GST_NZD_PER_M2 = sum(
 # drifting apart unnoticed.
 #
 # These are **set values, not draws**: every medium wall in the study is priced
-# at 1.75 m. So a size class carries no variation of its own, and the spread in
-# wall cost across the portfolio comes from length and from the site ratings
-# alone. Drawing within the band, or setting the height off the slope the wall
-# sits on, are both better and both deferred (**I-14**).
+# at 1.75 m, and so on the 250 mm timber pole rate. So a size class carries no
+# variation of its own, and the spread in wall cost within a class comes from
+# length, the concrete share and the site ratings alone. Drawing within the
+# band, or setting the height off the slope the wall sits on, are both better
+# and both deferred (**I-14**).
 BETA_SIZE_CLASS_HEIGHT_M = {
     "small": 0.75,
     "medium": 1.75,
@@ -742,32 +743,80 @@ def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
     )
 
 
-def beta_wall_rate_excl_gst_nzd_per_m2(rw_id: np.ndarray | str) -> np.ndarray:
+def timber_pole_wall_type(height_m: np.ndarray | float) -> np.ndarray:
+    """Return the timber pole wall a wall of this height is built as.
+
+    Banded by :data:`TIMBER_POLE_HEIGHT_BANDS_M`, so a taller wall takes a
+    larger pile and a dearer rate.
+
+    Args:
+        height_m: Retained height of the wall, scalar or array.
+
+    Returns:
+        The wall type, named as :data:`WALL_RATE_EXCL_GST_NZD_PER_M2` keys it,
+        shaped like ``height_m``.
+
+    Raises:
+        ValueError: If any height is negative or not finite.
+    """
+    heights = np.asarray(height_m, dtype=float)
+    if not np.all(np.isfinite(heights)) or np.any(heights < 0):
+        msg = "height_m must be finite and not negative"
+        raise ValueError(msg)
+    bounds = np.array([bound for bound, _ in TIMBER_POLE_HEIGHT_BANDS_M[:-1]])
+    names = np.array([name for _, name in TIMBER_POLE_HEIGHT_BANDS_M])
+    # side="right" puts a height sitting on a bound into the band above it.
+    return names[np.searchsorted(bounds, heights, side="right")]
+
+
+def timber_pole_rate_excl_gst_nzd_per_m2(height_m: np.ndarray | float) -> np.ndarray:
+    """Return the timber pole rate for a wall of this height, excluding GST.
+
+    Args:
+        height_m: Retained height of the wall, scalar or array.
+
+    Returns:
+        The rate in GST-exclusive dollars per square metre of wall face, shaped
+        like ``height_m``.
+
+    Raises:
+        ValueError: If any height is negative or not finite.
+    """
+    return wall_rate_excl_gst_nzd_per_m2(timber_pole_wall_type(height_m))
+
+
+def beta_wall_rate_excl_gst_nzd_per_m2(
+    rw_id: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
     """Return the rate each wall is priced at, concrete or timber pole.
 
     :data:`BETA_CONCRETE_SHARE` of walls are priced as
-    :data:`BETA_CONCRETE_WALL_TYPE`. The rest take **one of the four timber
-    pole rates in :data:`BETA_WALL_TYPES`, drawn evenly**, rather than their
-    average -- so some walls come out cheaper than the old flat rate and some
-    dearer, while the mean of the timber share stays exactly
-    :data:`BETA_WALL_RATE_EXCL_GST_NZD_PER_M2`.
+    :data:`BETA_CONCRETE_WALL_TYPE`. The rest are timber pole walls whose pile
+    size is **set by the wall's height**, through
+    :func:`timber_pole_rate_excl_gst_nzd_per_m2`.
 
-    **Which wall gets which is decided by its own id, not by a random draw.**
-    The id is hashed to a fraction, and that one fraction settles both
-    questions: below the concrete share it is concrete, and above it the
-    remainder is divided evenly between the timber rates. So the same wall is
-    the same construction every run, on any machine, whatever order the walls
-    arrive in and however many there are -- none of which is true of a seeded
-    generator. Nothing about the wall other than its id bears on it, which is
-    the honest position: nothing in the data says what a wall is made of.
+    **Which walls are concrete is decided by their own id, not by a random
+    draw.** The id is hashed to a fraction, and a wall is concrete where that
+    fraction falls below the share. So the same wall is the same construction
+    every run, on any machine, whatever order the walls arrive in and however
+    many there are -- none of which is true of a seeded generator. Nothing about
+    the wall other than its id bears on it, which is the honest position:
+    nothing in the data says what a wall is made of.
 
     Args:
         rw_id: The wall identifier, scalar or array.
+        height_m: Retained height of each wall, shaped like ``rw_id``.
 
     Returns:
         The rate for each wall, excluding GST.
+
+    Raises:
+        ValueError: If any height is negative or not finite.
     """
     ids = np.atleast_1d(np.asarray(rw_id, dtype=object))
+    heights = np.broadcast_to(
+        np.atleast_1d(np.asarray(height_m, dtype=float)), ids.shape
+    )
     draws = np.array(
         [
             int.from_bytes(
@@ -778,12 +827,8 @@ def beta_wall_rate_excl_gst_nzd_per_m2(rw_id: np.ndarray | str) -> np.ndarray:
         ]
     )
     concrete = WALL_RATE_EXCL_GST_NZD_PER_M2[BETA_CONCRETE_WALL_TYPE]
-    timber = np.array([WALL_RATE_EXCL_GST_NZD_PER_M2[name] for name in BETA_WALL_TYPES])
-    # The part of the draw above the concrete share, rescaled to [0, 1) and cut
-    # into as many equal pieces as there are timber rates.
-    above = (draws - BETA_CONCRETE_SHARE) / (1.0 - BETA_CONCRETE_SHARE)
-    which = np.clip((above * len(timber)).astype(int), 0, len(timber) - 1)
-    rates = np.where(draws < BETA_CONCRETE_SHARE, concrete, timber[which])
+    timber = timber_pole_rate_excl_gst_nzd_per_m2(heights)
+    rates = np.where(draws < BETA_CONCRETE_SHARE, concrete, timber)
     return rates if np.ndim(rw_id) else rates[0]
 
 
@@ -1029,16 +1074,16 @@ def beta_wall_repair_cost_incl_gst_nzd(
     face_area_m2: np.ndarray | float,
     *,
     ratings: SiteRatings,
-    rate_excl_gst_nzd_per_m2: np.ndarray | float = BETA_WALL_RATE_EXCL_GST_NZD_PER_M2,
+    rate_excl_gst_nzd_per_m2: np.ndarray | float,
     policy: PolicySettings,
 ) -> np.ndarray:
     """Return what it costs to replace a wall of unknown type, including GST.
 
-    Defaults to :data:`BETA_WALL_RATE_EXCL_GST_NZD_PER_M2`, because nothing yet
-    says which of the tool's 29 construction types a modelled wall is. A caller
-    pricing a population should pass
-    :func:`beta_wall_rate_excl_gst_nzd_per_m2` instead, which mixes a concrete
-    share in and gives the population a spread rather than one rate.
+    The rate is passed in because nothing yet says which of the tool's 29
+    construction types a modelled wall is. An existing wall takes
+    :func:`beta_wall_rate_excl_gst_nzd_per_m2`, which mixes a concrete share
+    in; a wall invented for a landslide takes
+    :func:`timber_pole_rate_excl_gst_nzd_per_m2` on its height.
 
     The ``beta`` prefix is the same one
     :mod:`landloss.exposure.rw.beta_population` carries and means the same
@@ -1071,12 +1116,12 @@ def beta_wall_repair_cost_incl_gst_nzd(
 def beta_wall_udv_incl_gst_nzd(
     face_area_m2: np.ndarray | float,
     *,
-    rate_excl_gst_nzd_per_m2: np.ndarray | float = BETA_WALL_RATE_EXCL_GST_NZD_PER_M2,
+    rate_excl_gst_nzd_per_m2: np.ndarray | float,
     policy: PolicySettings,
 ) -> np.ndarray:
     """Return the undepreciated value of a wall of unknown type, including GST.
 
-    :func:`wall_udv_incl_gst_nzd` on the beta flat rate, for the same reason
+    :func:`wall_udv_incl_gst_nzd` on a rate passed in, for the same reason
     :func:`beta_wall_repair_cost_incl_gst_nzd` exists: nothing yet says which
     of the tool's 29 construction types a modelled wall is.
 

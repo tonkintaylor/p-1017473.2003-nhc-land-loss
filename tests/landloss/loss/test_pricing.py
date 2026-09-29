@@ -12,8 +12,6 @@ from landloss.exposure.rw.beta_population import (
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
-    BETA_WALL_RATE_EXCL_GST_NZD_PER_M2,
-    BETA_WALL_TYPES,
     DIFFICULT,
     EASY,
     EASY_ACCESS_MAX_DRIVEWAY_M,
@@ -29,10 +27,12 @@ from landloss.loss.pricing import (
     MODERATE_CONSTRUCTABILITY_MAX_SLOPE_DEG,
     MODERATE_INUNDATION_MAX_VOLUME_M3,
     SMALL_LANDSLIDE_MAX_AREA_M2,
+    TIMBER_POLE_HEIGHT_BANDS_M,
     WALL_RATE_EXCL_GST_NZD_PER_M2,
     SiteRatings,
     beta_wall_face_area_m2,
     beta_wall_height_m,
+    beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_repair_cost_incl_gst_nzd,
     beta_wall_udv_incl_gst_nzd,
     classify_constructability,
@@ -41,6 +41,8 @@ from landloss.loss.pricing import (
     classify_landslide_wall_size,
     inundation_volume_m3,
     landslide_wall_length_m,
+    timber_pole_rate_excl_gst_nzd_per_m2,
+    timber_pole_wall_type,
     wall_face_area_m2,
     wall_rate_excl_gst_nzd_per_m2,
     wall_repair_cost_incl_gst_nzd,
@@ -274,57 +276,106 @@ def test_a_negative_area_is_refused():
 # ---------------------------------------------------------------------------
 
 
-def test_the_beta_rate_averages_the_four_non_driven_timber_pole_walls():
-    assert BETA_WALL_TYPES == (
-        "Timber Pole: 175mm SED",
-        "Timber Pole: 250mm SED",
-        "Timber Pole: 300mm SED",
-        "Timber Pole: 350mm SED",
+@pytest.mark.parametrize(
+    ("height", "expected"),
+    [
+        (0.0, "Timber Pole: 175mm SED"),
+        (0.99, "Timber Pole: 175mm SED"),
+        (1.0, "Timber Pole: 250mm SED"),
+        (1.99, "Timber Pole: 250mm SED"),
+        (2.0, "Timber Pole: 300mm SED"),
+        (2.99, "Timber Pole: 300mm SED"),
+        (3.0, "Timber Pole: 350mm SED"),
+        (6.0, "Timber Pole: 350mm SED"),
+    ],
+)
+def test_the_timber_pole_is_chosen_by_height(height, expected):
+    # Each band's upper bound is exclusive, so a wall on a bound takes the
+    # larger pile.
+    assert timber_pole_wall_type(height) == expected
+
+
+def test_the_timber_pole_bands_are_the_non_driven_walls_in_ascending_order():
+    # The driven rates are a separate and cheaper family; nothing says a
+    # modelled wall is one.
+    names = [name for _, name in TIMBER_POLE_HEIGHT_BANDS_M]
+    assert not any("Driven" in name for name in names)
+    rates = [WALL_RATE_EXCL_GST_NZD_PER_M2[name] for name in names]
+    assert rates == sorted(rates)
+
+
+def test_the_timber_pole_rate_follows_height_across_a_population():
+    assert timber_pole_rate_excl_gst_nzd_per_m2(
+        np.array([0.5, 1.5, 2.5, 3.5])
+    ) == pytest.approx([643.19, 744.69, 798.80, 879.87])
+
+
+def test_the_timber_pole_refuses_a_negative_height():
+    with pytest.raises(ValueError, match="height_m"):
+        timber_pole_wall_type(-0.1)
+
+
+@pytest.mark.parametrize(
+    ("size_class", "expected"),
+    [
+        ("small", "Timber Pole: 175mm SED"),
+        ("medium", "Timber Pole: 250mm SED"),
+        ("large", "Timber Pole: 300mm SED"),
+    ],
+)
+def test_each_size_class_lands_on_one_timber_pole(size_class, expected):
+    # Every wall of a class is priced at one set height, so the class alone
+    # picks the pile -- and the 350 mm pile is never reached.
+    assert timber_pole_wall_type(beta_wall_height_m(size_class)) == expected
+
+
+def test_a_timber_wall_is_priced_on_its_height_and_a_concrete_one_is_not():
+    ids = np.array([f"rw{i}" for i in range(200)])
+    small = beta_wall_rate_excl_gst_nzd_per_m2(ids, np.full(ids.shape, 0.75))
+    large = beta_wall_rate_excl_gst_nzd_per_m2(ids, np.full(ids.shape, 2.75))
+    concrete = small == WALL_RATE_EXCL_GST_NZD_PER_M2["Reinforced Concrete"]
+    # The same walls are concrete whatever their height, since that is the id's
+    # to decide.
+    assert np.array_equal(
+        concrete, large == WALL_RATE_EXCL_GST_NZD_PER_M2["Reinforced Concrete"]
     )
-    assert (
-        pytest.approx((643.19 + 744.69 + 798.80 + 879.87) / 4)
-        == BETA_WALL_RATE_EXCL_GST_NZD_PER_M2
+    assert 0 < concrete.sum() < len(ids)
+    assert small[~concrete] == pytest.approx(643.19)
+    assert large[~concrete] == pytest.approx(798.80)
+
+
+def test_the_wall_rate_is_the_same_for_the_same_wall_every_call():
+    assert beta_wall_rate_excl_gst_nzd_per_m2("rw1", 1.75) == pytest.approx(
+        beta_wall_rate_excl_gst_nzd_per_m2(np.array(["rw0", "rw1"]), 1.75)[1]
     )
-    assert pytest.approx(766.6375) == BETA_WALL_RATE_EXCL_GST_NZD_PER_M2
 
 
-def test_the_beta_rate_excludes_the_driven_timber_poles():
-    # The driven rates are a separate and cheaper family; including them would
-    # pull the average down without anything saying it should.
-    assert not any("Driven" in wall_type for wall_type in BETA_WALL_TYPES)
-
-
-def test_beta_cost_is_the_flat_rate_by_area_by_multiplier_grossed_up():
+def test_beta_cost_is_the_rate_by_area_by_multiplier_grossed_up():
     cost = beta_wall_repair_cost_incl_gst_nzd(
-        wall_face_area_m2(1.8, 10.0), ratings=ratings_from("EMM"), policy=ACT
+        wall_face_area_m2(1.8, 10.0),
+        ratings=ratings_from("EMM"),
+        rate_excl_gst_nzd_per_m2=744.69,
+        policy=ACT,
     )
-    assert cost == pytest.approx(766.6375 * 18.0 * 1.10 * SPEC * 1.15)
+    assert cost == pytest.approx(744.69 * 18.0 * 1.10 * SPEC * 1.15)
 
 
-def test_beta_cost_sits_between_the_cheapest_and_dearest_timber_pole():
-    area, ratings = 10.0, ratings_from("EEE")
-    beta = beta_wall_repair_cost_incl_gst_nzd(area, ratings=ratings, policy=ACT)
-    smallest = wall_repair_cost_incl_gst_nzd(
-        "Timber Pole: 175mm SED", area, ratings=ratings, policy=ACT
-    )
-    largest = wall_repair_cost_incl_gst_nzd(
-        "Timber Pole: 350mm SED", area, ratings=ratings, policy=ACT
-    )
-    assert smallest < beta < largest
-
-
-def test_beta_cost_varies_with_size_through_area_not_rate():
-    # A large wall costs more than a small one because it has more face, not
-    # because it is priced differently. Worth pinning: it is the only way size
-    # reaches the cost while one flat rate stands in for the type.
+def test_a_taller_timber_wall_costs_more_per_square_metre():
+    # Size reaches the cost twice: a large wall has more face, and it takes a
+    # larger pile at a dearer rate.
     ratings = ratings_from("EEE")
-    small = beta_wall_repair_cost_incl_gst_nzd(
-        wall_face_area_m2(0.8, 10.0), ratings=ratings, policy=ACT
-    )
-    large = beta_wall_repair_cost_incl_gst_nzd(
-        wall_face_area_m2(3.2, 10.0), ratings=ratings, policy=ACT
-    )
-    assert large == pytest.approx(small * 4.0)
+    costs = [
+        beta_wall_repair_cost_incl_gst_nzd(
+            wall_face_area_m2(height, 1.0),
+            ratings=ratings,
+            rate_excl_gst_nzd_per_m2=timber_pole_rate_excl_gst_nzd_per_m2(height),
+            policy=ACT,
+        )
+        / height
+        for height in (0.75, 1.75, 2.75)
+    ]
+    assert costs == sorted(costs)
+    assert costs[0] < costs[-1]
 
 
 def test_each_size_class_is_priced_at_a_set_height():
@@ -395,9 +446,12 @@ def test_a_wall_prices_straight_from_what_vul_sends():
     cost = beta_wall_repair_cost_incl_gst_nzd(
         beta_wall_face_area_m2("medium", 12.0),
         ratings=ratings_from("EMM"),
+        rate_excl_gst_nzd_per_m2=timber_pole_rate_excl_gst_nzd_per_m2(
+            beta_wall_height_m("medium")
+        ),
         policy=ACT,
     )
-    assert cost == pytest.approx(766.6375 * 21.0 * 1.10 * SPEC * 1.15)
+    assert cost == pytest.approx(744.69 * 21.0 * 1.10 * SPEC * 1.15)
 
 
 def test_beta_cost_prices_a_population_in_one_call():
@@ -408,12 +462,13 @@ def test_beta_cost_prices_a_population_in_one_call():
             earthworks_required=np.array(["E", "D"]),
             constructability_reinstatement=np.array(["E", "D"]),
         ),
+        rate_excl_gst_nzd_per_m2=np.array([744.69, 798.80]),
         policy=ACT,
     )
     assert cost == pytest.approx(
         [
-            766.6375 * 5.0 * SPEC * 1.15,
-            766.6375 * 10.0 * 1.30 * SPEC * 1.15,
+            744.69 * 5.0 * SPEC * 1.15,
+            798.80 * 10.0 * 1.30 * SPEC * 1.15,
         ]
     )
 
@@ -576,20 +631,25 @@ def test_an_unknown_wall_type_is_refused_for_udv():
         wall_udv_incl_gst_nzd("Mud Brick", 10.0, policy=ACT)
 
 
-def test_beta_udv_uses_the_beta_flat_rate():
+def test_beta_udv_is_the_rate_by_area_grossed_up():
     assert beta_wall_udv_incl_gst_nzd(
-        beta_wall_face_area_m2("medium", 12.0), policy=ACT
-    ) == pytest.approx(766.6375 * 21.0 * 1.15)
+        beta_wall_face_area_m2("medium", 12.0),
+        rate_excl_gst_nzd_per_m2=744.69,
+        policy=ACT,
+    ) == pytest.approx(744.69 * 21.0 * 1.15)
 
 
 def test_a_wall_gives_both_numbers_from_what_vul_sends():
     # The whole path: rw_size and rw_length in, the two figures settle needs
     # out, with only the site allowance between them.
     area = beta_wall_face_area_m2("large", 10.0)
+    rate = timber_pole_rate_excl_gst_nzd_per_m2(beta_wall_height_m("large"))
     ratings = ratings_from("EMD")
-    udv = beta_wall_udv_incl_gst_nzd(area, policy=ACT)
-    repair = beta_wall_repair_cost_incl_gst_nzd(area, ratings=ratings, policy=ACT)
-    assert udv == pytest.approx(766.6375 * 27.5 * 1.15)
+    udv = beta_wall_udv_incl_gst_nzd(area, rate_excl_gst_nzd_per_m2=rate, policy=ACT)
+    repair = beta_wall_repair_cost_incl_gst_nzd(
+        area, ratings=ratings, rate_excl_gst_nzd_per_m2=rate, policy=ACT
+    )
+    assert udv == pytest.approx(798.80 * 27.5 * 1.15)
     assert repair == pytest.approx(udv * 1.15 * SPEC)
 
 

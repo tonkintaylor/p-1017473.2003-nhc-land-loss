@@ -48,6 +48,8 @@ DRAWN = [
     "damaged_area_m2",
     "wall_face_m2",
     "wall_rate_excl_gst",
+    "replacement_face_m2",
+    "replacement_rate_excl_gst",
     "new_wall_face_m2",
     "new_wall_rate_excl_gst",
     "spoil_m3",

@@ -16,12 +16,13 @@ from landloss.loss.settlement import (
 ACT = PolicySettings()
 
 # The explainer states a flat "$500 per dwelling, capped at $5,000" and works
-# all three of its examples that way. Virginie Lacrosse described 10% of what is
-# payable, per claim, which is what `PolicySettings` now defaults to -- and the
-# two disagree by $4,500 on the explainer's own first example (**Q-12**). The
-# worked examples are run against the explainer's rule because that is the
-# document they come from; the default is exercised separately below.
+# all three of its examples that way, which is what `PolicySettings` defaults
+# to. Virginie Lacrosse described 10% of what is payable, per claim, and the two
+# disagree by $4,500 on the explainer's own first example (**Q-12**). The worked
+# examples are run against the explainer's rule by name because that is the
+# document they come from; the rate is exercised separately below.
 EXPLAINER = PolicySettings(excess_per_dwelling_nzd=500.0)
+BY_RATE = PolicySettings(excess_per_dwelling_nzd=None)
 
 # $50,000 + GST, the applicable retaining wall limit for a single dwelling. The
 # explainer states this figure, which is what pins the GST rate at 15%.
@@ -141,35 +142,46 @@ def test_the_sub_caps_multiply_by_dwellings():
 # ---------------------------------------------------------------------------
 
 
-def test_the_excess_is_a_share_of_what_is_payable():
-    # Virginie Lacrosse's own examples: $1,000 of damage takes the $500 floor
-    # because 10% of it is less, and $6,000 takes 10%, which is $600.
-    assert ACT.excess_nzd(1_000.0) == pytest.approx(500.0)
-    assert ACT.excess_nzd(6_000.0) == pytest.approx(600.0)
+def test_the_act_defaults_to_the_explainers_rule():
+    assert ACT.excess_per_dwelling_nzd == pytest.approx(500.0)
+    assert ACT.excess_nzd(6_000.0, 1) == pytest.approx(EXPLAINER.excess_nzd(6_000.0))
 
 
-def test_the_excess_is_per_claim_not_per_dwelling():
-    # The whole point of the 2026-09-25 correction. A property with
-    # twenty-nine dwellings and one claim pays one excess.
-    assert ACT.excess_nzd(6_000.0, 1) == pytest.approx(ACT.excess_nzd(6_000.0, 29))
+def test_the_excess_is_500_per_dwelling():
+    # A flat amount per dwelling, taking no notice of how much is payable.
+    assert ACT.excess_nzd(1_000.0, 1) == pytest.approx(500.0)
+    assert ACT.excess_nzd(60_000.0, 1) == pytest.approx(500.0)
+    assert ACT.excess_nzd(6_000.0, 4) == pytest.approx(2_000.0)
 
 
-def test_the_excess_stops_growing_at_fifty_thousand_payable():
-    assert ACT.excess_nzd(50_000.0) == pytest.approx(5_000.0)
-    assert ACT.excess_nzd(500_000.0) == pytest.approx(5_000.0)
+def test_the_excess_stops_growing_at_ten_dwellings():
+    assert ACT.excess_nzd(6_000.0, 10) == pytest.approx(5_000.0)
+    assert ACT.excess_nzd(6_000.0, 29) == pytest.approx(5_000.0)
 
 
 def test_a_claim_paid_nothing_is_charged_no_excess():
     # Otherwise an undamaged claim acquires a $500 debt.
     assert ACT.excess_nzd(0.0) == pytest.approx(0.0)
+    assert ACT.excess_nzd(0.0, 4) == pytest.approx(0.0)
+    assert BY_RATE.excess_nzd(0.0) == pytest.approx(0.0)
 
 
-def test_the_explainers_rule_is_still_available_and_is_per_dwelling():
-    # The two contradict each other (**Q-12**), so both can be run. This is the
-    # explainer's: a flat amount per dwelling, taking no notice of what is paid.
-    assert EXPLAINER.excess_nzd(6_000.0, 1) == pytest.approx(500.0)
-    assert EXPLAINER.excess_nzd(6_000.0, 4) == pytest.approx(2_000.0)
-    assert EXPLAINER.excess_nzd(6_000.0, 40) == pytest.approx(5_000.0)
+def test_the_rate_rule_is_still_available_and_is_per_claim():
+    # The two contradict each other (**Q-12**), so both can be run. Virginie
+    # Lacrosse's own examples: $1,000 of damage takes the $500 floor because
+    # 10% of it is less, and $6,000 takes 10%, which is $600.
+    assert BY_RATE.excess_nzd(1_000.0) == pytest.approx(500.0)
+    assert BY_RATE.excess_nzd(6_000.0) == pytest.approx(600.0)
+    # One excess per claim, whatever the dwelling count.
+    assert BY_RATE.excess_nzd(6_000.0, 29) == pytest.approx(600.0)
+    # And it stops growing at $50,000 payable.
+    assert BY_RATE.excess_nzd(50_000.0) == pytest.approx(5_000.0)
+    assert BY_RATE.excess_nzd(500_000.0) == pytest.approx(5_000.0)
+
+
+def test_a_negative_excess_per_dwelling_is_refused():
+    with pytest.raises(ValueError, match="excess_per_dwelling_nzd"):
+        PolicySettings(excess_per_dwelling_nzd=-1.0)
 
 
 def test_a_claim_below_the_excess_settles_at_nothing_rather_than_owing():

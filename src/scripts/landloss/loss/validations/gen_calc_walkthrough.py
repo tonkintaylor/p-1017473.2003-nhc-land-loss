@@ -55,7 +55,7 @@ from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
-    BETA_WALL_RATE_EXCL_GST_NZD_PER_M2,
+    beta_wall_height_m,
     beta_wall_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
@@ -68,6 +68,9 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     NEW_WALL_HEIGHT_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
     NEW_WALL_SIZE_COLUMN,
+    REPLACEMENT_WALL_LENGTH_COLUMN,
+    REPLACEMENT_WALL_RATE_COLUMN,
+    REPLACEMENT_WALL_SIZE_COLUMN,
     RW_UDV_COLUMN,
     SPOIL_REPAIR_COLUMN,
     SPOIL_VOLUME_COLUMN,
@@ -129,10 +132,8 @@ SETTINGS_ROW = {
     "area_cap": 3,
     "rw_sub_cap": 4,
     "excess_each": 5,
-    "excess_floor": 6,
-    "excess_max": 7,
-    "wall_rate": 8,
-    "gst": 9,
+    "excess_max": 6,
+    "gst": 7,
 }
 HEADER_ROW = 12
 FIRST_DATA_ROW = HEADER_ROW + 2
@@ -164,10 +165,10 @@ COLUMN_FORMULA = {
     7: "=MIN(F{r},$B$4*B{r})",
     8: "=E{r}+G{r}",
     10: "=MIN(I{r},H{r})",
-    # A share of what is payable, floored and capped -- but a claim paid
-    # nothing is charged nothing, which the trailing comparison does without a
-    # nested IF. Excel reads a comparison as 1 or 0 when it is multiplied.
-    11: "=MIN(MAX(J{r}*$B$5,$B$6),$B$7)*(J{r}>0)",
+    # So much per dwelling, capped -- but a claim paid nothing is charged
+    # nothing, which the trailing comparison does without a nested IF. Excel
+    # reads a comparison as 1 or 0 when it is multiplied.
+    11: "=MIN(B{r}*$B$5,$B$6)*(J{r}>0)",
     12: "=MAX(0,J{r}-K{r})",
 }
 
@@ -178,7 +179,7 @@ WORKED_FORMULA = {
     7: "MIN(wall UDV, sub-cap x dwellings)",
     8: "land value + wall to cap",
     10: "MIN(repair cost, cap) -- the Act pays the lesser",
-    11: "a share of what is payable, floored and capped",
+    11: "so much per dwelling, capped; nothing if nothing is payable",
     12: "payable less the excess, never below zero",
 }
 
@@ -335,14 +336,8 @@ def write_settings(sheet, policy: PolicySettings, *, subtitle: str) -> None:
         ),
         (
             SETTINGS_ROW["excess_each"],
-            "Land excess, share of what is payable",
-            policy.excess_rate,
-            "0.0%",
-        ),
-        (
-            SETTINGS_ROW["excess_floor"],
-            "Land excess floor, per claim ($)",
-            policy.excess_min_nzd,
+            "Land excess per dwelling ($)",
+            policy.excess_per_dwelling_nzd,
             MONEY,
         ),
         (
@@ -350,12 +345,6 @@ def write_settings(sheet, policy: PolicySettings, *, subtitle: str) -> None:
             "Land excess ceiling ($)",
             policy.excess_max_nzd,
             MONEY,
-        ),
-        (
-            SETTINGS_ROW["wall_rate"],
-            "Timber pole average rate, for reference ($/m2)",
-            round(BETA_WALL_RATE_EXCL_GST_NZD_PER_M2, 4),
-            RATE,
         ),
         (SETTINGS_ROW["gst"], "GST rate", policy.gst_rate, "0.0%"),
     ]
@@ -646,14 +635,7 @@ def worked_values(claim: pd.Series, policy: PolicySettings) -> dict[int, float]:
     )
     cap = land_value + to_cap
     payable = min(float(claim["repair_cost_incl_gst_nzd"]), cap)
-    excess = (
-        min(
-            max(payable * policy.excess_rate, policy.excess_min_nzd),
-            policy.excess_max_nzd,
-        )
-        if payable > 0
-        else 0.0
-    )
+    excess = float(policy.excess_nzd(payable, dwellings))
     settlement = max(0.0, payable - excess)
     return {
         5: land_value,
@@ -768,7 +750,8 @@ def write_calculation(sheet, chosen: pd.DataFrame, policy: PolicySettings) -> No
         column=1,
         value=(
             "Black cells are live formulas and blue ones are inputs. Change a "
-            "yellow setting above -- the excess rate, its ceiling, the area cap "
+            "yellow setting above -- the excess per dwelling, its ceiling, the "
+            "area cap "
             "-- and every row and the totals follow. How a wall was priced is "
             "on the Repair cost tab."
         ),
@@ -795,8 +778,7 @@ def write_calculation(sheet, chosen: pd.DataFrame, policy: PolicySettings) -> No
 # its own copy of them, so its formulas reach across to the Calculation tab.
 AREA_CAP_REF = f"Calculation!$B${SETTINGS_ROW['area_cap']}"
 SUB_CAP_REF = f"Calculation!$B${SETTINGS_ROW['rw_sub_cap']}"
-EXCESS_RATE_REF = f"Calculation!$B${SETTINGS_ROW['excess_each']}"
-EXCESS_FLOOR_REF = f"Calculation!$B${SETTINGS_ROW['excess_floor']}"
+EXCESS_EACH_REF = f"Calculation!$B${SETTINGS_ROW['excess_each']}"
 EXCESS_CEIL_REF = f"Calculation!$B${SETTINGS_ROW['excess_max']}"
 GST_REF = f"Calculation!$B${SETTINGS_ROW['gst']}"
 
@@ -880,6 +862,34 @@ BLOCKS = [
             ("rw_length", "RTW length (m)", "wall_length_m", AREA, 12),
             ("rw_rate", "RTW rate ($/m2)", "wall_rate_excl_gst", RATE, 12),
             ("rw_udv", "RTW undepreciated value ($)", None, MONEY, 16),
+            (
+                "rw_udv_incl",
+                "RTW undepreciated value, incl GST ($)",
+                Formula("={rw_udv}{r}*(1+" + GST_REF + ")"),
+                MONEY,
+                17,
+            ),
+            (
+                "rw_new_size",
+                "Replacement RTW size, enlarged for a slip",
+                REPLACEMENT_WALL_SIZE_COLUMN,
+                None,
+                14,
+            ),
+            (
+                "rw_new_length",
+                "Replacement RTW length (m)",
+                REPLACEMENT_WALL_LENGTH_COLUMN,
+                AREA,
+                13,
+            ),
+            (
+                "rw_new_rate",
+                "Replacement RTW rate ($/m2)",
+                REPLACEMENT_WALL_RATE_COLUMN,
+                RATE,
+                13,
+            ),
             ("rw_repair", "B. RTW replacement ($)", None, MONEY, 15),
         ],
     ),
@@ -950,13 +960,7 @@ BLOCKS = [
             (
                 "cap_rw",
                 "Cap: RTW value ($)",
-                Formula(
-                    "=MIN({rw_udv}{r}*(1+"
-                    + GST_REF
-                    + "),"
-                    + SUB_CAP_REF
-                    + "*{dwellings}{r})"
-                ),
+                Formula("=MIN({rw_udv_incl}{r}," + SUB_CAP_REF + "*{dwellings}{r})"),
                 MONEY,
                 13,
             ),
@@ -978,11 +982,9 @@ BLOCKS = [
                 "excess",
                 "Excess ($)",
                 Formula(
-                    "=MIN(MAX({payable}{r}*"
-                    + EXCESS_RATE_REF
+                    "=MIN({dwellings}{r}*"
+                    + EXCESS_EACH_REF
                     + ","
-                    + EXCESS_FLOOR_REF
-                    + "),"
                     + EXCESS_CEIL_REF
                     + ")*({payable}{r}>0)"
                 ),
@@ -1190,20 +1192,30 @@ REPAIR_NOTES = [
         "undepreciated value."
     ),
     (
-        "D2. Nothing prices a culvert or bridge, so a damaged one is assumed "
+        "D2. The retaining wall's contribution is the LESSER of its "
+        "undepreciated value and the sub-cap, and the Act states that sub-cap "
+        "as $50,000 plus GST per dwelling -- $57,500 for one. So this is the "
+        "one place the cap carries GST, and the undepreciated value is grossed "
+        "up in block B to be compared on the same basis. The land value beside "
+        "it is a market value and carries none, which is why the cap is a sum "
+        "of two different bases: that is the Act's construction, not a choice "
+        "made here."
+    ),
+    (
+        "D3. Nothing prices a culvert or bridge, so a damaged one is assumed "
         "to exceed its sub-cap and is settled at the limit -- which is why it "
         "appears on both sides and carries no GST line of its own."
     ),
     (
-        "D3. The cap's land value is the LARGER of block A's and block C's, "
+        "D4. The cap's land value is the LARGER of block A's and block C's, "
         "not their sum. A section that both liquefied and was buried is one "
         "piece of damaged ground, and adding the two would value some of it "
         "twice."
     ),
     (
-        "D4. MIN(repair, cap) is taken once, at claim level, over every asset "
-        "together. The excess is a share of what would otherwise be paid, "
-        "floored and capped, and a claim paid nothing is charged nothing."
+        "D5. MIN(repair, cap) is taken once, at claim level, over every asset "
+        "together. The excess is $500 per dwelling, capped at $5,000, and a "
+        "claim paid nothing is charged nothing."
     ),
     "",
     (
@@ -1369,14 +1381,7 @@ def check_repair_against_the_model(chosen: pd.DataFrame, policy: PolicySettings)
             + float(claim[CROSSING_REPAIR_COLUMN])
         )
         payable = min(repair, cap)
-        excess = (
-            min(
-                max(payable * policy.excess_rate, policy.excess_min_nzd),
-                policy.excess_max_nzd,
-            )
-            if payable > 0
-            else 0.0
-        )
+        excess = float(policy.excess_nzd(payable, float(claim["dwelling_count"])))
         worst = max(
             worst,
             abs(repair - float(claim["repair_cost_incl_gst_nzd"])),
@@ -1443,7 +1448,10 @@ def wall_shape(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
     )
     damaged = damaged.assign(
         _order=order,
-        _rate=beta_wall_rate_excl_gst_nzd_per_m2(damaged[RW_ID_COLUMN].to_numpy()),
+        _rate=beta_wall_rate_excl_gst_nzd_per_m2(
+            damaged[RW_ID_COLUMN].to_numpy(),
+            beta_wall_height_m(damaged[RW_SIZE_COLUMN].to_numpy()),
+        ),
         _cause=wall_damage_cause(damaged),
     )
     grouped = damaged.groupby(CLAIM_ID_COLUMN)
