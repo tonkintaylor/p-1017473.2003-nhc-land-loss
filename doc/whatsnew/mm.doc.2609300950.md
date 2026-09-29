@@ -1,0 +1,1 @@
+Summarise Kritikos et al. (2015) in `context/lit/landslide/kritikos_2015/kritikos-2015-summary.md`. The 98 MB paper is too big for git, so it now lives at `U:\MAMI\Literature` and `SOURCES.md` records that.
