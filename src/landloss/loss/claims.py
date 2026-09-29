@@ -163,9 +163,12 @@ def dwelling_counts(
     return values
 
 
-# The liquefaction land damage state that means no damage. `vul` writes it both
-# for land the grid reaches and finds undamaged and for land off the grid
-# entirely, so anything above it is damage and a missing state is no claim.
+# The liquefaction land damage state that means no damage: flat land the hazard
+# grid reached and found undamaged. Land off the grid is a different thing and
+# `vul` says so, writing **no state at all** rather than this one -- state 1
+# carries a Canterbury cost, and ground that cannot liquefy should not be
+# charged the cost of ground that was surveyed and found sound. So anything
+# above this is damage, and a missing state is no claim.
 # Written out rather than imported, for the reason the columns above are.
 LIQ_STATE_NONE = 1.0
 
