@@ -15,11 +15,12 @@ Every line rests on an assumption, and each is named here rather than buried.
 - **A damaged retaining wall** is replaced: beta flat rate × face area ×
   (1 + site multiplier). Face area is the size class's set height by
   `rw_length`.
-- **Damaged land on a claim that also has a damaged wall costs nothing extra.**
-  Repairing the wall is taken to reinstate the ground it retained, so charging
-  for both would pay for the same work twice.
-- **Damaged land on a claim with no damaged wall** is repaired by building a
-  wall that was never there. Its size comes from
+- **One wall per property.** Where a retaining wall is already there it is
+  assumed damaged, is replaced, and that replacement is the whole of the wall
+  cost; where there is none, one is invented for the ground. The two are never
+  both charged (2026-09-29) — doing so priced the same structure twice.
+- **Damaged land on a property with no wall** is repaired by building a wall
+  that was never there. Its size comes from
   `classify_landslide_wall_size()`, on the damaged area and — where an
   inundated depth makes one available — the volume, taking the **larger** of
   the two classes. Its length follows the **width of the failure**: ground goes

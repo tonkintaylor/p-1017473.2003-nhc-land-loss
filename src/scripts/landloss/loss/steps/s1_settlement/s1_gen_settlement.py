@@ -11,14 +11,15 @@ assumption named here:
 
 - **A damaged retaining wall** is replaced, priced at the beta flat rate on its
   face area with the site multiplier on top.
-- **Damaged land on a claim that also has a damaged wall costs nothing extra.**
-  Repairing the wall is taken to reinstate the land it retained, so adding a
-  land cost as well would pay for the same work twice.
-- **Damaged land on a claim with no damaged wall** is repaired by building a
-  wall that was never there, sized by how much ground went -- by area, and by
+- **Damaged land on a claim with no wall** is repaired by building a wall
+  that was never there, sized by how much ground went -- by area, and by
   volume where an inundated depth makes one available. It is a remediation
   cost, not an asset, so it reaches the repair cost and **never the cap**: a
   wall that did not exist has no undepreciated value to contribute.
+- **Damaged land on a claim that has a wall costs no second wall.** The wall
+  that is there is taken to be damaged and is replaced, and that replacement
+  is the whole of the wall cost: one wall stands on the site, so the claim is
+  charged for one wall (2026-09-29).
 - **Professional fees are charged once per claim that involves a wall** --
   consent, design, engineering, health and safety, project management and
   survey, $5,100 excluding GST from the costing tool's own fee table. They are
@@ -77,9 +78,7 @@ from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
-    LAND_REINSTATED_PER_WALL_METRE_M,
     SiteRatings,
-    at_least_the_existing_wall,
     beta_wall_face_area_m2,
     beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_repair_cost_incl_gst_nzd,
@@ -146,7 +145,7 @@ SYNTHETIC_WALL_COLUMN = "land_repaired_by_new_wall"
 # The shape of the wall invented to reinstate landslide ground, written out so
 # that the damaged area and the wall it buys can be read side by side. Whether
 # they look reasonable together is the check nobody can do on a cost alone.
-UNCOVERED_AREA_COLUMN = "landslide_area_uncovered_m2"
+LANDSLIDE_REPAIR_AREA_COLUMN = "landslide_damaged_area_m2"
 NEW_WALL_SIZE_COLUMN = "new_wall_size"
 NEW_WALL_HEIGHT_COLUMN = "new_wall_height_m"
 NEW_WALL_LENGTH_COLUMN = "new_wall_length_m"
@@ -292,30 +291,32 @@ def land_repair_by_claim(
     land: pd.DataFrame,
     ratings: pd.DataFrame,
     *,
-    wall_length_m: pd.Series,
-    wall_size: pd.Series,
+    walled: pd.Index,
     policy: PolicySettings,
 ) -> pd.DataFrame:
-    """Return the cost of reinstating land a landslide took, by claim.
+    """Return the cost of holding land a landslide took, by claim.
 
-    **Repairing a damaged wall reinstates the ground behind it, but only so
-    far.** A metre of land for every metre of wall
-    (:data:`~landloss.loss.pricing.LAND_REINSTATED_PER_WALL_METRE_M`) is taken
-    to come with the wall repair and costs nothing extra. Damaged ground beyond
-    that is charged for, by inventing a wall for the **uncovered** area alone.
+    **A wall is invented only where the property had none.** Where one was
+    already there it is taken to be damaged and is replaced, and that
+    replacement is the whole of the wall cost -- there is one wall on the
+    site, so the claim is charged for one wall. Pricing a replacement and an
+    invented wall on the same claim charged twice for the same structure, once
+    at $74,302 against a slip of 1.4 square metres.
 
-    That one rule covers both cases. A claim with no damaged wall has no
-    covered area, so the whole slip is uncovered and gets its own wall -- which
-    is what happened before this allowance existed. A claim whose wall is long
-    enough to cover the slip pays nothing extra, as it did before.
+    The area held is the landslide total, which `vul` has already unioned over
+    the evacuated and inundated footprints -- so a claim whose slip evacuated
+    ground outside the boundary, leaving no insured evacuated area, still gets
+    a wall for what was inundated inside it.
+
+    The invented wall is sized on the ground alone. It needs no floor at the
+    existing wall's size, because a property with a wall does not reach this
+    path at all.
 
     Args:
         land: The contract's land table.
         ratings: The site ratings per claim.
-        wall_length_m: Total damaged wall length per claim, indexed by
-            ``claim_id``. A claim with no damaged wall need not appear.
-        wall_size: The size class of each claim's damaged wall, which the new
-            wall is never smaller than.
+        walled: The claims whose retaining wall is being replaced. They are
+            charged for that wall and no other.
         policy: The settings this scenario runs under.
 
     Returns:
@@ -337,17 +338,15 @@ def land_repair_by_claim(
         .sum()
     )
 
-    covered = (
-        wall_length_m.reindex(per_claim.index).fillna(0.0)
-        * LAND_REINSTATED_PER_WALL_METRE_M
-    )
-    per_claim["uncovered"] = (per_claim["area"] - covered).clip(lower=0.0)
-    needs_wall = per_claim["uncovered"] > 0
+    per_claim["damaged"] = per_claim["area"].clip(lower=0.0)
+    # One wall per property. A claim whose own wall is being replaced does not
+    # also get one invented for it.
+    needs_wall = (per_claim["damaged"] > 0) & ~per_claim.index.isin(walled)
     out = pd.DataFrame(
         {
             LAND_REPAIR_COLUMN: 0.0,
             SYNTHETIC_WALL_COLUMN: needs_wall,
-            UNCOVERED_AREA_COLUMN: per_claim["uncovered"],
+            LANDSLIDE_REPAIR_AREA_COLUMN: per_claim["damaged"],
             NEW_WALL_SIZE_COLUMN: "",
             NEW_WALL_HEIGHT_COLUMN: 0.0,
             NEW_WALL_LENGTH_COLUMN: 0.0,
@@ -359,18 +358,9 @@ def land_repair_by_claim(
 
     building = per_claim.loc[needs_wall]
     size = classify_landslide_wall_size(
-        building["uncovered"].to_numpy(), building["volume"].to_numpy()
+        building["damaged"].to_numpy(), building["volume"].to_numpy()
     )
-    length = landslide_wall_length_m(building["uncovered"].to_numpy())
-
-    # A new wall is never smaller than the one the site already had, in either
-    # dimension: the ground has shown what it needs.
-    size = at_least_the_existing_wall(
-        size, wall_size.reindex(building.index).fillna("").to_numpy()
-    )
-    length = np.maximum(
-        length, wall_length_m.reindex(building.index).fillna(0.0).to_numpy()
-    )
+    length = landslide_wall_length_m(building["damaged"].to_numpy())
     out.loc[needs_wall, NEW_WALL_SIZE_COLUMN] = size
     out.loc[needs_wall, NEW_WALL_HEIGHT_COLUMN] = [
         BETA_SIZE_CLASS_HEIGHT_M[value] for value in size
@@ -470,9 +460,21 @@ def describe_repair(claims):
         total = claims[column].sum()
         reached = int((claims[column] > 0).sum())
         print(f"  {total:>16,.0f} NZD  {label} ({reached:,} claims)")
+    # One wall per property, so these two never overlap. Printed rather than
+    # asserted, because the day they do overlap is the day to look.
+    replaced = int(
+        (
+            (claims[WALL_REPAIR_COLUMN] > 0)
+            & (claims[LANDSLIDE_REPAIR_AREA_COLUMN] > 0)
+        ).sum()
+    )
+    both = int(
+        ((claims[WALL_REPAIR_COLUMN] > 0) & (claims[LAND_REPAIR_COLUMN] > 0)).sum()
+    )
     print(
-        f"  A wall was invented on {invented:,} claims with landslide ground and "
-        "no damaged wall of their own"
+        f"  A wall was invented on {invented:,} claims that had none. On "
+        f"{replaced:,} more the landslide ground came with a wall already "
+        f"there, which is replaced instead -- {both:,} are charged for both"
     )
 
 
@@ -540,14 +542,12 @@ def main(*, pilot, realisation_ids):
         ratings = site_ratings_by_claim(land, pilot=pilot)
         claims = claims.join(ratings)
 
-        # How much damaged wall each claim has, which is how much of its
-        # damaged ground the wall repair is taken to reinstate.
-        damaged_walls = loss_claims.damaged_walls(rw)
-        by_claim = damaged_walls.groupby(CLAIM_ID_COLUMN)
-        wall_length = by_claim[RW_LENGTH_COLUMN].sum()
-        wall_size = by_claim[RW_SIZE_COLUMN].agg(
-            lambda sizes: max(sizes, key=list(BETA_SIZE_CLASS_HEIGHT_M).index)
-        )
+        # The size and length of each claim's damaged wall. Not a deduction
+        # from the land any more -- only the floor the new wall is built to,
+        # because ground that already needed a wall of that size still does.
+        # The claims whose own wall is being replaced. They are charged for
+        # that wall and never for one invented beside it.
+        walled = pd.Index(loss_claims.damaged_walls(rw)[CLAIM_ID_COLUMN].unique())
 
         claims[WALL_REPAIR_COLUMN] = (
             wall_repair_by_claim(rw, ratings, policy=policy)
@@ -557,15 +557,16 @@ def main(*, pilot, realisation_ids):
         land_repair = land_repair_by_claim(
             land,
             ratings,
-            wall_length_m=wall_length,
-            wall_size=wall_size,
+            walled=walled,
             policy=policy,
         ).reindex(claims.index)
         claims[LAND_REPAIR_COLUMN] = land_repair[LAND_REPAIR_COLUMN].fillna(0.0)
         claims[SYNTHETIC_WALL_COLUMN] = (
             land_repair[SYNTHETIC_WALL_COLUMN].fillna(value=False).astype(bool)
         )
-        claims[UNCOVERED_AREA_COLUMN] = land_repair[UNCOVERED_AREA_COLUMN].fillna(0.0)
+        claims[LANDSLIDE_REPAIR_AREA_COLUMN] = land_repair[
+            LANDSLIDE_REPAIR_AREA_COLUMN
+        ].fillna(0.0)
         claims[NEW_WALL_SIZE_COLUMN] = land_repair[NEW_WALL_SIZE_COLUMN].fillna("")
         claims[NEW_WALL_HEIGHT_COLUMN] = land_repair[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
         claims[NEW_WALL_LENGTH_COLUMN] = land_repair[NEW_WALL_LENGTH_COLUMN].fillna(0.0)

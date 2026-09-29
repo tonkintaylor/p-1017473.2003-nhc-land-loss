@@ -31,7 +31,6 @@ from landloss.loss.pricing import (
     SMALL_LANDSLIDE_MAX_AREA_M2,
     WALL_RATE_EXCL_GST_NZD_PER_M2,
     SiteRatings,
-    at_least_the_existing_wall,
     beta_wall_face_area_m2,
     beta_wall_height_m,
     beta_wall_repair_cost_incl_gst_nzd,
@@ -704,31 +703,3 @@ def test_the_invented_wall_is_wider_than_the_ground_is_deep():
 def test_the_invented_wall_refuses_a_negative_area():
     with pytest.raises(ValueError, match="must be finite and not negative"):
         landslide_wall_length_m([-1.0])
-
-
-# ---------------------------------------------------------------------------
-# A new wall is never smaller than the one the site already had.
-# ---------------------------------------------------------------------------
-
-
-def test_a_new_wall_is_floored_at_the_existing_walls_size():
-    # Ground that already needed a medium wall does not get a garden edge.
-    assert at_least_the_existing_wall(["small"], ["medium"]).tolist() == ["medium"]
-
-
-def test_a_larger_proposal_is_not_pulled_down_to_the_existing_wall():
-    assert at_least_the_existing_wall(["large"], ["small"]).tolist() == ["large"]
-
-
-def test_a_claim_with_no_existing_wall_is_not_floored():
-    # There is nothing to be no smaller than.
-    assert at_least_the_existing_wall(["small", "small"], ["", None]).tolist() == [
-        "small",
-        "small",
-    ]
-
-
-def test_the_floor_never_invents_a_class_outside_the_three():
-    every = [(a, b) for a in SIZE_CLASSES for b in [*SIZE_CLASSES, ""]]
-    out = at_least_the_existing_wall([a for a, _ in every], [b for _, b in every])
-    assert set(out) <= set(SIZE_CLASSES)

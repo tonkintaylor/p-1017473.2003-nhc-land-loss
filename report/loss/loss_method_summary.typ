@@ -125,15 +125,17 @@ roughly right matters far less than getting the rate right.
 
 === Repairing damaged land
 
-#a[13] Where a property has a damaged wall, repairing it is assumed to
-reinstate *one metre of land for every metre of wall*. Ground beyond that is
-charged for separately.
+#a[13] *One wall stands on a property, so a claim is charged for one wall.*
+Where a retaining wall is already there it is assumed damaged and is replaced,
+and that replacement holds the ground as well. Where there is none, one is
+invented. The two are never both charged — doing so priced the same structure
+twice, once at \$74,302 against a slip of 1.4 square metres.
 
-#a[14] Where landslide ground is not covered that way, the repair is assumed to
-be *building a retaining wall that was never there*. Its size comes from the
-area lost and the depth of the deposit; its length from the width of the
-failure, plus a margin, never under 5 m. It is a cost and never an asset — a
-wall that did not exist has no value to add to the cap.
+#a[14] Where the property had no wall, landslide ground is held by *building a
+retaining wall that was never there*. Its size comes from the area lost and the
+depth of the deposit; its length from the width of the failure, plus a margin,
+never under 5 m. It is a cost and never an asset: a wall that did not exist has
+no value to add to the cap.
 
 #a[15] Material deposited on a property is cleared at \$150 per cubic metre,
 which is the costing tool's own rate.

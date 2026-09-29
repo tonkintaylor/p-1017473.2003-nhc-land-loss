@@ -262,8 +262,16 @@ Raised by Perrie Gilbert, 2026-09-24. Not yet numbered in
 
 **Land damage and wall damage on the same claim.**
 
-- How is damaged land associated with a damaged wall? A settlement generally
-  assumes that repairing the wall also reinstates the land it retained.
+- How is damaged land associated with a damaged wall? **Decided 2026-09-29:
+  one wall per property.** A wall already there is assumed damaged and is
+  replaced, and that replacement holds the ground; a property with no wall
+  gets one invented. Never both. The earlier allowance -- a metre of
+  reinstated ground per metre of wall -- is removed with it.
+- **Open:** nothing says whether a slip and a wall are in the same place. `vul`
+  sends the landslide extent as an area with no polygon, so a property with a
+  slip at the back and a shaken wall at the front cannot be told from one
+  where the slip took the wall. The adjacency flag on Maxim Millen's list
+  would settle it; until then one wall is assumed.
 - Does that make the claim the right unit — one repair cost for the whole claim,
   compared against the summed UDV and land value across it? That is what `settle`
   does today, and it is an assumption rather than a finding.

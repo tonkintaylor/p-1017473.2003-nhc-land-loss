@@ -294,12 +294,13 @@ MEDIUM_LANDSLIDE_MAX_VOLUME_M3 = 50.0
 # one is the assumed aspect; the margin is the length beyond the failure at each
 # end, because a wall is not stopped at the edge of the ground that moved; and
 # the minimum is what it is worth mobilising for at all. **All three invented.**
-# How far back from a wall the ground it retains is taken to be reinstated by
-# repairing it. One metre along the wall's whole length, so a claim with a
-# damaged wall pays nothing extra for that much damaged land and pays for the
-# rest. Agreed with Maxim Millen on 2026-09-24. **Assumed.**
-LAND_REINSTATED_PER_WALL_METRE_M = 1.0
-
+#
+# **The land and the wall are priced independently.** Repairing a damaged wall
+# was once taken to reinstate a metre of ground behind it, which the land then
+# paid nothing for. That allowance is gone, decided on 2026-09-29: a retaining
+# wall and the ground it holds are two assets with two caps, and letting one
+# discharge the other's repair made the land's cost depend on whether the site
+# happened to own a wall.
 LANDSLIDE_WALL_ASPECT_RATIO = 2.0
 LANDSLIDE_WALL_MARGIN_M = 2.0
 MIN_LANDSLIDE_WALL_LENGTH_M = 5.0
@@ -702,42 +703,6 @@ def classify_landslide_wall_size(
         default=2,
     )
     return np.asarray(SIZE_CLASSES)[np.maximum(by_area, by_volume)]
-
-
-def at_least_the_existing_wall(
-    size: np.ndarray,
-    existing_size: np.ndarray,
-) -> np.ndarray:
-    """Return the larger of a proposed wall's size class and the one already there.
-
-    **A wall built to hold ground that has failed is not smaller than the wall
-    the site already had.** Where a claim carries a damaged wall and landslide
-    ground beyond what repairing it reinstates, the ground has already shown it
-    needs a wall of at least that size -- so sizing the new one on the leftover
-    area alone can propose a garden edge beside a two-metre structure.
-
-    A claim with no existing wall is not floored: there is nothing to be no
-    smaller than.
-
-    Args:
-        size: The class the damaged area implies, from
-            :func:`classify_landslide_wall_size`.
-        existing_size: The class of the claim's own damaged wall, or an empty
-            string or missing value where it has none.
-
-    Returns:
-        The class to build, one of :data:`SIZE_CLASSES`.
-    """
-    rank = {name: index for index, name in enumerate(SIZE_CLASSES)}
-    proposed = np.atleast_1d(np.asarray(size, dtype=object))
-    existing = np.atleast_1d(np.asarray(existing_size, dtype=object))
-    out = np.array(
-        [
-            SIZE_CLASSES[max(rank[str(a)], rank.get(str(b), -1))]
-            for a, b in zip(proposed, existing, strict=True)
-        ]
-    )
-    return out if np.ndim(size) else out[0]
 
 
 def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:

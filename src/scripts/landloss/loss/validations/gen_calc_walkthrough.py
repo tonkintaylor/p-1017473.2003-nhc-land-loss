@@ -40,9 +40,16 @@ from openpyxl.utils import get_column_letter
 
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    EVACUATED_AREA_COLUMN,
+    INUNDATED_AREA_COLUMN,
+    IS_DAMAGED_BY_SHAKING_COLUMN,
+    IS_EVACUATED_COLUMN,
+    IS_INUNDATED_COLUMN,
+    LIQ_LD_STATE_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    TOTAL_INSURED_LAND_AREA_COLUMN,
 )
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
@@ -56,14 +63,15 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     CROSSING_REPAIR_COLUMN,
     FEES_COLUMN,
     LAND_REPAIR_COLUMN,
+    LANDSLIDE_REPAIR_AREA_COLUMN,
     LIQ_REPAIR_COLUMN,
     NEW_WALL_HEIGHT_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
     NEW_WALL_SIZE_COLUMN,
     RW_UDV_COLUMN,
     SPOIL_REPAIR_COLUMN,
+    SPOIL_VOLUME_COLUMN,
     SYNTHETIC_WALL_COLUMN,
-    UNCOVERED_AREA_COLUMN,
     WALL_REPAIR_COLUMN,
     settlement_path,
 )
@@ -768,132 +776,650 @@ def write_calculation(sheet, chosen: pd.DataFrame, policy: PolicySettings) -> No
     sheet.freeze_panes = sheet.cell(row=FIRST_DATA_ROW, column=2)
 
 
-def write_repair(sheet, chosen: pd.DataFrame) -> None:
-    """Write where each claim's repair cost came from, and on what assumption."""
-    sheet["A1"] = "Where the repair cost comes from"
+# ---------------------------------------------------------------------------
+# The Repair cost tab.
+#
+# Four blocks, in the order a reader works through a claim. Each asks the same
+# four questions about one asset -- **what is it, what is it worth, what would
+# repairing it cost, and what does it contribute** -- and the last turns the
+# three answers into one settlement.
+#
+# **Every dollar is GST-exclusive** until the settlement block, which is the
+# one place GST is added. Two things are deliberately not divided by 1.15: the
+# land values, because a market value is not a GST-bearing price and dividing
+# one would invent a figure nobody quoted; and the crossing sub-cap, which is a
+# limit rather than a priced repair.
+# ---------------------------------------------------------------------------
+
+# Where the policy settings live. The Repair cost tab is wide enough without
+# its own copy of them, so its formulas reach across to the Calculation tab.
+AREA_CAP_REF = f"Calculation!$B${SETTINGS_ROW['area_cap']}"
+SUB_CAP_REF = f"Calculation!$B${SETTINGS_ROW['rw_sub_cap']}"
+EXCESS_RATE_REF = f"Calculation!$B${SETTINGS_ROW['excess_each']}"
+EXCESS_FLOOR_REF = f"Calculation!$B${SETTINGS_ROW['excess_floor']}"
+EXCESS_CEIL_REF = f"Calculation!$B${SETTINGS_ROW['excess_max']}"
+GST_REF = f"Calculation!$B${SETTINGS_ROW['gst']}"
+
+
+class Formula(str):
+    """A cell the sheet works out for itself.
+
+    The text is a template: ``{key}`` is replaced by the column letter that
+    key ended up in and ``{r}`` by the row, so a column can be moved without
+    rewriting every formula that points at it.
+    """
+
+    __slots__ = ()
+
+
+LAND_BLOCK = "A. Landslide land damage"
+RW_BLOCK = "B. Retaining wall damage"
+LIQ_BLOCK = "C. Liquefaction damage"
+PAID_BLOCK = "D. What is paid"
+
+# Columns `vul` does not send yet. They are on the sheet because the workflow
+# asks for them, and their being empty is the finding rather than an oversight.
+PENDING_LAND = "imminent damage is not modelled yet"
+
+# Two figures the sheet needs that the settlement table does not carry: the
+# worst liquefaction state on the claim, and the insured ground that state
+# damages. Liquefaction arrives without an extent, so the ground it damages is
+# the whole of a liquefied polygon -- the scope the Canterbury rates are
+# per-property against.
+WALL_CAUSE_COLUMN = "wall_damage_cause"
+LIQ_STATE_COLUMN = "liq_state_worst"
+LIQ_DAMAGED_AREA_COLUMN = "liquefied_insured_area_m2"
+PENDING_LIQ = "vul sends liquefaction as a damage state, with no extent"
+
+# key, heading, source, number format, column width. The source is a column of
+# the settlement table, a Formula, or None for a column nothing fills yet.
+BLOCKS = [
+    (None, [("claim", "Claim", CLAIM_ID_COLUMN, None, 38)]),
+    (
+        LAND_BLOCK,
+        [
+            ("ls_evac", "Evacuated land (m2)", EVACUATED_AREA_COLUMN, AREA, 13),
+            ("ls_inun", "Inundated land (m2)", INUNDATED_AREA_COLUMN, AREA, 13),
+            ("ls_imm", "Imminent damage (m2) - not modelled yet", None, AREA, 14),
+            (
+                "ls_area",
+                "Total damaged land (m2)",
+                LANDSLIDE_REPAIR_AREA_COLUMN,
+                AREA,
+                14,
+            ),
+            ("rate", "Land rate ($/m2)", "land_rate_incl_gst_nzd_per_m2", RATE, 12),
+            (
+                "ls_value",
+                "Value of damaged land ($)",
+                Formula("=MIN({ls_area}{r}," + AREA_CAP_REF + ")*{rate}{r}"),
+                MONEY,
+                13,
+            ),
+            ("nw_size", "New RTW size", NEW_WALL_SIZE_COLUMN, None, 11),
+            ("nw_height", "New RTW height (m)", NEW_WALL_HEIGHT_COLUMN, "0.00", 12),
+            ("nw_length", "New RTW length (m)", NEW_WALL_LENGTH_COLUMN, AREA, 12),
+            ("nw_cost", "New RTW to hold it ($)", LAND_REPAIR_COLUMN, MONEY, 14),
+            ("spoil_m3", "Spoil to clear (m3)", SPOIL_VOLUME_COLUMN, AREA, 12),
+            ("spoil_cost", "Spoil removal ($)", SPOIL_REPAIR_COLUMN, MONEY, 13),
+            (
+                "ls_repair",
+                "A. Landslide repair ($)",
+                Formula("={nw_cost}{r}+{spoil_cost}{r}"),
+                MONEY,
+                15,
+            ),
+        ],
+    ),
+    (
+        RW_BLOCK,
+        [
+            ("rw_cause", "What damaged it", WALL_CAUSE_COLUMN, None, 18),
+            ("rw_size", "RTW size", "wall_size", None, 11),
+            ("rw_height", "RTW height (m)", "wall_height_m", "0.00", 12),
+            ("rw_length", "RTW length (m)", "wall_length_m", AREA, 12),
+            ("rw_rate", "RTW rate ($/m2)", "wall_rate_excl_gst", RATE, 12),
+            ("rw_udv", "RTW undepreciated value ($)", None, MONEY, 16),
+            ("rw_repair", "B. RTW replacement ($)", None, MONEY, 15),
+        ],
+    ),
+    (
+        LIQ_BLOCK,
+        [
+            ("liq_inun", "Inundated land (m2) - not sent", None, AREA, 14),
+            (
+                "liq_evac",
+                "Evacuated land, with lateral spreading (m2) - not sent",
+                None,
+                AREA,
+                17,
+            ),
+            ("liq_area", "Liquefied land (m2)", LIQ_DAMAGED_AREA_COLUMN, AREA, 13),
+            (
+                "liq_insured",
+                "Total insured land (m2)",
+                TOTAL_INSURED_LAND_AREA_COLUMN,
+                AREA,
+                14,
+            ),
+            ("liq_state", "Damage state", LIQ_STATE_COLUMN, "0", 10),
+            (
+                "liq_value",
+                "Value of liquefied land ($)",
+                Formula("=MIN({liq_area}{r}," + AREA_CAP_REF + ")*{rate}{r}"),
+                MONEY,
+                13,
+            ),
+            ("liq_repair", "C. Liquefaction repair ($)", None, MONEY, 16),
+        ],
+    ),
+    (
+        PAID_BLOCK,
+        [
+            ("dwellings", "Dwellings", "dwelling_count", COUNT, 10),
+            ("fees", "Professional fees ($)", None, MONEY, 13),
+            (
+                "repair_excl",
+                "Total repair, excl GST ($)",
+                Formula("={ls_repair}{r}+{rw_repair}{r}+{liq_repair}{r}+{fees}{r}"),
+                MONEY,
+                15,
+            ),
+            ("gst", "GST ($)", Formula("={repair_excl}{r}*" + GST_REF), MONEY, 12),
+            (
+                "crossing",
+                "Culvert or bridge at its sub-cap ($)",
+                CROSSING_REPAIR_COLUMN,
+                MONEY,
+                16,
+            ),
+            (
+                "repair_incl",
+                "Total repair, incl GST ($)",
+                Formula("={repair_excl}{r}+{gst}{r}+{crossing}{r}"),
+                MONEY,
+                15,
+            ),
+            (
+                "cap_land",
+                "Cap: land value ($)",
+                Formula("=MAX({ls_value}{r},{liq_value}{r})"),
+                MONEY,
+                13,
+            ),
+            (
+                "cap_rw",
+                "Cap: RTW value ($)",
+                Formula(
+                    "=MIN({rw_udv}{r}*(1+"
+                    + GST_REF
+                    + "),"
+                    + SUB_CAP_REF
+                    + "*{dwellings}{r})"
+                ),
+                MONEY,
+                13,
+            ),
+            (
+                "cap",
+                "Land cover cap ($)",
+                Formula("={cap_land}{r}+{cap_rw}{r}+{crossing}{r}"),
+                MONEY,
+                14,
+            ),
+            (
+                "payable",
+                "Cost to pay ($)",
+                Formula("=MIN({repair_incl}{r},{cap}{r})"),
+                MONEY,
+                13,
+            ),
+            (
+                "excess",
+                "Excess ($)",
+                Formula(
+                    "=MIN(MAX({payable}{r}*"
+                    + EXCESS_RATE_REF
+                    + ","
+                    + EXCESS_FLOOR_REF
+                    + "),"
+                    + EXCESS_CEIL_REF
+                    + ")*({payable}{r}>0)"
+                ),
+                MONEY,
+                12,
+            ),
+            (
+                "settle_incl",
+                "Settlement, incl GST ($)",
+                Formula("=MAX(0,{payable}{r}-{excess}{r})"),
+                MONEY,
+                15,
+            ),
+            (
+                "settle_excl",
+                "Settlement, excl GST ($)",
+                Formula("={settle_incl}{r}/(1+" + GST_REF + ")"),
+                MONEY,
+                15,
+            ),
+        ],
+    ),
+]
+
+# One band per block, light enough to read black text on.
+BLOCK_FILL = {
+    LAND_BLOCK: PatternFill("solid", fgColor="D9E2F3"),
+    RW_BLOCK: PatternFill("solid", fgColor="FBE2D5"),
+    LIQ_BLOCK: PatternFill("solid", fgColor="D9EDE3"),
+    PAID_BLOCK: PatternFill("solid", fgColor="E7E6E6"),
+}
+
+# The model carries its money GST-inclusive; the sheet shows it GST-exclusive.
+# These are the columns divided on the way out. The division is exact, because
+# each was built as an exclusive figure multiplied by the same rate.
+DIVIDE_BY_GST = {
+    "rw_udv": RW_UDV_COLUMN,
+    "rw_repair": WALL_REPAIR_COLUMN,
+    "liq_repair": LIQ_REPAIR_COLUMN,
+    "fees": FEES_COLUMN,
+    "nw_cost": LAND_REPAIR_COLUMN,
+    "spoil_cost": SPOIL_REPAIR_COLUMN,
+}
+
+BLOCK_HEADER_ROW = 4
+REPAIR_HEADER_ROW = 5
+REPAIR_FIRST_ROW = 6
+
+
+def repair_columns() -> dict[str, int]:
+    """Return each column's key mapped to the column number it is written in.
+
+    Raises:
+        ValueError: If two columns share a heading. The tab is forty columns
+            wide and two of them once read "Total damaged land (m2)", one in
+            block A and one in block C -- which is long enough to scroll past
+            the coloured band that tells them apart, and duly misled the first
+            person to read it.
+    """
+    index = {}
+    headings: dict[str, str] = {}
+    number = 1
+    for _, columns in BLOCKS:
+        for key, heading, *_ in columns:
+            if heading in headings:
+                msg = (
+                    f"two columns are both headed {heading!r}: {headings[heading]!r} "
+                    f"and {key!r}. A heading has to say which block it belongs to."
+                )
+                raise ValueError(msg)
+            headings[heading] = key
+            index[key] = number
+            number += 1
+    return index
+
+
+def repair_letters() -> dict[str, str]:
+    """Return each column's key mapped to its spreadsheet letter."""
+    return {key: get_column_letter(number) for key, number in repair_columns().items()}
+
+
+def land_areas_by_claim(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
+    """Return the landslide extents `vul` sends, summed onto the claim.
+
+    The evacuated and inundated footprints **overlap**, so they are carried
+    beside the landslide total rather than being added to make one: the total
+    is the union `vul` has already taken, and showing all three is what makes
+    the overlap visible instead of implied.
+
+    Args:
+        realisation_id: The modelled earthquake.
+        pilot: Whether the run is over the small Wellington pilot box.
+
+    Returns:
+        The evacuated, inundated and total insured areas per claim.
+    """
+    land = gpd.read_parquet(loss_input_path("land", realisation_id, pilot=pilot))
+    state = land[LIQ_LD_STATE_COLUMN]
+    # Summed over the polygons that liquefied rather than over all of them, so
+    # a claim with one liquefied polygon and one sound is valued on the first
+    # alone -- which is what `claims.damaged_area_m2` does, one at a time.
+    land = land.assign(
+        **{
+            LIQ_DAMAGED_AREA_COLUMN: land[TOTAL_INSURED_LAND_AREA_COLUMN].where(
+                state.notna() & (state > loss_claims.LIQ_STATE_NONE), 0.0
+            ),
+            LIQ_STATE_COLUMN: state.fillna(0.0),
+        }
+    )
+    wanted = [
+        EVACUATED_AREA_COLUMN,
+        INUNDATED_AREA_COLUMN,
+        TOTAL_INSURED_LAND_AREA_COLUMN,
+        LIQ_DAMAGED_AREA_COLUMN,
+    ]
+    by_claim = land.groupby(CLAIM_ID_COLUMN)
+    return by_claim[wanted].sum().join(by_claim[LIQ_STATE_COLUMN].max())
+
+
+REPAIR_NOTES = [
+    "",
+    "How to read this tab",
+    (
+        "Each of the first three blocks is one asset, and asks the same four "
+        "questions about it: what is it, what is it worth, what would "
+        "repairing it cost, and what does it contribute. Block D turns the "
+        "three answers into one settlement. Every dollar is GST-exclusive "
+        "until block D adds GST once, on the row marked 'GST'."
+    ),
+    (
+        "The land values are the exception and are not GST-exclusive, because "
+        "a market value is not a GST-bearing price. The Act caps cover at the "
+        "market value of the damaged land, and the repair bill NHC pays "
+        "carries GST, so the two sides of MIN(repair, cap) are compared on "
+        "the GST-inclusive basis. Whether that is the intended reading is "
+        "still open (Q-14)."
+    ),
+    "",
+    "Empty columns, and why",
+    (
+        "Imminent damage (block A) is not modelled yet. The agreed method is "
+        "a second polygon of similar size centred on the same failure, its "
+        "extra ground taken upslope to a new headscarp, with only the newly "
+        "evacuated area counting. It belongs to vul and is calibrated off the "
+        "claims reports."
+    ),
+    (
+        "The three liquefaction extents (block C) are empty because vul sends "
+        "liquefaction as a damage state with no footprint at all. Lateral "
+        "spreading is being modelled as a magnification of the probability of "
+        "states 4 to 6 near waterways, which moves a property's state rather "
+        "than drawing an area -- so these columns may never be fillable in "
+        "the form the heading implies."
+    ),
+    "",
+    "Assumptions behind each figure, to be confirmed",
+    (
+        "A1. One wall stands on a property, so a claim is charged for one "
+        "wall. Where a retaining wall is already there it is taken to be "
+        "damaged and is replaced, and that replacement in block B is the whole "
+        "of the wall cost -- block A is empty. Where there is no wall, one is "
+        "invented to hold the ground and block B is empty. The two never both "
+        "appear (decided 2026-09-29)."
+    ),
+    (
+        "A2. An invented wall is sized on the total damaged land -- the union "
+        "of the evacuated and inundated footprints -- and on the deposit "
+        "volume where an inundated depth gives one. Its length is twice the "
+        "failure's depth plus 2 m at each end, never under 5 m. It is a "
+        "remediation cost, not an asset, so it never reaches the cap: a wall "
+        "that did not exist has no undepreciated value to contribute."
+    ),
+    (
+        "A3. Spoil is cleared at the costing tool's own rate, 'Clear site: "
+        "Load, cart and tip material', $150 per cubic metre excluding GST. The "
+        "same volume also sets the earthworks rating, which is worth watching "
+        "for a double count."
+    ),
+    (
+        "B1. A wall already on the property is replaced rather than repaired: "
+        "partial repair is about 1% of cases and is not modelled. Where the "
+        "claim also has landslide ground, this replacement holds it, and no "
+        "second wall is priced in block A."
+    ),
+    (
+        "B2. Nothing says which of the tool's 29 construction types a wall is, "
+        "so 30% are priced as Reinforced Concrete and the rest take one of "
+        "four timber pole rates, drawn by hashing the wall id. The replacement "
+        "carries the site multiplier and a 20% allowance for being built to a "
+        "better standard than the one that failed; the undepreciated value "
+        "carries neither, which is the whole of the difference between them."
+    ),
+    (
+        "C1. Canterbury settled costs per property, $200 to $4,000 by damage "
+        "state, in 2010/2011 dollars and NOT yet inflated. They exclude ILV "
+        "and IFV, so they are the minor-damage tier only. The cap the state "
+        "is compared against is the land rate over the whole insured area, "
+        "because that is the scope those rates are per-property against."
+    ),
+    (
+        "D1. The six professional fees from the tool's fee table, $5,100 "
+        "excluding GST, charged once on a claim that involves a wall and added "
+        "before the site multiplier, so a difficult site costs more to design "
+        "as well as to build. Mileage is excluded, and they never reach the "
+        "undepreciated value."
+    ),
+    (
+        "D2. Nothing prices a culvert or bridge, so a damaged one is assumed "
+        "to exceed its sub-cap and is settled at the limit -- which is why it "
+        "appears on both sides and carries no GST line of its own."
+    ),
+    (
+        "D3. The cap's land value is the LARGER of block A's and block C's, "
+        "not their sum. A section that both liquefied and was buried is one "
+        "piece of damaged ground, and adding the two would value some of it "
+        "twice."
+    ),
+    (
+        "D4. MIN(repair, cap) is taken once, at claim level, over every asset "
+        "together. The excess is a share of what would otherwise be paid, "
+        "floored and capped, and a claim paid nothing is charged nothing."
+    ),
+    "",
+    (
+        "The three site ratings that mark up a wall's cost -- construction "
+        "access, earthworks and constructability -- are proxied off driveway "
+        "length, inundated volume and ground slope. All bands are invented. "
+        "Together they can move a wall cost by at most 30%."
+    ),
+]
+
+
+def write_repair_cell(cell, claim, *, key, source, fmt, row, letters, gross):
+    """Write one cell of the Repair cost tab, whatever kind of column it is.
+
+    Four kinds. A :class:`Formula` is written as text for Excel to work out. A
+    source of ``None`` leaves the cell empty, which is what a column `vul` does
+    not fill yet looks like. A money column the model carries GST-inclusive is
+    divided on the way out. Anything else is written as it is read.
+
+    Args:
+        cell: The cell to write.
+        claim: The claim's row of the settlement table.
+        key: The column's key, which formulas refer to it by.
+        source: Where the value comes from, or None for a column nothing fills.
+        fmt: The number format, or None for a text column.
+        row: The sheet row, for a formula that refers to its own.
+        letters: Every column key mapped to its spreadsheet letter.
+        gross: One plus the GST rate.
+    """
+    if isinstance(source, Formula):
+        cell.value = source.format(r=row, **letters)
+        cell.font = WORKED
+    elif key in DIVIDE_BY_GST:
+        # The model carries these GST-inclusive and the sheet shows them
+        # without it. DIVIDE_BY_GST names the source, so these pass None above
+        # -- and this branch has to come first, or they are written empty.
+        cell.value = float(claim[DIVIDE_BY_GST[key]]) / gross
+        cell.font = INPUT
+    elif source is None:
+        cell.font = INPUT
+    elif fmt is None:
+        value = claim.name if key == "claim" else claim[source]
+        cell.value = "" if pd.isna(value) else str(value)
+        cell.font = TEXT
+    else:
+        value = claim[source]
+        cell.value = None if pd.isna(value) else float(value)
+        cell.font = INPUT
+    if fmt:
+        cell.number_format = fmt
+
+
+def write_repair(sheet, chosen: pd.DataFrame, policy: PolicySettings) -> None:
+    """Write each claim's repair cost as four blocks, one per asset.
+
+    Args:
+        sheet: The worksheet to write into.
+        chosen: The claims the sheet shows, with the land extents joined on.
+        policy: The settings this scenario runs under.
+    """
+    sheet["A1"] = "What is damaged, what it is worth, what repairing it costs"
     sheet["A1"].font = TITLE
     sheet["A2"] = (
-        "Every line is an assumption, not a measurement. They are numbered so "
-        "they can be referred to and decided one at a time."
+        "One asset per block. Every dollar excludes GST until block D adds it "
+        "once; the land values are market values, to which GST does not apply."
     )
     sheet["A2"].font = NOTE
 
-    headers = [
-        "Claim",
-        "Wall size",
-        "Wall height (m)",
-        "Wall length (m)",
-        "Wall rate excl GST ($/m2)",
-        "1. Damaged wall replaced ($)",
-        "Landslide ground not covered by that wall (m2)",
-        "New wall size",
-        "New wall height (m)",
-        "New wall length (m)",
-        "2. New wall for landslide ground ($)",
-        "3. Spoil cleared ($)",
-        "4. Fees: consent, design, engineering, H&S, PM, survey ($)",
-        "5. Liquefaction, Canterbury rates ($)",
-        "6. Culvert or bridge at sub-cap ($)",
-        "Total repair ($)",
-    ]
-    widths = [40, 11, 13, 13, 17, 20, 22, 13, 14, 15, 22, 15, 24, 22, 20, 16]
-    for index, (label, width) in enumerate(zip(headers, widths, strict=True), start=1):
-        cell = sheet.cell(row=4, column=index, value=label)
-        cell.font = HEAD
-        cell.fill = HEAD_FILL
-        cell.alignment = Alignment(wrap_text=True, vertical="center")
-        sheet.column_dimensions[get_column_letter(index)].width = width
-    sheet.row_dimensions[4].height = 44
+    letters = repair_letters()
+    gross = 1.0 + policy.gst_rate
 
-    sources = [
-        (2, "wall_size", None),
-        (3, "wall_height_m", "0.00"),
-        (4, "wall_length_m", AREA),
-        (5, "wall_rate_excl_gst", RATE),
-        (6, WALL_REPAIR_COLUMN, MONEY),
-        (7, UNCOVERED_AREA_COLUMN, AREA),
-        (8, NEW_WALL_SIZE_COLUMN, None),
-        (9, NEW_WALL_HEIGHT_COLUMN, "0.00"),
-        (10, NEW_WALL_LENGTH_COLUMN, AREA),
-        (11, LAND_REPAIR_COLUMN, MONEY),
-        (12, SPOIL_REPAIR_COLUMN, MONEY),
-        (13, FEES_COLUMN, MONEY),
-        (14, LIQ_REPAIR_COLUMN, MONEY),
-        (15, CROSSING_REPAIR_COLUMN, MONEY),
-    ]
-    for offset, (claim_id, claim) in enumerate(chosen.iterrows()):
-        row = 5 + offset
-        sheet.cell(row=row, column=1, value=str(claim_id)).font = TEXT
-        for index, source, fmt in sources:
-            value = claim[source]
-            cell = sheet.cell(
-                row=row,
-                column=index,
-                value=str(value) if fmt is None else float(value),
+    number = 1
+    for title, columns in BLOCKS:
+        first = number
+        for key, heading, source, fmt, width in columns:
+            cell = sheet.cell(row=REPAIR_HEADER_ROW, column=number, value=heading)
+            cell.font = HEAD
+            cell.fill = HEAD_FILL
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+            sheet.column_dimensions[get_column_letter(number)].width = width
+
+            for offset in range(len(chosen)):
+                row = REPAIR_FIRST_ROW + offset
+                write_repair_cell(
+                    sheet.cell(row=row, column=number),
+                    chosen.iloc[offset],
+                    key=key,
+                    source=source,
+                    fmt=fmt,
+                    row=row,
+                    letters=letters,
+                    gross=gross,
+                )
+            number += 1
+
+        if title:
+            sheet.merge_cells(
+                start_row=BLOCK_HEADER_ROW,
+                start_column=first,
+                end_row=BLOCK_HEADER_ROW,
+                end_column=number - 1,
             )
-            cell.font = INPUT
-            if fmt:
-                cell.number_format = fmt
-        total = sheet.cell(
-            row=row, column=16, value=f"=F{row}+K{row}+L{row}+M{row}+N{row}+O{row}"
-        )
-        total.font = WORKED
-        total.number_format = MONEY
+            band = sheet.cell(row=BLOCK_HEADER_ROW, column=first, value=title)
+            band.font = SECTION
+            band.fill = BLOCK_FILL[title]
+            band.alignment = Alignment(horizontal="center", vertical="center")
 
-    notes = [
-        "",
-        "Assumptions behind each column, to be confirmed:",
-        (
-            "1. Nothing says which of the tool's 29 construction types a wall "
-            "is, so 30% are priced as Reinforced Concrete and the rest take one "
-            "of four timber pole rates, drawn by hashing the wall id. The "
-            "repair carries the site multiplier and a 20% allowance for the "
-            "replacement being a better wall than the one that failed; the "
-            "undepreciated value carries neither."
-        ),
-        (
-            "2. A damaged wall is assumed to reinstate one metre of land for "
-            "every metre of its length. Landslide ground beyond that gets a "
-            "wall invented for it, sized by the uncovered area and the deposit "
-            "volume, its length twice its depth plus 2 m at each end and never "
-            "under 5 m. NOTE the uncovered area is the LANDSLIDE area only - "
-            "liquefied ground is not remediated by a wall."
-        ),
-        (
-            "3. Spoil is cleared at the costing tool's own rate, 'Clear site: "
-            "Load, cart and tip material', $150 per cubic metre excluding GST. "
-            "The same volume also sets the earthworks rating, which is worth "
-            "watching for a double count."
-        ),
-        (
-            "4. The six professional fees from the tool's fee table, $5,100 "
-            "excluding GST, charged once on a claim that involves a wall and "
-            "added before the site multiplier so a difficult site costs more to "
-            "design as well as to build. Mileage is excluded, and they never "
-            "reach the undepreciated value."
-        ),
-        (
-            "5. Canterbury settled costs per property, $200 to $4,000 by damage "
-            "state. 2010/2011 dollars, grossed up for GST but NOT inflated. "
-            "They exclude ILV and IFV, so they are the minor-damage tier only."
-        ),
-        (
-            "6. Nothing prices a culvert or bridge, so a damaged one is assumed "
-            "to exceed its sub-cap and is settled at the limit."
-        ),
-        "",
-        (
-            "The three site ratings that mark up a wall's cost - construction "
-            "access, earthworks and constructability - are proxied off driveway "
-            "length, inundated volume and ground slope. All bands are invented. "
-            "Together they can move a wall cost by at most 30%."
-        ),
-    ]
-    start = 5 + len(chosen) + 2
-    for offset, text in enumerate(notes):
+    sheet.row_dimensions[BLOCK_HEADER_ROW].height = 18
+    sheet.row_dimensions[REPAIR_HEADER_ROW].height = 52
+    sheet.freeze_panes = sheet.cell(row=REPAIR_FIRST_ROW, column=2)
+
+    start = REPAIR_FIRST_ROW + len(chosen) + 2
+    for offset, text in enumerate(REPAIR_NOTES):
         cell = sheet.cell(row=start + offset, column=1, value=text)
-        cell.font = Font(name=FONT, size=9, bold=text.endswith("confirmed:"))
+        bold = text in {
+            "How to read this tab",
+            "Empty columns, and why",
+            "Assumptions behind each figure, to be confirmed",
+        }
+        cell.font = Font(name=FONT, size=9, bold=bold)
         cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+
+def check_repair_against_the_model(chosen: pd.DataFrame, policy: PolicySettings):
+    """Print whether the Repair cost tab's formulas still settle as the module does.
+
+    The tab is a third implementation of the Act's arithmetic, after the module
+    and the Calculation tab, and it reaches the settlement by a different route
+    -- building the repair cost up from four blocks rather than reading it
+    whole. That makes it worth checking on its own.
+
+    Args:
+        chosen: The claims the sheet shows.
+        policy: The settings this scenario runs under.
+
+    Returns:
+        The worst disagreement in dollars.
+    """
+    gross = 1.0 + policy.gst_rate
+    worst = 0.0
+    for _, claim in chosen.iterrows():
+        excl = (
+            float(claim[LAND_REPAIR_COLUMN])
+            + float(claim[SPOIL_REPAIR_COLUMN])
+            + float(claim[WALL_REPAIR_COLUMN])
+            + float(claim[LIQ_REPAIR_COLUMN])
+            + float(claim[FEES_COLUMN])
+        ) / gross
+        repair = excl * gross + float(claim[CROSSING_REPAIR_COLUMN])
+
+        area_cap = policy.area_cap_m2
+        rate = float(claim["land_rate_incl_gst_nzd_per_m2"])
+        ls_value = min(float(claim[LANDSLIDE_REPAIR_AREA_COLUMN]), area_cap) * rate
+        liq_value = min(float(claim[LIQ_DAMAGED_AREA_COLUMN]), area_cap) * rate
+        cap = (
+            max(ls_value, liq_value)
+            + min(
+                float(claim[RW_UDV_COLUMN]),
+                policy.retaining_wall_sub_cap_nzd
+                * gross
+                * float(claim["dwelling_count"]),
+            )
+            + float(claim[CROSSING_REPAIR_COLUMN])
+        )
+        payable = min(repair, cap)
+        excess = (
+            min(
+                max(payable * policy.excess_rate, policy.excess_min_nzd),
+                policy.excess_max_nzd,
+            )
+            if payable > 0
+            else 0.0
+        )
+        worst = max(
+            worst,
+            abs(repair - float(claim["repair_cost_incl_gst_nzd"])),
+            abs(cap - float(claim["land_cover_cap_incl_gst_nzd"])),
+            abs(max(0.0, payable - excess) - float(claim["settlement_incl_gst_nzd"])),
+        )
+    if worst > 0.01:
+        print(
+            f"  WARNING: the Repair cost tab and the settlement module differ "
+            f"by up to ${worst:,.2f}. BLOCKS is out of date."
+        )
+    else:
+        print(f"  Repair cost blocks agree with the model to ${worst:,.6f} at worst")
+    return worst
+
+
+def wall_damage_cause(damaged: pd.DataFrame) -> pd.Series:
+    """Return what damaged each wall, as words rather than three flags.
+
+    **A retaining wall is most often damaged by shaking alone**, with no
+    landslide anywhere near it: on the pilot that is 530 of the 532 damaged
+    walls. Without this column the tab shows a claim with no landslide ground
+    being charged for a wall and gives no hint why, which reads as an error and
+    is not one.
+
+    Args:
+        damaged: The damaged rows of the contract's retaining wall table.
+
+    Returns:
+        A cause per row, in the order given.
+    """
+    named = {
+        IS_DAMAGED_BY_SHAKING_COLUMN: "shaking",
+        IS_EVACUATED_COLUMN: "evacuated",
+        IS_INUNDATED_COLUMN: "inundated",
+    }
+    causes = pd.Series("", index=damaged.index, dtype=object)
+    for column, label in named.items():
+        flagged = damaged[column].to_numpy(dtype=bool)
+        causes = causes.where(
+            ~flagged, causes.str.cat([label] * len(causes), sep=" + ").str.strip(" +")
+        )
+    return causes
 
 
 def wall_shape(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
@@ -918,15 +1444,24 @@ def wall_shape(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
     damaged = damaged.assign(
         _order=order,
         _rate=beta_wall_rate_excl_gst_nzd_per_m2(damaged[RW_ID_COLUMN].to_numpy()),
+        _cause=wall_damage_cause(damaged),
     )
     grouped = damaged.groupby(CLAIM_ID_COLUMN)
-    return pd.DataFrame(
+    out = pd.DataFrame(
         {
             "wall_size": grouped["_order"].max().astype(str),
             "wall_length_m": grouped[RW_LENGTH_COLUMN].sum(),
             "wall_rate_excl_gst": grouped["_rate"].max(),
+            WALL_CAUSE_COLUMN: grouped["_cause"].agg(
+                lambda causes: ", ".join(sorted(set(causes)))
+            ),
         }
-    )
+    ).reindex(pd.Index(rw[CLAIM_ID_COLUMN].unique(), name=CLAIM_ID_COLUMN))
+    # A property can own a wall that vul finds undamaged. It is not replaced,
+    # and its ground -- if any slipped -- gets a wall of its own, so the tab
+    # has to tell that apart from a property with no wall at all.
+    out[WALL_CAUSE_COLUMN] = out[WALL_CAUSE_COLUMN].fillna("wall present, undamaged")
+    return out
 
 
 def main(*, pilot, realisation_ids):
@@ -940,9 +1475,15 @@ def main(*, pilot, realisation_ids):
     claims["wall_size"] = walls["wall_size"].fillna("none")
     claims["wall_length_m"] = walls["wall_length_m"].fillna(0.0)
     claims["wall_rate_excl_gst"] = walls["wall_rate_excl_gst"].fillna(0.0)
+    claims[WALL_CAUSE_COLUMN] = walls[WALL_CAUSE_COLUMN].fillna(
+        "no wall on the property"
+    )
     claims["wall_height_m"] = (
         claims["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     )
+    areas = land_areas_by_claim(realisation_id, pilot=pilot).reindex(claims.index)
+    for column in areas.columns:
+        claims[column] = areas[column].fillna(0.0)
     chosen = pick_claims(claims)
 
     book = Workbook()
@@ -959,7 +1500,7 @@ def main(*, pilot, realisation_ids):
     overview.title = "Overview"
     write_overview(overview, claims, policy)
     write_calculation(book.create_sheet("Calculation"), chosen, policy)
-    write_repair(book.create_sheet("Repair cost"), chosen)
+    write_repair(book.create_sheet("Repair cost"), chosen, policy)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUT_DIR / OUT_NAME
@@ -968,6 +1509,7 @@ def main(*, pilot, realisation_ids):
     for case, count in chosen["case"].value_counts().items():
         print(f"  {count:>2} {case}")
     check_formulas_against_the_model(chosen, policy)
+    check_repair_against_the_model(chosen, policy)
     print(f"Wrote {out_path}")
     return 0
 
