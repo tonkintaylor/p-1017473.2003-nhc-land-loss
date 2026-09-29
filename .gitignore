@@ -175,3 +175,4 @@ fig/
 
 # Generated weekly update PDFs; the .typ is the deliverable
 release_updates/*.pdf
+temp_*.*

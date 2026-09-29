@@ -109,6 +109,41 @@ GNS_SLIDE_MORPHOLOGY_LAYER_ID = 125308
 # the result without it.
 EIL_PROBABILITY_SOURCE_PATH = "EILProb_Wellington/EILProb_PGA2g.tif"
 
+# The global datasets the Nowicki Jessee (2018) landslide model is rebuilt
+# from, below the project's SourceMaterial folder on T:. Each is put there by
+# a get_ script in src/scripts/landloss/hazard/landslide/static_data_gen/,
+# which holds the download URL, and read by landloss.io.global_datasets.
+#
+# GMTED2010 tiles are 30 x 20 degrees, named by their south-west corner. Two
+# products are held: 7.5 arc-second median elevation (med075), which the
+# model's slope is computed from, and 30 arc-second mean elevation (mea300),
+# which its CTI is computed from.
+GMTED2010_SOURCE_DIR = "global/gmted2010"
+GMTED2010_TILES = {
+    # Wellington: 50-30 degrees S, 150-180 degrees E.
+    "wellington": "50S150E",
+    # The 1989 Loma Prieta earthquake, the USGS reference run: 30-50 degrees N,
+    # 150-120 degrees W.
+    "loma_prieta": "30N150W",
+}
+GMTED2010_PRODUCTS = ("med075", "mea300")
+
+# GLiM, the 2015 CCGM edition of the global lithological map, as delivered: a
+# zipped file geodatabase.
+GLIM_SOURCE_PATH = "global/glim/LiMW_GIS 2015.gdb.zip"
+
+# GlobCover 2009 v2.3, the class raster extracted from ESA's delivery zip.
+GLOBCOVER2009_SOURCE_PATH = "global/globcover2009/GLOBCOVER_L4_200901_200912_V2.3.tif"
+
+# The USGS groundfailure package's Loma Prieta test data -- its prepared
+# Nowicki Jessee inputs, ShakeMap and expected output -- which the rebuilt
+# model is checked against. Pinned to one tag, because a later tag may change
+# the target.
+USGS_GROUNDFAILURE_TAG = "1.3.2"
+USGS_GROUNDFAILURE_LOMA_PRIETA_DIR = (
+    f"usgs_groundfailure/{USGS_GROUNDFAILURE_TAG}/tests/data/loma_prieta"
+)
+
 # https://data.linz.govt.nz/layer/123110-nz-addresses-roads/
 # The roads of the LINZ addressing dataset, the same family the address spine
 # comes from. Preferred over the topographic road centrelines because a driveway
@@ -225,6 +260,12 @@ class NlmRelease(StrEnum):
 # instead -- ``NlmRelease.V2025P0_RC4`` -- so that it is visible at the point of
 # use rather than hidden in a second constant.
 CORE_NLM_VERSION = NlmRelease.V2026P0_RC6
+
+# The TS1170.5 site class read wherever the site class is not otherwise set,
+# for the beta: one class for the whole study area, chosen by the project lead.
+# After the beta the class comes per location from the Foster et al. (2019)
+# Vs30 model instead (register T-15), and this goes.
+BETA_SITE_CLASS = 2
 
 # The NLM's flatland product, under ``flatland`` in the same release tree as
 # ``CORE_NLM_VERSION`` but cut on its own schedule and versioned separately from

@@ -1,13 +1,194 @@
 # Landslide hazard: status
 
-**Status:** A first cut of the extend-ESNZ route is running; the route is still
-not formally chosen.
+**Status:** A first cut of the extend-ESNZ route is running, and the Nowicki
+Jessee (2018) model is rebuilt and checked; the portfolio of models is proposed
+but not agreed.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-09-29
 
 ## Approach
 
-The route is not yet formally chosen — see `## Open decisions
+The route is not yet formally chosen — see `## Open decisions` — but the
+cheapest of the three has now been built end to end, so that there is something
+concrete to choose against rather than three descriptions. No progress marks
+against the module as a whole until the decision is made; the step that exists
+carries its own marked plan under `steps/`.
+
+**The starting point.** ESNZ's probabilistic landslide model is in hand: a 32 m
+grid carrying failure probability at discrete shaking levels. Three gaps in it
+matter for this study.
+
+- **No spatial correlation factor.** Cell probabilities are independent, so
+  aggregating them across the portfolio misses the clustering that decides how
+  many claims one event produces.
+- **No smaller landslides.** Much of the loss here is expected from small
+  failures on modified slopes; the register carries this as **I-08**.
+- **No runout.** Loss of support and runout are settled differently, so a model
+  without runout cannot answer the policy question.
+
+**The three routes.** The first keeps the ESNZ model as the primary model; the
+others replace or extend it.
+
+- **Validate or recalibrate the ESNZ model** and keep it as the primary model.
+  The cheapest route: check it against observed failures and the Greater
+  Wellington zonation, and recalibrate the rate where it disagrees, rather than
+  changing its structure. It leaves the three gaps above unclosed, so it only
+  stands if they matter less than the calibration does.
+- **Build a new model and compare it against ESNZ.** Drafted in full in
+  `.agents/plans/estimating-eq-landslide-extent-wellington.md` — explicit source
+  and runout polygons, Newmark displacement, an absolute rate calibrated against
+  Nowicki Jessee (2018), and discrete failures sampled from a Kaikōura v3 size
+  distribution. That plan has not been reviewed or agreed with the project team.
+  ESNZ becomes the cross-comparison rather than an input.
+- **Extend the ESNZ model.** Keep the 32 m probability grid as the base rate and
+  add correlation, small failures and runout on top of it. Cheaper, and starts
+  from a model that has already been through review, but inherits its 32 m
+  resolution and its discrete shaking levels.
+
+**The portfolio now proposed.** Rather than choose one route, build several
+models split at a landslide size threshold. For large, green-field failures:
+three from the literature (Nowicki Jessee 2018, Kritikos et al. 2015, Hancox et
+al. 1997), possibly the GNS/ESNZ model, and a bespoke refit. For small failures
+on modified slopes: one urban model. A strength-based model after Godt et al.
+(2008) is proposed, and Marc et al. (2016) calibrates every large model's total
+area. Set out in `potential-landslide-rebuild.md`; not yet agreed. Extend-ESNZ becomes the GNS member of it.
+
+**Model 1 of the portfolio: Nowicki Jessee (2018), rebuilt.**
+
+- [x] Rebuild the model and its input layers from the raw public sources, in
+  `landloss.hazard.landslide.models.nowicki_2018`; the portfolio itself is set
+  out in `potential-landslide-rebuild.md`.
+- [x] Check it against the USGS `groundfailure` run at Loma Prieta, in
+  `validations/nowicki_2018/`: the equations reproduce the USGS output, and the
+  rebuilt inputs give total landslide area within 1% of it
+  (`nowicki_2018_loma_prieta_findings.md`).
+- [ ] Run it over Wellington, with PGV from the scenario's Sa(1.0 s) at site
+  class 2; the reader for Sa(1.0 s) at site classes 1-7 is in
+  `landloss.io.nlm`.
+- The source datasets reach T: through the `get_` scripts in `static_data_gen/`,
+  which have to be run before anything above can read them.
+
+## Beta build
+
+A first end-to-end run is being assembled that produces the right data
+structures rather than the right numbers; see
+`.agents/plans/beta-build.md` for the whole chain.
+
+Landslide is the module the beta needs least from: `steps/s1_landslide_realisation/`
+already emits the structure the chain expects — **polygons of evacuated ground
+and polygons of inundated ground**, one set per realisation. The two types may
+overlap each other.
+
+One caveat on the structure, because the chain downstream would double count
+without it. `drop_overlapping()` enforces non-overlap among the **evacuated**
+polygons only. The inundated polygons are those same circles translated
+different distances in different directions, so two of them can and do land on
+top of one another — most obviously where two failures on opposite sides of a
+gully both run into its floor. Ground buried by two landslides is buried once,
+so anything summing inundated area has to dissolve first. The run output prints
+both the summed and the dissolved area for each type, so the gap is visible
+every run.
+
+This is a **conflict with the stated beta contract**, which says polygons of the
+same type may not overlap. Evacuated ground meets it; inundated ground does not.
+It has to be settled before the intersect downstream is written, and the depth
+attribute makes it sharper: where two landslides bury the same ground, it is not
+obvious whether the depth there is the deeper of the two or the sum.
+
+Each polygon also still needs a **depth**, approximated from the **total
+evacuated area of the landslide it belongs to** — a bigger failure is a deeper
+one. Depth belongs to the landslide rather than to the piece of it inside any
+one claim, so it is attached here and carried through the intersect. Dissolving
+the inundated polygons to satisfy the contract would discard the
+`landslide_id` that depth hangs off, which is why the two questions are one
+question.
+
+The step now draws one realisation per id in `config.REALISATION_IDS`, seeded
+from the project-wide `BASE_SEED` through
+`landloss.hazard.realisation.realisation_seed`, and writes
+`landslide-realisation-rNNN[-pilot].geoparquet` with `realisation_id` on every
+polygon. A landslide layer and a liquefaction layer carrying the same
+`realisation_id` are the same modelled earthquake, so a property's causes can be
+summed.
+
+## Where it is now
+
+`steps/s1_landslide_realisation/` holds a runnable first cut of the extend-ESNZ
+route. It reads the supplied 32 m probability grid, samples every cell
+independently, gives each failure a size from a bounded power law and a circular
+footprint, drops the smaller of any overlapping pair, and moves each one downhill
+by a distance that grows with the slope — emitting the source polygon as
+`evacuated land` and the displaced polygon as `inundated land`. The slope and
+downhill direction it uses are in `landloss.common.utils.terrain`, and the reader
+for the grid is `landloss.io.source_material`; both are library code with tests,
+because they will outlive whatever the model turns into. Its method and its
+phased plan are in the step folder.
+
+It has been run against the real grid over both the pilot box and the full
+study area. The pattern is right -- the hills either side of the Hutt Valley and
+around Porirua are dense and the valley floors are clear -- and the figure under
+`report/hazard/landslide/landslide-realisation/fig/` is how that was checked.
+The current run figures, and the calibration of the size distribution behind
+them, are in `steps/s1_landslide_realisation/s1_landslide_realisation_method.md`;
+the questions they raise are under `## Open decisions`.
+
+Two of the three gaps are closed only nominally. There are small failures now,
+but their size distribution is fitted to nothing; there is runout, but it is a
+rigid translation along one bearing. Spatial correlation is not addressed at all.
+
+The folder also holds `validations/fig_landslide_vulnerability_model_gwrc.py`,
+which draws the Greater Wellington zonation the result gets checked against.
+
+The Nowicki Jessee (2018) model is rebuilt as library code in
+`landloss.hazard.landslide.models.nowicki_2018`, with its source datasets
+fetched to T: by `static_data_gen/` and checked against the USGS in
+`validations/nowicki_2018/`. It has not yet been run over Wellington.
+
+## Next
+
+1. Choose between building a new model and extending ESNZ, reviewing the
+   drafted plan with the project team as part of that. The first cut is intended
+   to inform that decision, not to pre-empt it.
+2. Confirm with the supplier what shaking level the grid is conditioned on, and
+   whether its probabilities are conditional on that shaking or already carry a
+   rate. Nothing in the code depends on the answer, and nothing can be written up
+   without it.
+3. Fit the size distribution to an inventory, and replace the displacement ramp
+   with a Newmark displacement. Both are placeholders and both move the answer.
+4. Add spatial correlation, which is the largest remaining error and the one that
+   most affects the shape of the loss distribution rather than its average.
+5. Intersect the result with insured land per claim, keeping loss of support and
+   runout separate because `vul` needs them per cause.
+
+The phased build for the new-model route is in
+`.agents/plans/estimating-eq-landslide-extent-wellington.md`, not here.
+6. Run the Nowicki Jessee model over Wellington, with PGV from the scenario's
+   Sa(1.0 s) at site class 2 (`PGV (mm/s) = 750 * Sa(1.0 s) [g]`, the shaking
+   module's agreed relation).
+7. After the beta, take the site class from the Foster et al. (2019) Vs30 model
+   rather than the fixed site class 2 (**T-15**).
+
+## Validation
+
+- Failure probability and total areal coverage against the ESNZ 32 m grid at
+  matching shaking levels. This is the comparison the build-new route exists to
+  support, and on the extend route it is the check that the base rate survived
+  the extensions.
+- Simulated landslide density against the GWRC `SEVERITY` 1–5 zonation, as a
+  rank correlation rather than an absolute one — the layer is a susceptibility
+  zonation, not a rate. A script under `validations/`.
+- Total areal coverage against the Nowicki Jessee (2018) estimate for the same
+  shaking.
+- Simulated size distribution and reach angles against the Kaikōura inventory.
+- Proportion of landslides confined to a single property. Local expectation in
+  `.agents/context/land-damage-mechanisms.md` is that most are, with
+  multi-property failures concentrated in gullies; if the model does not
+  reproduce that it is wrong regardless of how well it matches the literature.
+- The rebuilt Nowicki Jessee model against the USGS `groundfailure` run at Loma
+  Prieta, equations and input layers separately:
+  `validations/nowicki_2018/nowicki_2018_loma_prieta_findings.md`.
+
+## Open decisions
 
 Everything here is a decision somebody has to make, not a task somebody has to
 do. The tasks and limitations that follow from them live in the register; these
@@ -135,12 +316,3 @@ answer; not worth doing speculatively.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.
-
-
-could this report help: Hancox G T, Dellow G D and Perrin N D (1994).
-Earthquake induced slope failure hazard study,
-Wellington Region: Review of historical records of
-earthquake induced slope failures. Institute of
-Geological and Nuclear Sciences Limited Contract
-Report prepared for Works Consultancy Services
-Limited for Wellington Regional Council.

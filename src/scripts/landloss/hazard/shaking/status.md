@@ -3,7 +3,7 @@
 **Status:** A PGA field per realisation runs, off the NLM grid. Coarse: one
 cell covers the whole pilot box.
 
-**Updated:** 2026-09-22
+**Updated:** 2026-09-29
 
 ## Approach
 
@@ -57,7 +57,12 @@ PGA, and because the realisation multiplier is shared across the field, every
 asset in a realisation shakes identically. Variation between assets has to come
 from the fragility draw, not from the shaking.
 
-PGV is not produced.
+PGV is not produced as a layer yet, but the pieces exist:
+`landloss.io.nlm` reads the NLM's 2500-year PGA and Sa(1.0 s) grids at any of
+site classes 1-7 (`get_nlm_scenario_pga_2500yr`, `get_nlm_scenario_sa_t1_2500yr`),
+and `landloss.hazard.shaking.pgv` converts Sa(1.0 s) to PGV. Where no site class
+is otherwise set, `constants.BETA_SITE_CLASS` (site class 2) is read. The
+shaking step itself still reads site class 5 PGA.
 
 Nothing is implemented here. The folder holds this file and `__init__.py`, and
 no script in the repository reads TS1170.5, V<sub>s</sub>30 or the National
@@ -70,6 +75,8 @@ the outstanding work, not writing it.
 ## Next
 
 1. Obtain the Foster et al. (2019) V<sub>s</sub>30 layer over the study area.
+   After the beta, the site class comes per location from it, replacing
+   `BETA_SITE_CLASS` (site class 2) wherever that is read.
 2. Port the NLM code for the TS1170.5 PGA demands into a step under `steps/`,
    and confirm it reproduces the NLM's own output before modifying it.
 3. Generate the 100 m grid of PGA and Sa(T₁) over the study area, taking the

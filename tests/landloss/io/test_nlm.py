@@ -185,3 +185,44 @@ def test_the_flatland_helper_reads_its_hardcoded_path(tmp_path, monkeypatch) -> 
     ]
     assert len(result) == 1
     assert result.crs.to_epsg() == 2193
+
+
+@pytest.mark.parametrize("site_class", nlm.SITE_CLASSES)
+@pytest.mark.parametrize(
+    ("reader", "prefix"),
+    [
+        (nlm.get_nlm_scenario_pga_2500yr, "pga"),
+        (nlm.get_nlm_scenario_sa_t1_2500yr, "sa_t1"),
+    ],
+)
+def test_seismic_standard_readers_read_each_site_class(
+    tmp_path, monkeypatch, site_class, reader, prefix
+) -> None:
+    """Each of the seven site classes resolves to its own file in the folder."""
+    path = write_raster(tmp_path / "grid.tif", np.full((4, 4), 0.4))
+    asked_for = []
+
+    def record(relative_path, **_):
+        asked_for.append(relative_path)
+        return path
+
+    monkeypatch.setattr(nlm, "nlm_release_path", record)
+
+    reader(site_class)
+
+    assert asked_for == [
+        (
+            f"core/{nlm.CORE_NLM_VERSION}/scenario/return_period/seismic_standard/"
+            f"{prefix}_2500yr_site_class_{site_class}.tif"
+        )
+    ]
+
+
+def test_a_site_class_the_nlm_does_not_publish_is_refused() -> None:
+    with pytest.raises(ValueError, match="Site class 8"):
+        nlm.nlm_seismic_standard_path("sa_t1", 8)
+
+
+def test_an_unknown_measure_is_refused() -> None:
+    with pytest.raises(ValueError, match="pgv"):
+        nlm.nlm_seismic_standard_path("pgv", 2)

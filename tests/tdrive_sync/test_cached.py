@@ -96,3 +96,12 @@ def test_get_cached_ignores_local_only_working_mode(
     resolved = ts.get_cached(source)
 
     assert resolved.read_text() == "a\n"
+
+
+def test_get_cached_local_path_is_where_get_cached_reads_from(tmp_path: Path) -> None:
+    """A file written to the named cache path is what get_cached returns."""
+    source = tmp_path / "r_drive" / "library" / "data.csv"
+    local = ts.get_cached_local_path(source)
+    _write(local, "a\n")
+
+    assert ts.get_cached(source, copy_to_local=False) == local

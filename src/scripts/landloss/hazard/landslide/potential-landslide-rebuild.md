@@ -9,8 +9,9 @@ This is an options document. The build-new against extend-ESNZ decision is still
 open in `status.md`. The direction now proposed by the project lead is a
 portfolio of several models split at a size threshold — see "A portfolio of
 models: large and small landslides" — with extend-ESNZ as one member of it
-(model 3) rather than the only route. The threshold, the choice of
-international model and the combination scheme are not yet agreed.
+(model 4) rather than the only route. Three of the large-landslide models come
+from the literature: Nowicki Jessee (2018), Kritikos et al. (2015) and Hancox
+et al. (1997). The threshold and the combination scheme are not yet agreed.
 
 **Data expected:** a dataset of about 600 **rainfall-induced** landslides is to be
 supplied. It is not an earthquake inventory and cannot calibrate the shaking
@@ -276,9 +277,18 @@ the ground beside them straight into the high zone.
 - **The NLM's own "Landslide" landform class is not a substitute** — 7 polygons,
   1.94 km², two building outlines on it. Measured and ruled out.
 - **Hancox, Dellow & Perrin (1994)** reviewed the historical record of
-  earthquake-induced slope failure for this region and has not been located. It
-  is the one document that would tell us what Wellington has actually done in
-  past earthquakes.
+  earthquake-induced slope failure for this region (GNS Client Report 353905,
+  for Wellington Regional Council). It is not online and has to be requested
+  from Greater Wellington or GNS. It is the one document that would tell us what
+  Wellington has actually done in past earthquakes, and so the only local check
+  on any model in the portfolio. Its successors are in `context/lit/landslide/`
+  and are model 3 of the portfolio. Hancox, Perrin & Dellow (1997), GNS Client
+  Report 43601B for the EQC Research Foundation, covers landsliding in 22 NZ
+  earthquakes, including 1855 Wairarapa, "MM9 in Wellington; widespread
+  landsliding in Wellington region". Hancox, Perrin & Dellow (2002), *BNZSEE*
+  35(2), and Hancox (2010), *Australian Geomechanics* 45(3), summarise it. They
+  give the NZ thresholds: landsliding from about M 5 and MM6, significant
+  landsliding at M 6+ and MM7–8, and MM7 in the Wellington Region.
 
 ### 9. Land cover and vegetation
 
@@ -391,45 +401,62 @@ alternatives to each other, one is a complement to all of them.
   `landloss.io.kaikoura`. Runout is split off as under "What we need to
   modify".
 
-### The five models
+### The models
 
-1. **Large — USGS / Nowicki Jessee (2018).** This is the landslide model the
-   USGS runs in its Ground Failure product. See "Using the Nowicki Jessee
-   (2018) model" for what it is, and "The USGS software" below for whether it
-   can simply be downloaded and run.
-2. **Large — an international alternative.** Candidates, from the models
-   Allstadt et al. (2018) tested and those they could not:
-   - **Godt et al. (2008).** A global simplified-Newmark model: cohesion and
-     friction by geological unit, a 2.4 m slide thickness, and a 5 cm
-     displacement threshold, giving areal coverage at ~1 km. It is in the same
-     USGS software, so it runs alongside model 1 at no extra cost. Allstadt et
-     al. found it overpredicted most of the three, and that its output
-     behaves more like the probability of any landslide in a cell than like
-     coverage. **Its value here is that it is physically based.** Greywacke
-     strength enters directly as `c′` and `φ′`, which is exactly the
-     sensitivity model 1 lacks.
-   - **Nowicki et al. (2014).** The predecessor of model 1: PGA, ~1 km,
-     probability of any landslide. Superseded, so not worth running except as
-     a sensitivity case.
-   - **Kritikos, Robinson & Davies (2015).** Fuzzy logic, built for regions
-     with no inventory. Allstadt et al. could not run it globally because it
-     needs distance to mapped faults and no global fault map exists. That
-     objection does not apply here: the NZ Active Faults Database covers
-     Wellington. It is also the one model built for our exact situation. The
-     paper is not yet obtained.
-   - **Marc et al. (2016).** Gives total landslide area and volume from
-     earthquake parameters, with no spatial pattern. Not a model for the
-     portfolio, but an independent check on total area for any of 1–4.
+Three models from the literature for large landslides, a possible fourth from
+GNS, a bespoke refit, one urban model for small landslides, and a proposed
+strength-based model after Godt et al. (2008). The papers are
+in `context/lit/landslide/`.
 
-   Recommended: Godt et al. (2008) as the physically based alternative, since
-   it shares the software with model 1. Kritikos et al. (2015) is the
-   stronger candidate if the paper confirms it can be built from our data.
-3. **Large — GNS.** The supplied ESNZ grid is already confirmed to be the GNS
-   slope failure model held in PRUE (`status.md`, L-08). Its 32 m cells match
-   the national GNS grid in Rosser et al. (2021), which is consistent with it
-   coming from the same GNS framework. The GNS reports behind it should
-   settle the open questions in `status.md`: what a cell's probability is a
-   probability of, and what shaking it is conditioned on. To obtain and read:
+1. **Large, literature — USGS / Nowicki Jessee (2018).** The landslide model
+   the USGS runs in its Ground Failure product: a global logistic regression
+   giving areal coverage. **Rebuilt** as
+   `landloss.hazard.landslide.models.nowicki_2018` and checked against the USGS
+   at Loma Prieta. See "Using the Nowicki Jessee (2018) model" and "The USGS
+   software". Paper: `nowicki_jessee_2018/`.
+2. **Large, literature — Kritikos, Robinson & Davies (2015).** A University of
+   Canterbury model, built for regions with no landslide inventory; the paper
+   names the Southern Alps as the case it is for. Fuzzy logic: memberships for
+   shaking intensity (MMI, from scenario isoseismals), slope and other
+   topographic factors, distance to active faults and distance to streams, fitted
+   on Northridge and Wenchuan and tested blind on Chi-Chi. It needs only a DEM, an
+   active fault map and isoseismals, all of which exist for Wellington; Allstadt
+   et al. (2018) could not run it globally only for want of a global fault map.
+   Its output is a relative probability, not coverage, so it needs a total-area
+   calibration (see model 3). Paper: `kritikos_2015/`.
+3. **Large, literature — Hancox, Perrin & Dellow (1997, 2002; Hancox 2010).** The
+   New Zealand empirical relationships from 22 historical earthquakes. Not a
+   susceptibility map in itself, but the only New Zealand-derived constraints on
+   where and how much, and so used two ways:
+   - **As a model:** the area affected by landsliding from magnitude,
+     log10 A = 0.96 M − 3.7 (A in km²), the maximum distance from the source for
+     each landslide size class, and the intensity thresholds (landsliding from
+     MM6; **MM7 in the Wellington Region**, attributed to the better performance
+     of greywacke). Landslides are distributed within that envelope by slope,
+     using Hancox (2010) Table 2's share of historical failures by slope class.
+   - **As a calibration of the others**, answering whether the relationship can
+     calibrate the model: it constrains the **extent** of landsliding, not its
+     **amount**. A is the area within which landslides occurred — about 20,000
+     km² for 1855 Wairarapa — not the area that slid, which is a small fraction
+     of it. So it cannot calibrate total coverage on its own. It can calibrate
+     the footprint: coverage outside the area affected, or beyond the maximum
+     distance for the magnitude, should be close to zero. That is exactly the
+     error Allstadt et al. found in model 1, whose hazard did not decay quickly
+     enough away from the rupture. For the amount, it needs pairing with an
+     event where both are known. At Kaikōura, about 20 km² slid (Allstadt et al.)
+     within an affected area of the order of 10,000 km². A ratio of that kind,
+     applied to A(M), gives an independent New Zealand estimate of total area to
+     set beside Marc et al. (2016).
+
+   Papers: `hancox_1997/` (with a searchable markdown version of the scanned
+   report), `hancox_2002/`, `hancox_2010/`.
+4. **Large, possible — GNS / ESNZ.** The supplied ESNZ grid is already
+   confirmed to be the GNS slope failure model held in PRUE (`status.md`, L-08).
+   Its 32 m cells match the national GNS grid in Rosser et al. (2021), which is
+   consistent with it coming from the same GNS framework. The GNS reports behind
+   it should settle the open questions in `status.md`: what a cell's
+   probability is a probability of, and what shaking it is conditioned on. To
+   obtain and read:
    - Massey et al. (2019), **SR2019/37**, SLIDE (Wellington): rainfall induced
      and earthquake induced landslide hazard models. The most likely source of
      the ESNZ grid's method.
@@ -439,19 +466,19 @@ alternatives to each other, one is a complement to all of them.
      landslides, **SR2018/27**. Not a hazard model, but directly relevant to
      the vulnerability module.
 
-   Note that the GNS model is fitted on Wellington data, so it may not be
-   purely green-field. Check whether it already carries modified ground
-   before placing it on the large side of the line.
-4. **Large — bespoke, recalibrated with new inputs.** Model 1's structure
-   refitted on New Zealand data (route 3 below), using modern and local
-   inputs at their proper resolution. That means the 1 m LiDAR slope stack, a
-   geology split with real strength contrast, distance to rupture, and the
+   The GNS model is fitted on Wellington data, so it may not be purely
+   green-field. Check whether it already carries modified ground before placing
+   it on the large side of the line.
+5. **Large, bespoke — recalibrated with new inputs.** Model 1's structure
+   refitted on New Zealand data (route 3 below), using modern and local inputs
+   at their proper resolution. That means the 1 m LiDAR slope stack, a geology
+   split with real strength contrast, distance to rupture, and the
    `s3_multiscale_slope` terrain metrics. It is calibrated to the ~20 km²
-   Kaikōura total. The training data would be the GNS Kaikōura inventory,
-   plus selected events from the USGS inventory repository (Schmitt et al.
-   2017, below) — for example greywacke-like terrain, or the subduction
-   events needed for Hikurangi.
-5. **Small — urban-scale bespoke model.** Failures below the threshold on
+   Kaikōura total, with its footprint checked against model 3's envelope. The
+   training data would be the GNS Kaikōura inventory, plus selected events from
+   the USGS inventory repository (Schmitt et al. 2017, below) — for example
+   greywacke-like terrain, or the subduction events needed for Hikurangi.
+6. **Small — urban-scale bespoke model.** Failures below the threshold on
    modified and natural ground inside the insured land extent. Its inputs:
    - SLIDE cut and fill (item 3), prior failure (item 8) and fine-scale slope
      (item 2).
@@ -463,14 +490,91 @@ alternatives to each other, one is a complement to all of them.
      `s1_landslide_realisation` machinery, with its size distribution capped
      at the threshold.
 
+7. **Large, proposed — strength-based coverage after Godt et al. (2008).**
+   Godt's model with its displacement step removed, so that coverage comes
+   straight from strength against shaking. It is the one model in the portfolio
+   where geology enters as strength, so greywacke is represented by its `c′`
+   and `φ′`, not by a class coefficient. Paper: `godt_2008/`.
+   - **Godt et al. as published.** An infinite-slope factor of safety `FS` for
+     a constant 2.4 m slide thickness, with no groundwater, and cohesion and
+     friction assigned by geological unit from a modified Nadim et al. (2006)
+     susceptibility ranking. The critical acceleration is
+     `ac = (FS − 1) g sin α`. It is compared with PGA through Jibson's (2007)
+     displacement regression, and a displacement of more than 5 cm counts as
+     failure. This is evaluated for each of a set of slope quantiles
+     (1st to 99th) within each ~1 km cell, computed from 90 m SRTM (Verdin et
+     al. 2007), so a cell's coverage is the share of its slope distribution
+     that fails.
+   - **The modification.** Drop the displacement estimate. A part of the slope
+     distribution fails where the shaking exceeds its critical acceleration,
+     `PGA > ac`, and coverage is the share of the cell's slope distribution
+     for which that holds. The strength parameters stay central, which is the
+     point of the model: `c′`, `φ′` and unit weight by material, from T+T's
+     back-analysed Wellington values for residual soil, CW–HW and MW–SW
+     greywacke (item 4), and slide thickness by material or weathering depth
+     rather than a flat 2.4 m.
+   - **With our data.** Take the slope distribution inside each model cell from
+     the 1–10 m LiDAR stack (`s3_multiscale_slope`) rather than seven quantiles
+     of 90 m slope, and the material from the SLIDE interpreted materials and
+     the GNS geological map. At 1 m the distribution includes cut faces, so
+     the same construction could reach towards the small modified-slope
+     population (model 6) as well.
+   - **What the modification costs.** Without a displacement model, `PGA > ac`
+     is a pseudo-static criterion. It takes no account of how long the demand
+     stays above `ac`, which is what Newmark displacement measures, so a brief
+     high-frequency peak counts as failure. That makes it prone to overpredict,
+     the same weakness Allstadt et al. found in the published model. Carry the
+     demand as an effective fraction of PGA and calibrate that fraction to the
+     total amount from Marc et al. (2016) and Kaikōura, and to the extent from
+     model 3, rather than fixing it.
+   - **A reference to check against.** The published model is `godt_2008` in
+     the USGS `groundfailure` package, and its Loma Prieta test data include a
+     `godt_2008.grd` target. So the unmodified model can be rebuilt and checked
+     the way model 1 was, before the modification is made.
+
+Other published models considered, and not in the portfolio:
+
+- **Nowicki et al. (2014).** The predecessor of model 1, superseded by it.
+
+Used for calibration rather than as a model:
+
+- **Marc et al. (2016)**, for the amount of landsliding. A seismologically
+  derived expression for the total area and total volume of landslides an
+  earthquake triggers. It is built from scaling relationships between landslide
+  spatial density, ground acceleration, fault length, source (asperity) depth,
+  and seismic moment, with a landscape steepness term and a near-constant
+  threshold acceleration. It gives one number per earthquake and no spatial
+  pattern. Paper: `marc_2016/`.
+  - **Performance.** Tested on 40 shallow continental earthquakes, it predicts
+    total volume to within a factor of 2 for 63% of them (R² = 0.76), and total
+    area to within a factor of 2 for 11 of 17 (R² = 0.73). Low landscape
+    steepness causes systematic overprediction, and the area prediction is also
+    sensitive to the size-frequency distribution and possibly to shaking
+    duration.
+  - **Use.** Calibrate the total landslide area of every large model (the sum of
+    coverage times cell area) for the scenario earthquake. That total is
+    exactly the quantity Allstadt et al. found model 1 overpredicts. Marc sets
+    the amount; model 3's Hancox relationships set the extent. Kaikōura
+    post-dates the paper, so it is also an out-of-sample test of Marc itself:
+    run the expression for Kaikōura and compare it with the ~20 km² observed.
+  - **Limit.** The calibration set is shallow continental earthquakes. The two
+    subduction events it shows, Tohoku and Pisco, are plotted only for
+    reference and are not part of the fit. It suits a Wellington Fault
+    scenario; for a Hikurangi interface scenario it has to be used with that
+    caution stated.
+
 ### How they combine
 
-- **Models 1–4 are alternatives** for the large population. They can be
-  compared, or carried as weighted branches of a logic tree, so that the
-  choice of model appears as epistemic uncertainty in the loss rather than
-  being hidden inside a single choice.
-- **Model 5 complements whichever large model is used.** The loss per
-  realisation is the large-model loss, above the threshold, plus the model 5
+- **Models 1–5 and 7 are alternatives** for the large population. They can be
+  compared, or carried as weighted branches of a logic tree, so that the choice
+  of model appears as epistemic uncertainty in the loss rather than being hidden
+  inside a single choice.
+- **Every large model is calibrated the same two ways:** its total area against
+  Marc et al. (2016), and its footprint against model 3's Hancox envelope.
+  Kaikōura, where both the amount and the extent were observed, is the test
+  of both calibrations.
+- **Model 6 complements whichever large model is used.** The loss per
+  realisation is the large-model loss, above the threshold, plus the model 6
   loss, below it.
 - The same spatial correlation (item 12) and PGV realisations should drive
   every model in a realisation. Otherwise the large and small populations are
@@ -498,7 +602,8 @@ alternatives to each other, one is a complement to all of them.
   - Uncertainty is propagated from the ShakeMap PGV standard deviation plus a
     model standard-deviation raster.
 
-  **Model 2 (Godt et al. 2008) is in it** as `godt_2008`. So are the
+  **Godt et al. (2008), the physically based alternative, is in it** as
+  `godt_2008`. So are the
   liquefaction models of Zhu et al. (2015, 2017), which the liquefaction work
   may want as a cross-check.
 - **It can be rerun, but not straight out of the box for Wellington.** The
@@ -526,7 +631,7 @@ alternatives to each other, one is a complement to all of them.
   its public source by our own code, the equation is implemented in
   `src/landloss`, and `groundfailure` serves only as the reference to check
   against. It keeps model 1 inside our own realisation loop and lets models 1
-  and 4 share one implementation.
+  and 5 share one implementation.
 - **The check is ready-made.** `groundfailure`'s test data for the 1989 Loma
   Prieta earthquake (`tests/data/loma_prieta/`) holds the USGS's own prepared
   inputs for this model — `global_grad.tif`, `GLIM_replace.tif`,
@@ -540,6 +645,17 @@ alternatives to each other, one is a complement to all of them.
      tests the implementation.
 
   Only once both agree does the same pipeline run over Wellington.
+- **Built and checked (29 September 2026).** The rebuild is
+  `landloss.hazard.landslide.models.nowicki_2018`, fed by the `get_` scripts in
+  `static_data_gen/` and the readers in `landloss.io.global_datasets`. At Loma
+  Prieta the equations reproduce the USGS output on its own inputs. The fully
+  rebuilt inputs give total landslide area within 1% of it (−0.6%) and a
+  cell-by-cell correlation of 0.81. Slope is computed on a grid registered as
+  the USGS's is, after resampling the DEM onto it, which is what closes most of
+  the slope bias. See
+  `validations/nowicki_2018/nowicki_2018_loma_prieta_findings.md`. The
+  Wellington run is not yet made. PGV comes from the scenario's Sa(1.0 s) at
+  site class 2, read through `landloss.io.nlm.get_nlm_scenario_sa_t1_2500yr`.
 - **Every layer can be downloaded by script** (checked 29 September 2026):
 
   | Layer | Source | Access |
@@ -731,7 +847,7 @@ Three things follow.
    budget to fine cells inside it by a fine-scale natural-slope susceptibility
    (1–10 m slope, geology, prior failure). Under the portfolio split this is
    model 1 on the large side of the threshold, so cut and fill belong to
-   model 5 and not to this allocation. The size distribution (item 10),
+   model 6 and not to this allocation. The size distribution (item 10),
    truncated at the threshold, turns the area into a number of polygons. The
    correlated random field (item 12) decides which cells fire together, and
    runout (item 11) follows unchanged. This keeps the model's calibration at
@@ -924,9 +1040,22 @@ obtained, with the reason.
   **In temp** — `singeisen-2023-coastal-eq-landslide-susceptibility-kaikoura.pdf`.
 - Kritikos, T., Robinson, T.R. & Davies, T.R.H. (2015). Regional coseismic
   landslide hazard assessment without historical landslide inventories.
-  *JGR Earth Surface*.
-  <https://agupubs.onlinelibrary.wiley.com/doi/full/10.1002/2014JF003224>
-  **Not in temp** — Wiley refuses scripted downloads; save by hand.
+  *JGR Earth Surface* 120, 711–729. <https://doi.org/10.1002/2014JF003224>
+  Model 2. **In the repository** —
+  `context/lit/landslide/kritikos_2015/kritikos-2015-regional-coseismic-landslide-hazard-without-inventories.pdf`.
+- Hancox, G.T., Perrin, N.D. & Dellow, G.D. (1997). Earthquake-induced
+  landsliding in New Zealand and implications for MM intensity and seismic
+  hazard assessment. GNS Client Report 43601B, for the EQC Research Foundation.
+  Model 3. **In the repository** — `context/lit/landslide/hancox_1997/`, the scan
+  with a searchable markdown version beside it.
+- Hancox, G.T., Perrin, N.D. & Dellow, G.D. (2002). Recent studies of
+  historical earthquake-induced landsliding, ground damage, and MM intensity
+  in New Zealand. *BNZSEE* 35(2). **In the repository** —
+  `context/lit/landslide/hancox_2002/`.
+- Hancox, G.T. (2010). Earthquake-induced landsliding in New Zealand and
+  potential for landslides during earthquakes in Adelaide, South Australia.
+  *Australian Geomechanics* 45(3), 51–64. **In the repository** —
+  `context/lit/landslide/hancox_2010/`.
 - Rault, C., Robert, A., Marc, O., Hovius, N. & Meunier, P. (2019). Seismic and
   geologic controls on spatial clustering of landslides in three large
   earthquakes. *Earth Surface Dynamics* 7, 829.
@@ -970,7 +1099,7 @@ obtained, with the reason.
   <https://www.sciencebase.gov/catalog/item/583f4114e4b04fc80e3c4a1a>. Original
   inventory files and an integrated database with uniform attributes,
   including the inventories Nowicki Jessee et al. trained on. The training and
-  test source for model 4. **Not downloaded** — ScienceBase blocks scripted
+  test source for model 5. **Not downloaded** — ScienceBase blocks scripted
   access; browse and download by hand.
 - **Software:** Allstadt, K.E., Thompson, E.M., Hearne, M. & Biegel, K. (2018).
   groundfailure v1.0. USGS Software Release. <https://doi.org/10.5066/P91G4NS4>,
@@ -983,22 +1112,27 @@ obtained, with the reason.
   repository when needed; the 2021 paper was not attempted.
 - Godt, J.W., Sener, B., Verdin, K.L., Wald, D.J., Earle, P.S., Harp, E.L. &
   Jibson, R.W. (2008). Rapid assessment of earthquake-induced landsliding.
-  *Proceedings of the First World Landslide Forum*, Tokyo, 392–395. Model 2
-  candidate. **Not in temp** — download not attempted.
+  *Proceedings of the First World Landslide Forum*, Tokyo, 392–395. Model 7.
+  **In the repository** —
+  `context/lit/landslide/godt_2008/godt-2008-rapid-assessment-eq-induced-landsliding.pdf`,
+  the copy the USGS PAGER references page links.
 - Nowicki, M.A., Wald, D.J., Hamburger, M.W., Hearne, M. & Thompson, E.M.
   (2014). Development of a globally applicable model for near real-time
   prediction of seismically induced landslides. *Engineering Geology* 173,
   54–65. The predecessor of model 1. **Not in temp** — download not attempted.
-- Marc, O., Hovius, N., Meunier, P., Gorum, T. & Uchida, T. (2016). A seismologically
-  consistent expression for the total area and volume of earthquake-triggered
-  landsliding. *JGR Earth Surface* 121. Total-area check for models 1–4.
-  **Not in temp** — download not attempted.
+- Marc, O., Hovius, N., Meunier, P., Gorum, T. & Uchida, T. (2016). A
+  seismologically consistent expression for the total area and volume of
+  earthquake-triggered landsliding. *JGR Earth Surface* 121(4), 640–663.
+  <https://doi.org/10.1002/2015JF003732> Calibration of total area for the
+  large models. **In the repository** —
+  `context/lit/landslide/marc_2016/marc-2016-total-area-volume-eq-triggered-landsliding.pdf`,
+  the author's accepted version from the GFZ repository.
 - GNS Science Report SR2019/28, SLIDE (Wellington): geomorphological
   characterisation of the Wellington urban area; and Massey, C.I., Thomas,
   K-L., King, A.B., Singeisen, C., Taig, T. & Horspool, N.A., SLIDE
   (Wellington): vulnerability of dwellings to landslides, GNS Science Report
   SR2018/27. Both listed on the GNS online shop. **Not in temp** — to obtain
-  with SR2019/37 for model 3.
+  with SR2019/37 for model 4.
 - Regional and method context also from the
   `seismic-landslide-hazard-wellington` skill in this repository, and the method
   extraction in

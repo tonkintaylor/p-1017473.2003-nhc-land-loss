@@ -154,6 +154,9 @@ Anything that exists **because** of the beta carries `beta` in its name, so a
 grep finds everything the beta has to give back. `beta_expand_ld_probabilities`,
 `BETA_NONE_SHARES` and `BETA_MAJOR_SHARES` manufacture land damage states the
 National Liquefaction Model does not supply, and go when it does.
+`BETA_SITE_CLASS` fixes one TS1170.5 site class (2) for the whole study area,
+and goes once the class is read per location from the Foster et al. (2019)
+Vs30 model (**T-15**).
 
 Mark only what is genuinely temporary. In the same module `exceedance_to_bands`
 and `draw_ld_states` carry no prefix, because differencing an exceedance pair

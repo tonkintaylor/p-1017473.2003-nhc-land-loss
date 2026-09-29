@@ -31,6 +31,7 @@ from tdrive_sync._config import SCRATCH_VERSION, TdriveSyncConfigError
 from tdrive_sync._paths import (
     get_base_path,
     get_cached,
+    get_cached_local_path,
     get_local_path,
     get_path,
     get_source_mat,
@@ -43,6 +44,7 @@ __all__ = [
     "TdriveSyncConfigError",
     "get_base_path",
     "get_cached",
+    "get_cached_local_path",
     "get_local_path",
     "get_path",
     "get_source_mat",

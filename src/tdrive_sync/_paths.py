@@ -248,6 +248,24 @@ def get_source_mat(relative_path: str | Path, *, copy_to_local: bool = True) -> 
     )
 
 
+def get_cached_local_path(path: Path) -> Path:
+    """Return the local cache mirror of an arbitrary absolute path.
+
+    Path construction only, the counterpart to :func:`get_cached` as
+    :func:`get_source_mat_local_path` is to :func:`get_source_mat`: for a
+    caller that writes a file into the cache itself, ahead of the file being
+    placed at ``path``, so that ``get_cached`` then finds it.
+
+    Args:
+        path: The absolute path, anywhere on a network drive.
+
+    Returns:
+        The path the file has in the local cache, whether or not it is there.
+    """
+    settings = _config.load_local_mode_settings()
+    return _cache_root(settings) / _relative_base_dir(path)
+
+
 def get_cached(path: Path, *, copy_to_local: bool = True) -> Path:
     """Resolve an arbitrary T: path against its local cache mirror.
 
@@ -271,8 +289,8 @@ def get_cached(path: Path, *, copy_to_local: bool = True) -> Path:
     Raises:
         ValueError: If the file exists at neither location.
     """
-    settings = _config.load_local_mode_settings()
-    local_path = _cache_root(settings) / _relative_base_dir(path)
     return _resolve_cached_path(
-        base_path=path, local_path=local_path, copy_to_local=copy_to_local
+        base_path=path,
+        local_path=get_cached_local_path(path),
+        copy_to_local=copy_to_local,
     )

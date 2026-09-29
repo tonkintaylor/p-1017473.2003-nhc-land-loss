@@ -114,8 +114,90 @@ def get_nlm_scenario_rp2500y_gwd_med_p_ld_major_fu() -> xr.DataArray:
     )
 
 
+# The TS1170.5 site classes the NLM publishes its 2500-year seismic-standard
+# grids at.
+SITE_CLASSES = (1, 2, 3, 4, 5, 6, 7)
+
+# The file names of those grids below ``scenario/return_period/seismic_standard``
+# in the NLM's release tree, one per site class. The PGA name is the one the
+# shaking step has read since it was written. The Sa(1.0 s) name follows the same
+# pattern and is not yet confirmed against the release folder: if a read fails
+# with a missing file, correct it here.
+SEISMIC_STANDARD_FILENAMES = {
+    "pga": "pga_2500yr_site_class_{site_class}.tif",
+    "sa_t1": "sa_t1_2500yr_site_class_{site_class}.tif",
+}
+
+
+def nlm_seismic_standard_path(measure: str, site_class: int) -> str:
+    """Return a 2500-year seismic-standard grid's path below the release tree.
+
+    Args:
+        measure: ``"pga"`` or ``"sa_t1"``, a key of
+            :data:`SEISMIC_STANDARD_FILENAMES`.
+        site_class: The TS1170.5 site class, one of :data:`SITE_CLASSES`.
+
+    Returns:
+        The path relative to ``NLM_RELEASES_DIR`` at ``CORE_NLM_VERSION``.
+
+    Raises:
+        ValueError: If the measure or site class is not one the NLM publishes.
+    """
+    if measure not in SEISMIC_STANDARD_FILENAMES:
+        msg = f"No seismic-standard grid for {measure!r}; expected one of "
+        msg += f"{sorted(SEISMIC_STANDARD_FILENAMES)}."
+        raise ValueError(msg)
+    if site_class not in SITE_CLASSES:
+        msg = f"Site class {site_class!r} is not one of {SITE_CLASSES}."
+        raise ValueError(msg)
+    name = SEISMIC_STANDARD_FILENAMES[measure].format(site_class=site_class)
+    return f"core/{CORE_NLM_VERSION}/scenario/return_period/seismic_standard/{name}"
+
+
+def get_nlm_scenario_pga_2500yr(site_class: int) -> xr.DataArray:
+    """Read the NLM's RP2500y peak ground acceleration grid at one site class.
+
+    Source:
+        National Liquefaction Model core release ``CORE_NLM_VERSION``, under
+        ``scenario/return_period/seismic_standard`` in the NLM's release tree
+        on T:. The TS1170.5 demand, built in the NLM repository
+        (``p-1017473-nlm-loss-modelling``).
+
+    Args:
+        site_class: The TS1170.5 site class, 1 to 7.
+
+    Returns:
+        The PGA grid in g, as delivered.
+    """
+    return get_nlm_scenario_raster(nlm_seismic_standard_path("pga", site_class))
+
+
+def get_nlm_scenario_sa_t1_2500yr(site_class: int) -> xr.DataArray:
+    """Read the NLM's RP2500y Sa(1.0 s) grid at one site class.
+
+    The spectral acceleration at a 1 second period, which the shaking module
+    converts to PGV (``landloss.hazard.shaking.pgv``).
+
+    Source:
+        National Liquefaction Model core release ``CORE_NLM_VERSION``, under
+        ``scenario/return_period/seismic_standard`` in the NLM's release tree
+        on T:. The TS1170.5 demand, built in the NLM repository
+        (``p-1017473-nlm-loss-modelling``).
+
+    Args:
+        site_class: The TS1170.5 site class, 1 to 7.
+
+    Returns:
+        The Sa(1.0 s) grid in g, as delivered.
+    """
+    return get_nlm_scenario_raster(nlm_seismic_standard_path("sa_t1", site_class))
+
+
 def get_nlm_scenario_pga_2500yr_site_class_5() -> xr.DataArray:
     """Read the NLM's RP2500y, site class 5 peak ground acceleration grid.
+
+    Kept for the shaking step, which reads site class 5; equivalent to
+    ``get_nlm_scenario_pga_2500yr(5)``.
 
     Source:
         National Liquefaction Model core release ``CORE_NLM_VERSION``, under
@@ -125,10 +207,7 @@ def get_nlm_scenario_pga_2500yr_site_class_5() -> xr.DataArray:
     Returns:
         The PGA grid, as delivered.
     """
-    return get_nlm_scenario_raster(
-        f"core/{CORE_NLM_VERSION}/scenario/return_period/seismic_standard/"
-        "pga_2500yr_site_class_5.tif"
-    )
+    return get_nlm_scenario_pga_2500yr(5)
 
 
 def get_nlm_flatland(*, copy_to_local: bool = True) -> gpd.GeoDataFrame:
