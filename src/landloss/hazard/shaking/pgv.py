@@ -8,8 +8,9 @@ status.md``):
     PGV (mm/s) = 750 * Sa(1.0 s) (g)
 
 so that PGA and PGV come from one spectrum at one site class and cannot
-disagree about how strong the earthquake was. The landslide models read PGV in
-cm/s, the unit the Nowicki Jessee (2018) coefficients were fitted in.
+disagree about how strong the earthquake was. The shaking layers carry PGV in
+m/s; the landslide models read it in cm/s, the unit the Nowicki Jessee (2018)
+coefficients were fitted in.
 """
 
 import numpy as np
@@ -29,3 +30,16 @@ def pgv_cm_s_from_sa_1s(sa_1s_g: np.ndarray) -> np.ndarray:
         PGV in cm/s.
     """
     return sa_1s_g * PGV_MM_S_PER_G_SA_1S / 10.0
+
+
+def pgv_m_s_from_sa_1s(sa_1s_g: np.ndarray) -> np.ndarray:
+    """Convert Sa(1.0 s) to peak ground velocity, in m/s.
+
+    Args:
+        sa_1s_g: Spectral acceleration at a 1 second period, in g. Works on
+            anything numpy arithmetic does, an ``xarray.DataArray`` included.
+
+    Returns:
+        PGV in m/s.
+    """
+    return sa_1s_g * PGV_MM_S_PER_G_SA_1S / 1000.0

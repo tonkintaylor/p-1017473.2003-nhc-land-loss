@@ -125,7 +125,11 @@ says it is done, or when the session itself produced the evidence that it is.
   optional.
 - IDs are stable: `T-01`, `L-01`, `I-01`, `Q-01`, and so on. Never reuse or renumber one —
   other documents may cite them. Omit the ID and the script allocates the next in
-  sequence, which is safer than counting rows by hand.
+  sequence, which is safer than counting rows by hand: it continues from the
+  workbook, so it also counts rows added directly in Excel. The script then writes
+  the allocated ID back into the JSON, so the log and the workbook name the same
+  entry the same way and the next append skips it rather than adding it again.
+  Commit that rewrite of `register.json` along with the entry.
 
 ### Commands
 

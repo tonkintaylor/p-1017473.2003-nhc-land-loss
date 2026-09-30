@@ -612,6 +612,13 @@
       "Affects": "Hazard scope, all phases",
       "Source": "Maxim Millen 2026-09-29",
       "Status": "Open"
+    },
+    {
+      "ID": "L-38",
+      "Limitation": "Site class is assigned from Foster et al. (2019) Vs30 alone, without the profile criteria of TS1170.5 Table 3.3, so rock under weathered cover with Vs30 above 750 m/s would be taken as Site Class I, and Class VII sites take the Class VI spectrum without a site-specific analysis. Over the four territorial authorities Vs30 peaks at 618 m/s, so no cell is Class I at present.",
+      "Affects": "Shaking hazard: site class, and the Sa(1.0 s), PGV and PGA read from it (hazard/shaking s2_site_class, s3_pgv)",
+      "Source": "Maxim Millen 2026-09-30",
+      "Status": "Accepted"
     }
   ],
   "Improvements": [

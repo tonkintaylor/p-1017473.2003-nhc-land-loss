@@ -10,6 +10,10 @@ Two commands:
     append <entries.json> [workbook.xlsx]   add any entries whose ID is new
     status <ID> <status> [workbook.xlsx]    set one row's status
 
+An entry given without an ID is allocated the next one in its sheet's sequence,
+and the ID is written back into the entries JSON, so a later append recognises
+the entry rather than allocating it another ID and adding it twice.
+
 The workbook is the source of truth for the Status column. The JSON supplies an
 entry's initial status when the row is first created and is ignored for it
 thereafter, so marking something done in Excel survives the next append.
@@ -180,21 +184,35 @@ def open_workbook(path: Path) -> Workbook:
 
 def append_to_sheet(
     sheet: Worksheet, name: str, entries: list[dict[str, str]]
-) -> tuple[list[str], list[str]]:
-    """Append entries with unseen IDs, returning the IDs added and those skipped."""
+) -> tuple[list[str], list[str], list[str]]:
+    """Append entries with unseen IDs.
+
+    An entry without an ID is given the next one in the sheet's sequence, and the
+    ID is set on the entry in ``entries`` so the caller can save it back.
+
+    Returns:
+        The IDs added, the IDs skipped as already present, and the IDs allocated
+        to entries that had none.
+    """
     header = header_of(sheet)
     present = existing_ids(sheet)
     allocated = set(present)
     added: list[str] = []
     skipped: list[str] = []
+    new_ids: list[str] = []
 
-    for entry in entries:
+    for position, entry in enumerate(entries):
         entry_id = str(entry.get("ID", "")).strip().upper()
         if entry_id and entry_id in present:
             skipped.append(entry_id)
             continue
         if not entry_id:
             entry_id = next_id(ID_PREFIXES[name], allocated)
+            # Recorded on the entry itself, so the caller can write it back to
+            # the JSON. An entry left without an ID would be allocated a fresh
+            # one, and appended again, on every later run.
+            entries[position] = {"ID": entry_id, **entry}
+            new_ids.append(entry_id)
         allocated.add(entry_id)
 
         row = dict(entry, ID=entry_id)
@@ -205,7 +223,7 @@ def append_to_sheet(
         added.append(entry_id)
 
     sheet.auto_filter.ref = sheet.dimensions
-    return added, skipped
+    return added, skipped, new_ids
 
 
 def command_append(source: Path, output: Path) -> int:
@@ -220,6 +238,7 @@ def command_append(source: Path, output: Path) -> int:
     workbook = open_workbook(output)
     added: dict[str, list[str]] = {}
     skipped: list[str] = []
+    allocated: list[str] = []
 
     for name, columns in SHEETS.items():
         # Touch every sheet, not just the ones with entries, so an older workbook
@@ -228,12 +247,23 @@ def command_append(source: Path, output: Path) -> int:
         entries = data.get(name, [])
         if not entries:
             continue
-        sheet_added, sheet_skipped = append_to_sheet(sheet, name, entries)
+        sheet_added, sheet_skipped, sheet_allocated = append_to_sheet(
+            sheet, name, entries
+        )
+        allocated.extend(sheet_allocated)
         if sheet_added:
             added[name] = sheet_added
         skipped.extend(sheet_skipped)
 
     workbook.save(output)
+
+    # Write any IDs just allocated back into the source, so the JSON log names
+    # the same IDs as the workbook and the next append skips these entries.
+    if allocated:
+        source.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        print(f"wrote allocated IDs back to {source}: {', '.join(allocated)}")
 
     for name in SHEETS:
         ids = added.get(name, [])
