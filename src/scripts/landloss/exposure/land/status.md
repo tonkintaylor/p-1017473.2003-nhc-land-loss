@@ -4,7 +4,7 @@
 applied to an insured land extent buffered off every building on the property,
 driveways included, clipped to the boundary.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-01
 
 ## Approach
 
@@ -132,6 +132,23 @@ polygon now includes the driveway and is cut to the property boundary.
    (2026-09-30); keep progressing until they do. Building on licensed values
    would put everything derived from them under that licence, so the further
    the model gets on open data first, the better.
+8. Generate one driveway per property, as its main access way, rather than one
+   per building (**T-60**). Reviewing the KML layers on 2026-10-01, parcel
+   3989118 carried two driveways because it has two dwellings, and outbuildings
+   at the back of a section add more. The Act covers the main access way only;
+   whether a second dwelling earns its own is **Q-15**, for John Leeves.
+9. Cap the driveway at the Act's 60 m (**T-61**, Maxim Millen to confirm).
+   `MAX_DRIVEWAY_LENGTH_M` is 300 m and is a no-road threshold, not the 60 m
+   rule, so drives longer than 60 m reach the extent today. Only the part of a
+   driveway inside the property boundary counts.
+10. Check for a newer roading layer over the new subdivision off Yabby Creek
+    Road (as transcribed), where missing roads make the generated driveways long
+    (**T-62**). The same area has no property boundaries or addresses yet
+    (**L-41**).
+11. Exclude non-residential sites using a land use layer rather than by hand
+    (**T-63**); the building use field is too incomplete, so buildings default
+    to residential (**L-42**). The zoo was the example. Low priority unless the
+    false positives start to show in the costs.
 
 ## Validation
 

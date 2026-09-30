@@ -1,5 +1,5 @@
 **A folder that cannot be read no longer stops a fetch.** One access-restricted
-subproject folder (1502000.1937) stopped the whole IAG run; it is now skipped
+IAG subproject folder stopped the whole IAG run; it is now skipped
 with a message and recorded as unreadable.
 
 `extract_claim_reports.py --show SUBPROJECT …` prints the header lines, the

@@ -19,7 +19,7 @@ the script also reads:
 
 "Nil" reads as zero and "N/A" as blank, and a `missing` column names any
 summary field that could not be found, so template drift shows up as gaps.
-Checked field by field against report 1502000.0005.
+Checked field by field against one 2021 IAG report.
 
 The step-one index now records cached paths relative to the repo, so it is
 usable on another machine once committed.

@@ -36,12 +36,14 @@ want to add more data").
    with `--claims-list`, to `extracted/<list>/` with each claim's coordinates
    joined on. Its main source is the Summary of Information table. `--show`
    prints what the parse sees in a report, to diagnose a template it misses.
-   The claimant's name is dropped from the address, since the CSVs are
-   committed.
+   The claimant's name is dropped from the address.
+   Both steps' outputs stay local: `.gitignore` excludes everything under
+   `claim_reports/` except `claims-lists/`.
 
 Claude cannot run step one: T:, P: and I: are reachable only through the T+T
 Network Browse MCP, which is not available, so a developer runs it in their
-own terminal. Step two's outputs are in the repo and can be read.
+own terminal. Step two's outputs are on that developer's machine, not in the
+repo.
 
 ## What is extracted
 
@@ -104,8 +106,10 @@ Findings from report 0005 so far:
   photographs, which is also why only its text is cached (2026-10-01).
 - **No PDF library** (2026-09-30). A PDF-only report is recorded, not read;
   a draft or working-copy docx is used where one exists, and flagged.
-- **Claimants' names are not committed** (2026-10-01). The address keeps the
-  site address only; insurer and EQC claim numbers stay.
+- **Nothing read from a report is committed** (2026-10-01). The claims lists
+  may be; the report index, the extracted CSVs and the IAG 1502000 summaries
+  may not, and nor may notes tying a finding to a named subproject. The address
+  still drops the claimant's name, as a second guard.
 - **Keep rain-triggered claims as well as earthquake ones.** Most Wellington
   claims are rain landslips. They still inform the imminent-to-evacuated ratio,
   the overlap of extents, failure size and wall damage. The event is recorded
@@ -115,8 +119,8 @@ Findings from report 0005 so far:
 
 ## Findings so far
 
-- **Declined claims are in the lists.** 85651.0043 is on the Seddon list and
-  headed "(Earthquake) Damage", but its summary says the damage is not natural
+- **Declined claims are in the lists.** One Seddon-list report is headed
+  "(Earthquake) Damage", but its summary says the damage is not natural
   disaster damage: the cracking was historic settlement. Filter on
   `claim_accepted` before analysing extents.
 - **The first batch from both earthquake lists is all storm damage**
@@ -127,10 +131,10 @@ Findings from report 0005 so far:
   backlog comes first. Earthquake claims are to be looked for in the
   programmes outside Wellington (`--programmes 1011602 1011603 1001700 1001710`
   for Kaikōura, `871310 871311` for Seddon).
-- **The earthquake lists carry rain claims.** 86101.6708 and 871351.8037 are
-  both on the Kaikoura list, and both landslips followed rain in October and
-  November 2016. Filter on `event_cause`.
-- **A replacement can change construction.** 871351.8037 replaces a timber
+- **The earthquake lists carry rain claims.** Two Kaikoura-list reports, one
+  from Wellington and one from Nelson, describe landslips that followed rain in
+  October and November 2016. Filter on `event_cause`.
+- **A replacement can change construction.** One Nelson report replaces a timber
   pole wall with 190 mm block masonry. The loss module assumes a replacement
   keeps the old wall's construction.
 
@@ -141,9 +145,8 @@ Findings from report 0005 so far:
   from those months (the June 2013 Wellington storm, Nelson rain). Only the
   report says which event a claim was.
 
-- **Can a subproject hold two claims?** 1502000.0003 has
-  `…C3781478_Report_Rev1.docx` under a final folder, and a later
-  `…C3917925_Report - December 2021 claim.docx` with a different claim number.
+- **Can a subproject hold two claims?** One IAG subproject has a report under
+  a final folder and a later report carrying a different claim number.
   Step one keeps only the first. If one subproject can hold several claims,
   step one should fetch one report per claim.
 - **Misfiled folders.** Two `1501000.*` (Suncorp) folders sit inside 1502000.

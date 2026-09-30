@@ -1,5 +1,5 @@
 **The 2013 EQC template and the Nelson office's layout are read too.** Checked
-against 85651.0043 (2013, Wellington) and 871351.8037 (2016, Nelson):
+against a 2013 Wellington report and a 2016 Nelson report:
 
 - "T&T Ref :" job numbers and the "Summary Information" heading (2013).
 - The 2013 single imminent "Inundation" row, read as new inundation.

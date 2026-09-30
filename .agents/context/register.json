@@ -471,6 +471,46 @@
       "Phase": "4",
       "Source": "Land Model Catch Up 2026-09-30",
       "Status": "Open"
+    },
+    {
+      "ID": "T-60",
+      "Task": "Generate one driveway per property, taken as its main access way, rather than one per building, so a second dwelling or an outbuilding on the section adds no further driveway (parcel 3989118 carries two).",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-61",
+      "Task": "Confirm whether generated driveways are capped at the 60 m main access way limit; driveways.py stops only at MAX_DRIVEWAY_LENGTH_M = 300 m, the distance beyond which a building is taken to have no road, and drives visibly longer than 60 m appear in the layer.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-62",
+      "Task": "Check whether a newer roading parcel layer covers the new subdivision off Yabby Creek Road (as transcribed), where roads missing from the data make every generated driveway implausibly long.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-63",
+      "Task": "Find a land use layer, such as Landcare Research's national land use map, that excludes non-residential sites like the zoo's animal houses next to Yabby Creek, rather than filtering them out by hand.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-64",
+      "Task": "Provide the table setting, for each liquefaction land damage state on flat land, whether a property in that state goes on to make a claim, since not every property carrying a damage state will claim.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -753,6 +793,20 @@
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Land Model Catch Up 2026-09-30",
       "Status": "Open"
+    },
+    {
+      "ID": "L-41",
+      "Limitation": "New subdivisions missing from the LINZ property boundaries, addresses and roads either drop out of the claim population or get driveways routed to a distant road. Whether that skews costs in those areas is to be checked once the model runs.",
+      "Affects": "exposure/land, loss",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-42",
+      "Limitation": "The building use field is too incomplete to filter on, so buildings default to being counted as residential, and sheds, outbuildings and non-residential sites such as the zoo carry insured land and driveways. Treated as a moderate, low-priority source of false positives.",
+      "Affects": "exposure/land",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -979,6 +1033,14 @@
       "Asked of": "NHC",
       "Answer": "",
       "Source": "loss module, Virginie Lacrosse 2026-09-25; recorded 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-15",
+      "Question": "Where a property has more than one dwelling or more than one access way, is only the main access way insured land, or can each dwelling's driveway be? Perrie Gilbert read the Act as covering only the main access way; the model is to assume one driveway per property until this is answered.",
+      "Asked of": "John Leeves",
+      "Answer": "",
+      "Source": "Wgtn Land Model 2026-10-01",
       "Status": "Open"
     }
   ]

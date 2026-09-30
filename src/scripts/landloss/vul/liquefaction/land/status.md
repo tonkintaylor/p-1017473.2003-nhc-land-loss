@@ -3,7 +3,7 @@
 **Status:** Canterbury observed damage database built, and the cost rates now
 price a Wellington realisation end to end.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-01
 
 ## Approach
 
@@ -109,6 +109,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    first meet.
 6. Set the inundated and evacuated repair rates against the Canterbury table,
    with the no-SVA flag (**T-57**).
+7. Apply Virginie Lacrosse's table of which land damage states lead to a claim
+   (**T-64**, the table is hers to provide). Every flat land property carries a
+   state, but not every one will claim. A property off the liquefaction grid,
+   or where the state is not applicable, maps to NaN and carries no
+   liquefaction cost; the layer reviewed on 2026-10-01 predated that.
 
 ## Validation
 

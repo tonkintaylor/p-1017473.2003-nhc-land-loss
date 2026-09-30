@@ -186,3 +186,11 @@ report/**/*.pdf
 # result, let alone carried in the history for ever.
 report/**/*SYNTHETIC*
 
+
+# Claim report data stays local. The claims lists may be committed; anything
+# read from the reports themselves (claimant names, report paths carrying claim
+# numbers, damage extents, walls, costs) may not.
+src/landloss/common/assets/claim_reports/*
+!src/landloss/common/assets/claim_reports/claims-lists/
+src/scripts/landloss/vul/assets/claims-landslide-summary-iag-1502000.csv
+src/scripts/landloss/vul/assets/claims-report-paths-iag-1502000.csv

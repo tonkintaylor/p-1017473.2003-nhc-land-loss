@@ -14,6 +14,11 @@ The guiding rule is that nothing in the source should be paraphrased into
 something stronger than it was. If a task had no clear owner, it has no owner. If
 a limitation was raised as a possibility, record it as a possibility.
 
+Do not commit the raw source. Meeting transcripts and forwarded emails are
+verbatim, carry side conversation and personal remarks, and the repository is
+shared; what the repository keeps is the register, the status files and the
+context notes, each entry naming its source by meeting title and date.
+
 ## 1. Read the source and classify
 
 Work through the source once and sort what it contains into five buckets:

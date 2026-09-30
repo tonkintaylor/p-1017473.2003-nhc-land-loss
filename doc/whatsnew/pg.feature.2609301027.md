@@ -7,4 +7,4 @@ damaged and imminently damaged face areas summed over the property's walls.
 retained height: a second reading of the damaged length taken from the summary
 table rather than the property damage bullets. It is the only reading where the
 bullets give no length, and where both exist a disagreement marks a report
-worth opening. On report 1502000.0005 the two agree on all three walls.
+worth opening. On the report it was checked against, the two agree for every wall.

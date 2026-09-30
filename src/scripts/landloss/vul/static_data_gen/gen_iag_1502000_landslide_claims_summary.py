@@ -7,7 +7,7 @@ text:
 
 - the claim type and site address, both read off the fixed line the T+T claim
   report template carries just below its "Claim for Natural Disaster (...)
-  Damage" heading, e.g. "Ngaire Bennie, 44 Cecil Road, Wadestown";
+  Damage" heading, e.g. "A Person, 1 Example Road, Suburb";
 - whether the report mentions landslide/landslip damage at all;
 - whether it goes on to describe an evacuated and/or an inundated land
   extent, the two ways NHC settles landslide land damage, and the area (and,
