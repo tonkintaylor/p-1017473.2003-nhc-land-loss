@@ -1,9 +1,10 @@
 # Retaining wall exposure: status
 
-**Status:** A probability of a wall per property runs, partly on GNS mapping,
-with a realisation drawn from it; the real inference is not started.
+**Status:** An interim probability of a wall per property runs, partly on GNS
+mapping, with a realisation drawn from it. The target is candidate wall lines
+each carrying a probability; the real inference is not started.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-01
 
 ## Approach
 
@@ -26,10 +27,21 @@ Intended, not implemented.
   engineering interest. Above the cap the settlement stops depending on height,
   so a three metre and a six metre wall cost the same to settle and do not need
   separating.
-- **Predict where walls are and how big they are** from a model over the DEM,
-  geomorphology, and road and dwelling locations. No retaining wall dataset
-  exists for the study area, so the population has to be inferred rather than
-  looked up (**L-04**).
+- **Identify where walls are, as lines, and put a probability on each line**,
+  from a model over the DEM, the geomorphology and geology, and road and dwelling
+  locations. A wall is a located line, not a probability on a property, so a
+  property with several walls has several lines. No retaining wall dataset exists
+  for the study area, so the lines have to be inferred rather than looked up
+  (**L-04**). The interim per-property probability is to be replaced by this.
+- **Start candidate lines from the GNS mapped walls**, the edges of the GNS cut
+  slopes and fill bodies, sharp breaks in slope, and section, road and driveway
+  edges on sloping ground. Walls are usually on the edge of a section rather than
+  the middle.
+- **Read the 1:50,000 Wellington geology** to tell rock cuts from soil slopes.
+  Steep greywacke does not mean walls, so it lowers a line's probability.
+- **Set a wall's probability of failure from its condition and its size from its
+  height**, and cost on size: initial condition changes the probability of
+  failure only, not the cost.
 - **Set the initial state from the age of the dwelling**, as the available proxy
   for whether a wall is modern or poor.
 - **Train the model on four sources** — the ICNZ database, a manual mapping
@@ -39,6 +51,35 @@ Intended, not implemented.
 - Treat the **remote sensing detection as a pilot** rather than a primary
   source. Dense vegetation obscures walls in exactly the suburbs of interest and
   the detection rate is itself unknown (**L-05**).
+
+
+### Engineering review advice (Nick Peters)
+
+Advice from the T+T Wellington engineering review, to be built into the line
+model. Much of it is general assumption rather than measured, and each item is
+meant to shape a prior rather than be applied as a rule.
+
+- [ ] **Do not assume steep means walled.** Properties on Wellington greywacke
+  slopes often have an exposed rock cut face rather than a wall, and NHC claims
+  there are for spalling or slides in the rock face. Oriental Bay and Evans Bay are
+  steep with few walls. The 1:50,000 geology is how to tell.
+- [ ] **Most walls hold fill and soil, not rock.** They stabilise fill at the front
+  of a section or form stepped platforms onto shallower slopes. Not a blanket
+  assumption.
+- [ ] **Allow several walls per property**, most commonly two, three or four, of
+  variable height and construction type. Do not treat a property with several
+  walls as all small or all large.
+- [ ] **Expect a cluster just under 1.5 m.** Many people build walls below 1.5 m
+  because they believe they need no building consent, and some still do.
+- [ ] **Read age as a proxy for condition and size.** Pre-1990 walls are more
+  susceptible to deterioration and replacement and are more often cast in situ
+  concrete gravity walls from the 1970s and 80s. Post-Building Act 1991 walls tend
+  to be bigger, and more recent ones tend to be timber anchored.
+- [ ] **Expect walls in new subdivisions.** Almost all have them.
+- [ ] **Treat houses across gullies as possibly on thicker colluvium or fill**,
+  with wetter soils at the base. Nick was not sure this is worth using.
+- [ ] **Scan the Wellington NHC claims reports** for retaining walls in the site
+  description to estimate how many properties have them (Perrie's extraction).
 
 
 ## Beta build
@@ -67,6 +108,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [x] Carry coordinates, as the wall line.
 
 ## Where it is now
+
+**This is the interim shape.** It puts a probability on each property, which
+cannot say where a wall is or give a property more than one. The plan
+(`steps/s6_wall_population/s6_wall_population_implementation_plan.md`, phase 2)
+replaces it with candidate wall lines, each with a probability.
 
 `steps/s6_wall_population/` is two scripts. `gen_wall_probability.py` writes a
 **probability of a wall per insured property**, with the retained height as a
@@ -107,8 +153,9 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 
 ## Next
 
-1. Place walls on the GNS-mapped lines where one is mapped, rather than on a
-   synthetic line, and rerun over the four territorial authorities.
+1. Build the candidate wall lines, starting from the GNS mapped walls and the
+   edges of cut slopes and fill bodies, and put a probability on each line, using
+   the 1:50,000 geology to lower it on steep greywacke.
 2. Name the six wall classes, so a published fragility curve can attach to
    each cell of the class, size and condition grid.
 3. Bring the collected input datasets into the repository, or record where they

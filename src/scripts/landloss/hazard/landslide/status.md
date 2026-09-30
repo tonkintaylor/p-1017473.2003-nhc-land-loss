@@ -415,6 +415,16 @@ cannot be signed off while they are open.
   own largest technical risk. The raw source area and debris trail polygons are
   now readable, via `landloss.io.kaikoura` — the fit itself is still to do.
 
+### About the strength-based model
+
+- **How greywacke strength is assigned spatially.** The strength values are
+  compiled in `src/landloss/io/assets/wellington-greywacke-strength.csv` (c′,
+  φ′, unit weight and Su by weathering grade, from published sources and T+T
+  Wellington projects), with depth-to-rock observations in
+  `wellington-greywacke-depth-to-rock.csv`. Weathering grade is not mapped, so
+  it is still to be decided how a cell gets a material, a strength and a
+  failure depth. This is the input that model 7 cannot run without.
+
 ### An option not yet taken: build a weathering surface from the NZGD
 
 Kingsbury's geology factor turns on the weathering grade of the greywacke, and

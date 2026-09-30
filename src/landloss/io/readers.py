@@ -1114,9 +1114,15 @@ def get_slide_genesis(
     gully erosion, beach, swamp/wetland, dam (material would be fill) and
     seepage.
 
-    **The landslides are the only mapped landslide inventory this study has for
-    Wellington City,** and the cut slopes and fill bodies are its record of
-    anthropogenically modified ground. Read them with these cautions:
+    **Only cut slope, fill body and landfill are complete.** GNS gave the genesis
+    layer lower priority: "the polygon boundaries and attributes within this
+    layer are less accurate" than the other two layers, apart from cut slopes and
+    fill bodies, and the other types were not all mapped for Version 1.0 and are
+    meant to be updated (report 2019/28, sections 3.3 and 4.4, Appendix 3). The
+    cut slopes and fill bodies are the study's record of anthropogenically
+    modified ground. The landslides are the only landslide polygons it has for
+    Wellington City, but they are an incomplete, lower-accuracy inventory. Read
+    them with these cautions:
 
     - A landslide ``Subtype`` is ``source area`` or ``debris trail``, the two
       parts of one failure, so the polygon count is not a count of landslides.

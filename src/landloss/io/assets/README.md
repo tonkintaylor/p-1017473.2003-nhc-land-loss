@@ -11,6 +11,8 @@ committed. Nothing here is large enough to belong in a cache.
 | `land-value-factors.csv` | Landform multipliers and clip multiples for the land value model | Maintained by hand — see below | `landloss.exposure.land.land_value.load_factors` |
 | `marc-2016-table-s1.csv` | Marc et al. (2016) Table S1, verbatim: the 40 earthquakes their total landslide area and volume expression was tested on | Converted from the supporting information's `.xls` (`context/lit/landslide/marc_2016/`) — see below | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` |
 | `marc-2016-table-s1-subevents.csv` | The same table parsed to numbers, one row per earthquake or per sub-event of an earthquake sequence | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` | The landslide calibration (`.agents/plans/building-hancox-landslide-model-and-calibration.md`) |
+| `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke and its soil mantle by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, 1 October 2026 — see below | Not yet read; for landslide model 7 |
+| `wellington-greywacke-depth-to-rock.csv` | Observed depths to weathered greywacke rock, and thicknesses of the colluvium and residual soil mantle, at Wellington-region T+T sites | As above | Not yet read; for landslide model 7 |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
 
 ## `land-value-base-rates.csv`
@@ -151,3 +153,34 @@ modal slope, `a_topo`) repeat on each sub-event's row; `r0_km`,
 computed from the moment as (2/3)(log10 M0 − 9.1), the relationship the paper
 uses. Where the paper gives R0 as unknown with a range ("? (8-24)"), `r0_km` is
 empty and `r0_min_km`/`r0_max_km` carry the range.
+
+## `wellington-greywacke-strength.csv` and `wellington-greywacke-depth-to-rock.csv`
+
+Compiled on 1 October 2026 from T+T Site Search excerpts of project reports,
+design calculations and letters; no file on the network drives was opened
+directly. Every project behind them was checked in Site Search and none is
+marked confidential. Only Wellington-region (Torlesse) greywacke is included;
+Auckland, Northland, Coromandel, Waikato and Nelson jobs are left out, and
+client names are not recorded.
+
+- `source_type` is `published` (a paper or report T+T reports quote),
+  `practice` (a convention those reports describe) or `tt_project`.
+- `grade` normalises the weathering description: `RS` residual soil, `CW`,
+  `HW`, `MW`, `SW`, `UW` and ranges between them (`CW-HW`), `COL` colluvium,
+  `RM` a rock mass of unstated grade.
+- `basis` says how the values were derived — back-analysis, laboratory,
+  Hoek-Brown, correlation or judgement. Back-analysed values are the ones the
+  landslide rebuild note prefers.
+- **`check` is true where the excerpt was ambiguous.** Site Search returns
+  tables flattened to text, and empty cells vanish, so a value can land in the
+  wrong column. `note` says what is uncertain. Confirm those rows against the
+  document before relying on them.
+- `document` is the path of the source under the T+T corporate share, relative
+  to its root.
+
+Most rows are design parameters for one slope or wall, not a regional ground
+model; the published values most often quoted are O'Riley et al. (2006) and
+Pender (1977), neither yet obtained.
+
+In the depth table, `horizon` says what the depth is measured to (Scala
+refusal, base of colluvium, top of CW–HW rock), because the reports differ.
