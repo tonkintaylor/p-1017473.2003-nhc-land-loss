@@ -51,7 +51,25 @@ three from the literature (Nowicki Jessee 2018, Kritikos et al. 2015, Hancox et
 al. 1997), possibly the GNS/ESNZ model, and a bespoke refit. For small failures
 on modified slopes: one urban model. A strength-based model after Godt et al.
 (2008) is proposed, and Marc et al. (2016) calibrates every large model's total
-area. Set out in `potential-landslide-rebuild.md`; not yet agreed. Extend-ESNZ becomes the GNS member of it.
+area. Set out in `potential-landslide-rebuild.md`; not yet agreed, apart from the large/small split, which is agreed (500 m² of
+source area as the working threshold). Extend-ESNZ becomes the GNS member of it.
+Build plans for models 2 and 3, and for the calibration of every large model,
+are in `.agents/plans/building-kritikos-2015-landslide-model.md` and
+`.agents/plans/building-hancox-landslide-model-and-calibration.md`.
+
+**Forward-use scenario, for the report.** Where a landslide model or its
+calibration needs a magnitude or a source distance, every site in the study
+area is taken to be **25 km from an Mw 8.1 event** (`BETA_SCENARIO_MW`,
+`BETA_SITE_DISTANCE_KM`).
+
+- **Source.** The modal magnitude and distance of the New Zealand National
+  Seismic Hazard Model 2022 deaggregation of PGA for Wellington at
+  Vs30 = 400 m/s, as provided by the project lead. Cite the NSHM 2022
+  (Gerstenberger et al. 2022, GNS Science Report 2022/57).
+- **Still to record for the report:** the return period, the NSHM version and
+  tool the deaggregation was taken from, and which source the mode is (the
+  Hikurangi interface or a crustal fault). Marc et al. (2016) is calibrated on
+  crustal earthquakes only, so the last of these decides whether it applies.
 
 **Model 1 of the portfolio: Nowicki Jessee (2018), rebuilt.**
 

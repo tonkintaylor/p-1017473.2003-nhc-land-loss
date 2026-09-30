@@ -1,0 +1,181 @@
+{
+  "title": "Pilot study",
+  "layers": [
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "hazard",
+        "landslide"
+      ],
+      "fname": "landslide-realisation-pilot.geoparquet",
+      "name": "Landslide realisation (pilot)",
+      "field": "land_class",
+      "categories": "land_class",
+      "outline": "match",
+      "kml_width": 1
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "vul"
+      ],
+      "fname": "wall-damage-state-r000-pilot.geoparquet",
+      "name": "Retaining wall damage state, realisation 0 (pilot)",
+      "field": "damage_state",
+      "categories": {
+        "no damage": [
+          "#2c7bb6",
+          "no damage"
+        ],
+        "replace": [
+          "#d7191c",
+          "replace"
+        ]
+      },
+      "kml_width": 3
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "vul"
+      ],
+      "fname": "loss-input-land-r000-pilot.geoparquet",
+      "name": "Liquefaction land damage state, realisation 0 (pilot)",
+      "field": "Liq_LD_state",
+      "categories": "land_damage_state",
+      "outline": "#00000000",
+      "checked": false
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "exposure"
+      ],
+      "fname": "insured-land-pilot.geoparquet",
+      "name": "Insured land extent, land rate excl GST $/m2 (pilot)",
+      "field": "land_rate_excl_gst_nzd_per_m2",
+      "cmap": "turbo",
+      "bins": 8,
+      "bin_mode": "quantile",
+      "outline": "#00000000",
+      "checked": false
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "exposure"
+      ],
+      "fname": "driveways-pilot.geoparquet",
+      "name": "Driveway corridors (pilot)",
+      "color": "#8c6d31",
+      "checked": false
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "exposure"
+      ],
+      "fname": "beta-wall-population-r000-pilot.geoparquet",
+      "name": "Beta retaining wall population, realisation 0 (pilot)",
+      "color": "#7a0177",
+      "kml_width": 3,
+      "checked": false
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "exposure"
+      ],
+      "fname": "land-value-by-address-pilot.geoparquet",
+      "name": "Modelled land rate per address, $/m2 (pilot)",
+      "field": "land_rate_nzd_per_m2",
+      "cmap": "turbo",
+      "bins": 8,
+      "bin_mode": "quantile",
+      "checked": false
+    },
+    {
+      "store": "temp",
+      "sub_dirs": [
+        "exposure"
+      ],
+      "fname": "address-spine-pilot.geoparquet",
+      "name": "Address spine (pilot)",
+      "color": "#08519c",
+      "checked": false
+    },
+    {
+      "path": ".koopcache/extents/101290_438655_b768d93ed7fa3b3e5b89c8beadfbf02f_d08e04e72f25241a.gpkg",
+      "name": "LINZ building outlines by use (pilot)",
+      "field": "use",
+      "categories": {
+        "Unknown": [
+          "#8c8c8c",
+          "Unknown"
+        ],
+        "School": [
+          "#e6ab02",
+          "School"
+        ],
+        "Hospital": [
+          "#d7191c",
+          "Hospital"
+        ],
+        "Supermarket": [
+          "#7570b3",
+          "Supermarket"
+        ]
+      },
+      "outline": "#404040",
+      "kml_width": 1,
+      "attribution": "Source: Land Information New Zealand (LINZ), licensed CC BY 4.0 (https://data.linz.govt.nz/license/attribution-4-0-international/). Clipped to the pilot area."
+    },
+    {
+      "path": ".koopcache/extents/122657_447319_e867e64487f1a429bdb040e2bfb2a59c_cdc6a423e60ed863.gpkg",
+      "name": "LINZ property boundaries by title type (pilot)",
+      "field": "title_type",
+      "categories": {
+        "Freehold": [
+          "#1b9e77",
+          "Freehold"
+        ],
+        "Unit": [
+          "#d95f02",
+          "Unit title"
+        ],
+        "Cross Lease": [
+          "#7570b3",
+          "Cross lease"
+        ],
+        "Leasehold": [
+          "#e7298a",
+          "Leasehold"
+        ],
+        "Life Estate": [
+          "#66a61e",
+          "Life estate"
+        ],
+        "Supplementary Record Sheet": [
+          "#e6ab02",
+          "Supplementary record sheet"
+        ],
+        "Records Embodied in the Register": [
+          "#a6761d",
+          "Records embodied in the register"
+        ],
+        "Gazette Notice": [
+          "#666666",
+          "Gazette notice"
+        ],
+        "null": [
+          "#999999",
+          "Not stated (road, water and untitled parcels)"
+        ]
+      },
+      "fill": false,
+      "outline": "match",
+      "kml_width": 1.5,
+      "attribution": "Source: Land Information New Zealand (LINZ), licensed CC BY 4.0 (https://data.linz.govt.nz/license/attribution-4-0-international/). Clipped to the pilot area."
+    }
+  ]
+}

@@ -277,6 +277,12 @@ every other script under `src/scripts/` (see the `adding-steps-scripts` skill, s
 predates its builder and duplicates it, and that duplication is the thing worth not
 repeating.
 
+## Google Earth
+
+For the same layers as KML files for Google Earth, use the `making-kml-files` skill. It
+takes this spec, so a project built here can be turned into KMLs without restating the
+layers.
+
 ## When the XML needs hand-editing
 
 `references/qgs-xml-notes.md` records the parts of the `.qgs` format that fail silently —

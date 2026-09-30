@@ -377,8 +377,9 @@ alternatives to each other, one is a complement to all of them.
   behind a house, a sidling fill, a failed wall. There is no green-field
   inventory for them, and they are the population the current step's own
   plan already calls its largest technical risk (item 10).
-- **Threshold: provisionally 500 m² of source area**, with 1,000 m² as the
-  sensitivity case. The reasons:
+- **Threshold: 500 m² of source area**, with 1,000 m² as the sensitivity case.
+  The large/small split is agreed by the project lead (30 September 2026); the
+  500 m² value is the working threshold. The reasons:
   1. It is where the large-model evidence stops. The GNS Kaikōura inventory is
      considered complete above 500 m² (Allstadt et al. 2018), and
      frequency–area distributions roll over below a few hundred square metres
@@ -423,7 +424,9 @@ in `context/lit/landslide/`.
    active fault map and isoseismals, all of which exist for Wellington; Allstadt
    et al. (2018) could not run it globally only for want of a global fault map.
    Its output is a relative probability, not coverage, so it needs a total-area
-   calibration (see model 3). Paper: `kritikos_2015/`.
+   calibration (see model 3). Paper: `kritikos_2015/` (summary; the PDF is held
+   outside git). **Build plan:**
+   `.agents/plans/building-kritikos-2015-landslide-model.md`.
 3. **Large, literature — Hancox, Perrin & Dellow (1997, 2002; Hancox 2010).** The
    New Zealand empirical relationships from 22 historical earthquakes. Not a
    susceptibility map in itself, but the only New Zealand-derived constraints on
@@ -449,7 +452,9 @@ in `context/lit/landslide/`.
      set beside Marc et al. (2016).
 
    Papers: `hancox_1997/` (with a searchable markdown version of the scanned
-   report), `hancox_2002/`, `hancox_2010/`.
+   report), `hancox_2002/`, `hancox_2010/`. **Build plan, including the
+   calibration of every large model against Hancox (extent) and Marc et al.
+   2016 (amount):** `.agents/plans/building-hancox-landslide-model-and-calibration.md`.
 4. **Large, possible — GNS / ESNZ.** The supplied ESNZ grid is already
    confirmed to be the GNS slope failure model held in PRUE (`status.md`, L-08).
    Its 32 m cells match the national GNS grid in Rosser et al. (2021), which is
@@ -476,7 +481,8 @@ in `context/lit/landslide/`.
    `s3_multiscale_slope` terrain metrics. It is calibrated to the ~20 km²
    Kaikōura total, with its footprint checked against model 3's envelope. The
    training data would be the GNS Kaikōura inventory, plus selected events from
-   the USGS inventory repository (Schmitt et al. 2017, below) — for example
+   the USGS Ground Failure Database (Schmitt et al. 2017, below; read by
+   `landloss.io.gfdb`) — for example
    greywacke-like terrain, or the subduction events needed for Hikurangi.
 6. **Small — urban-scale bespoke model.** Failures below the threshold on
    modified and natural ground inside the insured land extent. Its inputs:
@@ -562,6 +568,28 @@ Used for calibration rather than as a model:
     reference and are not part of the fit. It suits a Wellington Fault
     scenario; for a Hikurangi interface scenario it has to be used with that
     caution stated.
+
+### The forward-use scenario
+
+The study works at a return period, not a scenario earthquake. Where a model or
+a calibration needs a magnitude or a source distance, every site in the study
+area is taken to be **25 km from an Mw 8.1 event** (`BETA_SCENARIO_MW`,
+`BETA_SITE_DISTANCE_KM`). That is the modal event in the NSHM deaggregation of
+Wellington PGA at Vs30 = 400 m/s, per the project lead; `status.md` records it
+with its source for the report.
+
+- **Calibration does not need it.** Calibration runs on real events (Kaikōura,
+  GFDB events) with their real geometry.
+- **Forward use needs it only for magnitude- and distance-dependent terms.** Under
+  it, Hancox's area affected (about 11,900 km² at Mw 8.1, an equivalent radius
+  of about 62 km) contains every site, and every landslide size class is possible
+  at 25 km. So the extent constraint shapes the models on real events but does
+  not clip the Wellington answer.
+- **It describes weaker shaking than the study's.** Marc's own shaking term gives
+  about 0.17 g at 25 km from an Mw 8.1, and typical ground-motion models give a
+  PGA of the order of 0.2–0.4 g, against the study's 2500-year TS1170.5 PGA of
+  about 1 g. So shaking-dependent terms read the study's own shaking, not the
+  scenario. The model 3 plan sets out how the Wellington amount is then fixed.
 
 ### How they combine
 
@@ -1099,8 +1127,13 @@ obtained, with the reason.
   <https://www.sciencebase.gov/catalog/item/583f4114e4b04fc80e3c4a1a>. Original
   inventory files and an integrated database with uniform attributes,
   including the inventories Nowicki Jessee et al. trained on. The training and
-  test source for model 5. **Not downloaded** — ScienceBase blocks scripted
-  access; browse and download by hand.
+  test source for model 5, and the inventories to test models 2 and 7 on.
+  **Held** as the integrated database, version 4 (February 2022: 84
+  inventories, 467,045 ground-failure polygons and 115,402 points), on the
+  cross-project data library on R:, and read by `landloss.io.gfdb`
+  (`get_gfdb_ground_failure_polygons` and its siblings). New Zealand events are
+  in it as events only, with no ground failures mapped. For New Zealand the
+  GNS Kaikōura inventory (`landloss.io.kaikoura`) remains the source.
 - **Software:** Allstadt, K.E., Thompson, E.M., Hearne, M. & Biegel, K. (2018).
   groundfailure v1.0. USGS Software Release. <https://doi.org/10.5066/P91G4NS4>,
   code at <https://code.usgs.gov/ghsc/esi/groundfailure/groundfailure>
