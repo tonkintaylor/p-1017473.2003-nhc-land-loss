@@ -1,8 +1,9 @@
 # Retaining wall exposure: status
 
-**Status:** A beta stand-in population runs; the real inference is not started.
+**Status:** A probability of a wall per property runs, partly on GNS mapping,
+with a realisation drawn from it; the real inference is not started.
 
-**Updated:** 2026-09-23
+**Updated:** 2026-09-30
 
 ## Approach
 
@@ -67,15 +68,30 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 ## Where it is now
 
-`steps/s6_wall_population/` draws a **stand-in** population: at most one wall per
-insured property, prevalence and retained height ramped off slope alone, initial
-condition split evenly, and each wall placed as a line along the contour. Over
-the pilot box that is 758 walls over 4,764 properties, 15.9%, median retained
-height 1.8 m, counted before the coverage filter. Only walls intersecting their
-claim's insured land buffered by 2 m are now written, each with an `rw_id`. The
-library behind it is `landloss.exposure.rw.beta_population`,
-whose every public name carries `beta` because it is deleted when the real
-inference lands.
+`steps/s6_wall_population/` is two scripts. `gen_wall_probability.py` writes a
+**probability of a wall per insured property**, with the retained height as a
+lognormal, the probability of each size class and of poor condition.
+`gen_wall_population.py` then **draws a realisation** from it: at most one wall per
+insured property, each placed as a line along the contour. Only walls
+intersecting their claim's insured land buffered by 2 m are written, each with an
+`rw_id`.
+
+The probability starts from slope alone, which is a **stand-in**, and is then
+adjusted by three GNS Science and NLM layers read through `landloss.io.readers`:
+
+- the retaining walls GNS SLIDE mapped (`get_gns_slide_morphology`) raise a
+  probability where a wall is mapped;
+- the SLIDE cut slopes and fill bodies (`get_slide_genesis`) lift it;
+- the NLM landform class (`get_nlm_geomorphology`) caps it on plains.
+
+The GNS mapping is Wellington City only and shows only walls visible from above,
+so it never lowers a probability. Over the pilot box 1,024 of 4,295 properties
+(24%) have a mapped wall, and the run expects 1,409 walls (33%) against 15.9% from
+slope alone. That says the slope-only prevalence was too low on the mapped
+suburbs, not that 33% is right. The library is
+`landloss.exposure.rw.wall_probability`, with the slope-driven part in
+`landloss.exposure.rw.beta_population`, whose public names carry `beta` because
+they are deleted when the real inference lands.
 
 It is not evidence about Wellington. It exists so the vulnerability work has
 lines with a size class and an initial condition to read.
@@ -83,27 +99,26 @@ lines with a size class and an initial condition to read.
 The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 2.5 m.
 
-Nothing is implemented. This file and `__init__.py` are the only things in the
-folder, and no script in the repository reads a retaining wall dataset.
-
-- Some of the input datasets have been collected. They are held outside the
-  repository, so nothing here reads them yet.
+- Some of the other input datasets have been collected. They are held outside
+  the repository, so nothing here reads them yet.
 - The manual mapping and the remote sensing detection have both been started
   with Sophia. That work also sits outside the repository and cannot be re-run
   from here.
 
 ## Next
 
-1. Name the six wall classes, so a published fragility curve can attach to
+1. Place walls on the GNS-mapped lines where one is mapped, rather than on a
+   synthetic line, and rerun over the four territorial authorities.
+2. Name the six wall classes, so a published fragility curve can attach to
    each cell of the class, size and condition grid.
-2. Bring the collected input datasets into the repository, or record where they
+3. Bring the collected input datasets into the repository, or record where they
    are held and how they are read, so the inputs are reproducible.
-3. Bring the manual mapping and the remote sensing pilot into the repository on
+4. Bring the manual mapping and the remote sensing pilot into the repository on
    the same basis.
-4. Obtain the ICNZ database.
-5. Attach a dwelling age attribute to the address spine, which the initial state
+5. Obtain the ICNZ database.
+6. Attach a dwelling age attribute to the address spine, which the initial state
    class reads.
-6. Train the predictive model and write a wall population per property.
+7. Train the predictive model and write a wall population per property.
 
 ## Validation
 

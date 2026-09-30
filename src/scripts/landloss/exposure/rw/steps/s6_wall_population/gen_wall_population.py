@@ -1,25 +1,26 @@
-"""Draw a stand-in retaining wall population over the insured properties.
+"""Draw a realisation of the retaining wall population from the probabilities.
 
-Reads the insured land extent step 5 wrote, samples the slope and downhill
-direction at each property off the LINZ elevation model, and draws at most one
-wall per property against a slope-driven prevalence. Each wall is drawn as a
-line lying along the contour, carrying the claim it belongs to, its size class
-and its initial condition. Only the walls that touch their own claim's insured
-land, buffered by 2 m, are kept, and each kept wall is given an ``rw_id``.
+Reads the per-property probabilities ``gen_wall_probability.py`` wrote and draws
+one population per realisation: whether each property carries a wall, how tall
+it is and what condition it is in. Each wall is drawn as a line lying along the
+contour, carrying the claim it belongs to, its size class and its initial
+condition. Only the walls that touch their own claim's insured land, buffered by
+2 m, are kept, and each kept wall is given an ``rw_id``.
 
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s6_wall_population/gen_wall_population.py
 
-**This is a beta stand-in and none of it is evidence about Wellington.** The
-real population is inferred from a model over the DEM, geomorphology and road
-and dwelling locations, trained on the ICNZ database, a manual mapping study,
-T+T SME estimates and remote sensing. None of those is in the repository, and
-the SME estimate of prevalence by suburb (**T-19**) is what the real model would
-be calibrated against. What this step buys is the structure the vulnerability
-work reads: a line per wall with a size class and an initial condition.
+Run ``gen_wall_probability.py`` first. This script reads no elevation model and
+no GNS layer, so any number of realisations draw quickly.
 
-The reasoning behind every number is in
-`landloss.exposure.rw.beta_population`, which is where they are deleted from
-when the real inference lands.
+**The probabilities are partly a beta stand-in and none of this is evidence
+about Wellington.** The real population is inferred from a model trained on the
+ICNZ database, a manual mapping study, T+T SME estimates and remote sensing, and
+the SME estimate of prevalence by suburb (**T-19**) is what it would be
+calibrated against. What this step buys is the structure the vulnerability work
+reads: a line per wall with a size class and an initial condition.
+
+The reasoning behind every number is in `landloss.exposure.rw.wall_probability`
+and `landloss.exposure.rw.beta_population`.
 
 What it runs over, and for which realisations, comes from ``config.py`` beside
 it.
@@ -29,32 +30,21 @@ import sys
 
 import geopandas as gpd
 import numpy as np
-import rioxarray
 
-from landloss.common.utils.terrain import (
-    DOWNHILL_AZIMUTH_NAME,
-    SLOPE_NAME,
-    cell_size,
-    downhill_azimuth_degrees,
-    sample_at_points,
-    slope_degrees,
-    write_raster,
-)
 from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, RW_ID_COLUMN
 from landloss.exposure.asset_ids import RW_ID_SUFFIX, mint_asset_ids, sort_by_location
 from landloss.exposure.coverage import RW_COVERAGE_BUFFER_M, keep_walls_on_insured_land
-from landloss.exposure.rw.beta_population import (
-    beta_wall_population,
-    beta_wall_prevalence,
-    describe_population,
-)
+from landloss.exposure.rw.beta_population import describe_population
+from landloss.exposure.rw.wall_probability import draw_walls
 from landloss.hazard.realisation import realisation_seed
-from landloss.io.readers import get_dem
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import config
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_probability import (
+    wall_probability_path,
+)
 from scripts.landloss.paths import TEMP_DIR
 
 # Wellington suburb names are macronised, which the default cp1252 Windows
@@ -68,13 +58,6 @@ OUT_STEM = "beta-wall-population"
 # The stream these draws come from. One name per module, so the walls of
 # realisation 3 belong to the same modelled earthquake as its hazards.
 RNG_STREAM = "exposure"
-
-# The property's own point is where the slope is sampled, so the extent grows by
-# enough that a property on the edge still sits inside the elevation model.
-DEM_MARGIN_M = 200.0
-
-SLOPE_COLUMN = "slope_deg"
-AZIMUTH_COLUMN = "downhill_azimuth_deg"
 
 RULE = "-" * 72
 
@@ -93,84 +76,14 @@ def wall_population_path(realisation_id, *, pilot):
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.geoparquet"
 
 
-def sample_terrain(properties, *, use_cached_dem):
-    """Return the properties with slope and downhill azimuth attached.
-
-    The two are derived from the elevation model over the properties' own
-    extent and sampled at each property's representative point. A property whose
-    point falls outside the elevation model comes back with NaN rather than a
-    guess, and draws no wall.
-
-    Args:
-        properties: The insured land extent, one row per property.
-        use_cached_dem: Whether to reuse an already-fetched elevation model.
-
-    Returns:
-        A copy carrying the slope and azimuth columns, with point geometry.
-    """
-    points = properties.geometry.representative_point()
-    minx, miny, maxx, maxy = points.total_bounds
-    bbox = (
-        minx - DEM_MARGIN_M,
-        miny - DEM_MARGIN_M,
-        maxx + DEM_MARGIN_M,
-        maxy + DEM_MARGIN_M,
-    )
-
-    print("Fetching the elevation model over the properties ...", flush=True)
-    dem_path = get_dem(bbox, crs=constants.DEFAULT_CRS, use_cache=use_cached_dem)
-    print(f"  {dem_path}")
-
-    # Loaded rather than left lazy: an open GDAL handle finalised during
-    # interpreter shutdown surfaces as a bare "Error in sys.excepthook".
-    with rioxarray.open_rasterio(dem_path, masked=True) as opened:
-        dem = opened.squeeze(drop=True).load()
-    resolution = cell_size(dem)
-
-    # Written then sampled, because the sampler reads from a file.
-    slope_path = WORK_DIR / f"{OUT_STEM}-slope.tif"
-    azimuth_path = WORK_DIR / f"{OUT_STEM}-azimuth.tif"
-    write_raster(slope_degrees(dem, resolution).rename(SLOPE_NAME), slope_path)
-    write_raster(
-        downhill_azimuth_degrees(dem, resolution).rename(DOWNHILL_AZIMUTH_NAME),
-        azimuth_path,
-    )
-
-    attached = properties.copy()
-    attached[SLOPE_COLUMN] = sample_at_points(slope_path, points).to_numpy()
-    attached[AZIMUTH_COLUMN] = sample_at_points(azimuth_path, points).to_numpy()
-    attached = attached.set_geometry(points)
-    return attached, resolution
-
-
-def describe_terrain(properties, resolution):
-    """Print the slope the population is drawn against."""
-    slope = properties[SLOPE_COLUMN].to_numpy(dtype=float)
-    known = np.isfinite(slope)
-    print(RULE)
-    print(f"Properties: {len(properties):,}")
-    print(
-        f"  slope sampled at {int(known.sum()):,} of them, off a {resolution:.0f} m DEM"
-    )
-    if known.any():
-        deciles = np.percentile(slope[known], [0, 25, 50, 75, 100])
-        labels = ("min", "25%", "median", "75%", "max")
-        joined = "   ".join(
-            f"{label}={value:.1f}" for label, value in zip(labels, deciles, strict=True)
-        )
-        print(f"  slope (degrees): {joined}")
-        print(
-            "  expected wall prevalence at the median slope: "
-            f"{beta_wall_prevalence(float(np.median(slope[known]))):.1%}"
-        )
-
-
-def describe_walls(walls, properties):
+def describe_walls(walls, probabilities):
     """Print what was drawn, against what it was drawn from."""
     print(RULE)
-    share = len(walls) / len(properties) if len(properties) else 0.0
+    share = len(walls) / len(probabilities) if len(probabilities) else 0.0
+    expected = float(np.nansum(probabilities["p_wall"].to_numpy(dtype=float)))
     print(
-        f"Walls drawn: {len(walls):,} over {len(properties):,} properties ({share:.1%})"
+        f"Walls drawn: {len(walls):,} over {len(probabilities):,} properties "
+        f"({share:.1%}); expected {expected:,.0f}"
     )
     if walls.empty:
         return
@@ -208,35 +121,28 @@ def describe_coverage(before, after):
     )
 
 
-def main(*, pilot, realisation_ids, use_cached_dem):
+def main(*, pilot, realisation_ids):
     """Draw a wall population per realisation and write each one out.
 
     Args:
         pilot: Whether to run over the small Wellington pilot box.
         realisation_ids: Which modelled earthquakes to draw for.
-        use_cached_dem: Whether to reuse an already-fetched elevation model.
     """
-    extent_path = insured_land_path(pilot=pilot)
-    print(f"Reading the insured land from {extent_path} ...")
-    properties = gpd.read_parquet(extent_path)
-
-    attached, resolution = sample_terrain(properties, use_cached_dem=use_cached_dem)
-    describe_terrain(attached, resolution)
+    probability_path = wall_probability_path(pilot=pilot)
+    print(f"Reading the wall probabilities from {probability_path} ...")
+    probabilities = gpd.read_parquet(probability_path)
+    properties = gpd.read_parquet(insured_land_path(pilot=pilot))
 
     for realisation_id in realisation_ids:
         print(RULE)
         print(f"Realisation {realisation_id}, stream {RNG_STREAM!r}")
         rng = realisation_seed(constants.BASE_SEED, realisation_id, RNG_STREAM)
-        walls = beta_wall_population(
-            attached,
-            rng,
-            slope_column=SLOPE_COLUMN,
-            azimuth_column=AZIMUTH_COLUMN,
-        )
-        describe_walls(walls, attached)
+        walls = draw_walls(probabilities, rng)
+        describe_walls(walls, probabilities)
 
         # Filtered against the polygons rather than the representative points
-        # the slope was sampled at, and after the draw so the stream is unchanged.
+        # the walls were placed from, and after the draw so the stream is
+        # unchanged.
         kept = keep_walls_on_insured_land(walls, properties)
         describe_coverage(walls, kept)
         kept = sort_by_location(kept)
@@ -251,14 +157,11 @@ def main(*, pilot, realisation_ids, use_cached_dem):
 
     print(RULE)
     print(
-        "This population is a beta stand-in drawn from slope alone. It is not "
-        "evidence about Wellington; see T-19 for what replaces it."
+        "This population is drawn from probabilities that are partly a beta "
+        "stand-in. It is not evidence about Wellington; see T-19 for what "
+        "replaces it."
     )
 
 
 if __name__ == "__main__":
-    main(
-        pilot=config.PILOT,
-        realisation_ids=config.REALISATION_IDS,
-        use_cached_dem=config.USE_CACHED_DEM,
-    )
+    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
