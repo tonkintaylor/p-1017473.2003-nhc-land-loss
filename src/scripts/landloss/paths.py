@@ -24,6 +24,14 @@ NHI_ACT_SETTLED_LAND_CLAIMS_CSV = (
     ASSETS_DIR / "NHI_Act_Settled_Land_Claims - 20260916.csv"
 )
 
+# Claim reports fetched off T: and what is extracted from them, one folder per
+# T+T project number. The reports themselves are cached by tdrive_sync under
+# the gitignored .tdrivecache/, never here: only the index of what was fetched
+# and the figures read out of it are committed.
+CLAIM_REPORTS_ASSETS_DIR = (
+    REPO_ROOT / "src" / "landloss" / "common" / "assets" / "claim_reports"
+)
+
 IAG_1502000_REPORT_PATHS_CSV = ASSETS_DIR / "claims-report-paths-iag-1502000.csv"
 IAG_1502000_LANDSLIDE_SUMMARY_CSV = (
     ASSETS_DIR / "claims-landslide-summary-iag-1502000.csv"
