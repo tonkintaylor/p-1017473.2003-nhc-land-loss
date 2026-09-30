@@ -351,6 +351,126 @@
       "Phase": "2",
       "Source": "Costing tool demo 2026-09-21",
       "Status": "Open"
+    },
+    {
+      "ID": "T-45",
+      "Task": "Extend the landslide realisation to add imminent-risk land: a new circle centred on the same place, the upslope part beyond the evacuated polygon taken as the additional evacuated land behind a regressed headscarp, imminent inundation taken as re-inundation of the same area, with its likelihood depending on slope and its extent derived from the diameter for now.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30 (Maxim to pick it up, possibly deferred)",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-46",
+      "Task": "Rebuild the waterways layer from the readers on the NLM lateral spreading branch, keeping its minimum pond area filter and its filter on centre lines named as rivers.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-47",
+      "Task": "Buffer the waterways at 100 m and 200 m and apply the lateral spreading adjustment to the probabilities of land damage states 4 to 6, raising them inside the buffers and lowering them outside, read off Ryan's baseline-probability figure.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-48",
+      "Task": "Review whether any further river centre lines should be added to the waterways layer manually by ID, as was done for the watercourses around Bottle Lake.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-49",
+      "Task": "Revise the property value estimate following .agents/plans/estimating-land-values-wellington.md, sense-checking it against a few CV land values looked up by hand from homes.co.nz or QV rather than scraped.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-50",
+      "Task": "Extract the claim type, address, evacuated, inundated and imminent-risk land areas, and the number, lengths and damaged lengths of retaining walls from past T+T claim reports, keeping the fetching of files separate from the extraction of data.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-51",
+      "Task": "Run the whole pipeline end to end, building the local data cache, and connect it to the loss module.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-52",
+      "Task": "Merge the working branches.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-53",
+      "Task": "Fix the CI pipeline, which fails when it pulls a package from Bitbucket.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-54",
+      "Task": "Revise the land damage states for liquefaction.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-55",
+      "Task": "Add evacuated and inundated land areas to the liquefaction land vulnerability for each land damage state, drawn uniformly within the ranges agreed on 2026-09-30.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-56",
+      "Task": "Value liquefied land in the land cover cap over its damaged area -- inundated plus evacuated, allowing a 30% overlap between them -- rather than over the whole insured area.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-57",
+      "Task": "Set repair rates for inundated and evacuated liquefied land, chosen so the modelled costs roughly reproduce the Canterbury cost table, with a no-SVA flag that raises the inundated rate.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-58",
+      "Task": "Review every status document once a first model is in hand, around Tuesday 2026-10-06, and decide which remaining items are done now and which move to future improvements.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-59",
+      "Task": "Write the report by 2026-10-14: an executive summary of about three pages and a technical document of about 100 pages in the style of the NLM report, with content held in YAML files read into Typst and converted to docx.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -619,6 +739,20 @@
       "Affects": "Shaking hazard: site class, and the Sa(1.0 s), PGV and PGA read from it (hazard/shaking s2_site_class, s3_pgv)",
       "Source": "Maxim Millen 2026-09-30",
       "Status": "Accepted"
+    },
+    {
+      "ID": "L-39",
+      "Limitation": "The evacuated and inundated areas assigned to each liquefaction land damage state are judgement ranges set in a project call from the MBIE descriptions of each state, not fitted to observations; the overlap between the two is likewise an assumed 30%.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-40",
+      "Limitation": "The Canterbury inundated-land costs carry the effect of the Student Volunteer Army clearing ejecta at no charge, so they understate what clearing inundated land would cost without that labour.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -829,6 +963,14 @@
       "Asked of": "Unassigned",
       "Answer": "",
       "Source": "Capability statement, T+T archive job 28971 (presentation/Capability.docx)",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-14",
+      "Question": "Which land excess does NHC apply: $500 per dwelling capped at $5,000, as the NHC explainer states and works its examples, or 10% of the amount otherwise payable per claim, floored at $500 and capped at $5,000, as Virginie Lacrosse described on 2026-09-25? The loss module defaults to the explainer's rule and can run either.",
+      "Asked of": "NHC",
+      "Answer": "",
+      "Source": "loss module, Virginie Lacrosse 2026-09-25; recorded 2026-09-30",
       "Status": "Open"
     }
   ]

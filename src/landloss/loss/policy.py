@@ -54,7 +54,7 @@ BRIDGE_CULVERT_SUB_CAP_NZD = 25_000.0
 # explainer's. The two disagree by $4,500 on the explainer's own first example
 # and nobody has yet said which NHC applies, so the other is kept runnable:
 # setting `excess_per_dwelling_nzd` to ``None`` charges the rate instead. See
-# **Q-12**.
+# **Q-14**.
 LAND_EXCESS_PER_DWELLING_NZD = 500.0
 LAND_EXCESS_RATE = 0.10
 LAND_EXCESS_MIN_NZD = 500.0
@@ -80,7 +80,7 @@ class PolicySettings:
         excess_per_dwelling_nzd: The land excess charged per dwelling, the
             explainer's rule. ``None`` charges :attr:`excess_rate` of what is
             payable instead, which is what Virginie Lacrosse described. The two
-            contradict each other; see **Q-12**.
+            contradict each other; see **Q-14**.
         excess_rate: The land excess as a fraction of what would otherwise
             be paid. Used only when :attr:`excess_per_dwelling_nzd` is
             ``None``.
@@ -194,7 +194,7 @@ class PolicySettings:
         and :attr:`excess_max_nzd`. It is taken on the amount payable --
         ``min(repair cost, cap)`` -- rather than on the repair cost, so a claim
         is never charged an excess on cost NHC is not bearing. It is kept so the
-        contradiction (**Q-12**) can be run both ways rather than argued about.
+        contradiction (**Q-14**) can be run both ways rather than argued about.
 
         Args:
             payable_nzd: What would be paid before the excess.

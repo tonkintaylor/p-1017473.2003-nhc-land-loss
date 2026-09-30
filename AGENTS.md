@@ -153,6 +153,9 @@ before making decisions about methodology, outputs, or what belongs in the tool:
   Portal must not be scraped, and what to ask NHC for instead.
 - `.agents/context/code-structure.md` — the four analysis modules, the library and
   scripts split, and the causes of financial land loss the model represents.
+- `.agents/context/transcripts/` — the raw meeting transcripts, and which register
+  entries and status files each one fed. Read the register and status files for
+  what was decided; go to a transcript to check what was actually said.
 
 The live register of tasks, limitations and future improvements is
 `.agents/context/register.json`. It renders to a workbook in the OneDrive project

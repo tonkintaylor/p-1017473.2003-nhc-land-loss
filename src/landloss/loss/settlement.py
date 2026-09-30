@@ -392,7 +392,7 @@ def settle(claim: DamagedClaim, *, policy: PolicySettings) -> Settlement:
 
         The rule Virginie Lacrosse described takes 10% of the $58,000 payable
         instead, held to its $5,000 ceiling. The two contradict each other
-        (**Q-12**); ``PolicySettings(excess_per_dwelling_nzd=None)`` runs it:
+        (**Q-14**); ``PolicySettings(excess_per_dwelling_nzd=None)`` runs it:
 
         >>> by_rate = PolicySettings(excess_per_dwelling_nzd=None)
         >>> float(settle(example_3, policy=by_rate).settlement_nzd)
