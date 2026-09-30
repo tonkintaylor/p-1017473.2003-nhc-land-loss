@@ -36,6 +36,10 @@ dotenv.load_dotenv()
 # services are slower than Koordinates, and a full page is a real download.
 ARCGIS_TIMEOUT_SECONDS = 120
 
+# How long to wait on a WFS request, in seconds. A WFS read is one request for the
+# whole extent, so this is longer than one ArcGIS page.
+WFS_TIMEOUT_SECONDS = 300
+
 
 def resolve_api_key(domain: str) -> str:
     """Return the API key for a Koordinates domain.
@@ -696,7 +700,7 @@ def get_gns_slide_morphology(
     drainage lines, ridgelines, streams, cliffs and a handful of tension
     cracks. Although the layer description mentions recent landslide scarps, no
     ``Type`` names them; the landslide bodies themselves are in the companion
-    "Genesis" polygon layer (125309), which this reader does not read.
+    "Genesis" polygon layer (125309), read by :func:`get_slide_genesis`.
 
     The retaining walls are "some" rather than all, in GNS's own words: only
     those visible from above were captured, so the layer cannot stand in for a
@@ -982,6 +986,186 @@ def _read_arcgis_page(
     return gpd.GeoDataFrame.from_features(payload["features"])
 
 
+def wfs_cache_path(
+    service_url: str,
+    type_name: str,
+    crs: int | str,
+    bbox: tuple[float, float, float, float] | None,
+) -> Path:
+    """Return the file one WFS layer read is cached at."""
+    key = f"{service_url}|{type_name}|{crs}|{bbox}"
+    digest = hashlib.sha256(key.encode()).hexdigest()[:16]
+    return koopcache_dir("wfs") / f"wfs_{digest}.gpkg"
+
+
+def get_wfs_layer(
+    service_url: str,
+    type_name: str,
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Read a layer from an OGC Web Feature Service (WFS), such as GeoServer.
+
+    The sibling of :func:`get_arcgis_feature_layer` for services that speak WFS.
+    It makes a single request rather than paging, which suits the small national
+    reference layers this is used for, and checks the answer against the count
+    the server says matched so a server-side cap cannot silently truncate it.
+
+    Both the output coordinate system and the bounding box are sent in ``crs``,
+    in easting-northing order. WFS 2.0 and EPSG:2193 officially put northing
+    first, and servers differ in whether they honour that, so the short
+    ``EPSG:<code>`` form is used, which GeoServer reads as easting-northing.
+
+    Args:
+        service_url: The WFS endpoint, for example a GeoServer ``.../ows``.
+        type_name: The layer, with its workspace prefix, such as ``gns:name``.
+        bbox: The extent to fetch (minx, miny, maxx, maxy) in ``crs``. Omitting
+            it fetches the whole layer. **Features are selected by intersection
+            and returned whole**, not cut at the box, so clip afterwards if the
+            difference matters.
+        crs: The coordinate reference system to return the features in. Must be
+            one the service can project to, which in practice means an EPSG code.
+        use_cache: Whether to read and write the on-disk cache for this extent.
+
+    Returns:
+        A GeoDataFrame of the layer's features, in ``crs``. Empty if the layer
+        has nothing in the extent.
+
+    Raises:
+        ValueError: If the service answers with something other than GeoJSON,
+            which is how WFS reports an error (an XML exception report, with an
+            ordinary HTTP 200 for some faults), or returns fewer features than
+            it says matched.
+    """
+    cache_path = wfs_cache_path(service_url, type_name, crs, bbox)
+    if use_cache and cache_path.exists():
+        return gpd.read_file(cache_path)
+
+    srs = f"EPSG:{str(crs).removeprefix('EPSG:')}"
+    params: dict[str, str | int] = {
+        "service": "WFS",
+        "version": "2.0.0",
+        "request": "GetFeature",
+        "typeNames": type_name,
+        "outputFormat": "application/json",
+        "srsName": srs,
+    }
+    if bbox is not None:
+        minx, miny, maxx, maxy = bbox
+        params["bbox"] = f"{minx},{miny},{maxx},{maxy},{srs}"
+
+    response = requests.get(service_url, params=params, timeout=WFS_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    try:
+        payload = response.json()
+    except ValueError as error:
+        msg = (
+            f"{service_url} did not return GeoJSON for {type_name}: "
+            f"{response.text[:300]}"
+        )
+        raise ValueError(msg) from error
+
+    features = payload.get("features", [])
+    matched = payload.get("numberMatched", len(features))
+    if len(features) < matched:
+        msg = (
+            f"{service_url} returned {len(features)} of the {matched} features "
+            f"matching {type_name}; the server has capped the response."
+        )
+        raise ValueError(msg)
+
+    if not features:
+        return gpd.GeoDataFrame(geometry=[], crs=crs)
+
+    layer = gpd.GeoDataFrame.from_features(features, crs=crs)
+
+    if use_cache:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        layer.to_file(cache_path)
+
+    return layer
+
+
+def get_slide_genesis(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load GNS's SLIDE genesis mapping: the process that formed the ground.
+
+    "GNS SLIDE Morphological Data - Genesis" at
+    https://ttgroup.koordinates.com/layer/125309-gns-slide-morphological-data-genesis/,
+    from the "Geomorphological characterisation of the Wellington urban area"
+    study (GNS Science report 2019/28). 6,401 polygons totalling 58 km2 over
+    Wellington City (1,742,454 - 1,755,338 E, 5,420,997 - 5,438,851 N in NZTM),
+    derived by GNS from its morphology and interpreted materials layers.
+
+    Each polygon carries a ``Type``, an optional ``Subtype``, a
+    ``GenesisGroup`` (``Anthropogenic``, ``Mass movement`` or ``Coastal``; blank
+    for the swamp and seepage polygons) and, for some, a ``DateOrigin``. The
+    types are cut slope (2,987 polygons, 227 ha), fill body (1,606), modified
+    terrain (1,058; ``Subtype`` residential, industrial, recreational,
+    mining/quarrying or agricultural), landslide relict (494, 93 ha), landslide
+    recent (88, 5 ha), landfill (46, 125 ha; ``Subtype`` closed or operational
+    (2013)), terracettes, rockfall (``Subtype`` few or many), fan, dune,
+    gully erosion, beach, swamp/wetland, dam (material would be fill) and
+    seepage.
+
+    **The landslides are the only mapped landslide inventory this study has for
+    Wellington City,** and the cut slopes and fill bodies are its record of
+    anthropogenically modified ground. Read them with these cautions:
+
+    - A landslide ``Subtype`` is ``source area`` or ``debris trail``, the two
+      parts of one failure, so the polygon count is not a count of landslides.
+    - The landslides are recent or relict as interpreted from imagery and
+      LiDAR, not dated events, and cover only the mapped urban area, so an
+      absence of landslide polygons is not an absence of landsliding.
+    - ``DateOrigin`` is text, not a date: a range or bound such as
+      ``pre-1938``, ``1945-1996``, ``1998-2006`` or ``~2013``, taken from the
+      aerial photograph epochs either side of the change. It is filled for
+      cut slopes, fill bodies and landfills (4,629 of the 6,401 polygons) and
+      nothing else. Mapping stops at the last aerial photographs, 2013.
+    - Retaining walls, and whether a cut or fill was engineered, are not
+      identified.
+
+    Licence:
+        None is recorded. The layer's Koordinates metadata has no licence, and
+        neither has the WCC service the same polygons are also served from
+        (:data:`landloss.domain.constants.GNS_SLIDE_SERVICE_URL`, sub-layer
+        :data:`~landloss.domain.constants.GNS_SLIDE_GENESIS_SUBLAYER`). The
+        morphology layer of the same study is CC BY 4.0
+        (:func:`get_gns_slide_morphology`), which is a reasonable expectation
+        here but is not a statement about this layer. Credit GNS Science and
+        the SLIDE programme in anything published, and confirm the terms with
+        GNS before a derived layer is delivered to NHC.
+
+    Source:
+        GNS Science, SLIDE programme (MBIE), mirrored to the T+T Koordinates
+        instance in the "NHC WTGN Land Damage Model" group, September 2026.
+        No DOI.
+
+    Args:
+        bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``. Omitting
+            it returns every polygon.
+        crs: The coordinate reference system to return the polygons in.
+        use_cache: Whether to read and write the clipped extent cache.
+
+    Returns:
+        A GeoDataFrame of genesis multipolygons with ``Type``, ``Subtype``,
+        ``GenesisGroup``, ``DateOrigin`` and ``SHAPE_Length`` columns.
+    """
+    return get_koordinates_layer_extent(
+        layer=constants.GNS_SLIDE_GENESIS_LAYER_ID,
+        crs=crs,
+        bbox=bbox,
+        domain=constants.TTGROUP_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
 def get_slide_interpreted_materials(
     bbox: tuple[float, float, float, float] | None = None,
     crs: int | str = constants.DEFAULT_CRS,
@@ -1013,10 +1197,10 @@ def get_slide_interpreted_materials(
     reading this needs something coarser to fall back on -- which for this study
     is :func:`get_nlm_geomorphology`.
 
-    This is a different layer from the SLIDE polygons mirrored on the T+T
-    instance. Those say what *process* formed the ground -- cut slope, fill
-    body, landslide -- and this says what the ground is *made of*. They come
-    from the same study and are meant to be read together.
+    This is a different layer from the SLIDE genesis polygons
+    (:func:`get_slide_genesis`). Those say what *process* formed the ground --
+    cut slope, fill body, landslide -- and this says what the ground is *made
+    of*. They come from the same study and are meant to be read together.
 
     Licence:
         Copyright MBIE, which funded the SLIDE programme, served publicly by
@@ -1047,6 +1231,77 @@ def get_slide_interpreted_materials(
     return get_arcgis_feature_layer(
         constants.GNS_SLIDE_SERVICE_URL,
         constants.GNS_SLIDE_INTERPRETED_MATERIALS_SUBLAYER,
+        bbox=bbox,
+        crs=crs,
+        use_cache=use_cache,
+    )
+
+
+def get_wellington_urban_geology(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load the 1:50,000 geology of the Wellington urban area.
+
+    GNS Science's ``NZL-Urban Wellington geological units``, the digital form of
+    Begg & Mazengarb (1996), *Geology of the Wellington area*, Institute of
+    Geological & Nuclear Sciences geological map 22 (sheets R27, R28 and part
+    Q27). 1,157 polygons over 1,081 km2 (1,735,082 - 1,779,981 E, 5,410,855 -
+    5,448,293 N in NZTM), covering Wellington City and most of Hutt City, Upper
+    Hutt and Porirua. This is the map behind Figure 2.1 of the SLIDE report
+    (GNS Science report 2019/28).
+
+    Each polygon carries a unit code and description: ``unit_code`` (for example
+    ``Tt`` greywacke, ``Ttm`` melange, ``Q1al_c`` coarse floodplain gravels,
+    ``Q1af`` fan, scree and colluvial gravels, ``Q1nc`` construction fill),
+    ``strat_unit``, ``strat_age``, ``descriptio`` and ``old_unit_c``, with
+    ``source`` and ``scale`` (50000). 74 distinct unit and description
+    combinations, of which the basement greywacke, mudstone and melange units
+    (``Tt``, ``Te``, ``Ttm``, ``Teb``) are about 77% of the area and the
+    Quaternary gravels most of the rest. The lithology
+    classes drawn in the SLIDE report's figure (gravel, mud, sand, greywacke,
+    melange and so on) are a simplification made there and are not an attribute
+    here.
+
+    Nearly all polygons (1,145) are from Begg & Mazengarb (1996). The rest are
+    from Dellow & Perrin, and one has a description where ``source`` should be,
+    so do not filter on ``source`` alone. The faults and structural measurements
+    drawn in the report's figure are not in this layer.
+
+    It is the surface geology at 1:50,000, not a ground model. Boundaries are
+    not accurate to the metre, and where the SLIDE materials layer
+    (:func:`get_slide_interpreted_materials`) overlaps it, that is the finer
+    statement of what is at the surface.
+
+    Licence:
+        Creative Commons Attribution 3.0 New Zealand (CC BY 3.0 NZ), "Copyright
+        GNS Science 2014", stated in the AccessConstraints of the GNS GeoServer
+        capabilities document for the service as a whole, not for this layer.
+        Anything derived and published -- a figure, a table, a susceptibility
+        layer -- must credit GNS Science and Begg & Mazengarb (1996).
+
+    Source:
+        Begg JG, Mazengarb C. 1996. Geology of the Wellington area [map]. Lower
+        Hutt (NZ): Institute of Geological & Nuclear Sciences. 1 fold. map, 1:50,000
+        (Geological map 22). Digital layer from GNS Science's GeoServer WFS
+        (:data:`landloss.domain.constants.GNS_GEOSERVER_WFS_URL`). No DOI.
+
+    Args:
+        bbox: The extent to fetch (minx, miny, maxx, maxy) in ``crs``. Polygons
+            are selected by intersection and returned whole, so clip afterwards
+            if the extent has to be exact. Omitting it fetches the whole layer,
+            about 7 MB.
+        crs: The coordinate reference system to return the polygons in.
+        use_cache: Whether to read and write the on-disk cache for this extent.
+
+    Returns:
+        A GeoDataFrame of geological unit polygons.
+    """
+    return get_wfs_layer(
+        constants.GNS_GEOSERVER_WFS_URL,
+        constants.GNS_URBAN_WELLINGTON_GEOLOGY_LAYER,
         bbox=bbox,
         crs=crs,
         use_cache=use_cache,

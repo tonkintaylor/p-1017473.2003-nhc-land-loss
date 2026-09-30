@@ -66,10 +66,43 @@ area is taken to be **25 km from an Mw 8.1 event** (`BETA_SCENARIO_MW`,
   Seismic Hazard Model 2022 deaggregation of PGA for Wellington at
   Vs30 = 400 m/s, as provided by the project lead. Cite the NSHM 2022
   (Gerstenberger et al. 2022, GNS Science Report 2022/57).
-- **Still to record for the report:** the return period, the NSHM version and
-  tool the deaggregation was taken from, and which source the mode is (the
-  Hikurangi interface or a crustal fault). Marc et al. (2016) is calibrated on
-  crustal earthquakes only, so the last of these decides whether it applies.
+- **The source is the Hikurangi subduction interface** (confirmed by the project
+  lead). Marc et al. (2016) and the Hancox relationships are fitted on crustal
+  earthquakes, so they calibrate the models on crustal events but do not set
+  the Wellington total. The longer shaking of an interface rupture is a stated
+  limitation of models 1–3; see the calibration plan's Risks.
+- **Historical accounts for validation.** Two GNS compilations of contemporary
+  and later accounts, recorded in `context/lit/landslide/SOURCES.md` (the PDFs
+  are over 50 MB and are kept at `U:\MAMI\Literature`): Downes & Grapes (1999)
+  on the 1855 Wairarapa earthquake and Grapes, Downes & Goh (2003) on the 1848
+  Marlborough earthquakes. Both were swept
+  by keyword for landslide passages and the surrounding accounts read; neither
+  was read line by line, so an account that never says slip, slide or cliff
+  could have been missed. Their use is set out under `## Validation`.
+
+- **A figure for the report.** Gold's 1855 watercolour of a slip caused by the
+  earthquake near Wellington, in `context/lit/landslide/gold_1855/` (GeoNet
+  earthquake story 2178057, ref. B-103-016). Caption as given: *Landslip caused
+  by earthquake near Wellington, New Zealand. January 1855.* It is an
+  illustration only, with no place, scale or date beyond the month. To settle
+  before it goes in: the holding library's reproduction terms, and whether it
+  is the Wellington-Petone road painting Downes & Grapes (1999) list.
+- **Still to record for the report:** the return period, and the NSHM version and
+  tool the deaggregation was taken from.
+
+**Marc et al. (2016) rebuilt and checked.**
+`landloss.hazard.landslide.calibration.marc_2016` reproduces the paper's fit on
+its own 26 events (steepness scale 11.7° against 11.6°, sensitivity within 10%);
+see `validations/calibration/marc_2016_table_s1_findings.md`.
+
+**Hancox relationships and the calibration interface built.**
+`landloss.hazard.landslide.models.hancox_1997.relationships` holds the area
+affected, maximum distances, intensity thresholds and slope-class shares; the
+digitised Figure 19 points refit to the published regression.
+`landloss.hazard.landslide.calibration` applies the extent mask and the scaling
+to a target total. Neither has been run on an event yet; Kaikōura is next.
+How Marc is used for the Hikurangi interface is open; the options are in the
+calibration plan.
 
 **Model 1 of the portfolio: Nowicki Jessee (2018), rebuilt.**
 
@@ -198,6 +231,75 @@ The phased build for the new-model route is in
 - Total areal coverage against the Nowicki Jessee (2018) estimate for the same
   shaking.
 - Simulated size distribution and reach angles against the Kaikōura inventory.
+- **Historical accounts of 1855 and 1848** (Downes & Grapes 1999; Grapes et al.
+  2003). Qualitative rank-order and presence/absence checks, never calibration.
+  Neither report has a slip inventory, map, count or area, and neither gives an
+  MM value in its text (the 1848 report has an isoseismal figure whose OCR is
+  unreadable; read it from the original).
+  - *1855 (Mw 8.1-8.2, Wairarapa Fault, January, little antecedent rain
+    reported).* The closer match in size to the Mw 8.1 scenario.
+    - **Positive control:** the Rimutaka Range and Palliser Bay coast. Iorns
+      (1913) has slips "hundreds of feet long and many chains across" burying
+      the Muka Muka rocks; McKay (1901) describes slips from at least 2,600 ft
+      down to river bottoms near 500 ft, "thousands of acres" in all, larger on
+      the western slope. Both are late and exaggerate, but agree with each other
+      and with contemporary reports of the Rimutaka road.
+    - **Positive control:** the Rimutaka Road and the Hutt/Petone road. The
+      *Spectator* of 3 Feb 1855 has one slip of any size on the Petone road,
+      "several considerable landslips" in the lower Hutt gorges and seven miles
+      of landslips and crevices beyond Kaitoke. Fox puts the road damage at
+      about £2,000. A modelled failure density on the road corridors and a
+      length of road blocked can be set against these. A later account has a
+      3-acre slide into the harbour burying part of the Hutt road.
+    - **Eastern harbour hills:** several heavy landslips were visible from
+      Wellington; the Wainuiomata and Orongorongo slopes are described as split
+      with fronts fallen. Several of these authors also confuse 1848 and 1855.
+    - **Negative or low checks:** Wellington town and the western suburbs
+      (fissures and chimneys, no slips reported), the Hutt Valley floor
+      (fissures and sand cones, not slips), Porirua (uplift and settlement of
+      the road only), the Kaitoke to Hodder's road ("all right"), and eastern
+      Palliser Bay ("not affected to any great extent"). Damage was worst on low
+      ground and least on rock sites, the ordering the site class term should
+      reproduce.
+    - **Far field:** cliff collapses at Wanganui and Rangitikei, and slips near
+      Cape Campbell and Flaxbourne. Useful only if the model extends that far.
+  - *1848 (Mw at least 7.4, Awatere Fault, about 100 km of rupture, and two
+    severe Wellington aftershocks on 17 and 19 October).* A smaller event
+    with heavy antecedent rain.
+    - **Rain plus shaking:** about 10 inches fell in the week before the
+      mainshock, more than three times the previous month. Colenso in November
+      found "streams of stones" descended from the hill summits at Palliser Bay,
+      mudstone cliffs east of the bay still falling, and blamed both the
+      shocks and the rain. This is the one account that can test whether the
+      models respond to wet antecedent conditions; they have no such term, so
+      it can only be a stated limitation.
+    - **Wellington:** fissures on loose gravelly ground and at cliff and terrace
+      edges, none deep or wide; rocks rolling into the sea from the Heads round
+      to Cape Terawhiti; and a Gold painting of gullies from the old Porirua
+      Road, read by the editors as landslide scars in the Ngaio Gorge. Shaking
+      was "comparatively light" near rock at Karori Road and Kaiwharawhara.
+    - **Near the rupture:** rockfalls and slips at Cloudy Bay, Queen Charlotte
+      Sound and the lower Awatere, and slips on the White Bluff seaward face.
+      A source-adjacent check for a crustal event, not a Wellington one.
+    - **Several accounts placed here belong to 1855.** The editors flag Heaphy's
+      Orongorongo slips and McDowell's Wainuiomata ones as probable confusions.
+      Do not count them for 1848.
+  - **How to use them.**
+    1. Run the calibrated models for a crustal Mw 8.2 and an Mw 7.5 scenario
+       with their own shaking fields, not the Hikurangi Mw 8.1 at 25 km
+       scenario, which is a different source. Expect the Rimutaka, Palliser Bay
+       and eastern harbour slopes to rank highest, the Hutt and Petone road
+       corridors high, and the Wellington west, Porirua and the Hutt floor low.
+    2. Compare road-corridor failure counts and blocked lengths with the
+       *Spectator* passage for the Petone, Hutt gorge and Rimutaka roads.
+    3. Rank against Hancox (1997) and the Marc (2016) total for the same events
+       rather than against these reports for total area, which they cannot give.
+  - **Limits.** Evidence clusters on travelled corridors and settlement; a silent
+    hillside is weak evidence of no slips. Many accounts are reminiscences
+    decades later with exaggerated sizes, near-duplicates echo one another, and
+    1848 and 1855 are confused. The forest cover of the 1850s is not that of
+    today, and neither event is an interface rupture, so neither says anything
+    about the longer shaking that limits models 1-3.
 - Proportion of landslides confined to a single property. Local expectation in
   `.agents/context/land-damage-mechanisms.md` is that most are, with
   multi-property failures concentrated in gullies; if the model does not

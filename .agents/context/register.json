@@ -830,6 +830,14 @@
       "Answer": "",
       "Source": "Capability statement, T+T archive job 28971 (presentation/Capability.docx)",
       "Status": "Open"
+    },
+    {
+      "ID": "Q-13",
+      "Question": "Do you know who to contact to track down the Precedent/Seismic team's database of slope height and slope angle for greywacke terrain in the Wellington Region? The Transmission Gully proposal methodology (I:\\83972\\Contractual\\Methodology.doc) says the team 'already have' it, and it is also mentioned in projects 24715 and 84947. If it can be found it could inform the slope-angle rules for the landslide model.",
+      "Asked of": "Nick Peters",
+      "Answer": "",
+      "Source": "User request 2026-09-30; Transmission Gully proposal (T+T archive job 83972, Contractual/Methodology.doc)",
+      "Status": "Open"
     }
   ]
 }

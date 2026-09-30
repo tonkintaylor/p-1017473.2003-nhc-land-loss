@@ -1,0 +1,1 @@
+Add Grapes, Downes & Goh (2003), the compilation of historical accounts of the 1848 Marlborough earthquakes, to `context/lit/landslide/`, and set out in the landslide status file how it and the 1855 Wairarapa compilation can be used to validate the landslide models.

@@ -122,6 +122,11 @@ re-reading a web page.
   for example
   `context/lit/landslide/nowicki_jessee_2018/nowicki-jessee-2018-global-seismic-landslide-model.pdf`.
   Each topic folder carries a `SOURCES.md` in the same form as the `temp/` one.
+- **A file over 50 MB stays out of git**, because GitHub warns above that size
+  (the hook's hard limit is 100 MB). It is kept at `U:\MAMI\Literature` and its
+  `SOURCES.md` row says so, with the size, giving the same `{author}-{year}-{short-title}.pdf`
+  name. Write a `<author>-<year>-summary.md` beside it in the `context/lit/`
+  folder if the paper's content needs to be searchable from the repository.
 - Do not put anything in `temp/reference/` that may not be redistributed inside
   T+T. Public reports and papers are fine; a client's confidential document is
   not.
