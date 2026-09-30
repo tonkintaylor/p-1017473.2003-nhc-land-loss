@@ -17,6 +17,7 @@ Daniel Le Roux owns sourcing these, delegating within the GIS team.
 | Property type | Freehold and cross-lease are confirmed; whether multi-unit buildings are identified is unconfirmed |
 | DEM | High resolution, but a merge of different survey years — Wellington 2023, Hutt City 2025, Porirua unknown |
 | Apartment structures | Nice to have, dependent on the multi-unit decision |
+| Railway stations | Topo50 station points (layer 50318), for the land value accessibility term; read by `get_nz_rail_stations`. Carries no Wellington Station, which `land-value-extra-stations.csv` adds |
 
 The DEM does not need to be re-stitched. An existing tool built for the National
 Liquefaction Model assembles regional extents on the fly, and the GIS team already

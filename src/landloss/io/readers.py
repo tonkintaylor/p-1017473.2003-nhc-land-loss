@@ -400,6 +400,48 @@ def get_nz_address_roads(
     )
 
 
+def get_nz_rail_stations(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load the LINZ NZ Rail Station Points (Topo, 1:50k) layer for an extent.
+
+    One point per railway station on the Topo50 map series,
+    https://data.linz.govt.nz/layer/50318-nz-rail-station-points-topo-150k/,
+    described by LINZ as a point on a railway line used for picking up and
+    setting down passengers or freight. The land value accessibility term
+    measures each address's distance to the nearest of them.
+
+    Licence:
+        Creative Commons Attribution 4.0 International (CC BY 4.0),
+        https://data.linz.govt.nz/license/attribution-4-0-international/. That
+        obliges us to credit LINZ in anything published that is derived from
+        it, which here means the modelled land values.
+
+    Source:
+        Land Information New Zealand, data.linz.govt.nz. No DOI is published
+        for the layer.
+
+    Args:
+        bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``.
+            Omitting it returns every station in New Zealand.
+        crs: The coordinate reference system to return the stations in.
+        use_cache: Whether to read and write the clipped extent cache.
+
+    Returns:
+        A GeoDataFrame of station points.
+    """
+    return get_koordinates_layer_extent(
+        layer=constants.NZ_RAIL_STATION_POINTS_LAYER_ID,
+        crs=crs,
+        bbox=bbox,
+        domain=constants.LINZ_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
 def get_nz_river_name_lines(
     bbox: tuple[float, float, float, float] | None = None,
     crs: int | str = constants.DEFAULT_CRS,

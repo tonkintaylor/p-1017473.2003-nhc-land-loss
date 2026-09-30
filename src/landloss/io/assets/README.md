@@ -8,7 +8,9 @@ committed. Nothing here is large enough to belong in a cache.
 | --- | --- | --- | --- |
 | `study-areas.geoparquet` | Territorial authority boundaries for the four study authorities, from Stats NZ via T+T's Koordinates instance | `src/landloss/io/one_offs/gen_study_extent.py` | `src/landloss/io/area_of_interest.py` |
 | `land-value-base-rates.csv` | Published QV rating revaluation anchors per territorial authority, plus the two derived inputs the land value model needs | Maintained by hand — see below | `landloss.exposure.land.land_value.load_base_rates` |
-| `land-value-factors.csv` | Landform multipliers and clip multiples for the land value model | Maintained by hand — see below | `landloss.exposure.land.land_value.load_factors` |
+| `land-value-factors.csv` | Landform multipliers, terrain and accessibility coefficients, and clip multiples for the land value model | Maintained by hand — see below | `landloss.exposure.land.land_value.load_factors` |
+| `land-value-centres.csv` | The centres the land value accessibility term is measured against, with a weight and decay length each | Maintained by hand — see below | `landloss.exposure.land.accessibility.load_centres` |
+| `land-value-extra-stations.csv` | Railway stations missing from the LINZ Topo50 station layer, added to it for the accessibility term | Maintained by hand — see below | `landloss.exposure.land.accessibility.load_extra_stations` |
 | `marc-2016-table-s1.csv` | Marc et al. (2016) Table S1, verbatim: the 40 earthquakes their total landslide area and volume expression was tested on | Converted from the supporting information's `.xls` (`context/lit/landslide/marc_2016/`) — see below | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` |
 | `marc-2016-table-s1-subevents.csv` | The same table parsed to numbers, one row per earthquake or per sub-event of an earthquake sequence | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` | The landslide calibration (`.agents/plans/building-hancox-landslide-model-and-calibration.md`) |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
@@ -96,6 +98,35 @@ The clip multiples are judgement bounds, not researched figures. The model
 re-solves the per-authority normalising constant after clipping and re-applies
 the clip once, so clipping moves value between properties without changing the
 authority's modelled mean.
+
+The five accessibility rows -- `accessibility_elasticity`,
+`rail_station_premium`, `rail_station_decay_length_m` and the two
+`accessibility_modifier_clip_*` bounds -- are judgement too, apart from the
+400 m decay length, which is the implementation plan's.
+
+## `land-value-centres.csv`
+
+One row per centre: `name`, `kind` (`regional`, `city` or `local`), `weight`,
+`decay_length_m`, WGS84 `lon` and `lat`, and a `basis` cell.
+
+- The four CBD weights and both decay lengths are the land value step's
+  implementation plan. Local centres take weights from the plan's 0.05 to 0.10
+  band by judgement, ranked by the size of the centre, and the plan's 3 km
+  secondary centre decay length.
+- Positions are placed by hand on each centre's main shopping street, and are
+  approximate to a few hundred metres. `fig_town_centres.py` draws them, and is
+  where they are checked.
+- The list is a first cut. Porirua's suburban centres and Upper Hutt's are not
+  in it.
+
+## `land-value-extra-stations.csv`
+
+One row per station: `name`, WGS84 `lon` and `lat`, and a `basis` cell saying
+why it is missing from LINZ and how it was placed. It holds Wellington Station
+only: the Topo50 station points (layer 50318) carry every suburban station in
+the study area but not the terminus. A row stops mattering, without being
+deleted, once LINZ adds the station, because an added station within
+`DUPLICATE_STATION_M` of one the layer carries is dropped.
 
 ## `marc-2016-table-s1.csv`
 

@@ -16,6 +16,7 @@ from landloss.io.readers import (
     get_koordinates_layer_extent,
     get_nz_addresses,
     get_nz_land_cover,
+    get_nz_rail_stations,
     get_nz_river_name_lines,
     get_slide_genesis,
     get_slide_interpreted_materials,
@@ -406,6 +407,20 @@ def test_ttpy_gets_an_absolute_cache_unchanged(
     get_koordinates_layer_extent(layer=1)
 
     assert Path(ttpy_sees["KOOPCACHE_DIR"]) == tmp_path / "elsewhere"
+
+
+# --- NZ Rail Station Points ---------------------------------------------------
+
+
+def test_get_nz_rail_stations_requests_the_linz_layer(
+    fake_koordinates: dict[str, object],
+) -> None:
+    """The helper points at the LINZ Topo50 station layer with the LINZ key."""
+    get_nz_rail_stations(bbox=BBOX)
+
+    assert fake_koordinates["layer_id"] == constants.NZ_RAIL_STATION_POINTS_LAYER_ID
+    assert fake_koordinates["conn"].domain == constants.LINZ_DOMAIN
+    assert fake_koordinates["conn"].api_key == "linz-key"
 
 
 # --- NZ Addresses ------------------------------------------------------------

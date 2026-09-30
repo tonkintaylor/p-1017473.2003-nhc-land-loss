@@ -131,7 +131,10 @@ polygon now includes the driveway and is cut to the property boundary.
    not the capital value -- and not scraped. Council values may yet arrive
    (2026-09-30); keep progressing until they do. Building on licensed values
    would put everything derived from them under that licence, so the further
-   the model gets on open data first, the better.
+   the model gets on open data first, the better. Stage 3a of the plan,
+   straight-line accessibility to the main centres and to railway stations, is
+   built (`steps/s2_land_value/s2_build_accessibility.py`) but has not yet been
+   run with LINZ access; Phase 4, sea view and winter sun, is next.
 8. Generate one driveway per property, as its main access way, rather than one
    per building (**T-60**). Reviewing the KML layers on 2026-10-01, parcel
    3989118 carried two driveways because it has two dwellings, and outbuildings
