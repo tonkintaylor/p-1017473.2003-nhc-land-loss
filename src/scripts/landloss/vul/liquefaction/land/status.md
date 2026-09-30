@@ -3,7 +3,7 @@
 **Status:** Canterbury observed damage database built, and the cost rates now
 price a Wellington realisation end to end.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-09-30
 
 ## Approach
 
@@ -26,6 +26,39 @@ price a Wellington realisation end to end.
 - Keep to **flat land**. The Canterbury evidence is flat land liquefaction
   damage, the observed damage database is masked to flat land, and the packaged
   costs carry the same restriction.
+
+Agreed 2026-09-30, so that `vul` hands `loss` what an NHC claim report would
+contain -- evacuated and inundated land -- and `loss` does the costing.
+
+Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
+
+- [ ] Give each land damage state an **evacuated** (cracked) area and an
+  **inundated** (ejecta) area, drawn uniformly within the state's range, from
+  the MBIE descriptions of each state (**T-55**, owner Perrie Gilbert):
+
+  | State | Evacuated (m²) | Inundated, share of insured land |
+  | --- | --- | --- |
+  | 1 None | 0 | 0 |
+  | 2 Minor | 1 | 0 |
+  | 3 Moderate | 1 | 25% to 70% |
+  | 4 Major | 1 to 10 | 30% to 100% |
+  | 5 Severe | 10 to 40 | 30% to 100% |
+  | 6 Very severe | 40 to 100 | 30% to 100% |
+
+  Evacuated land is an area in m² and inundated land a percentage of the
+  insured land (confirmed by Perrie Gilbert, 2026-09-30). Moderate inundation
+  was first put at 5% to 25% and revised to 25% to 70% in the same call. All
+  the ranges are judgement (**L-39**).
+- [ ] Take the **total damaged area** as evacuated plus inundated less a 30%
+  overlap between them, and value liquefied land in the land cover cap over
+  that rather than over the whole insured area (**T-56**) -- the whole-area
+  reading gives caps that are much too high.
+- [ ] Set **repair rates** for inundated and evacuated liquefied land, chosen so
+  the modelled costs roughly reproduce the Canterbury cost table, and add a
+  **no-SVA flag** that raises the inundated rate, since the Canterbury clearing
+  costs carry the Student Volunteer Army's unpaid work (**T-57**, **L-40**). The
+  Canterbury rates stay for the liquefaction repair cost until the new rates
+  replace them.
 
 ## Loss contract
 
@@ -70,6 +103,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 3. Gross the rates up for GST at the loss boundary. They arrive excluding it
    and the Act compares on a GST-inclusive basis.
 4. Run all three percentiles and report the portfolio total as a band.
+5. Add the evacuated and inundated areas per state (**T-55**), and the damaged
+   area the cap is valued over (**T-56**). Maxim Millen is revising the land
+   damage states themselves (**T-54**), which is where the two pieces of work
+   first meet.
+6. Set the inundated and evacuated repair rates against the Canterbury table,
+   with the no-SVA flag (**T-57**).
 
 ## Validation
 

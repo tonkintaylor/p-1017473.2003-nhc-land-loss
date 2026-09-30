@@ -18,7 +18,7 @@ ACT = PolicySettings()
 # The explainer states a flat "$500 per dwelling, capped at $5,000" and works
 # all three of its examples that way, which is what `PolicySettings` defaults
 # to. Virginie Lacrosse described 10% of what is payable, per claim, and the two
-# disagree by $4,500 on the explainer's own first example (**Q-12**). The worked
+# disagree by $4,500 on the explainer's own first example (**Q-14**). The worked
 # examples are run against the explainer's rule by name because that is the
 # document they come from; the rate is exercised separately below.
 EXPLAINER = PolicySettings(excess_per_dwelling_nzd=500.0)
@@ -167,7 +167,7 @@ def test_a_claim_paid_nothing_is_charged_no_excess():
 
 
 def test_the_rate_rule_is_still_available_and_is_per_claim():
-    # The two contradict each other (**Q-12**), so both can be run. Virginie
+    # The two contradict each other (**Q-14**), so both can be run. Virginie
     # Lacrosse's own examples: $1,000 of damage takes the $500 floor because
     # 10% of it is less, and $6,000 takes 10%, which is $600.
     assert BY_RATE.excess_nzd(1_000.0) == pytest.approx(500.0)

@@ -40,3 +40,19 @@ such.
   judgement** — including the assumptions used to justify excluding something.
   A decision to park an issue should be accompanied by a check of how much of the
   population it affects.
+
+Added following the land model catch-up on 30 September 2026:
+
+- **Everything upstream of `loss` produces what an NHC claim report contains**
+  -- evacuated, inundated and imminently damaged land, and the damaged
+  structures -- and `loss` does the costing from that. For liquefaction this
+  means the hazard and vulnerability modules now hand over evacuated and
+  inundated areas per land damage state rather than a cost per state
+  (**T-55** to **T-57**).
+- The timeline: a **first model the team is happy with by about Tuesday
+  6 October 2026**, then around two days reviewing every status document to
+  decide what is done now and what moves to future improvements (**T-58**),
+  and the **report by 14 October 2026** (**T-59**). The report is planned as a
+  roughly three-page executive summary and a technical document of about
+  100 pages written in the style of the NLM report, with its content held in
+  YAML read into Typst and converted to docx so every statement is traceable.

@@ -4,7 +4,7 @@
 Jessee (2018) model is rebuilt and checked; the portfolio of models is proposed
 but not agreed.
 
-**Updated:** 2026-09-29
+**Updated:** 2026-09-30
 
 ## Approach
 
@@ -218,6 +218,16 @@ The phased build for the new-model route is in
    module's agreed relation).
 7. After the beta, take the site class from the Foster et al. (2019) Vs30 model
    rather than the fixed site class 2 (**T-15**).
+8. Add imminent-risk land to each landslide (**T-45**), as agreed on
+   2026-09-25: a new circle centred on the same place, about the same size; the
+   part of it upslope of the evacuated polygon is the additional evacuated land
+   behind a regressed headscarp; imminent inundation is re-inundation of the
+   same area, so its areas can be read off even where it runs outside the
+   property. The chance of imminent land depends on slope. Its extent is really
+   geology-dependent, but geology is not in the model, so for now it is derived
+   from the diameter -- a decision to revisit. Maxim Millen expects to take this
+   on (2026-09-30), and it may be deferred. **T-44** sets the regression rules
+   to agree with John Leeves.
 
 ## Validation
 

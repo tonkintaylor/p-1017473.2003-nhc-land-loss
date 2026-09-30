@@ -4,7 +4,7 @@
 applied to an insured land extent buffered off every building on the property,
 driveways included, clipped to the boundary.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-09-30
 
 ## Approach
 
@@ -123,6 +123,15 @@ polygon now includes the driveway and is cut to the property boundary.
    0.2 ha of the pilot's 225.7 ha is still claimed by two properties.
 6. Separate the bare sections from the address points placed outside their own
    boundary, among the 3,004 properties carrying no dwelling.
+7. Revise the land value estimate to mimic how councils set land value rates --
+   premiums for sea views and for closeness to centres, and hazard discounting
+   -- following `.agents/plans/estimating-land-values-wellington.md`
+   (**T-49**, owner Perrie Gilbert, agreed 2026-09-25). Sense-check it against a
+   few CV land values looked up by hand on homes.co.nz or QV -- the land value,
+   not the capital value -- and not scraped. Council values may yet arrive
+   (2026-09-30); keep progressing until they do. Building on licensed values
+   would put everything derived from them under that licence, so the further
+   the model gets on open data first, the better.
 
 ## Validation
 

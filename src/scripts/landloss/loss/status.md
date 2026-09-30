@@ -5,7 +5,7 @@ prices the repair and pays `min(repair, cap)` less the excess — $13.7 m over
 2,031 claims. Every repair cost rests on a named placeholder: the wall rate, the
 three site ratings, and the wall invented to reinstate landslide ground.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-09-30
 
 ## Approach
 
@@ -126,6 +126,17 @@ The settlement core is built and is the only part that needed no upstream data.
    `landloss.loss.claims`.
 6. Settle, once a repair cost exists for either side. The cap is built and
    `settle` is tested, so this is wiring rather than arithmetic.
+7. Value liquefied land in the cap over its damaged area -- inundated plus
+   evacuated, less a 30% overlap -- rather than the whole insured area, which
+   gives caps far too high (**T-56**, agreed 2026-09-30). The areas come from
+   `vul` per land damage state (**T-55**).
+8. Price inundated and evacuated liquefied land at rates set to roughly
+   reproduce the Canterbury table, with a no-SVA flag on the inundated rate
+   (**T-57**).
+9. Connect the loss steps to a full end-to-end run of the pipeline, rather than
+   the pilot's cached `vul` outputs (**T-51**).
+10. Settle the land excess rule with NHC (**Q-14**): the module defaults to the
+    explainer's $500 per dwelling and can run the 10% rule.
 
 ## Validation
 
