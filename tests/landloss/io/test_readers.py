@@ -1,5 +1,6 @@
 """Tests for the vector dataset readers."""
 
+import os
 from pathlib import Path
 
 import geopandas as gpd
@@ -7,7 +8,7 @@ import pytest
 from shapely.geometry import Point, Polygon
 
 from landloss.domain import constants
-from landloss.io import readers
+from landloss.io import DEFAULT_KOOPCACHE_DIR, REPO_ROOT, readers
 from landloss.io.area_of_interest import SMALL_WLG_PILOT
 from landloss.io.readers import (
     get_gns_slide_morphology,
@@ -354,6 +355,57 @@ def test_an_empty_result_is_not_cached(layer_file: Path) -> None:
     assert not readers.extent_cache_path(
         layer_file, constants.DEFAULT_CRS, empty_bbox
     ).exists()
+
+
+# --- the ttpy download cache -------------------------------------------------
+
+
+@pytest.fixture
+def ttpy_sees(monkeypatch: pytest.MonkeyPatch, layer_file: Path) -> dict[str, str]:
+    """Record the KOOPCACHE_DIR ttpy would read at the moment it is called."""
+    seen: dict[str, str] = {}
+
+    def fake_get_latest_layer(*, conn: FakeConnection, layer_id: int) -> Path:
+        seen["KOOPCACHE_DIR"] = os.environ.get("KOOPCACHE_DIR", "")
+        return layer_file
+
+    monkeypatch.setattr(readers, "KoordinatesConnection", FakeConnection)
+    monkeypatch.setattr(readers, "get_latest_layer", fake_get_latest_layer)
+    monkeypatch.setenv("TNT_KOORDINATES_API_KEY", "tnt-key")
+    return seen
+
+
+def test_ttpy_gets_the_default_cache_when_the_variable_is_unset(
+    ttpy_sees: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """.env.example says leave it unset; ttpy raises on an unset one by itself."""
+    monkeypatch.delenv("KOOPCACHE_DIR")
+
+    get_koordinates_layer_extent(layer=1)
+
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == DEFAULT_KOOPCACHE_DIR
+
+
+def test_ttpy_gets_a_relative_cache_anchored_at_the_repo_root(
+    ttpy_sees: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Otherwise ttpy downloads to wherever the script happened to be run from."""
+    monkeypatch.setenv("KOOPCACHE_DIR", ".koopcache")
+
+    get_koordinates_layer_extent(layer=1)
+
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == REPO_ROOT / ".koopcache"
+
+
+def test_ttpy_gets_an_absolute_cache_unchanged(
+    ttpy_sees: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cache deliberately put on another disk stays there."""
+    monkeypatch.setenv("KOOPCACHE_DIR", str(tmp_path / "elsewhere"))
+
+    get_koordinates_layer_extent(layer=1)
+
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == tmp_path / "elsewhere"
 
 
 # --- NZ Addresses ------------------------------------------------------------

@@ -28,7 +28,7 @@ from shapely import box, make_valid
 from ttpy.gis.koop import KoordinatesConnection, get_latest_layer
 
 from landloss.domain import constants
-from landloss.io import koopcache_dir
+from landloss.io import KOOPCACHE_DIR_ENV_VAR, koopcache_dir
 
 dotenv.load_dotenv()
 
@@ -70,6 +70,28 @@ def resolve_api_key(domain: str) -> str:
         raise ValueError(msg)
 
     return api_key
+
+
+def _get_latest_layer(conn: KoordinatesConnection, layer: int) -> Path:
+    """Fetch a Koordinates layer through ttpy, into this repository's cache.
+
+    ttpy reads ``KOOPCACHE_DIR`` from the environment for itself and refuses to
+    download anything when it is unset -- which is exactly how ``.env.example``
+    tells everyone to leave it, because :func:`landloss.io.koopcache_dir`
+    supplies the default. So the resolved root is handed to ttpy here, as an
+    absolute path, before every call. That also stops a relative value in an
+    older ``.env`` sending ttpy's downloads to wherever the script was launched
+    from while every other cache stays anchored at the repo root.
+
+    Args:
+        conn: An open connection to the layer's Koordinates domain.
+        layer: The Koordinates ID of the layer.
+
+    Returns:
+        The path ttpy downloaded or cached the layer at.
+    """
+    os.environ[KOOPCACHE_DIR_ENV_VAR] = str(koopcache_dir())
+    return get_latest_layer(conn=conn, layer_id=layer)
 
 
 def extent_cache_dir() -> Path:
@@ -128,7 +150,7 @@ def get_koordinates_layer_extent(
     if isinstance(layer, int):
         conn = KoordinatesConnection(api_key=resolve_api_key(domain), domain=domain)
         try:
-            layer_path = get_latest_layer(conn=conn, layer_id=layer)
+            layer_path = _get_latest_layer(conn, layer)
         finally:
             conn.close()
     else:
@@ -814,7 +836,7 @@ def get_koordinates_raster(layer: int, domain: str = constants.TTGROUP_DOMAIN) -
     """
     conn = KoordinatesConnection(api_key=resolve_api_key(domain), domain=domain)
     try:
-        return get_latest_layer(conn=conn, layer_id=layer)
+        return _get_latest_layer(conn, layer)
     finally:
         conn.close()
 
