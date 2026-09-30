@@ -125,10 +125,14 @@ density forward.
 - [ ] `modal_slope_and_a_topo(dem, rupture)`: 30 m slope, modal slope per 1 km
       cell, A_topo as the share of the predicted landsliding that falls on cells
       with modal slope ≥ 8°.
-- [ ] **Obtain the supporting information** (Table S1: the 40 events' moment,
-      R0, mechanism, S_mod and estimated A and V). The GFZ copy in
-      `marc_2016/` has no supplement. Table S1 is the check that our
-      implementation reproduces the paper's own predictions event by event.
+- [x] **Obtain the supporting information.** Table S1 (the 40 events' moment,
+      R0, mechanism, S_mod, A_topo and estimated A and V) is in
+      `context/lit/landslide/marc_2016/` and packaged as
+      `src/landloss/io/assets/marc-2016-table-s1.csv`, with a numeric version,
+      one row per sub-event, in `marc-2016-table-s1-subevents.csv`.
+- [ ] Reproduce the paper's predictions event by event from Table S1, the check
+      that our implementation matches theirs. Nine of the events are in New
+      Zealand, which also gives the Hancox work New Zealand points.
 - [ ] Unit tests: the paper's reference case (thrust, R0 = 10 km, A_topo = 1,
       α_V = 0.05) against Figure 1b, and b saturating above M_h.
 
@@ -253,7 +257,8 @@ density forward.
 - Marc, O., Hovius, N., Meunier, P., Gorum, T. & Uchida, T. (2016). A
   seismologically consistent expression for the total area and volume of
   earthquake-triggered landsliding. *JGR Earth Surface* 121(4), 640–663.
-  doi:10.1002/2015JF003732. Supporting information (Table S1) still to obtain.
+  doi:10.1002/2015JF003732. Supporting information, Table S1 included, in
+  `context/lit/landslide/marc_2016/`.
 - Leonard, M. (2010). Earthquake fault scaling. *BSSA* 100(5A). Not yet obtained.
 - Boore, D.M. & Atkinson, G.M. (2008). NGA ground-motion relations. *Earthquake
   Spectra* 24(1). Not yet obtained.

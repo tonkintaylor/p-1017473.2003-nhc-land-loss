@@ -40,7 +40,7 @@ Two facts about the paper shape this plan:
 | Aggregation | Fuzzy gamma, γ = 0.9 | The paper's choice; γ = 0.8 changed Wenchuan AUC by 0.005, so tested as a sensitivity |
 | Resolution | 60 m, one grid for every layer | The paper's DEMs are 60 m and it stresses that all layers must share one resolution |
 | DEM | LINZ elevation, aggregated to 60 m | Local and current; the paper used 60 m ASTER |
-| Active faults | NZ Active Faults Database 1:250,000 (GNS Science 2016, doi:10.21420/R1QN-BM52), horizontal distance to mapped traces | Not yet held. Downloadable from <https://data.gns.cri.nz/af/> as a shapefile; a `get_` script puts it under SourceMaterial on T:, and a reader in `landloss.io` reads it back. The catalogue lists its licence only as "check with source agency", so confirm with GNS before redistributing anything derived |
+| Active faults | NZ Active Faults Database 1:250,000 (GNS Science 2016, doi:10.21420/R1QN-BM52), horizontal distance to mapped traces | Held in the cross-project data library as `R:\DataLibrary\210.20_active_faults_NZ_NZAFD_AF250\` (V1, downloaded 2026-09-30 from the GNS WFS layer `gns:af250_download`), read by a reader in `landloss.io` in the same way as `landloss.io.gfdb`. Licence CC BY 3.0 NZ, as the GNS WFS service states it; attribute GNS Science |
 | Shaking | MM intensity per cell from the study's own PGV (the shaking module's `s2_pgv` step), converted with the PGV form of Worden et al. (2012), without its distance and magnitude terms. With log = log10 PGV (cm/s): MMI = 3.78 + 1.47 log for log ≤ 0.53, and MMI = 2.89 + 3.16 log above it. Capped at MM X; the memberships are flat beyond IX | Decided (see below) |
 | Output | Relative hazard H (0–1), then coverage through the model 3 calibration | The paper gives no coverage; the portfolio needs one |
 | Size population | Large only (above the split) | Agreed split |
@@ -81,11 +81,11 @@ to the rupture. The scenario enters model 2 only through the calibration.
       (2013), as the paper does. The paper does not state its TPI neighbourhood;
       choose one, record it as a judgement, and test a smaller and a larger
       radius.
-- [ ] Distance to mapped active faults: a `get_` script under
-      `static_data_gen/` that downloads the NZ Active Faults Database 1:250,000
-      shapefile to SourceMaterial on T:, a reader in `landloss.io` that reads it
-      back through the cache, and horizontal distance to the nearest trace on
-      the 60 m grid.
+- [ ] Distance to mapped active faults: a reader in `landloss.io` for the NZ
+      Active Faults Database in the data library
+      (`210.20_active_faults_NZ_NZAFD_AF250`, V1), following `landloss.io.gfdb`,
+      and horizontal distance to the nearest trace on the 60 m grid. R: is read
+      by the project lead's runs, not Claude's.
 - [ ] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
       PGV form (`landloss.hazard.shaking` gains a `mmi_from_pgv`). For the validation events, read MM directly from the
       ShakeMap `grid.xml` (`landloss.io.shakemap` already carries `mmi`).
@@ -210,4 +210,5 @@ to the rupture. The scenario enters model 2 only through the calibration.
   equations (GMICEs) for New Zealand. Not yet obtained; confirm the full
   citation when it is. The sensitivity case.
 - GNS Science (2016). New Zealand Active Faults Database 1:250,000 scale.
-  doi:10.21420/R1QN-BM52.
+  doi:10.21420/R1QN-BM52. Langridge, R.M. et al. (2016), *NZ Journal of Geology
+  and Geophysics* 59(1), doi:10.1080/00288306.2015.1112818.

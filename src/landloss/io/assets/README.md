@@ -9,6 +9,8 @@ committed. Nothing here is large enough to belong in a cache.
 | `study-areas.geoparquet` | Territorial authority boundaries for the four study authorities, from Stats NZ via T+T's Koordinates instance | `src/landloss/io/one_offs/gen_study_extent.py` | `src/landloss/io/area_of_interest.py` |
 | `land-value-base-rates.csv` | Published QV rating revaluation anchors per territorial authority, plus the two derived inputs the land value model needs | Maintained by hand — see below | `landloss.exposure.land.land_value.load_base_rates` |
 | `land-value-factors.csv` | Landform multipliers and clip multiples for the land value model | Maintained by hand — see below | `landloss.exposure.land.land_value.load_factors` |
+| `marc-2016-table-s1.csv` | Marc et al. (2016) Table S1, verbatim: the 40 earthquakes their total landslide area and volume expression was tested on | Converted from the supporting information's `.xls` (`context/lit/landslide/marc_2016/`) — see below | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` |
+| `marc-2016-table-s1-subevents.csv` | The same table parsed to numbers, one row per earthquake or per sub-event of an earthquake sequence | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` | The landslide calibration (`.agents/plans/building-hancox-landslide-model-and-calibration.md`) |
 
 ## `land-value-base-rates.csv`
 
@@ -93,3 +95,58 @@ The clip multiples are judgement bounds, not researched figures. The model
 re-solves the per-authority normalising constant after clipping and re-applies
 the clip once, so clipping moves value between properties without changing the
 authority's modelled mean.
+
+## `marc-2016-table-s1.csv`
+
+Table S1 of the supporting information to Marc, Hovius, Meunier, Gorum & Uchida
+(2016), *JGR Earth Surface* 121(4), 640–663, doi:10.1002/2015JF003732. The
+original `.xls` and the supporting information PDF, which carries the table's
+caption, are in `context/lit/landslide/marc_2016/`.
+
+The cell text is as published. Only three things were changed: the columns were
+given snake_case names, repeated spaces inside a cell were collapsed, and
+`comprehensive_inventory` was added. That column is True for the first 11 rows,
+which the caption separates from the other 29 as the comprehensive inventories.
+Units follow the original headers: volume in km³ with its range, area in km²,
+mean asperity depth R0 in km with its 1σ (or a range where the depth is
+unknown, written "?"), modal slope in degrees with its range, and seismic moment
+in 10¹⁹ N·m with its 2σ, followed by the fault type in braces.
+
+Codes, from the caption:
+
+- **Volume estimation method**, the letter after the volume. M = scanned and
+  corrected inventory of mapped polygons, converted with an empirical
+  volume–area relationship. N = the total volume of about 5–20 very large
+  bedrock landslides. L = an estimate from the literature. F = a published
+  frequency–size distribution, converted and integrated. B = extrapolated from
+  the largest landslides, assuming a universal frequency–size distribution.
+  P = field photographs and field reports.
+- **`!`** after R0: taken from a published rupture inversion; otherwise from the
+  hypocentral depth and other assumptions.
+- **`*`** after the name: an earthquake sequence, with a foreshock or aftershock
+  of more than 30% of the main shock's moment. Its sub-events are separated by
+  "/" (depths) and "+" (moments).
+- **Mapping**: the image resolution where the inventory came from imagery; G is
+  field surveys on the ground and occasional aerial surveys only.
+- **Fault type**: SS strike-slip, R reverse, N normal.
+
+Values that look wrong in the published table are kept as published, not
+corrected:
+
+- 1929 Buller: volume 0.9 km³ with a range of 0.05–0.23 km³, which does not
+  bracket it.
+- 2008 Iwate: range 0.021–0.45 km³ around 0.032 km³, probably 0.045.
+- "1935, Wairoa": the Wairoa earthquake was 1932.
+- 1931 Napier and 1935 Wairoa: fault type `{S}`, not one of the caption's codes.
+- 1997 Umbria-Marche: two sub-events but no `*`.
+
+## `marc-2016-table-s1-subevents.csv`
+
+Written by `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` from the verbatim
+table, and regenerated with it. One row per earthquake, or per sub-event of a
+sequence (47 rows for 40 earthquakes). Event-level values (volume and area,
+modal slope, `a_topo`) repeat on each sub-event's row; `r0_km`,
+`hypocentral_depth_km`, `moment_nm` and `mw` are the sub-event's own. `mw` is
+computed from the moment as (2/3)(log10 M0 − 9.1), the relationship the paper
+uses. Where the paper gives R0 as unknown with a range ("? (8-24)"), `r0_km` is
+empty and `r0_min_km`/`r0_max_km` carry the range.
