@@ -194,3 +194,16 @@ src/landloss/common/assets/claim_reports/*
 !src/landloss/common/assets/claim_reports/claims-lists/
 src/scripts/landloss/vul/assets/claims-landslide-summary-iag-1502000.csv
 src/scripts/landloss/vul/assets/claims-report-paths-iag-1502000.csv
+
+# Organisation skills installed by `npx skills add tonkintaylor/.github-private`
+# are not committed; each developer installs them. Only this repo's own skills
+# are tracked, so a new one of those has to be added to the list below.
+.agents/skills/*
+!.agents/skills/adding-steps-scripts/
+!.agents/skills/maintaining-status-files/
+!.agents/skills/making-kml-files/
+!.agents/skills/making-qgis-projects/
+!.agents/skills/recording-project-context/
+!.agents/skills/seismic-landslide-hazard-wellington/
+!.agents/skills/writing-weekly-updates/
+skills-lock.json
