@@ -107,7 +107,9 @@ issue_pattern = "mm|pg"
 src = ["src"]
 include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
 line-length = 88
-extend-exclude = ["src/**/_version.py", "src/archive/**"]
+# Research scripts are exploratory and unmaintained, so they are not linted or
+# formatted; see "Research scripts" in AGENTS.md.
+extend-exclude = ["src/**/_version.py", "src/archive/**", "src/scripts/**/research/**"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -173,6 +175,13 @@ flake8-tidy-imports.banned-api."pins.board_folder".msg = """\
   Don't use pins.board_folder, use pins.board('file', ...) to get caching; see \
   https://github.com/rstudio/pins-python/issues/326\
   """
+# src/landloss/ and steps/ never import from a research/ folder (see "Research
+# scripts" in AGENTS.md). banned-api takes no wildcards, so every research
+# package is listed by name; banning one also bans its submodules and relative
+# imports of it.
+flake8-tidy-imports.banned-api."scripts.landloss.hazard.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
+flake8-tidy-imports.banned-api."scripts.landloss.hazard.landslide.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
+flake8-tidy-imports.banned-api."scripts.landloss.vul.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
 flake8-import-conventions.banned-from = ["ruru"]
 
 [tool.ruff.lint.per-file-ignores]

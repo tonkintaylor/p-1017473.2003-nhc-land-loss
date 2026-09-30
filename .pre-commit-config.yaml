@@ -1,3 +1,7 @@
+# Research scripts are exploratory and unmaintained, so no hook checks them; see
+# "Research scripts" in AGENTS.md.
+exclude: ^src/scripts/(.+/)?research/
+
 repos:
   - repo: local
     hooks:
