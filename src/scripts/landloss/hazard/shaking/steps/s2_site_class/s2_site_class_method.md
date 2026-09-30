@@ -5,7 +5,8 @@
 - **Vs30** comes from the Foster et al. (2019) model, v18.12, read by
   `landloss.io.vs30.get_foster_2019_vs30` from
   `R:\DataLibrary\210.16_Vs30_NZ_Foster2019\v1_ref_Foster_v18.12`, windowed to
-  the extent from `resolve_extent` in step 1's `gen_pga_realisations.py`.
+  the extent from `resolve_extent` in this step's `gen_site_class.py`, which
+  the later shaking steps share.
 - **The output grid is the Vs30 model's own grid**: NZTM, 100 m cells on
   100 m-aligned bounds. Nothing is resampled.
 - **Site class** is TS1170.5:2025 Table 3.3 on Vs30 alone, by
@@ -20,11 +21,26 @@
   (`get_foster_2019_vs30_sigma`) is read by nothing yet, so each cell has one
   class from the Vs30 central estimate.
 - Over the four territorial authorities Vs30 runs from 123 to 618 m/s, so no
-  cell is Class I: 56% are II, 28% III, 9% IV, 7% V and 0.2% VI. The run prints
+  cell is Class I: after the fill, 55% are II, 28% III, 9% IV, 8% V and
+  0.3% VI. The run prints
   these shares.
 - The output is `temp/hazard/shaking/site-class-100m[-pilot].tif`, from
   `site_class_path()`, a raster of class numbers 1 to 6 (NaN offshore) named
   `site_class`.
+- **Cells without a Vs30 value take the class of the nearest classed cell
+  within 200 m**, centre to centre, by
+  `landloss.hazard.shaking.site_class.fill_site_class_gaps`
+  (`GAP_FILL_MAX_DISTANCE_M`). A tie between classes goes to the softer one.
+  Foster's model has no value on some land cells along the harbour edge;
+  over the pilot 73 of 522 cells have none and 25 are filled, which gives a
+  class to all 17 retaining walls that sat on them. The fill also reaches up
+  to 200 m offshore, where no asset is. Cells further than 200 m from a
+  classed cell stay NaN.
+- The filled cells are marked in
+  `temp/hazard/shaking/site-class-filled-100m[-pilot].tif`, from
+  `filled_mask_path()` (1 where filled), so demand on them can be told
+  apart from demand on a mapped Vs30.
+- `read_site_class()` reads the output back for steps 3 and 4.
 - The site class is mapped in the left panel of the figure produced by step 3's
   `fig_pgv.py`, written to `report/hazard/shaking/pgv/fig/`.
 

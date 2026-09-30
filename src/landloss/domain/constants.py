@@ -261,12 +261,6 @@ class NlmRelease(StrEnum):
 # use rather than hidden in a second constant.
 CORE_NLM_VERSION = NlmRelease.V2026P0_RC6
 
-# The TS1170.5 site class read wherever the site class is not otherwise set,
-# for the beta: one class for the whole study area, chosen by the project lead.
-# After the beta the class comes per location from the Foster et al. (2019)
-# Vs30 model instead (register T-15), and this goes.
-BETA_SITE_CLASS = 2
-
 # The NLM's flatland product, under ``flatland`` in the same release tree as
 # ``CORE_NLM_VERSION`` but cut on its own schedule and versioned separately from
 # it -- ``V0p5``, not the ``core`` tree's ``v2026p0rc6`` -- so it needs its own

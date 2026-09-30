@@ -37,10 +37,8 @@ from shapely.geometry import box
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
 from landloss.io.ts1170 import SITE_CLASS_NUMERALS
-from scripts.landloss.hazard.shaking.steps.s1_pga_realisation.gen_pga_realisations import (
-    resolve_extent,
-)
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
+    resolve_extent,
     site_class_path,
 )
 from scripts.landloss.hazard.shaking.steps.s3_pgv import config

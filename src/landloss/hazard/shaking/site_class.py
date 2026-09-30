@@ -29,18 +29,31 @@ Limitations -- the classification is on Vs30 alone:
 - One class per cell, from the Vs30 central estimate. The multiple site
   classes of clause 3.1.3.4, for a Vs30 range spanning more than one class, are
   not considered.
+- Where the Vs30 model has no value, :func:`fill_site_class_gaps` takes the
+  class of the nearest classed cell within :data:`GAP_FILL_MAX_DISTANCE_M`. The
+  Foster model leaves such gaps along the harbour edge, where the class is
+  assumed to carry on from the ground beside it.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import numpy as np
+import rioxarray  # noqa: F401 -- registers the .rio accessor
 import xarray as xr
+from rasterio.enums import Resampling
 
 # The upper Vs30 bound of each class, in m/s, from the softest up; a site with
 # Vs30 above the last bound is Class I. Each bound is inclusive: Vs30 = 750 m/s
 # is Class II.
 VS30_UPPER_BOUNDS_M_S = {6: 200.0, 5: 250.0, 4: 300.0, 3: 450.0, 2: 750.0}
 ROCK_SITE_CLASS = 1
+
+# How far a cell without a Vs30 value may take its class from, in metres,
+# between cell centres. Two 100 m cells: far enough to reach the walls along the
+# harbour edge that the Foster model leaves unclassed (60 to 194 m from a
+# classed cell over the pilot), near enough that the class it takes is the
+# ground next to it rather than across a valley.
+GAP_FILL_MAX_DISTANCE_M = 200.0
 
 
 def ts1170_site_class_from_vs30(
@@ -72,6 +85,61 @@ def ts1170_site_class_from_vs30(
     if isinstance(vs30, xr.DataArray):
         return vs30.copy(data=site_class).rename("site_class")
     return site_class
+
+
+def fill_site_class_gaps(
+    site_class: xr.DataArray, *, max_distance_m: float = GAP_FILL_MAX_DISTANCE_M
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Give unclassed cells the class of the nearest classed cell nearby.
+
+    Distance is between cell centres. Where two classed cells are equally near
+    and differ, the softer class (the higher number) is taken: the gaps this
+    fills sit along the harbour edge, which is mostly soft or reclaimed ground.
+
+    Args:
+        site_class: The site class per cell, NaN where there is none, on a grid
+            of square cells.
+        max_distance_m: The furthest a cell may take its class from. Cells with
+            no classed cell that near stay NaN.
+
+    Returns:
+        The filled site class grid, and a boolean grid of the same shape that is
+        True where a cell was filled.
+    """
+    classes = site_class.values
+    filled = classes.copy()
+    cell_m = float(abs(site_class.x.values[1] - site_class.x.values[0]))
+    reach = int(max_distance_m // cell_m)
+    # Every offset within reach, nearest first; at equal distance the softer
+    # neighbour is chosen below, so the order within a distance does not matter.
+    offsets = sorted(
+        (
+            (dy, dx)
+            for dy in range(-reach, reach + 1)
+            for dx in range(-reach, reach + 1)
+            if 0 < np.hypot(dy, dx) * cell_m <= max_distance_m
+        ),
+        key=lambda offset: np.hypot(*offset),
+    )
+
+    rows, cols = classes.shape
+    for row, col in zip(*np.nonzero(np.isnan(classes)), strict=True):
+        best_distance, best_class = None, np.nan
+        for dy, dx in offsets:
+            distance = np.hypot(dy, dx)
+            if best_distance is not None and distance > best_distance:
+                break
+            r, c = row + dy, col + dx
+            if 0 <= r < rows and 0 <= c < cols and np.isfinite(classes[r, c]):
+                best_distance = distance
+                best_class = np.fmax(best_class, classes[r, c])
+        filled[row, col] = best_class
+
+    was_filled = np.isnan(classes) & np.isfinite(filled)
+    return (
+        site_class.copy(data=filled),
+        site_class.copy(data=was_filled).rename("site_class_filled"),
+    )
 
 
 def select_by_site_class(
@@ -113,3 +181,38 @@ def select_by_site_class(
         selected = np.where(classes == cls, grid.values, selected)
 
     return site_class.copy(data=selected)
+
+
+def demand_on_site_class_grid(
+    read_grid: Callable[[int, int], xr.DataArray],
+    site_class: xr.DataArray,
+    *,
+    return_period_yr: int,
+) -> xr.DataArray:
+    """Put a per-site-class demand on the site class grid, cell by cell.
+
+    Reads the demand grid of each site class present, puts each on the site
+    class grid by nearest neighbour, and takes per cell the one for that cell's
+    class. The TS1170.5 demand grids are about 9,930 m a cell against the site
+    class grid's 100 m, so nearest neighbour is a lookup of the demand cell each
+    site class cell falls in, not an interpolation.
+
+    Args:
+        read_grid: Reads one demand grid, called as
+            ``read_grid(return_period_yr, site_class)`` -- for example
+            ``landloss.io.ts1170.get_ts1170_pga``.
+        site_class: The site class per cell, with a CRS.
+        return_period_yr: The return period of the demand.
+
+    Returns:
+        The demand per cell of ``site_class``; NaN where the class is NaN or the
+        demand grid carries no value.
+    """
+    present = sorted({int(c) for c in np.unique(site_class.values) if np.isfinite(c)})
+    grids = {
+        cls: read_grid(return_period_yr, cls).rio.reproject_match(
+            site_class, resampling=Resampling.nearest
+        )
+        for cls in present
+    }
+    return select_by_site_class(site_class, grids)

@@ -2,7 +2,8 @@
 
     uv run --frozen python src/scripts/landloss/hazard/gen_hazard.py
 
-Shaking, then liquefaction, then landslide, for the extent and realisations set
+Shaking (site class, PGV, then PGA realisations), then liquefaction, then
+landslide, for the extent and realisations set
 in ``config.py`` beside this. The hazards read no exposure, so this can run
 before or after the exposure module. Anything else a step reads comes from that
 step's own ``config.py``.
@@ -25,7 +26,13 @@ from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import (
 from scripts.landloss.hazard.liquefaction.steps.s3_ld_states import (
     gen_liq_ld_states,
 )
-from scripts.landloss.hazard.shaking.steps.s1_pga_realisation import (
+from scripts.landloss.hazard.shaking.steps.s2_site_class import gen_site_class
+from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
+from scripts.landloss.hazard.shaking.steps.s3_pgv import gen_pgv
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation import (
+    config as pga_config,
+)
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation import (
     gen_pga_realisations,
 )
 from scripts.landloss.pipeline import run_steps
@@ -43,8 +50,20 @@ def main(*, pilot, realisation_ids):
         "hazard",
         [
             (
-                "shaking s1, PGA realisations",
-                lambda: gen_pga_realisations.main(**ids),
+                "shaking s2, site class",
+                lambda: gen_site_class.main(pilot=pilot),
+            ),
+            (
+                "shaking s3, PGV",
+                lambda: gen_pgv.main(
+                    pilot=pilot, return_period_yr=pgv_config.RETURN_PERIOD_YR
+                ),
+            ),
+            (
+                "shaking s4, PGA realisations",
+                lambda: gen_pga_realisations.main(
+                    **ids, return_period_yr=pga_config.RETURN_PERIOD_YR
+                ),
             ),
             (
                 "liquefaction s2, land damage probabilities",

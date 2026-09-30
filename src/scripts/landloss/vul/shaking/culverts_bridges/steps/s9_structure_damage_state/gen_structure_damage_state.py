@@ -47,7 +47,7 @@ from landloss.vul.shaking.fragility import (
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population.gen_crossing_population import (
     crossing_population_path,
 )
-from scripts.landloss.hazard.shaking.steps.s1_pga_realisation.gen_pga_realisations import (
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation.gen_pga_realisations import (
     pga_path,
 )
 from scripts.landloss.paths import TEMP_DIR

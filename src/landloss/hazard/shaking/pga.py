@@ -1,10 +1,12 @@
 r"""Turning one PGA grid into a realisation of shaking.
 
-The National Liquefaction Model supplies a single peak ground acceleration grid
-for the 2500-year return period: one number per cell, with no spread around it.
-A loss model that reads it as delivered has no uncertainty in its shaking at
-all, so every realisation would shake every property identically and the only
-variation in the answer would come from the other hazards.
+The shaking step builds one peak ground acceleration grid per return period:
+TS1170.5 PGA per 100 m cell, at each cell's own site class from the Foster et al.
+(2019) Vs30 model (``scripts/landloss/hazard/shaking/steps/s4_pga_realisation``).
+That is one number per cell, with no spread around it. A loss model that reads
+it as delivered has no uncertainty in its shaking at all, so every realisation
+would shake every property identically and the only variation in the answer
+would come from the other hazards.
 
 The beta puts a spread back on with a **10% coefficient of variation**, applied
 as a lognormal multiplier. PGA is conventionally treated as lognormal, so a
@@ -14,7 +16,7 @@ right shape without anything having to be clipped.
 **The multiplier is one draw for the whole grid**, not one per cell. That is a
 deliberate choice and the most important thing to know about this module:
 
-- Drawing per cell would destroy the spatial pattern the NLM grid carries, and
+- Drawing per cell would destroy the spatial pattern the grid carries, and
   would average almost entirely away across a portfolio -- a thousand properties
   each nudged independently sum to very nearly the unperturbed total, so the
   loss distribution would come out far too narrow.
@@ -28,8 +30,7 @@ random field is what the real version does.
 
 Everything here carries a ``beta`` name because the real version takes its
 spread from the ground motion model's own sigma rather than from a figure chosen
-for the beta, and because the grid it reads is a single assumed site class
-rather than a per-point V\\ :sub:`s`\\ 30.
+for the beta.
 """
 
 import numpy as np

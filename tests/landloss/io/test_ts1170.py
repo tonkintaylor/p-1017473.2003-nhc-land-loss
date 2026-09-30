@@ -125,3 +125,37 @@ def test_get_sa_t1_reads_the_named_grid(tmp_path, monkeypatch) -> None:
     assert result.rio.crs.to_epsg() == 2193
     assert float(result[0, 0]) == pytest.approx(1.5)
     assert np.isnan(float(result[0, 1]))
+
+
+def test_pga_fname_follows_the_nlm_pattern() -> None:
+    """The PGA grids carry the NLM's own seismic-standard file names."""
+    assert ts1170.ts1170_pga_fname(2500, 5) == "pga_2500yr_site_class_5.tif"
+
+
+def test_a_measure_without_grids_is_refused() -> None:
+    """Only the generated measures have grids to name or read."""
+    with pytest.raises(ValueError, match=r"No TS1170\.5 grids"):
+        ts1170.ts1170_grid_fname("sa_t2", 2500, 4)
+
+
+@pytest.mark.filterwarnings("ignore:Use `@` matmul:PendingDeprecationWarning")
+def test_get_pga_reads_from_the_pga_folder(tmp_path, monkeypatch) -> None:
+    """PGA is read from its own folder beside the table, not the Sa(1.0 s) one."""
+    grid = xr.DataArray(
+        np.array([[1.0, 1.1], [1.2, 1.3]], dtype="float32"),
+        dims=("y", "x"),
+        coords={"y": [1.0, 0.0], "x": [0.0, 1.0]},
+    ).rio.write_crs("EPSG:2193")
+    path = tmp_path / "pga_2500yr_site_class_5.tif"
+    grid.rio.to_raster(path)
+    asked = []
+    monkeypatch.setattr(
+        ts1170.tdrive_sync,
+        "get_cached",
+        lambda p, **_: asked.append(p) or path,
+    )
+
+    result = ts1170.get_ts1170_pga(2500, 5)
+
+    assert asked == [ts1170.TS1170_PGA_DIR / "pga_2500yr_site_class_5.tif"]
+    assert float(result[1, 1]) == pytest.approx(1.3)

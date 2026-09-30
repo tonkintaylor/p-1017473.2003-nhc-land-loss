@@ -1,5 +1,8 @@
 # Step 1 — PGA realisation: method
 
+**Retired 2026-09-30, superseded by `s4_pga_realisation`.** The scripts are
+removed; the bullets below describe the step as it last ran.
+
 - The step writes one peak ground acceleration field per realisation. It is run
   by `gen_pga_realisations.py`, and the spread it puts on the field is in
   `landloss.hazard.shaking.pga`.
