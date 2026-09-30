@@ -16,9 +16,11 @@ from landloss.io.readers import (
     get_nz_addresses,
     get_nz_land_cover,
     get_nz_river_name_lines,
+    get_slide_genesis,
     get_slide_interpreted_materials,
     get_wcc_cut_areas,
     get_wcc_fill_areas,
+    get_wellington_urban_geology,
     resolve_api_key,
 )
 
@@ -599,6 +601,41 @@ def test_get_gns_slide_morphology_applies_the_bbox(
     assert "outside" not in set(result["name"])
 
 
+# --- GNS SLIDE genesis -----------------------------------------------------
+
+
+def test_get_slide_genesis_requests_the_ttgroup_layer(
+    fake_koordinates: dict[str, object],
+) -> None:
+    """The mirror lives on the T+T instance, so the T+T key is the one used."""
+    get_slide_genesis(bbox=BBOX)
+
+    assert fake_koordinates["layer_id"] == constants.GNS_SLIDE_GENESIS_LAYER_ID
+    assert fake_koordinates["conn"].domain == constants.TTGROUP_DOMAIN
+    assert fake_koordinates["conn"].api_key == "tnt-key"
+
+
+def test_gns_slide_genesis_layer_id_matches_koordinates() -> None:
+    """Guards the layer ID against an accidental edit."""
+    assert constants.GNS_SLIDE_GENESIS_LAYER_ID == 125309
+
+
+def test_the_slide_genesis_layer_is_not_the_morphology_layer() -> None:
+    """Morphology is the lines and genesis the polygons; mixing them up is quiet."""
+    assert (
+        constants.GNS_SLIDE_GENESIS_LAYER_ID != constants.GNS_SLIDE_MORPHOLOGY_LAYER_ID
+    )
+
+
+def test_get_slide_genesis_applies_the_bbox(
+    fake_koordinates: dict[str, object],
+) -> None:
+    """The extent is passed through, rather than all of Wellington returned."""
+    result = get_slide_genesis(bbox=BBOX)
+
+    assert "outside" not in set(result["name"])
+
+
 # --- WCC earthmoving ---------------------------------------------------------
 
 
@@ -773,3 +810,131 @@ def test_the_slide_sublayers_are_distinct():
     }
 
     assert len(sublayers) == 4
+
+
+class WfsCalls(list):
+    """The requests made to the fake WFS, and the answer it serves next."""
+
+    def __init__(self):
+        super().__init__()
+        self.payload: dict = {}
+
+
+@pytest.fixture
+def fake_wfs(monkeypatch):
+    """Serve one GeoJSON answer, recording every request made."""
+    calls = WfsCalls()
+    calls.payload = {**geojson_page(["a", "b"]), "numberMatched": 2}
+
+    def fake_get(url, params, timeout):
+        calls.append({"url": url, "params": params, "timeout": timeout})
+        return FakeResponse(calls.payload)
+
+    monkeypatch.setattr(readers.requests, "get", fake_get)
+    return calls
+
+
+def test_wfs_returns_the_features_in_the_requested_crs(fake_wfs):
+    """The layer comes back as a frame in the CRS asked for."""
+    result = readers.get_wfs_layer("https://example.test/ows", "ns:x", use_cache=False)
+
+    assert list(result["Type"]) == ["a", "b"]
+    assert result.crs.to_string() == constants.DEFAULT_CRS
+
+
+def test_wfs_asks_the_service_for_the_crs(fake_wfs):
+    """srsName avoids reprojecting geometry the server can project itself."""
+    readers.get_wfs_layer("https://example.test/ows", "ns:x", use_cache=False)
+
+    params = fake_wfs[0]["params"]
+    assert params["srsName"] == "EPSG:2193"
+    assert params["typeNames"] == "ns:x"
+    assert params["outputFormat"] == "application/json"
+
+
+def test_wfs_sends_the_bbox_in_the_same_crs(fake_wfs):
+    """A box in one system and geometry in another would silently select nothing."""
+    readers.get_wfs_layer(
+        "https://example.test/ows",
+        "ns:x",
+        bbox=(1.0, 2.0, 3.0, 4.0),
+        use_cache=False,
+    )
+
+    assert fake_wfs[0]["params"]["bbox"] == "1.0,2.0,3.0,4.0,EPSG:2193"
+
+
+def test_wfs_omits_the_bbox_when_none_is_given(fake_wfs):
+    """No box means the whole layer, so nothing is sent to restrict it."""
+    readers.get_wfs_layer("https://example.test/ows", "ns:x", use_cache=False)
+
+    assert "bbox" not in fake_wfs[0]["params"]
+
+
+def test_wfs_raises_when_the_server_truncates(fake_wfs):
+    """A server-side cap must not pass for the whole layer."""
+    fake_wfs.payload = {**geojson_page(["a"]), "numberMatched": 5}
+
+    with pytest.raises(ValueError, match="1 of the 5 features"):
+        readers.get_wfs_layer("https://example.test/ows", "ns:x", use_cache=False)
+
+
+def test_wfs_raises_on_an_exception_report(monkeypatch):
+    """WFS reports a fault as XML, which is not GeoJSON."""
+
+    class XmlResponse(FakeResponse):
+        text = "<ows:ExceptionReport>Could not find layer ns:x</ows:ExceptionReport>"
+
+        def json(self):
+            msg = "not json"
+            raise ValueError(msg)
+
+    monkeypatch.setattr(
+        readers.requests, "get", lambda url, params, timeout: XmlResponse(None)
+    )
+
+    with pytest.raises(ValueError, match="Could not find layer"):
+        readers.get_wfs_layer("https://example.test/ows", "ns:x", use_cache=False)
+
+
+def test_wfs_returns_an_empty_frame_for_an_empty_extent(fake_wfs):
+    """An extent with nothing in it is an empty layer, not an error."""
+    fake_wfs.payload = {**geojson_page([]), "numberMatched": 0}
+
+    result = readers.get_wfs_layer("https://example.test/ows", "ns:x", use_cache=False)
+
+    assert result.empty
+    assert result.crs.to_string() == constants.DEFAULT_CRS
+
+
+def test_wfs_cache_key_includes_the_layer_and_extent():
+    """Two layers or two extents must never share a cache file."""
+    url = "https://example.test/ows"
+    keys = {
+        readers.wfs_cache_path(url, "ns:x", "EPSG:2193", None),
+        readers.wfs_cache_path(url, "ns:y", "EPSG:2193", None),
+        readers.wfs_cache_path(url, "ns:x", "EPSG:2193", (1, 2, 3, 4)),
+        readers.wfs_cache_path(url, "ns:x", "EPSG:4326", None),
+    }
+
+    assert len(keys) == 4
+
+
+def test_wellington_urban_geology_points_at_the_gns_geoserver(fake_wfs):
+    """The 1:50,000 geology is a GNS GeoServer layer, not a Koordinates one."""
+    get_wellington_urban_geology(use_cache=False)
+
+    assert fake_wfs[0]["url"] == constants.GNS_GEOSERVER_WFS_URL
+    assert (
+        fake_wfs[0]["params"]["typeNames"]
+        == constants.GNS_URBAN_WELLINGTON_GEOLOGY_LAYER
+    )
+
+
+def test_wellington_urban_geology_applies_the_bbox(fake_wfs):
+    """The extent is passed through to the service."""
+    get_wellington_urban_geology(bbox=BBOX, use_cache=False)
+
+    assert fake_wfs[0]["params"]["bbox"].startswith(
+        ",".join(str(value) for value in BBOX)
+    )

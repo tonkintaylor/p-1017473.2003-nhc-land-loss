@@ -6,5 +6,7 @@ geometry rather than as an attribute of the land.
 
 No retaining wall dataset exists for the study area, so the population has to be
 inferred (**L-04**). :mod:`landloss.exposure.rw.beta_population` is the beta
-stand-in for that inference.
+stand-in for that inference, and :mod:`landloss.exposure.rw.wall_probability`
+turns it and the mapped evidence into a probability per property and draws a
+realisation from that.
 """

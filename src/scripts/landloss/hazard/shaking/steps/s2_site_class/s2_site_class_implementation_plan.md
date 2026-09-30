@@ -1,6 +1,6 @@
 # Step 2 — Site class: implementation plan
 
-**Status:** Phases 1 and 2 complete. Site class is from Vs30 alone (**L-38**).
+**Status:** Phases 1 to 4 complete. Site class is from Vs30 alone (**L-38**).
 
 The design is in `.agents/plans/pgv-from-vs30-site-class.md`. The grid this
 step writes is the one the shaking demand steps put their demand on: PGV
@@ -21,10 +21,19 @@ step writes is the one the shaking demand steps put their demand on: PGV
 - [x] Record the Vs30-only classification as a limitation in the docstring, the
       method file and the project register (L-38).
 
-## Phase 3 — PGA on the same grid
+## Phase 3 — PGA on the same grid (complete)
 
-- [ ] Move step 1's PGA onto this grid, taking each cell's class rather than
-      the single site class 5 field and `BETA_SITE_CLASS`.
+- [x] Put PGA on this grid, taking each cell's class rather than step 1's
+      single site class 5 field and `BETA_SITE_CLASS` (step 4). The extent
+      (`resolve_extent`) and the reader for this grid (`read_site_class`) now
+      live here, for the steps after it.
+
+## Phase 4 — Cells without a Vs30 value (complete)
+
+- [x] Give cells without a Foster Vs30 value the class of the nearest
+      classed cell within 200 m, and write a mask of the cells filled.
+      Decided 2026-09-30, over leaving them empty or assuming one soft
+      class.
 
 ## Potential future improvements
 

@@ -2,9 +2,12 @@
 
 import numpy as np
 import pytest
+import rioxarray  # noqa: F401 -- registers the .rio accessor
 import xarray as xr
 
 from landloss.hazard.shaking.site_class import (
+    demand_on_site_class_grid,
+    fill_site_class_gaps,
     select_by_site_class,
     ts1170_site_class_from_vs30,
 )
@@ -82,3 +85,88 @@ def test_a_grid_of_the_wrong_shape_is_refused() -> None:
     """Grids are matched by position, so the shapes must agree."""
     with pytest.raises(ValueError, match="not"):
         select_by_site_class(grid([2, 2]), {2: grid([1.0, 1.0, 1.0])})
+
+
+# rioxarray builds a raster's transform with affine's deprecated `*` operator
+# when matching grids; the warning is theirs, not this module's.
+@pytest.mark.filterwarnings("ignore:Use `@` matmul:PendingDeprecationWarning")
+def test_demand_is_looked_up_from_the_coarse_grid_per_class() -> None:
+    """Each fine cell takes its own class's value of the coarse cell it is in."""
+
+    # 1,000 m coarse cells per class, two rows so the grid has a y spacing; a
+    # 2 by 4 fine grid of 500 m cells under the lower row.
+    def coarse(left, right):
+        return xr.DataArray(
+            [[np.nan, np.nan], [left, right]],
+            dims=("y", "x"),
+            coords={"y": [1500.0, 500.0], "x": [500.0, 1500.0]},
+        ).rio.write_crs("EPSG:2193")
+
+    coarse_by_class = {2: coarse(1.0, 2.0), 5: coarse(5.0, 6.0)}
+    asked = []
+
+    def read_grid(return_period_yr, cls):
+        asked.append((return_period_yr, cls))
+        return coarse_by_class[cls]
+
+    site_class = xr.DataArray(
+        [[2.0, 5.0, 2.0, 5.0], [np.nan, 2.0, 5.0, 2.0]],
+        dims=("y", "x"),
+        coords={"y": [750.0, 250.0], "x": [250.0, 750.0, 1250.0, 1750.0]},
+    ).rio.write_crs("EPSG:2193")
+
+    result = demand_on_site_class_grid(read_grid, site_class, return_period_yr=2500)
+
+    assert sorted(asked) == [(2500, 2), (2500, 5)]
+    np.testing.assert_array_equal(
+        result.values, [[1.0, 5.0, 2.0, 6.0], [np.nan, 1.0, 6.0, 2.0]]
+    )
+
+
+def square_grid(values, cell_m=100.0):
+    """A grid of square cells, north up."""
+    values = np.asarray(values, dtype=float)
+    rows, cols = values.shape
+    return xr.DataArray(
+        values,
+        dims=("y", "x"),
+        coords={
+            "y": cell_m * np.arange(rows)[::-1],
+            "x": cell_m * np.arange(cols),
+        },
+    )
+
+
+def test_a_gap_takes_the_nearest_class_within_reach() -> None:
+    """Gaps within 200 m are filled from the nearest cell; further ones are not."""
+    nan = np.nan
+    site_class = square_grid([[3.0, nan, nan, nan, nan]])
+
+    filled, was_filled = fill_site_class_gaps(site_class, max_distance_m=200.0)
+
+    np.testing.assert_array_equal(filled.values, [[3.0, 3.0, 3.0, nan, nan]])
+    np.testing.assert_array_equal(
+        was_filled.values, [[False, True, True, False, False]]
+    )
+
+
+def test_an_equally_near_tie_goes_to_the_softer_class() -> None:
+    """Between Class II and Class V at the same distance, the gap takes V."""
+    site_class = square_grid([[2.0, np.nan, 5.0]])
+
+    filled, _ = fill_site_class_gaps(site_class, max_distance_m=200.0)
+
+    assert filled.values[0, 1] == 5.0
+
+
+def test_a_diagonal_neighbour_is_further_than_an_orthogonal_one() -> None:
+    """141 m beats 200 m: the diagonal class wins over the one two cells away."""
+    nan = np.nan
+    site_class = square_grid([[4.0, nan, nan], [nan, nan, 2.0]])
+
+    filled, _ = fill_site_class_gaps(site_class, max_distance_m=200.0)
+
+    # (1, 1) is 100 m from (1, 2), Class II, and 141 m from (0, 0), Class IV.
+    assert filled.values[1, 1] == 2.0
+    # (1, 0) is 100 m from (0, 0), Class IV.
+    assert filled.values[1, 0] == 4.0

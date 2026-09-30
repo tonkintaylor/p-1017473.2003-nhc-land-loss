@@ -92,6 +92,12 @@ WCC_FILL_AREAS_LAYER_ID = 125311
 # MBIE-funded SLIDE programme, mirrored onto the T+T instance for this study.
 GNS_SLIDE_MORPHOLOGY_LAYER_ID = 125308
 
+# https://ttgroup.koordinates.com/layer/125309-gns-slide-morphological-data-genesis/
+# The companion polygon layer from the same study: the process that formed each
+# piece of ground -- cut slope, fill body, landfill, landslide, and so on.
+# Identical to sub-layer 2 of GNS_SLIDE_SERVICE_URL below (6,401 polygons).
+GNS_SLIDE_GENESIS_LAYER_ID = 125309
+
 # The supplied earthquake-induced landslide probability grid, below the
 # project's SourceMaterial folder on T:. Read by
 # landloss.io.source_material.get_eil_landslide_probability; forward slashes so
@@ -204,6 +210,14 @@ GNS_SLIDE_STUDY_AREA_SUBLAYER = 1
 GNS_SLIDE_GENESIS_SUBLAYER = 2
 GNS_SLIDE_INTERPRETED_MATERIALS_SUBLAYER = 3
 
+# GNS Science's GeoServer, which publishes its open map data as WFS and WMS with
+# no key. The capabilities document (GetCapabilities) lists every layer and the
+# licence for the whole service. GNS_URBAN_WELLINGTON_GEOLOGY_LAYER is the
+# 1:50,000 geology of Wellington City and most of Hutt, Upper Hutt and Porirua
+# (Begg & Mazengarb 1996, GNS Geological Map 22), a polygon layer in NZTM.
+GNS_GEOSERVER_WFS_URL = "https://maps.gns.cri.nz/geoserver/gns/ows"
+GNS_URBAN_WELLINGTON_GEOLOGY_LAYER = "gns:NZL-Urban_Wellington_geological_units"
+
 
 class Cause(StrEnum):
     """The causes of financial land loss the model carries a damage measure for.
@@ -260,12 +274,6 @@ class NlmRelease(StrEnum):
 # instead -- ``NlmRelease.V2025P0_RC4`` -- so that it is visible at the point of
 # use rather than hidden in a second constant.
 CORE_NLM_VERSION = NlmRelease.V2026P0_RC6
-
-# The TS1170.5 site class read wherever the site class is not otherwise set,
-# for the beta: one class for the whole study area, chosen by the project lead.
-# After the beta the class comes per location from the Foster et al. (2019)
-# Vs30 model instead (register T-15), and this goes.
-BETA_SITE_CLASS = 2
 
 # The NLM's flatland product, under ``flatland`` in the same release tree as
 # ``CORE_NLM_VERSION`` but cut on its own schedule and versioned separately from

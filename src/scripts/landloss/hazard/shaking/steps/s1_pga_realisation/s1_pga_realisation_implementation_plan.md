@@ -1,6 +1,12 @@
 # Step 1 — PGA realisation: implementation plan
 
-**Status:** Phase 1 complete. Both the field and its spread are beta shortcuts.
+**Status:** Dropped — superseded by `s4_pga_realisation`, 2026-09-30. PGA now
+comes per 100 m cell at each cell's own site class, from step 2's Foster Vs30
+grid, rather than from the NLM's single site class 5 grid. It is a new step
+rather than a change to this one because it reads step 2's output, and the
+step number carries the run order. The scripts are removed; this plan and the
+method file stay as the record of the site class 5 beta. Phase 2 is done by
+steps 2 and 4, and Phase 3 is carried over to step 4.
 
 ## Phase 1 — A shaking field of the right shape (complete)
 

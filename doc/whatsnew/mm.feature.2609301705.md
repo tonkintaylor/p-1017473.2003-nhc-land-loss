@@ -1,0 +1,1 @@
+Give shaking cells that the Foster et al. (2019) Vs30 model leaves without a value, along the harbour edge, the site class of the nearest classed cell within 200 m (`landloss.hazard.shaking.site_class.fill_site_class_gaps`), so assets there read a PGA and PGV. Step `s2_site_class` writes a mask of the filled cells beside the site class grid.

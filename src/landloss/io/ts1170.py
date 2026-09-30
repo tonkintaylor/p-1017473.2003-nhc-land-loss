@@ -57,11 +57,15 @@ SITE_CLASS_NUMERALS = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6}
 # The annual probabilities of exceedance the table carries, as return periods.
 RETURN_PERIODS_YR = (25, 50, 100, 250, 500, 1000, 2500)
 
-# The Sa(1.0 s) grids derived from the table by
-# src/scripts/landloss/hazard/shaking/static_data_gen/gen_ts1170_sa_t1.py,
-# one GeoTIFF per return period and site class, held beside the table.
+# The grids derived from the table by
+# src/scripts/landloss/hazard/shaking/static_data_gen/gen_ts1170_grids.py, one
+# GeoTIFF per measure, return period and site class, each measure in its own
+# folder beside the table: Sa(1.0 s) from the clause 3.1.2 spectrum, and PGA as
+# the table gives it.
+TS1170_GRID_MEASURES = ("sa_t1", "pga")
 TS1170_SA_T1_DIR = TS1170_DIR / "sa_t1"
-TS1170_SA_T1_FNAME = "sa_t1_{return_period_yr}yr_site_class_{site_class}.tif"
+TS1170_PGA_DIR = TS1170_DIR / "pga"
+TS1170_GRID_FNAME = "{measure}_{return_period_yr}yr_site_class_{site_class}.tif"
 
 # The per-site-class column suffixes and the names they are returned under.
 _PARAMETER_COLUMNS = {
@@ -153,19 +157,44 @@ def get_ts1170_table_3_2(*, copy_to_local: bool = True) -> pd.DataFrame:
     return read_ts1170_table_3_2_csv(ts1170_table_3_2_path(copy_to_local=copy_to_local))
 
 
-def ts1170_sa_t1_fname(return_period_yr: int, site_class: int) -> str:
-    """Return the file name of one Sa(1.0 s) grid.
+def ts1170_grid_dir(measure: str) -> Path:
+    """Return the folder one measure's grids are held in on ``R:``.
 
     Args:
+        measure: One of :data:`TS1170_GRID_MEASURES`.
+
+    Returns:
+        The folder below :data:`TS1170_DIR`.
+
+    Raises:
+        ValueError: If no grids of that measure are generated.
+    """
+    if measure not in TS1170_GRID_MEASURES:
+        msg = f"No TS1170.5 grids of {measure!r}; expected one of "
+        msg += f"{TS1170_GRID_MEASURES}."
+        raise ValueError(msg)
+    return TS1170_DIR / measure
+
+
+def ts1170_grid_fname(measure: str, return_period_yr: int, site_class: int) -> str:
+    """Return the file name of one grid.
+
+    Named as the NLM names its seismic-standard grids, e.g.
+    ``pga_2500yr_site_class_5.tif``.
+
+    Args:
+        measure: One of :data:`TS1170_GRID_MEASURES`.
         return_period_yr: One of :data:`RETURN_PERIODS_YR`.
         site_class: The TS1170.5 site class, 1 to 6.
 
     Returns:
-        The file name below :data:`TS1170_SA_T1_DIR`.
+        The file name below :func:`ts1170_grid_dir`.
 
     Raises:
-        ValueError: If the table carries no such return period or site class.
+        ValueError: If no grids of that measure are generated, or the table
+            carries no such return period or site class.
     """
+    ts1170_grid_dir(measure)
     if return_period_yr not in RETURN_PERIODS_YR:
         msg = f"Return period {return_period_yr!r} is not one of "
         msg += f"{RETURN_PERIODS_YR}."
@@ -174,9 +203,58 @@ def ts1170_sa_t1_fname(return_period_yr: int, site_class: int) -> str:
         msg = f"Site class {site_class!r} is not one of "
         msg += f"{tuple(SITE_CLASS_NUMERALS.values())}."
         raise ValueError(msg)
-    return TS1170_SA_T1_FNAME.format(
-        return_period_yr=return_period_yr, site_class=site_class
+    return TS1170_GRID_FNAME.format(
+        measure=measure, return_period_yr=return_period_yr, site_class=site_class
     )
+
+
+def ts1170_sa_t1_fname(return_period_yr: int, site_class: int) -> str:
+    """Return the file name of one Sa(1.0 s) grid; see :func:`ts1170_grid_fname`."""
+    return ts1170_grid_fname("sa_t1", return_period_yr, site_class)
+
+
+def ts1170_pga_fname(return_period_yr: int, site_class: int) -> str:
+    """Return the file name of one PGA grid; see :func:`ts1170_grid_fname`."""
+    return ts1170_grid_fname("pga", return_period_yr, site_class)
+
+
+def get_ts1170_grid(
+    measure: str,
+    return_period_yr: int,
+    site_class: int,
+    *,
+    copy_to_local: bool = True,
+) -> xr.DataArray:
+    """Read one TS1170.5 grid at a return period and site class.
+
+    Built from Table 3.2 by ``gen_ts1170_grids.py`` on the same NZTM grid,
+    about 9,930 m a cell, as the NLM's seismic-standard grids
+    (:mod:`landloss.io.nlm`).
+
+    Source:
+        Derived from SNZ TS 1170.5:2025 Table 3.2 -- see the module
+        docstring. The generating script is kept beside the grids on ``R:``.
+
+    Args:
+        measure: One of :data:`TS1170_GRID_MEASURES`.
+        return_period_yr: One of :data:`RETURN_PERIODS_YR`.
+        site_class: The TS1170.5 site class, 1 to 6.
+        copy_to_local: Whether to refresh the local cache from ``R:`` when it
+            is missing or stale.
+
+    Returns:
+        The grid in g, in EPSG:2193, nodata as NaN.
+    """
+    path = tdrive_sync.get_cached(
+        ts1170_grid_dir(measure)
+        / ts1170_grid_fname(measure, return_period_yr, site_class),
+        copy_to_local=copy_to_local,
+    )
+    # Loaded inside a context manager for the reason given in
+    # landloss.io.nlm.get_nlm_scenario_raster: a lazily-opened GDAL handle
+    # finalised at interpreter shutdown fails noisily on Windows.
+    with rioxarray.open_rasterio(path, masked=True) as raster:
+        return raster.squeeze("band", drop=True).load()
 
 
 def get_ts1170_sa_t1(
@@ -184,14 +262,9 @@ def get_ts1170_sa_t1(
 ) -> xr.DataArray:
     """Read the TS1170.5 Sa(1.0 s) grid at one return period and site class.
 
-    The spectral acceleration at a 1 second period, built from Table 3.2 by
-    ``gen_ts1170_sa_t1.py`` on the same NZTM grid, about 9,930 m a cell, as
-    the NLM's seismic-standard PGA grids (:mod:`landloss.io.nlm`). The
-    shaking module converts it to PGV (``landloss.hazard.shaking.pgv``).
-
-    Source:
-        Derived from SNZ TS 1170.5:2025 Table 3.2 -- see the module
-        docstring. The generating script is kept beside the grids on ``R:``.
+    The spectral acceleration at a 1 second period from the clause 3.1.2
+    spectrum, which the shaking module converts to PGV
+    (``landloss.hazard.shaking.pgv``). See :func:`get_ts1170_grid`.
 
     Args:
         return_period_yr: One of :data:`RETURN_PERIODS_YR`.
@@ -202,12 +275,29 @@ def get_ts1170_sa_t1(
     Returns:
         The Sa(1.0 s) grid in g, in EPSG:2193, nodata as NaN.
     """
-    path = tdrive_sync.get_cached(
-        TS1170_SA_T1_DIR / ts1170_sa_t1_fname(return_period_yr, site_class),
-        copy_to_local=copy_to_local,
+    return get_ts1170_grid(
+        "sa_t1", return_period_yr, site_class, copy_to_local=copy_to_local
     )
-    # Loaded inside a context manager for the reason given in
-    # landloss.io.nlm.get_nlm_scenario_raster: a lazily-opened GDAL handle
-    # finalised at interpreter shutdown fails noisily on Windows.
-    with rioxarray.open_rasterio(path, masked=True) as raster:
-        return raster.squeeze(drop=True).load()
+
+
+def get_ts1170_pga(
+    return_period_yr: int, site_class: int, *, copy_to_local: bool = True
+) -> xr.DataArray:
+    """Read the TS1170.5 PGA grid at one return period and site class.
+
+    PGA as Table 3.2 gives it (clause 3.3.1). At 2500 years and site class 5
+    this is the NLM's ``pga_2500yr_site_class_5.tif``, cell for cell. See
+    :func:`get_ts1170_grid`.
+
+    Args:
+        return_period_yr: One of :data:`RETURN_PERIODS_YR`.
+        site_class: The TS1170.5 site class, 1 to 6.
+        copy_to_local: Whether to refresh the local cache from ``R:`` when it
+            is missing or stale.
+
+    Returns:
+        The PGA grid in g, in EPSG:2193, nodata as NaN.
+    """
+    return get_ts1170_grid(
+        "pga", return_period_yr, site_class, copy_to_local=copy_to_local
+    )

@@ -966,6 +966,14 @@
       "Status": "Open"
     },
     {
+      "ID": "Q-13",
+      "Question": "Do you know who to contact to track down the Precedent/Seismic team's database of slope height and slope angle for greywacke terrain in the Wellington Region? The Transmission Gully proposal methodology (I:\\83972\\Contractual\\Methodology.doc) says the team 'already have' it, and it is also mentioned in projects 24715 and 84947. If it can be found it could inform the slope-angle rules for the landslide model.",
+      "Asked of": "Nick Peters",
+      "Answer": "",
+      "Source": "User request 2026-09-30; Transmission Gully proposal (T+T archive job 83972, Contractual/Methodology.doc)",
+      "Status": "Open"
+    },
+    {
       "ID": "Q-14",
       "Question": "Which land excess does NHC apply: $500 per dwelling capped at $5,000, as the NHC explainer states and works its examples, or 10% of the amount otherwise payable per claim, floored at $500 and capped at $5,000, as Virginie Lacrosse described on 2026-09-25? The loss module defaults to the explainer's rule and can run either.",
       "Asked of": "NHC",

@@ -49,7 +49,7 @@ from landloss.vul.shaking.fragility import (
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     wall_population_path,
 )
-from scripts.landloss.hazard.shaking.steps.s1_pga_realisation.gen_pga_realisations import (
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation.gen_pga_realisations import (
     pga_path,
 )
 from scripts.landloss.paths import TEMP_DIR

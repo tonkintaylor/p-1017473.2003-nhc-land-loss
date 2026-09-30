@@ -96,56 +96,96 @@ density forward.
 
 ### Phase 1 — The Hancox relationships
 
-- [ ] `landloss.hazard.landslide.models.hancox_1997.relationships`:
-      `area_affected_km2(mw)` with its ±1 SE band, and the inverse
+- [x] `landloss.hazard.landslide.models.hancox_1997.relationships`:
+      `area_affected_km2(mw, n_se)` with its ±1 SE band, and the inverse
       `mw_from_area_affected`, both as published.
-- [ ] Digitise the Figure 19 points (area affected against magnitude for each
-      earthquake, `context/lit/landslide/hancox_1997/figures/page-075.png`) into
-      a CSV beside the figure, and check the digitised points refit to
-      0.96 M − 3.7 within the published standard errors.
-- [ ] Digitise the Figure 20.1 and 20.2 upper-bound envelopes (maximum
-      epicentral distance for each size class, and by MM zone) and hold them as
-      `max_distance_km(mw, size_class)`.
-- [ ] Slope classes from Hancox (2010) Table 2. **As printed, the historical
+- [x] Digitise the Figure 19 points (area affected against magnitude for each
+      earthquake, `context/lit/landslide/hancox_1997/figures/page-075.png`),
+      packaged as `src/landloss/io/assets/hancox-1997-figure-19-area-affected.csv`
+      so the tests can read it. Leaving out the two smallest events (Peria
+      1963, Waiotapu 1983), as the report does, the 20 points refit to
+      log10 A = 0.97 M − 3.72, SE 0.45, R² 0.67 (published: 0.96 M − 3.7,
+      0.43, 68%).
+- [x] `max_distance_km(mw, size_class)`: the Figure 20.1 solid upper-bound
+      line, digitised as log10 D = 0.464 M − 1.32 (10, 29, 84 and 304 km at
+      M 5, 6, 7 and 8.2, against the text's 10, 30, 100 and ~300), with each
+      size class's smallest magnitude and distance cap taken from the section
+      3.4 text: moderate–large M ≥ 6.5 within 70 km; very large M ≥ 6.9 and
+      extremely large M ≥ 7.1, both within 100 km. The Figure 20.2 MM zones are
+      not digitised; the intensity threshold covers what the model needs from
+      them.
+- [x] Slope classes from Hancox (2010) Table 2. **As printed, the historical
       EIL column sums to 109%** (1%, 9%, 39%, 60%; the 60% splits as 40% for
       36–45° and 20% above 45°). Checked against the scan, so this is the
-      published table, not an OCR error. Use the shares normalised to 100%, say
-      so, and check against the 1997 report's own slope analysis (section 3.5,
-      Figure 22.1) whether the 39% or the 60% is the figure at fault.
-- [ ] Unit tests: A(5) ≈ 100 km², A(8.2) ≈ 20,000 km² (the report's quoted
-      range), the inverse round-trips, and the shares sum to 1.
+      published table, not an OCR error. Checked against the 1997 report's own
+      slope analysis (section 3.5, Figure 22.1): counting the ~145 landslides
+      plotted there by slope gives about 4%, 14%, 39% and 43%, so the 39%
+      stands and the 60% is at fault. **Adopted:** 1%, 9%, 39%, and the 51%
+      remainder for very steep, split 2:1 at 45° as printed (34% and 17%).
+- [x] Unit tests (`tests/landloss/hazard/landslide/models/test_hancox_1997.py`):
+      the Figure 19 refit, the inverse round-trips, the distances against the
+      text, the size-class thresholds and the shares. The earlier idea of
+      testing A(5) ≈ 100 km² and A(8.2) ≈ 20,000 km² was wrong: those are the
+      report's upper-bound figures, and the mean line gives 13 km² and
+      14,900 km².
 
 ### Phase 2 — Marc et al. (2016)
 
-- [ ] `landloss.hazard.landslide.calibration.marc_2016`: total area (eq. 12)
+- [x] `landloss.hazard.landslide.calibration.marc_2016`: total area (eq. 12)
       and total volume (eq. 11) from moment magnitude, mean asperity depth R0,
       mechanism (reverse, strike-slip, normal), fault length (Leonard 2010, with
       the strike-slip form above the critical moment), modal slope S_mod and
-      A_topo, with the Monte Carlo percentiles.
+      A_topo, with the Monte Carlo percentiles, plus `seismic_term_km2` and
+      `fit_sensitivity` for refitting the sensitivity on other events. Eqs. 7
+      and 8 are implemented as the physics requires rather than as printed (see
+      the module docstring).
 - [ ] `modal_slope_and_a_topo(dem, rupture)`: 30 m slope, modal slope per 1 km
       cell, A_topo as the share of the predicted landsliding that falls on cells
       with modal slope ≥ 8°.
-- [ ] **Obtain the supporting information** (Table S1: the 40 events' moment,
-      R0, mechanism, S_mod and estimated A and V). The GFZ copy in
-      `marc_2016/` has no supplement. Table S1 is the check that our
-      implementation reproduces the paper's own predictions event by event.
-- [ ] Unit tests: the paper's reference case (thrust, R0 = 10 km, A_topo = 1,
-      α_V = 0.05) against Figure 1b, and b saturating above M_h.
+- [x] **Obtain the supporting information.** Table S1 (the 40 events' moment,
+      R0, mechanism, S_mod, A_topo and estimated A and V) is in
+      `context/lit/landslide/marc_2016/` and packaged as
+      `src/landloss/io/assets/marc-2016-table-s1.csv`, with a numeric version,
+      one row per sub-event, in `marc-2016-table-s1-subevents.csv`.
+- [x] Reproduce the paper's predictions event by event from Table S1
+      (`validations/calibration/fig_marc_2016_table_s1.py`). Refitting on the
+      paper's 26 events returns T_SV = 11.7° (paper 11.6°) and α*V within 10%
+      of the paper's; see `marc_2016_table_s1_findings.md`.
+- [x] Unit tests: fault length over the paper's stated range, strike-slip
+      continuity, b saturating at M_h, the closed-form point-source integral
+      against numerical integration of eq. 4, and Chi-Chi reproduced
+      (`tests/landloss/hazard/landslide/test_calibration_marc_2016.py`).
+- [ ] Decide how Marc is used for the Hikurangi interface scenario, which is
+      outside its crustal calibration. Options and a recommendation are under
+      "Marc for the Hikurangi interface" below. `Source.onshore_fraction`,
+      the only code change option A needs, is in place and tested.
 
 ### Phase 3 — The calibration interface
 
-- [ ] `landloss.hazard.landslide.calibration`, used by every large model:
+- [x] `landloss.hazard.landslide.calibration` (`constraints.py`, exported from
+      the package), used by every large model:
   - `scale_to_total(coverage, cell_area, target_km2)` scales a coverage grid so
     its landslide area equals a target, capped at full coverage per cell.
-  - `extent_mask(grid, source, mw)` zeroes cells beyond Hancox's area affected
-    and maximum distances for the event, and below the intensity threshold.
+  - `extent_mask(epicentral_distance_km, mw, mm)` removes cells beyond
+    Hancox's maximum distance for the event and size class, and below the
+    intensity threshold. **Hancox's area affected is not a mask.** The areas
+    are irregular and asymmetric about the epicentre. For a long rupture such
+    as Kaikōura, whose epicentre is at one end, a circle of that area around
+    the epicentre would clip landsliding that occurred. It is reported instead,
+    against the model's footprint.
   - `fit_transfer_function(relative_hazard, observed_coverage)` fits a monotone
-    map from a relative hazard (models 2 and 7) to coverage by binning, as
-    Nowicki Jessee did for their equation 9.
-  - A report of what each constraint changed: total area before and after,
-    and area removed by the extent mask.
-- [ ] Unit tests: scaling preserves the pattern and hits the target; the mask
-      removes only cells beyond the envelope.
+    map from a relative hazard (models 2 and 7) to coverage by quantile
+    binning and pooling adjacent violators, as Nowicki Jessee did for their
+    equation 9.
+  - `calibrate(...)` applies the mask and the scaling and returns a
+    `CalibrationReport`: total area before and after, area removed by the
+    mask, the scale factor, and the footprint against Hancox's area affected
+    (±1 SE).
+- [x] Unit tests (`tests/landloss/hazard/landslide/test_calibration.py`):
+      scaling preserves the pattern and hits the target, including where the
+      per-cell cap binds; the mask removes only cells beyond the envelope or
+      below the threshold; the transfer function is monotone and recovers a
+      known map.
 
 ### Phase 4 — The Kaikōura test of both constraints
 
@@ -200,16 +240,68 @@ density forward.
       `landloss.domain.constants`, with a comment naming each term that reads
       them.
 
+## Marc for the Hikurangi interface
+
+Marc et al. (2016) left subduction events out of their fit for one stated
+reason: their asperities are mostly offshore and deep, so onshore shaking is
+moderate. Tohoku and Pisco plot, for reference, with volumes like those of
+Mw 6 continental events. Beneath Wellington the interface is under land, so
+that reason does not hold there. Two physical differences remain: the 1 Hz
+source term (Boore & Atkinson 2008 is a crustal model), and the much longer
+duration of an interface rupture.
+
+What the unmodified formula gives at Mw 8.1 (reverse, Leonard length 216 km,
+72 asperities, b·S = 4.30 km), with every asperity onshore, modal slope 22° and
+A_topo 1:
+
+| R0 (km) | Peak 1 Hz a (g) | Total area (km²) | Total volume (km³) |
+|---|---|---|---|
+| 15 | 0.29 | 88 | 0.18 |
+| 20 | 0.22 | 36 | 0.07 |
+| 22.5 | 0.19 | 18 | 0.04 |
+| 25 | 0.17 | 6 | 0.01 |
+| 28.7 | 0.15 | 0 | 0 |
+
+Across the plausible range of interface depths the shaking barely clears
+a_c = 0.15, so the depth decides almost the whole answer. Marc cannot be applied
+to the interface without a real depth for it.
+
+Options, cheapest first:
+
+- **A. Geometry only, within Marc's physics.** Represent the rupture as
+  asperities at their real depths, from the NSHM 2022 Hikurangi interface
+  geometry. Count only those beneath land (`Source.onshore_fraction`, or one
+  `Source` per depth band), with a reverse mechanism and no refit. Test it on
+  the subduction events with estimated totals: Tohoku and Pisco from Marc's
+  Figure 1, and any subduction inventory in GFDB. Adopt it if it reproduces
+  them within Marc's factor of 2.
+- **B. Swap the source term.** Scale b·S by the ratio of an interface
+  ground-motion model's 1 Hz spectral acceleration to Boore & Atkinson's at the
+  same magnitude and distance, using the interface models in the NSHM 2022
+  logic tree. It is one multiplier and needs no refit, but those models have
+  to be run.
+- **C. A duration factor.** Multiply the sensitivity by
+  (D_interface / D_crustal)^k. This is the physically missing term, but one or
+  two events at best constrain k, so it is a sensitivity, not a calibration.
+- **D. Refit the sensitivity on subduction events.** The principled answer, but
+  there are too few onshore subduction inventories to fit two parameters.
+
+Recommendation: **A as the base, with B and C as reported sensitivities.**
+Phase 6 option 1 is unchanged: Marc calibrates the models on crustal events and
+does not set the Wellington total. A needs two inputs: the interface depth
+beneath the study area (a download of the NSHM 2022 geometry), and Marc's
+estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `src/landloss/hazard/landslide/models/hancox_1997/relationships.py` | Area affected, maximum distances, thresholds, slope-class shares |
 | `src/landloss/hazard/landslide/models/hancox_1997/model.py` | Model 3 coverage |
-| `src/landloss/hazard/landslide/calibration/__init__.py` | Scaling, extent mask, transfer function |
+| `src/landloss/hazard/landslide/calibration/constraints.py` | Scaling, extent mask, transfer function, calibration report (exported from the package) |
 | `src/landloss/hazard/landslide/calibration/marc_2016.py` | Marc total area and volume, with uncertainty |
 | `src/landloss/domain/constants.py` | `BETA_SCENARIO_MW`, `BETA_SITE_DISTANCE_KM` |
-| `context/lit/landslide/hancox_1997/figures/*.csv` | Digitised Figure 19, 20.1 and 20.2 data |
+| `src/landloss/io/assets/hancox-1997-figure-19-area-affected.csv` | Digitised Figure 19 points |
 | `src/scripts/landloss/hazard/landslide/validations/calibration/` | Kaikōura test of both constraints, findings |
 | `src/scripts/landloss/hazard/landslide/steps/s<n>_hancox_1997/` | Wellington forward run |
 | `tests/landloss/hazard/landslide/models/test_hancox_1997.py`, `tests/landloss/hazard/landslide/test_calibration.py` | Unit tests |
@@ -226,13 +318,22 @@ density forward.
 
 - **Extent and amount are different things,** and Hancox is extent only. Kept
   distinct throughout.
-- **Marc is calibrated on shallow continental earthquakes.** The subduction
-  events it shows (Tohoku, Pisco) are for reference only. An Mw 8.1 at 25 km
-  from Wellington may well be a Hikurangi interface rupture beneath the city
-  rather than a crustal fault. Record which source the deaggregation mode is:
-  if it is the interface, the scenario lies outside Marc's calibration, and
-  outside Hancox's historical events too, whose large earthquakes are all
-  crustal, 1855 Wairarapa (Mw 8.2) included.
+- **The forward scenario is a subduction event, outside Marc's calibration.**
+  The project lead confirms the Mw 8.1 at 25 km is the Hikurangi interface.
+  Marc is fitted on shallow crustal earthquakes, and excluded subduction events
+  because deep offshore ruptures deliver only moderate onshore shaking. Beneath
+  Wellington that reasoning does not hold, since the interface lies about 20–25 km
+  under the city. Hancox's historical events are all crustal too. Consequences:
+  - Marc and Hancox **calibrate the models on crustal events** (Kaikōura, the
+    Table S1 events, GFDB), which they are fitted for. They are not used to set
+    the Wellington total directly (phase 6, option 1).
+  - **Duration** is the physical difference. A subduction rupture shakes for
+    much longer, which none of models 1–3 represents (Nowicki Jessee's
+    cross-validation was worst on Tohoku). Carry this as a stated limitation,
+    and test it on the subduction inventories in GFDB (Tohoku 2011 among them).
+  - Marc's geometry can still be evaluated for the interface as a
+    sensitivity (R0 about 20–25 km, a reverse mechanism, a rupture length from
+    Leonard), reported as outside its calibration.
 - **Marc's shaking is not the study's shaking** (see the caution above), which
   is why option 1 in phase 6 is preferred.
 - **Hancox (2010) Table 2 does not sum to 100%** as printed.
@@ -253,7 +354,8 @@ density forward.
 - Marc, O., Hovius, N., Meunier, P., Gorum, T. & Uchida, T. (2016). A
   seismologically consistent expression for the total area and volume of
   earthquake-triggered landsliding. *JGR Earth Surface* 121(4), 640–663.
-  doi:10.1002/2015JF003732. Supporting information (Table S1) still to obtain.
+  doi:10.1002/2015JF003732. Supporting information, Table S1 included, in
+  `context/lit/landslide/marc_2016/`.
 - Leonard, M. (2010). Earthquake fault scaling. *BSSA* 100(5A). Not yet obtained.
 - Boore, D.M. & Atkinson, G.M. (2008). NGA ground-motion relations. *Earthquake
   Spectra* 24(1). Not yet obtained.

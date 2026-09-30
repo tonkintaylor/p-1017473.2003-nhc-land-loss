@@ -57,6 +57,24 @@ City, and Amelia Stocks internally for both the retaining wall database and a
 previous Wellington City Council road corridor piece. NHC may also approach the
 councils in parallel, since a request from them may carry more weight.
 
+## From GNS Science
+
+Open layers, read by `landloss.io.readers`; the licence and what it obliges us to
+credit are in each reader's docstring.
+
+- The SLIDE geomorphology of the Wellington urban area (morphology lines,
+  interpreted materials, genesis polygons), Wellington City only:
+  `get_gns_slide_morphology`, `get_slide_interpreted_materials` and
+  `get_slide_genesis`. The genesis layer has cut slopes, fill bodies and the
+  only mapped landslide inventory; its licence is not recorded.
+  The morphology lines include about 11,000 retaining wall segments, the only
+  mapped walls this study has. They are the ones visible from above, in
+  Wellington City only, so they are evidence that a wall exists and never that
+  one does not; step 6 of the retaining wall exposure reads them that way.
+- The 1:50,000 geology of Wellington City and most of Hutt City, Upper Hutt and
+  Porirua (Begg & Mazengarb 1996, geological map 22), from GNS's GeoServer WFS:
+  `get_wellington_urban_geology`. It carries no faults or structural data.
+
 ## From NHC
 
 - Land damage claim costs for Wellington, or a sample if the full set is not

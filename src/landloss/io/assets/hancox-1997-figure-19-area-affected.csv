@@ -1,0 +1,23 @@
+number,name,year,magnitude,area_km2,in_regression
+1,Marlborough,1848,7.14,539,True
+2,Wairarapa,1855,8.19,21604,True
+3,North Canterbury,1888,7.19,1708,True
+4,Cheviot,1901,6.88,539,True
+5,Cape Turnagain,1904,6.78,2894,True
+6,East Cape,1914,6.69,1059,True
+7,Arthur's Pass,1929,7.08,657,True
+8,Murchison,1929,7.77,8446,True
+9,Hawke's Bay,1931,7.84,4516,True
+10,Wairoa,1932,6.87,2187,True
+11,Pahiatua,1934,7.58,6489,True
+12,Masterton,1942,7.18,2665,True
+13,Lake Coleridge,1946,6.18,713,True
+14,Peria,1963,4.89,414,False
+15,Inangahua,1968,7.39,2847,True
+16,Waiotapu,1983,4.58,104,False
+17,Edgecumbe,1987,6.59,253,True
+18,Weber,1990,6.29,557,True
+19,Ormond,1993,6.29,27,True
+20,Fiordland,1993,6.69,5413,True
+21,Arthur's Pass,1994,6.60,176,True
+22,Arthur's Pass,1995,5.51,29,True
