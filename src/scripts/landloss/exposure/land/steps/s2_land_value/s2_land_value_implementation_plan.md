@@ -118,14 +118,25 @@ rate per square metre was divided by the assumption rather than the section.
 - [x] Size a unit-titled block per rating unit, floored at
       `section_area_min_m2`, so a dense block is not extrapolated far below any
       real section (`section_size_factor`).
-- [ ] Decide the size treatment for a freehold title with many dwellings on it.
-      Sized as one large section today, at about a fifth of its neighbours'
-      rate in Newtown. A cap on the size discount fixes those but would let
-      rural parcels swamp the calibration, so it needs an urban/rural signal --
-      the LCDB built-up class, or address density -- first.
-- [ ] Settle `section_area_min_m2`. At 150 m2 unit-titled blocks rate about 1.4
-      times their neighbouring houses in Te Aro and about twice in Thorndon and
-      Johnsonville.
+- [x] Rate a measured lot under 10 m2 from its neighbours rather than on its
+      own (`min_lot_size_m2`, `neighbour_rate_count`,
+      `rate_from_neighbours`). Five addresses stand on lots that small, and the
+      clip floor of a quarter of the authority's average spread over a few
+      square metres gave them $15,000 to $144,000 per m2.
+- [x] Rate a multi-dwelling site -- several rating units, or five or more
+      addresses on one title -- from its nearest single-dwelling neighbours,
+      before the calibration (`_multi_dwelling`, `_neighbour_factor`). Applied
+      to every title with two or more addresses at first, it took a house and
+      flat off their own size: Seatoun's 14 Inglis Street went to 1.69 of
+      actual, so `multi_dwelling_min_addresses` is 5.
+- [x] Solve the calibration exactly with the clip in place (`_value_one_ta`),
+      and set the value ceiling per dwelling. A single re-solve after clipping
+      left houses pinned at the floor once very large sites dominated the first
+      pass, and the per-rating-unit ceiling held estates to four averages. Sized per rating
+      unit, unit-titled blocks had rated 1.4 to 2 times their neighbouring
+      houses; sized whole, freehold estates had rated about a fifth of theirs.
+      The size factor and `section_area_min_m2` now apply to single-dwelling
+      sites only.
 - [ ] Fit `section_area_elasticity` in the Phase 5 regression.
 - [x] Count each property once in the authority mean
       (`landloss.exposure.land.land_value.property_weight`). Counted per

@@ -28,6 +28,7 @@ from landloss.exposure.land.land_value import (
     index_base_rates,
     load_base_rates,
     load_factors,
+    rate_from_neighbours,
     solve_normalising_constant,
     summarise_by_suburb,
     ta_mean_land_value,
@@ -985,7 +986,13 @@ def test_without_the_accessibility_columns_the_modifier_is_not_read(
 @pytest.fixture
 def size_factors(factors):
     """The Phase 1 parameters plus the section area elasticity."""
-    return factors | {"section_area_elasticity": 0.5, "section_area_min_m2": 150.0}
+    return factors | {
+        "section_area_elasticity": 0.5,
+        "section_area_min_m2": 150.0,
+        "min_lot_size_m2": 10.0,
+        "neighbour_rate_count": 3,
+        "multi_dwelling_min_addresses": 5,
+    }
 
 
 def make_sized_addresses(rows):
@@ -1105,35 +1112,28 @@ def make_shared_addresses(rows):
     return addresses
 
 
-def test_a_big_shared_property_does_not_pull_an_ordinary_one_down(
+def test_a_housing_estate_is_rated_as_its_neighbouring_houses(
     base_rates, size_factors
 ) -> None:
-    """Thirty addresses on 30,000 m2 must count once, not thirty times.
+    """Thirty addresses on one 30,000 m2 title: priced as the street, not a paddock.
 
-    Counted per address, each of the thirty takes the whole estate's size factor
-    and the normalisation takes value off every ordinary section to pay for it,
-    which is what halved 13 Lawrence Street's rate in the pilot.
+    Sized as one section, the estate's rate fell to about a fifth of its
+    neighbours' in Newtown; it now takes theirs.
     """
-    ordinary = [("Wellington City", "Newtown", FLAT, 450.0, 1)]
+    ordinary = [("Wellington City", "Newtown", FLAT, 450.0, 1)] * 2
     estate = [("Wellington City", "Newtown", FLAT, 30_000.0, 30)] * 30
 
-    alone = estimate_land_value(
-        make_shared_addresses(ordinary + ordinary),
+    valued = estimate_land_value(
+        make_shared_addresses(ordinary + estate),
         base_rates=base_rates,
-        factors=size_factors,
-    )
-    beside_estate = estimate_land_value(
-        make_shared_addresses(ordinary + ordinary + estate),
-        base_rates=base_rates,
-        factors=size_factors | {"rate_clip_max_multiple": 1e9},
+        # Two houses beside a 3 ha estate is no authority: its land swamps the
+        # average and the clip would bind, so both bounds are opened.
+        factors=size_factors
+        | {"rate_clip_max_multiple": 1e9, "rate_clip_min_multiple": 0.0},
     )
 
-    with_estate = beside_estate.iloc[0]["land_value_nzd"]
-    without = alone.iloc[0]["land_value_nzd"]
-    # Three properties now share the average, so the ordinary section gives up
-    # some value -- but a share as one property, not as thirty.
-    expected = without * 3 / (2 + (30_000 / 450) ** 0.5)
-    assert with_estate == pytest.approx(expected)
+    rate = valued["land_rate_nzd_per_m2"]
+    assert rate.iloc[2] == pytest.approx(rate.iloc[0])
 
 
 def test_the_ta_mean_holds_over_properties(base_rates, size_factors) -> None:
@@ -1178,23 +1178,22 @@ def make_sites(rows):
     return addresses
 
 
-def test_a_unit_titled_block_is_rated_as_the_sum_of_its_units(
+def test_a_unit_titled_block_is_rated_as_its_neighbouring_houses(
     base_rates, size_factors
 ) -> None:
-    """Ten units on 1,500 m2 rate like ten 150 m2 sections, not one big garden."""
+    """Ten units on 1,500 m2 take the houses' rate: not tiny sections, not a garden."""
     block = [("Wellington City", "Te Aro", FLAT, 1500.0, 10, 10)] * 10
-    small_section = [("Wellington City", "Te Aro", FLAT, 150.0, 1, 1)]
-    big_freehold = [("Wellington City", "Te Aro", FLAT, 1500.0, 1, 1)]
+    houses = [("Wellington City", "Te Aro", FLAT, 400.0, 1, 1)] * 3
 
     valued = estimate_land_value(
-        make_sites(block + small_section + big_freehold),
-        base_rates=base_rates,
-        factors=size_factors,
+        make_sites(block + houses), base_rates=base_rates, factors=size_factors
     )
 
     rate = valued["land_rate_nzd_per_m2"]
     assert rate.iloc[0] == pytest.approx(rate.iloc[10])
-    assert rate.iloc[0] > rate.iloc[11]
+    assert valued["site_land_value_nzd"].iloc[0] == pytest.approx(rate.iloc[0] * 1500.0)
+    assert valued["rate_source"].iloc[0] == "neighbours"
+    assert valued["rate_source"].iloc[10] == "own"
 
 
 def test_a_freehold_property_with_several_addresses_rates_as_one_section(
@@ -1493,3 +1492,116 @@ def test_a_missing_sun_share_is_neutral_not_shade(amenity_factors) -> None:
     modifier = amenity_modifier(addresses, amenity_factors)
 
     assert modifier.iloc[0] > modifier.iloc[2] > modifier.iloc[1]
+
+
+# --- lots too small to be a section -------------------------------------------
+
+
+def make_placed_sites(rows):
+    """Build addresses from (TA, suburb, landform, area, x, y) rows."""
+    addresses = make_sized_addresses([row[:4] for row in rows])
+    addresses = addresses.set_geometry(
+        gpd.points_from_xy([row[4] for row in rows], [row[5] for row in rows]),
+        crs="EPSG:2193",
+    )
+    addresses["addresses_on_property"] = 1
+    addresses["rating_units_on_property"] = 1
+    return addresses
+
+
+def test_a_sliver_lot_takes_the_median_rate_of_its_neighbours(
+    base_rates, size_factors
+) -> None:
+    """A 5 m2 lot is rated as the land around it, not at tens of thousands a m2."""
+    street = [
+        ("Wellington City", "Newtown", FLAT, 400.0 + 50 * k, 10.0 * k, 0.0)
+        for k in range(6)
+    ]
+    far = [("Wellington City", "Karori", HILL, 900.0, 50_000.0, 50_000.0)] * 3
+    sliver = [("Wellington City", "Newtown", FLAT, 5.0, 25.0, 0.0)]
+
+    valued = estimate_land_value(
+        make_placed_sites(street + far + sliver),
+        base_rates=base_rates,
+        factors=size_factors,
+    )
+
+    rates = valued["land_rate_nzd_per_m2"]
+    # The three nearest of the street, not the hill addresses 70 km away.
+    nearest = sorted(range(6), key=lambda k: abs(10.0 * k - 25.0))[:3]
+    assert rates.iloc[9] == pytest.approx(rates.iloc[nearest].median())
+    assert valued["lot_size_source"].iloc[9] == "neighbours"
+    assert valued["site_land_value_nzd"].iloc[9] == pytest.approx(rates.iloc[9] * 5.0)
+
+
+def test_a_sliver_lot_is_left_out_of_the_calibration(base_rates, size_factors) -> None:
+    """The rest of the authority holds its average with or without the sliver."""
+    street = [
+        ("Wellington City", "Newtown", FLAT, 400.0 + 50 * k, 10.0 * k, 0.0)
+        for k in range(6)
+    ]
+    sliver = [("Wellington City", "Newtown", FLAT, 5.0, 25.0, 0.0)]
+
+    without = estimate_land_value(
+        make_placed_sites(street), base_rates=base_rates, factors=size_factors
+    )
+    with_sliver = estimate_land_value(
+        make_placed_sites(street + sliver), base_rates=base_rates, factors=size_factors
+    )
+
+    assert with_sliver["land_rate_nzd_per_m2"].iloc[:6].tolist() == pytest.approx(
+        without["land_rate_nzd_per_m2"].tolist()
+    )
+    assert ta_mean_land_value(with_sliver)["Wellington City"] == pytest.approx(
+        indexed_average(base_rates, "Wellington City")
+    )
+
+
+def test_the_neighbour_rate_is_the_median_of_the_nearest(base_rates) -> None:
+    sources = gpd.GeoSeries.from_xy([0, 10, 20, 1000], [0, 0, 0, 0], crs="EPSG:2193")
+    rates = pd.Series([100.0, 200.0, 900.0, 5.0])
+    targets = gpd.GeoSeries.from_xy([5], [0], crs="EPSG:2193")
+
+    result = rate_from_neighbours(targets, sources, rates, count=3)
+
+    assert result.iloc[0] == pytest.approx(200.0)
+
+
+def test_the_packaged_factors_carry_the_sliver_settings() -> None:
+    factors = load_factors()
+
+    assert factors["min_lot_size_m2"] == pytest.approx(10.0)
+    assert factors["neighbour_rate_count"] >= 1
+
+
+def test_a_dominant_site_does_not_pin_houses_at_the_floor(
+    base_rates, size_factors
+) -> None:
+    """The calibration is solved exactly, so the clip cannot strand the houses.
+
+    A single re-solve after clipping left ordinary houses at the floor whenever a
+    very large site dominated the first pass, which is what put 13 Lawrence
+    Street at the floor once estates were rated from their neighbours.
+    """
+    houses = [("Wellington City", "Newtown", FLAT, 450.0, 1)] * 20
+    # Two addresses on 20 ha: rated at the houses' rate it is far past its
+    # ceiling of 4 x 2 averages, so it is clipped there, and the exact answer
+    # leaves the houses well above the floor -- (21 - 8) / 20 of the average.
+    estate = [("Wellington City", "Newtown", FLAT, 200_000.0, 2)] * 2
+
+    valued = estimate_land_value(
+        make_shared_addresses(houses + estate),
+        base_rates=base_rates,
+        factors=size_factors,
+    )
+
+    floor = size_factors["rate_clip_min_multiple"] * indexed_average(
+        base_rates, "Wellington City"
+    )
+    assert ta_mean_land_value(valued)["Wellington City"] == pytest.approx(
+        indexed_average(base_rates, "Wellington City")
+    )
+    assert valued["land_value_nzd"].iloc[0] > floor
+    assert valued["land_value_nzd"].iloc[0] == pytest.approx(
+        (21 - 8) / 20 * indexed_average(base_rates, "Wellington City")
+    )

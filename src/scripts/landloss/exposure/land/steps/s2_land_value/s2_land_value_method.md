@@ -286,10 +286,30 @@
   carries the property's area, rating units and site value.
   `ta_mean_land_value` computes the same per-rating-unit mean for the run's
   calibration table and for `check_land_value_totals.py`.
-- The value clip bounds the site value per rating unit to the
-  `rate_clip_min_multiple` and `rate_clip_max_multiple` rows times the indexed
-  average. The floor applies only to a property of one rating unit, because a
-  flat's share of its block's land is legitimately small.
+- A measured lot under the `min_lot_size_m2` row of the factors asset is not
+  taken as a section. It is left out of the calibration and given the median
+  rate of its `neighbour_rate_count` nearest addresses with a lot of their own
+  (`landloss.exposure.land.land_value.rate_from_neighbours`), its site value
+  being that rate times its own area, with `lot_size_source` `neighbours`; it
+  is left out of `ta_mean_land_value` too.
+- A site with several dwellings -- more than one rating unit, or at least the
+  `multi_dwelling_min_addresses` row's count of addresses on one title -- takes
+  the median rate factor of its
+  `neighbour_rate_count` nearest single-dwelling sites before the calibration
+  (`_multi_dwelling` and `_neighbour_factor` in
+  `landloss.exposure.land.land_value`). Its land is then priced as the houses
+  around it are, whatever its size or unit count, and its site value is that
+  rate times its whole area; because its rate scales with the same constant as
+  its neighbours', the calibration still holds exactly. `rate_source` is
+  `neighbours` for these addresses and for the lots too small to be a section,
+  and `own` otherwise.
+- The value clip bounds the site value to the `rate_clip_min_multiple` and
+  `rate_clip_max_multiple` rows times the indexed average: the ceiling per
+  dwelling, scaled by the site's rating units or addresses, whichever is more;
+  the floor only for a property of one rating unit, because a flat's share of
+  its block's land is legitimately small. `_value_one_ta` solves the constant
+  exactly with the clip in place, by bisection, so each authority's mean lands
+  on its published average.
 - The outputs carry `land_rate_nzd_per_m2`; `site_land_value_nzd`, the whole
   property's land; `land_value_nzd`, that over the property's rating units,
   which is what a published per-property land value is; and `lot_size_m2`, the
@@ -327,10 +347,9 @@
   the section size factor is relative to and the fallback for an unmeasured
   address, rather than the divisor of every rate; the derivation behind each
   of the four numbers is in `src/landloss/io/assets/README.md`.
-- A freehold property with many addresses -- a housing estate on one title --
-  is sized as one large section, so its rate is discounted as a big garden's
-  would be: Newtown's properties of 20 or more addresses, a median 6,538 m2,
-  rate at about a fifth of the suburb's houses. A rating unit that aggregates
+- A multi-dwelling site takes its neighbours' location, so its own sea view,
+  coast and winter sun do not count; a block unusual for its street is priced
+  as the street. A rating unit that aggregates
   several titles is measured over all of them, as Oriental Bay's 31 Hay Street
   is (771 m2 against a 339 m2 title). `section_area_elasticity` and
   `section_area_min_m2` are judgement.

@@ -76,9 +76,11 @@ metre is an order-of-magnitude figure rather than a valuation of the property.
 
 import math
 from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 from landloss.domain import constants
@@ -193,7 +195,19 @@ AMENITY_PARAMETERS = (
 # only when the frame carries SECTION_AREA_COLUMN. Judgement; see its basis.
 SECTION_AREA_ELASTICITY_PARAMETER = "section_area_elasticity"
 SECTION_AREA_MIN_PARAMETER = "section_area_min_m2"
-SIZE_PARAMETERS = (SECTION_AREA_ELASTICITY_PARAMETER, SECTION_AREA_MIN_PARAMETER)
+# A measured lot smaller than this is not a section -- a sliver of a title, or
+# an address point standing in a boundary drawn round a single feature -- and is
+# rated from the addresses around it instead (rate_from_neighbours).
+MIN_LOT_PARAMETER = "min_lot_size_m2"
+NEIGHBOUR_COUNT_PARAMETER = "neighbour_rate_count"
+MULTI_DWELLING_ADDRESSES_PARAMETER = "multi_dwelling_min_addresses"
+SIZE_PARAMETERS = (
+    SECTION_AREA_ELASTICITY_PARAMETER,
+    SECTION_AREA_MIN_PARAMETER,
+    MIN_LOT_PARAMETER,
+    NEIGHBOUR_COUNT_PARAMETER,
+    MULTI_DWELLING_ADDRESSES_PARAMETER,
+)
 
 # The whole property's land value. ``land_value_nzd`` is this over the property's
 # rating units, which is what a published per-property land value is.
@@ -206,6 +220,14 @@ LOT_SIZE_COLUMN = "lot_size_m2"
 LOT_SIZE_SOURCE_COLUMN = "lot_size_source"
 MEASURED_LOT = "measured"
 ASSUMED_LOT = "assumed"
+NEIGHBOUR_LOT = "neighbours"
+
+# Whose rate an address carries: its own, or the median of its neighbours' --
+# a multi-dwelling site, rated as the houses around it, or a lot too small to be
+# a section.
+RATE_SOURCE_COLUMN = "rate_source"
+OWN_RATE = "own"
+NEIGHBOUR_RATE = "neighbours"
 
 ACCESSIBILITY_PARAMETERS = (
     ACCESSIBILITY_ELASTICITY_PARAMETER,
@@ -360,9 +382,16 @@ def _value_one_ta(
 
     The published average is per rating unit, so the target is the average times
     the rating units the authority holds: the constant is solved so that the
-    weighted total of site values equals ``indexed_average * sum(weight * units)``.
-    Each property counts once through ``weight``, and a unit-titled block brings
-    all of its rating units into the count, as the published figure does.
+    weighted total of clipped site values equals
+    ``indexed_average * sum(weight * units)``. Each property counts once through
+    ``weight``, and a unit-titled block brings all of its rating units into the
+    count, as the published figure does.
+
+    The solve is exact rather than a solve, a clip and one re-solve. The total
+    of clipped values only rises with the constant, so it is bisected to the
+    target. A single re-solve left sites pinned at a bound by a first pass that
+    was wrong: a few very large sites dominated it, pushed ordinary houses under
+    the floor, and the re-solve never released them.
 
     Args:
         site_raw: Each address's raw site value -- its rate factor times its
@@ -376,39 +405,35 @@ def _value_one_ta(
 
     Returns:
         The site value of each address, indexed as ``site_raw`` is. The weighted
-        total per rating unit is the indexed published average, except in the
-        one case noted below.
+        total per rating unit is the indexed published average, unless the bounds
+        cannot reach it -- every site at its ceiling or its floor -- in which case
+        it is as near as they allow.
     """
     target_total = indexed_average * float((weight * units).sum())
-    constant = solve_normalising_constant(
-        site_raw, target_total / float(weight.sum()), weight
-    )
-    raw = constant * site_raw
-    value = raw.clip(lower=lower, upper=upper)
+    raw = site_raw.to_numpy(dtype=float)
+    low = lower.to_numpy(dtype=float)
+    high = upper.to_numpy(dtype=float)
+    w = weight.to_numpy(dtype=float)
 
-    # Clipping takes value off the extremes, which drags the TA mean off the
-    # published average -- and holding that mean is the entire justification for
-    # the model. So the constant is solved a second time, this time across only
-    # the sites the clip did not bind, carrying whatever the clipped sites gave
-    # up or gained. The clipped sites stay pinned at their bounds, which is what
-    # makes the total come out exactly right.
-    binding = (raw < lower) | (raw > upper)
-    free = ~binding
-    free_total = float((weight * site_raw)[free].sum())
+    def total(constant: float) -> float:
+        return float((w * np.clip(constant * raw, low, high)).sum())
 
-    if free_total > 0:
-        residual = target_total - float((weight * value)[binding].sum())
-        constant = residual / free_total
+    # The unclipped constant is a starting point; the bracket is widened from it
+    # until the target is inside, or the bounds are shown not to reach it.
+    start = solve_normalising_constant(site_raw, target_total / float(w.sum()), weight)
+    below, above = 0.0, start
+    for _ in range(64):
+        if total(above) >= target_total:
+            break
+        below, above = above, above * 2
+    for _ in range(100):
+        middle = (below + above) / 2
+        if total(middle) < target_total:
+            below = middle
+        else:
+            above = middle
 
-        # Re-applied once, not iterated to convergence. Two cases leave the mean
-        # slightly off: the re-solve pushing a previously free site onto a bound,
-        # and -- handled by the guard above -- every site binding, so there is
-        # nobody free to carry the residual.
-        value.loc[free] = (constant * site_raw[free]).clip(
-            lower=lower[free], upper=upper[free]
-        )
-
-    return value
+    return pd.Series(np.clip(above * raw, low, high), index=site_raw.index)
 
 
 def _check_known(values: pd.Series, known: Collection, what: str) -> None:
@@ -787,7 +812,11 @@ def ta_mean_land_value(valued: pd.DataFrame) -> pd.Series:
     Returns:
         The mean per territorial authority.
     """
+    # An address rated from its neighbours was left out of the calibration, so
+    # it is left out of the mean the calibration holds as well.
     weight = property_weight(valued)
+    if LOT_SIZE_SOURCE_COLUMN in valued.columns:
+        weight = weight.where(valued[LOT_SIZE_SOURCE_COLUMN] != NEIGHBOUR_LOT, 0.0)
     site = (
         valued[SITE_LAND_VALUE_COLUMN]
         if SITE_LAND_VALUE_COLUMN in valued
@@ -797,6 +826,57 @@ def ta_mean_land_value(valued: pd.DataFrame) -> pd.Series:
     total_value = (site * weight).groupby(ta).sum()
     total_units = (_rating_units(valued) * weight).groupby(ta).sum()
     return total_value / total_units
+
+
+def rate_from_neighbours(
+    targets: gpd.GeoSeries, sources: gpd.GeoSeries, rates: pd.Series, count: int
+) -> pd.Series:
+    """Return the median rate of each target's nearest source addresses.
+
+    For an address whose own lot cannot be rated -- a measured lot too small to be
+    a section -- the rate of the land around it is the best estimate there is.
+    The median rather than the mean, so one oddity among the neighbours does not
+    carry over.
+
+    Computed by brute force in chunks: the targets are a handful of addresses,
+    and a full distance row against every source is cheap at that count.
+
+    Args:
+        targets: The addresses to rate.
+        sources: The addresses to rate them from, in the same CRS.
+        rates: The rate of each source, indexed as ``sources`` is.
+        count: How many of the nearest sources each target takes the median of.
+
+    Returns:
+        The rate for each target, indexed as ``targets`` is. NaN if there are no
+        sources.
+
+    Raises:
+        ValueError: If the two are in different coordinate reference systems.
+    """
+    if targets.crs != sources.crs:
+        msg = f"targets are {targets.crs} and sources are {sources.crs}"
+        raise ValueError(msg)
+
+    result = pd.Series(float("nan"), index=targets.index, dtype=float)
+    if targets.empty or sources.empty:
+        return result
+
+    source_x = sources.x.to_numpy()
+    source_y = sources.y.to_numpy()
+    source_rates = rates.loc[sources.index].to_numpy(dtype=float)
+    take = min(count, len(sources))
+
+    chunk = 256
+    for start in range(0, len(targets), chunk):
+        batch = targets.iloc[start : start + chunk]
+        distance = np.hypot(
+            batch.x.to_numpy()[:, None] - source_x[None, :],
+            batch.y.to_numpy()[:, None] - source_y[None, :],
+        )
+        nearest = np.argpartition(distance, take - 1, axis=1)[:, :take]
+        result.loc[batch.index] = np.median(source_rates[nearest], axis=1)
+    return result
 
 
 def section_size_factor(
@@ -835,6 +915,113 @@ def section_size_factor(
     return ratio.where(area > 0).pow(elasticity - 1.0).fillna(1.0)
 
 
+@dataclass(frozen=True)
+class _Sites:
+    """What :func:`estimate_land_value` knows about each address's site."""
+
+    area: pd.Series
+    units: pd.Series
+    measured: pd.Series
+    tiny: pd.Series
+    size_factor: pd.Series
+
+
+def _measure_sites(
+    valued: gpd.GeoDataFrame, assumed_lot: pd.Series, factors: dict[str, float]
+) -> _Sites:
+    """Return each address's site area, rating units and section size factor.
+
+    Without a measured area, an address is one rating unit on the assumed lot;
+    with one, it is its property, with its rating units, and a measured lot under
+    ``min_lot_size_m2`` is marked to be rated from its neighbours.
+    """
+    if SECTION_AREA_COLUMN not in valued.columns:
+        none = pd.Series(data=False, index=valued.index)
+        return _Sites(
+            area=assumed_lot,
+            units=pd.Series(1.0, index=valued.index),
+            measured=none,
+            tiny=none,
+            size_factor=pd.Series(1.0, index=valued.index),
+        )
+
+    _check_present(factors, SIZE_PARAMETERS, "land value factor(s)")
+    area = valued[SECTION_AREA_COLUMN].astype(float)
+    measured = area > 0
+    site_area = area.where(measured, assumed_lot)
+    units = _rating_units(valued).where(measured, 1.0)
+    return _Sites(
+        area=site_area,
+        units=units,
+        measured=measured,
+        tiny=measured & (area < factors[MIN_LOT_PARAMETER]),
+        size_factor=section_size_factor(
+            site_area / units,
+            assumed_lot,
+            factors[SECTION_AREA_ELASTICITY_PARAMETER],
+            factors[SECTION_AREA_MIN_PARAMETER],
+        ),
+    )
+
+
+def _multi_dwelling(
+    valued: gpd.GeoDataFrame, site: _Sites, factors: dict[str, float]
+) -> pd.Series:
+    """Return which addresses stand on a measured site of several dwellings.
+
+    A unit-titled block -- several rating units -- or a freehold title with at
+    least ``multi_dwelling_min_addresses`` addresses on it: a block of flats or a
+    housing estate. Neither is one house's section, and sizing it as one
+    misprices it: per rating unit it is a row of tiny sections, and whole it is
+    one oversized garden. A title with only a few addresses -- a house and a
+    flat -- is a house section and is sized as one.
+    """
+    if PROPERTY_ADDRESS_COUNT_COLUMN not in valued.columns:
+        return site.measured & ~site.tiny & (site.units > 1)
+    addresses = valued[PROPERTY_ADDRESS_COUNT_COLUMN].astype(float)
+    many = addresses >= factors[MULTI_DWELLING_ADDRESSES_PARAMETER]
+    return site.measured & ~site.tiny & ((site.units > 1) | many)
+
+
+def _neighbour_factor(
+    valued: gpd.GeoDataFrame,
+    factor: pd.Series,
+    targets: pd.Series,
+    sources: pd.Series,
+    factors: dict[str, float],
+) -> pd.Series:
+    """Give each target address the median rate factor of its nearest sources."""
+    if not targets.any() or not sources.any():
+        return factor
+    replaced = factor.copy()
+    replaced.loc[targets] = rate_from_neighbours(
+        valued.geometry[targets],
+        valued.geometry[sources],
+        factor[sources],
+        int(factors[NEIGHBOUR_COUNT_PARAMETER]),
+    )
+    return replaced
+
+
+def _rate_slivers(
+    valued: gpd.GeoDataFrame,
+    rate: pd.Series,
+    tiny: pd.Series,
+    factors: dict[str, float],
+) -> pd.Series:
+    """Give each lot too small to be a section its neighbours' median rate."""
+    if not tiny.any():
+        return rate
+    rated = rate.copy()
+    rated.loc[tiny] = rate_from_neighbours(
+        valued.geometry[tiny],
+        valued.geometry[~tiny],
+        rate[~tiny],
+        int(factors[NEIGHBOUR_COUNT_PARAMETER]),
+    )
+    return rated
+
+
 def estimate_land_value(
     addresses: gpd.GeoDataFrame,
     base_rates: pd.DataFrame | None = None,
@@ -858,10 +1045,18 @@ def estimate_land_value(
        solved so that total site value over total rating units is the indexed
        published average, counting each property once;
     4. each site is clipped to the configured multiples of the average per
-       rating unit, the floor applying only to a property of one rating unit,
+       dwelling -- the ceiling scaled by the site's rating units or addresses,
+       whichever is more -- the floor applying only to a property of one
+       rating unit,
        because a flat's share of its block's land is legitimately small;
-    5. the constant is solved once more across the sites the clip did not
-       bind, so that the TA mean still lands on the published average.
+       a measured lot under ``min_lot_size_m2`` is left out of steps 3 to 5
+       and given the median rate of its nearest neighbours instead
+       (:func:`rate_from_neighbours`), and a site with several dwellings --
+       several rating units, or several addresses on one title -- takes the
+       median rate factor of its nearest single-dwelling neighbours before
+       step 3, so its land is priced as the houses around it are;
+    5. the constant is solved exactly with the clip in place, so that the TA
+       mean lands on the published average.
 
     Step 5 is what makes the model arguable-with in a useful way. The factors
     are judgement, and judgement moves value from one property to another -- but
@@ -944,33 +1139,42 @@ def estimate_land_value(
     assumed_lot = valued["territorial_authority"].map(rates["median_lot_size_m2"])
     assumed_lot = assumed_lot.astype(float)
 
-    # The site is optional too. Without a measured area, an address is one rating
-    # unit on the assumed lot; with one, it is its property, with its rating units.
-    area = pd.Series(float("nan"), index=valued.index, dtype=float)
-    if SECTION_AREA_COLUMN in valued.columns:
-        _check_present(factors, SIZE_PARAMETERS, "land value factor(s)")
-        area = valued[SECTION_AREA_COLUMN].astype(float)
-    measured = area > 0
-    site_area = area.where(measured, assumed_lot)
-    units = _rating_units(valued).where(measured, 1.0)
+    site = _measure_sites(valued, assumed_lot, factors)
+    factor = factor * site.size_factor
+    measured, tiny, site_area, units = site.measured, site.tiny, site.area, site.units
 
-    if SECTION_AREA_COLUMN in valued.columns:
-        factor = factor * section_size_factor(
-            site_area / units,
-            assumed_lot,
-            factors[SECTION_AREA_ELASTICITY_PARAMETER],
-            factors[SECTION_AREA_MIN_PARAMETER],
-        )
+    # A site with several dwellings is rated as the single dwellings around it,
+    # before the calibration, so its land is priced as its neighbours' is and
+    # the calibration still holds exactly: its rate scales with the same
+    # constant as theirs.
+    multi = _multi_dwelling(valued, site, factors)
+    factor = _neighbour_factor(
+        valued, factor, multi, measured & ~tiny & ~multi, factors
+    )
 
     weight = property_weight(valued)
     site_value = pd.Series(float("nan"), index=valued.index, dtype=float)
+
+    # The ceiling is per dwelling -- rating units or addresses, whichever the site
+    # has more of -- so an estate of a hundred dwellings on one title can carry a
+    # hundred houses' land rather than four.
+    addresses_on_site = (
+        valued[PROPERTY_ADDRESS_COUNT_COLUMN].astype(float).where(measured, 1.0)
+        if PROPERTY_ADDRESS_COUNT_COLUMN in valued.columns
+        else pd.Series(1.0, index=valued.index)
+    )
+    dwellings = np.maximum(units, addresses_on_site.fillna(1.0))
 
     clip_min = factors[RATE_CLIP_MIN_PARAMETER]
     clip_max = factors[RATE_CLIP_MAX_PARAMETER]
 
     # Grouped rather than vectorised because each TA has its own anchor, its own
     # normalising constant and its own clip bounds; there is no shared scale.
-    grouped = valued.groupby("territorial_authority", sort=False)
+    # A lot too small to be a section is left out of the calibration and rated
+    # from its neighbours afterwards: valued on its own, the clip floor of a
+    # quarter of the authority's average spread over a few square metres put
+    # its rate in the tens of thousands of dollars per square metre.
+    grouped = valued[~tiny].groupby("territorial_authority", sort=False)
     for ta_name, rows in grouped.groups.items():
         indexed_average = float(rates.loc[ta_name, "indexed_land_value_nzd"])
         single = units.loc[rows] == 1
@@ -978,18 +1182,24 @@ def estimate_land_value(
             factor.loc[rows] * site_area.loc[rows],
             indexed_average,
             lower=(clip_min * indexed_average * single).astype(float),
-            upper=clip_max * indexed_average * units.loc[rows],
+            upper=clip_max * indexed_average * dwellings.loc[rows],
             weight=weight.loc[rows],
             units=units.loc[rows],
         )
 
-    valued["land_rate_nzd_per_m2"] = site_value / site_area
+    rate = _rate_slivers(valued, site_value / site_area, tiny, factors)
+    site_value = site_value.where(~tiny, rate * site_area)
+
+    valued["land_rate_nzd_per_m2"] = rate
     valued[SITE_LAND_VALUE_COLUMN] = site_value
     valued["land_value_nzd"] = site_value / units
     valued["assumed_lot_size_m2"] = assumed_lot
     valued[LOT_SIZE_COLUMN] = site_area
     valued[LOT_SIZE_SOURCE_COLUMN] = measured.map(
         {True: MEASURED_LOT, False: ASSUMED_LOT}
+    ).where(~tiny, NEIGHBOUR_LOT)
+    valued[RATE_SOURCE_COLUMN] = (multi | tiny).map(
+        {True: NEIGHBOUR_RATE, False: OWN_RATE}
     )
 
     return valued
