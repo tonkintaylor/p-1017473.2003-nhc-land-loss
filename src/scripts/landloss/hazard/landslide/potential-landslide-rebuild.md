@@ -207,7 +207,16 @@ central Wellington alone.
 - **Constrain strength by back-analysis rather than by assignment.** T+T's
   Wellington ground models already carry `c′`, `φ′` and unit weight for residual
   soil, CW–HW greywacke and MW–SW greywacke, derived by back-analysing standing
-  slopes. That is a better anchor than a literature table.
+  slopes. That is a better anchor than a literature table. **Compiled** in
+  `src/landloss/io/assets/wellington-greywacke-strength.csv`, with depth to
+  rock in `wellington-greywacke-depth-to-rock.csv` (see the assets README).
+  Most of the values turn out to be design parameters for individual slopes,
+  some back-analysed, rather than one regional ground model; the published
+  anchors T+T reports quote are O'Riley et al. (2006) and Pender (1977).
+  GNS's own drained shear tests on Wellington fill and buried colluvium
+  (SR2019/40, SR2019/51) were added on 1 October 2026: fill φ′ about 38–46°
+  with little cohesion, colluvium φ′ 24–28° with c′ 18–28 kPa.
+  How they are assigned spatially is an open decision in `status.md`.
 - **Slope height/angle precedent is a real T+T asset.** A regional database of
   slope height against angle for Wellington greywacke exists internally, built
   from ~600 km of WCC roading, 500+ EQC landslip assessments and large trial

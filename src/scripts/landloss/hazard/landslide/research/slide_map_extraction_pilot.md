@@ -73,9 +73,10 @@ the same Version 1.0 mapping as the printed sheets.
   6,401 features on 30 September 2026: 2,987 cut slopes, 1,606 fill bodies, 1,058
   modified terrain, 494 relict and 88 recent landslides, 46 landfills, and
   smaller numbers of rockfall, fan, dune, terracette and other classes. It is
-  the source of anthropogenically modified ground and of a mapped landslide
-  inventory for the Wellington City part of the study area, both relevant to
-  the landslide models. `get_gns_slide_morphology` already points to it, and to
+  the source of anthropogenically modified ground (cut slopes and fill bodies,
+  which GNS completed) and of landslide polygons for the Wellington City part of
+  the study area (which GNS calls less complete and less accurate), both
+  relevant to the landslide models. `get_gns_slide_morphology` already points to it, and to
   the Koordinates mirror (layer 125309). Its licence is not recorded on either
   service (see `get_slide_genesis`).
 - Licence: the report PDF carries no licence statement. The Koordinates mirror

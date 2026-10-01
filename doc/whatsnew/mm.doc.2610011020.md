@@ -1,0 +1,1 @@
+Add a one-page summary of Townsend et al. (2020), the GNS SLIDE Wellington geomorphology report, to `context/lit/landslide/`, and correct the `get_slide_genesis` docstring: only cut slopes, fill bodies and landfills are complete in the genesis layer.

@@ -130,6 +130,20 @@ re-reading a web page.
 - Do not put anything in `temp/reference/` that may not be redistributed inside
   T+T. Public reports and papers are fine; a client's confidential document is
   not.
+- **When recommending a document to obtain, give its full citation**: all
+  authors, year, the exact title, the journal or report series with volume,
+  number and pages, and the DOI or URL. A short form such as "Brown & Larkin
+  (2005)" is not enough, because the project lead has to be able to search for
+  the title. Copy it from the citing document's reference list where there is
+  one, and say so where the citing document leaves it out of its list.
+- **Every document the work cites has an entry in `doc/references.bib`**, keyed
+  `{author}_{year}` to match its folder under `context/lit/`; a second entry by
+  the same first author in the same year takes a short topic suffix, such as
+  `hancox_2013_slope_types`. Docstrings, method files, plans and the report cite
+  by that key in square brackets, `[de_vilder_2022]`, so one list carries the
+  full citations and a reader can resolve any key in one place. An entry
+  written from memory or from a secondary citation carries a `note` field
+  saying `verify` until it has been checked against the document itself.
 
 ## Project context
 

@@ -127,7 +127,8 @@ ignore = [
   "ANN401",  # This is too strict for dunder methods.
   "B023",    # Prevents using df.loc[lambda _: ...]; too many false positives.
   "B024",    # This is controversial, ABC's don't always need methods.
-  "C408",    # This is controversial, calls to `dict` can be more idiomatic than {}.
+  "C901",    # Too complex; parsers and data pipelines are naturally branchy
+  "C408",   # This is controversial, calls to `dict` can be more idiomatic than {}.
   "COM812",  # Incompatible with the ruff formatter.
   "D100",    # Too excessive for our purposes (Docstring in public module).
   "D105",    # This is controversial, we don't always need docstrings for magic methods.
@@ -144,6 +145,8 @@ ignore = [
   "TD003",   # Too excessive for our purposes (TDO Links).
   "ISC001",  # Incompatible with the ruff formatter.
   "PIE804",  # This is controversial, some pandas APIs work better with dict approach.
+  "PLR0912", # Too many branches; the companion to C901
+  "PLR0915", # Too many statements; the companion to C901
   "PLR0913", # Too many arguments; long argument lists are normal for models and plotting
   "PLR0917", # Too many positional arguments; the companion to PLR0913
   "PLR2004", # Too strict for exploratory work

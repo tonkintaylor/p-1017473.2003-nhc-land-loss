@@ -1,9 +1,10 @@
 # Retaining wall exposure: status
 
-**Status:** A probability of a wall per property runs, partly on GNS mapping,
-with a realisation drawn from it; the real inference is not started.
+**Status:** An interim probability of a wall per property runs, partly on GNS
+mapping, with a realisation drawn from it. The target is candidate wall lines
+each carrying a probability; the real inference is not started.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-01
 
 ## Approach
 
@@ -26,19 +27,93 @@ Intended, not implemented.
   engineering interest. Above the cap the settlement stops depending on height,
   so a three metre and a six metre wall cost the same to settle and do not need
   separating.
-- **Predict where walls are and how big they are** from a model over the DEM,
-  geomorphology, and road and dwelling locations. No retaining wall dataset
-  exists for the study area, so the population has to be inferred rather than
-  looked up (**L-04**).
+- **Identify where walls are, as lines, and put a probability on each line**,
+  from a model over the DEM, the geomorphology and geology, and road and dwelling
+  locations. A wall is a located line, not a probability on a property, so a
+  property with several walls has several lines. No retaining wall dataset exists
+  for the study area, so the lines have to be inferred rather than looked up
+  (**L-04**). The interim per-property probability is to be replaced by this.
+- **Start candidate lines from the GNS mapped walls**, the edges of the GNS cut
+  slopes and fill bodies, sharp breaks in slope, and section, road and driveway
+  edges on sloping ground. Walls are usually on the edge of a section rather than
+  the middle.
+- **Read the 1:50,000 Wellington geology** to tell rock cuts from soil slopes.
+  Steep greywacke does not mean walls, so it lowers a line's probability.
+- **Set a wall's probability of failure from its condition and its size from its
+  height**, and cost on size: initial condition changes the probability of
+  failure only, not the cost.
 - **Set the initial state from the age of the dwelling**, as the available proxy
-  for whether a wall is modern or poor.
-- **Train the model on four sources** — the ICNZ database, a manual mapping
-  study, estimates from T+T Wellington SMEs, and automated detection from remote
-  sensing. Each covers a different part of the population and none covers it
-  alone.
-- Treat the **remote sensing detection as a pilot** rather than a primary
-  source. Dense vegetation obscures walls in exactly the suburbs of interest and
-  the detection rate is itself unknown (**L-05**).
+  for whether a wall is modern or poor, read from a building construction age
+  layer built outside this build; see "Wall condition from building age" below.
+- **Constrain the wall count per property with the claim report extraction**
+  (**T-50**) in a later phase. It arrives after the build starts, as a minimum
+  and maximum number of walls per property, and raises the probabilities of the
+  candidate lines inside that property. The SME suburb estimate, the manual
+  mapping study, the remote sensing detection and the ICNZ database will not be
+  obtained (decided 2026-10-01).
+- **Draw the wall population per exposure realisation**, on its own stream,
+  separate from the hazard realisations: a few exposure realisations against
+  many hazard ones, because whether a wall exists is not something the
+  earthquake decides.
+- **Give every wall on sloping land a failure polygon** in the urban slope
+  model, so the wall and the land it holds fail together through the wall's
+  fragility; see `hazard/landslide/status.md`. Walls on flat land stand alone
+  and fail by shaking in `vul/shaking/rw`.
+
+
+### Engineering review advice (Nick Peters)
+
+Advice from the T+T Wellington engineering review, to be built into the line
+model. Much of it is general assumption rather than measured, and each item is
+meant to shape a prior rather than be applied as a rule.
+
+- [ ] **Do not assume steep means walled.** Properties on Wellington greywacke
+  slopes often have an exposed rock cut face rather than a wall, and NHC claims
+  there are for spalling or slides in the rock face. Oriental Bay and Evans Bay are
+  steep with few walls. The 1:50,000 geology is how to tell.
+- [ ] **Most walls hold fill and soil, not rock.** They stabilise fill at the front
+  of a section or form stepped platforms onto shallower slopes. Not a blanket
+  assumption.
+- [ ] **Allow several walls per property**, most commonly two, three or four, of
+  variable height and construction type. Do not treat a property with several
+  walls as all small or all large.
+- [ ] **Expect a cluster just under 1.5 m.** Many people build walls below 1.5 m
+  because they believe they need no building consent, and some still do.
+- [ ] **Read age as a proxy for condition and size.** Pre-1990 walls are more
+  susceptible to deterioration and replacement and are more often cast in situ
+  concrete gravity walls from the 1970s and 80s. Post-Building Act 1991 walls tend
+  to be bigger, and more recent ones tend to be timber anchored.
+- [ ] **Expect walls in new subdivisions.** Almost all have them.
+- [ ] **Treat houses across gullies as possibly on thicker colluvium or fill**,
+  with wetter soils at the base. Nick was not sure this is worth using.
+- [~] **Scan the Wellington NHC claims reports** for retaining walls in the site
+  description to estimate how many properties have them (Perrie's extraction,
+  **T-50**, in progress).
+
+### Wall condition from building age
+
+Not in this build. A building construction age parquet, one row per building
+keyed to the address spine, is to be built separately; the wall probability
+script reads it when it exists and falls back to a proxy until then.
+
+- Set the probability of a poor wall from the construction decade of the
+  dwelling: pre-1990 walls, often cast in situ concrete gravity walls of the
+  1970s and 80s, are more likely poor, and post-1991 Building Act walls more
+  often modern. Height under 1.5 m, likely unconsented, and wall type where
+  known raise it on top of age.
+- Where no age is held, use a suburb or SA2 proxy, so no line is left without
+  a condition probability.
+- The property-level source is the District Valuation Roll building age code,
+  a decade per rating unit under the Rating Valuations Rules 2008. LINZ
+  publishes it openly for five councils only, none in the study area, so for
+  Wellington it is licensed from QV or CoreLogic, or obtained through NHC,
+  which as an insurer likely holds construction decade for its portfolio.
+- The proxy, failing a property-level source: each SA2's share of stock
+  consented since 1990 from Stats NZ building consents, adjusted to the
+  regional decade split in Housing in Aotearoa New Zealand: 2025. GHS-OBAT
+  (satellite epochs, all pre-1980 stock in one class) and the RiskScape
+  inventory's construction eras at meshblock, held by GNS, are the coarser
+  alternatives.
 
 
 ## Beta build
@@ -67,6 +142,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [x] Carry coordinates, as the wall line.
 
 ## Where it is now
+
+**This is the interim shape.** It puts a probability on each property, which
+cannot say where a wall is or give a property more than one. The plan
+(`steps/s6_wall_population/s6_wall_population_implementation_plan.md`, phase 2)
+replaces it with candidate wall lines, each with a probability.
 
 `steps/s6_wall_population/` is two scripts. `gen_wall_probability.py` writes a
 **probability of a wall per insured property**, with the retained height as a
@@ -101,36 +181,34 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 
 - Some of the other input datasets have been collected. They are held outside
   the repository, so nothing here reads them yet.
-- The manual mapping and the remote sensing detection have both been started
-  with Sophia. That work also sits outside the repository and cannot be re-run
-  from here.
+- The manual mapping and the remote sensing detection started with Sophia are
+  not being pursued, and neither feeds the model. The claim report extraction
+  (**T-50**) is in progress and is not yet readable from here.
 
 ## Next
 
-1. Place walls on the GNS-mapped lines where one is mapped, rather than on a
-   synthetic line, and rerun over the four territorial authorities.
+1. Build the candidate wall lines, starting from the GNS mapped walls and the
+   edges of cut slopes and fill bodies, and put a probability on each line, using
+   the 1:50,000 geology to lower it on steep greywacke.
 2. Name the six wall classes, so a published fragility curve can attach to
    each cell of the class, size and condition grid.
 3. Bring the collected input datasets into the repository, or record where they
    are held and how they are read, so the inputs are reproducible.
-4. Bring the manual mapping and the remote sensing pilot into the repository on
-   the same basis.
-5. Obtain the ICNZ database.
-6. Attach a dwelling age attribute to the address spine, which the initial state
-   class reads.
-7. Train the predictive model and write a wall population per property.
+4. Read the claim report extraction (**T-50**) when it lands, in a later phase,
+   and constrain the wall count per property to the minimum and maximum it
+   gives.
+5. Read the building construction age parquet when it is built, outside this
+   build, and set the condition probability from it.
+6. Train the predictive model and write a wall population per property.
 
 ## Validation
 
-- Predicted wall prevalence by suburb against the SME suburb-by-suburb estimate
-  (**T-19**). That estimate is the only independent measure of prevalence the
-  study will have, so it is the primary check rather than one of several.
-- Predicted locations against the manual mapping study, held out of training
-  rather than trained on.
-- Detection rate of the remote sensing pilot against the same manual mapping, so
-  that the unknown detection rate behind **L-05** is measured rather than
-  assumed.
-- Size distribution against the ICNZ database.
+- Predicted wall count and length per property against the claim report
+  extraction (**T-50**), once it lands, by suburb where the sample allows. That
+  extraction is the only independent measure of prevalence the study will have,
+  so it is the primary check rather than one of several.
+- The share of real walls the GNS mapping captures, from the claims with walls
+  at addresses inside the SLIDE footprint, replacing the fixed 0.9.
 
 ## Open decisions
 
@@ -140,12 +218,11 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 - Whether repair cost scales with wall length or wall height, and what the fixed
   per-job costs are (**T-32**).
 - What separates "modern" from "poor", and the dwelling age that divides them.
-- Access to the ICNZ database, which is not covered by a register task.
-- **T-19** — the SME estimate of wall prevalence by suburb.
+- The building age source for Wellington: DVR building age licensed from QV or
+  CoreLogic, NHC's own property attributes, or the SA2 consents proxy.
 - **T-11**, **T-20** — the Wellington City Council retaining wall database and
   the council cut-and-fill models.
-- **T-09**, **T-10** — reuse of the Auckland Council cut-and-fill slope tool,
-  and how remote sensing can support the detection.
+- **T-09** — reuse of the Auckland Council cut-and-fill slope tool.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

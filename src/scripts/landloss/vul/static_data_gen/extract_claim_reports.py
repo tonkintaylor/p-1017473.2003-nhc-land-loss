@@ -286,6 +286,7 @@ def read_blocks(path: Path) -> list[Block]:
     """
     # Step one caches only the report's text, word/document.xml, as a
     # ".document.xml" file; a whole .docx is still read from inside its zip.
+    # The reports are T+T's own, copied from the T: drive, so they are trusted.
     if path.name.lower().endswith(".xml"):
         # Word's own document part, from T+T's own reports: not untrusted input.
         root = ET.fromstring(path.read_bytes())  # noqa: S314

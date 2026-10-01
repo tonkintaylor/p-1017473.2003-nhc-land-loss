@@ -66,15 +66,19 @@ credit are in each reader's docstring.
 - The SLIDE geomorphology of the Wellington urban area (morphology lines,
   interpreted materials, genesis polygons), Wellington City only:
   `get_gns_slide_morphology`, `get_slide_interpreted_materials` and
-  `get_slide_genesis`. The genesis layer has cut slopes, fill bodies and the
-  only mapped landslide inventory; its licence is not recorded.
+  `get_slide_genesis`. The genesis layer has cut slopes and fill bodies (complete)
+  and landslide polygons (incomplete and less accurate, per GNS); its licence is
+  not recorded.
   The morphology lines include about 11,000 retaining wall segments, the only
   mapped walls this study has. They are the ones visible from above, in
   Wellington City only, so they are evidence that a wall exists and never that
   one does not; step 6 of the retaining wall exposure reads them that way.
 - The 1:50,000 geology of Wellington City and most of Hutt City, Upper Hutt and
   Porirua (Begg & Mazengarb 1996, geological map 22), from GNS's GeoServer WFS:
-  `get_wellington_urban_geology`. It carries no faults or structural data.
+  `get_wellington_urban_geology`. It carries no faults or structural data. Confirmed a
+  separate layer from the QMAP geology, so it adds detail QMAP and the NLM do not
+  carry, notably the change in main rock. Retaining wall exposure reads it to tell
+  soil slopes from rock cuts.
 
 ## From NHC
 
