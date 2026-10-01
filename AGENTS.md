@@ -2,7 +2,7 @@
 
 See the .agents/skills directory. You MUST use skills for all tasks.
 
-You must start with `using-superpowers` for EVERY task, no matter how small. Keep `self-reflecting` active throughout — invoke it whenever you encounter failures, retries, or corrections. Next, you must apply `adapting-communication` to EVERY task. Before finishing you MUST use `verifying-claims` to verify your work, no matter what.
+You must start with `using-superpowers` for EVERY task, no matter how small. Keep `self-reflecting` active throughout — invoke it whenever you encounter failures, retries, or corrections. Before finishing you MUST use `verifying-claims` to verify your work, no matter what.
 
 These are essential skills.
 
@@ -158,9 +158,6 @@ before making decisions about methodology, outputs, or what belongs in the tool:
   Portal must not be scraped, and what to ask NHC for instead.
 - `.agents/context/code-structure.md` — the four analysis modules, the library and
   scripts split, and the causes of financial land loss the model represents.
-- `.agents/context/transcripts/` — the raw meeting transcripts, and which register
-  entries and status files each one fed. Read the register and status files for
-  what was decided; go to a transcript to check what was actually said.
 
 The live register of tasks, limitations and future improvements is
 `.agents/context/register.json`. It renders to a workbook in the OneDrive project
@@ -224,6 +221,18 @@ across the module, so a step keeps its number when it sits in a submodule's
 
 Use the `adding-steps-scripts` skill whenever you add a step, change one, or
 wonder where a piece of methodology should be written down.
+
+## Research scripts
+
+- A new utility a research script needs lives in the script itself or in the
+  `research/` folder. A research script may rely on functions in
+  `src/landloss/` and on outputs from `steps/`; if those change and a research
+  script breaks, that is fine, because research scripts are not maintained.
+- Research scripts are excluded from the pre-commit checks.
+- `src/landloss/` and `steps/` never import from a `research/` folder. Ruff
+  enforces this with `flake8-tidy-imports.banned-api` (TID251) in
+  `pyproject.toml`, which lists each research package by name, so add a new
+  `research/` folder to that list.
 
 ## Environment variables
 

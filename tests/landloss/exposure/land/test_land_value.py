@@ -13,10 +13,15 @@ import pandas as pd
 import pytest
 from shapely.geometry import Point
 
+from landloss.exposure.land.accessibility import (
+    GRAVITY_COLUMN,
+    STATION_DISTANCE_COLUMN,
+)
 from landloss.exposure.land.land_value import (
     SLOPE_COLUMN,
     TERRAIN_GROUP_COLUMNS,
     TOPOGRAPHIC_POSITION_COLUMN,
+    accessibility_modifier,
     estimate_land_value,
     index_base_rates,
     load_base_rates,
@@ -203,6 +208,20 @@ def test_the_packaged_factors_carry_what_the_terrain_modifier_reads() -> None:
     )
 
     modifier = terrain_modifier(addresses, load_factors())
+
+    assert modifier.iloc[0] > modifier.iloc[1]
+
+
+def test_the_packaged_factors_carry_what_the_accessibility_modifier_reads() -> None:
+    """The five accessibility parameters are read only once s2 has been run."""
+    addresses = make_accessibility_addresses(
+        [
+            ("Porirua City", "Titahi Bay", FLAT, 0.4, 300.0),
+            ("Porirua City", "Titahi Bay", FLAT, 0.1, 5000.0),
+        ]
+    )
+
+    modifier = accessibility_modifier(addresses, load_factors())
 
     assert modifier.iloc[0] > modifier.iloc[1]
 
@@ -757,3 +776,201 @@ def test_the_summary_is_a_plain_table_without_geometry(
 
     assert not isinstance(summary, gpd.GeoDataFrame)
     assert "geometry" not in summary.columns
+
+
+# --- the accessibility modifier -----------------------------------------------
+
+
+def make_accessibility_addresses(rows):
+    """Build addresses from (TA, suburb, landform, gravity, station distance) rows."""
+    return gpd.GeoDataFrame(
+        {
+            "address_id": list(range(len(rows))),
+            "territorial_authority": [row[0] for row in rows],
+            "suburb_locality": [row[1] for row in rows],
+            "landform_class": [row[2] for row in rows],
+            GRAVITY_COLUMN: [row[3] for row in rows],
+            STATION_DISTANCE_COLUMN: [row[4] for row in rows],
+        },
+        geometry=[Point(index, index) for index in range(len(rows))],
+        crs="EPSG:2193",
+    )
+
+
+@pytest.fixture
+def accessibility_factors(factors):
+    """The Phase 1 parameters plus the accessibility ones and their clip band."""
+    return factors | {
+        "accessibility_elasticity": 0.5,
+        "rail_station_premium": 0.10,
+        "rail_station_decay_length_m": 400.0,
+        "accessibility_modifier_clip_min": 0.60,
+        "accessibility_modifier_clip_max": 1.60,
+    }
+
+
+@pytest.fixture
+def accessibility_addresses():
+    """Every cohort shape the modifier has to survive, as for terrain.
+
+    A cohort with a spread of gravity, one holding an address with no gravity
+    value, one with no station anywhere near, and a cohort of one.
+    """
+    nan = float("nan")
+    return make_accessibility_addresses(
+        [
+            ("Wellington City", "Kelburn", HILL, 0.9, 1500.0),
+            ("Wellington City", "Makara", HILL, 0.2, 9000.0),
+            ("Wellington City", "Karori", HILL, 0.6, 4000.0),
+            ("Wellington City", "Kilbirnie", FLAT, 0.8, 3000.0),
+            ("Wellington City", "Kilbirnie", FLAT, nan, 3000.0),
+            ("Lower Hutt City", "Petone", FLAT, 0.4, nan),
+            ("Lower Hutt City", "Petone", FLAT, 0.3, nan),
+            ("Porirua City", "Titahi Bay", FLAT, 0.1, 4000.0),
+            ("Upper Hutt City", "Totara Park", HILL, 0.06, 200.0),
+            ("Upper Hutt City", "Totara Park", HILL, 0.06, 2000.0),
+        ]
+    )
+
+
+def test_the_accessibility_modifier_averages_one_within_every_cohort(
+    accessibility_addresses, accessibility_factors
+) -> None:
+    """Otherwise it would pay the flat class again for its location."""
+    modifier = accessibility_modifier(accessibility_addresses, accessibility_factors)
+
+    means = cohort_means(modifier, accessibility_addresses)
+
+    assert means.tolist() == pytest.approx([1.0] * len(means))
+
+
+def test_a_more_accessible_address_gets_a_larger_modifier(
+    accessibility_addresses, accessibility_factors
+) -> None:
+    """Kelburn over Karori over Makara: all hill, separated only by accessibility."""
+    modifier = accessibility_modifier(accessibility_addresses, accessibility_factors)
+
+    kelburn, makara, karori = modifier.iloc[0], modifier.iloc[1], modifier.iloc[2]
+
+    assert kelburn > karori > makara
+
+
+def test_the_gravity_term_acts_as_an_elasticity(accessibility_factors) -> None:
+    """At elasticity 0.5, a quarter of the accessibility is half the value."""
+    addresses = make_accessibility_addresses(
+        [
+            ("Porirua City", "Titahi Bay", FLAT, 0.4, float("nan")),
+            ("Porirua City", "Titahi Bay", FLAT, 0.1, float("nan")),
+        ]
+    )
+
+    modifier = accessibility_modifier(addresses, accessibility_factors)
+
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(2.0)
+
+
+def test_a_station_at_the_door_is_worth_the_full_premium(accessibility_factors) -> None:
+    """Same gravity, one at a station and one far from any: the ratio is 1 + a."""
+    addresses = make_accessibility_addresses(
+        [
+            ("Upper Hutt City", "Totara Park", HILL, 0.06, 0.0),
+            ("Upper Hutt City", "Totara Park", HILL, 0.06, 1e9),
+        ]
+    )
+
+    modifier = accessibility_modifier(addresses, accessibility_factors)
+
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(1.10)
+
+
+def test_no_station_in_reach_takes_no_premium_rather_than_nan(
+    accessibility_addresses, accessibility_factors
+) -> None:
+    """Petone has no station distance at all, and is ranked on gravity alone."""
+    modifier = accessibility_modifier(accessibility_addresses, accessibility_factors)
+
+    petone = modifier[accessibility_addresses["suburb_locality"] == "Petone"]
+
+    assert not petone.isna().any()
+    assert petone.iloc[0] / petone.iloc[1] == pytest.approx((0.4 / 0.3) ** 0.5)
+
+
+def test_an_address_with_no_gravity_is_never_nan(
+    accessibility_addresses, accessibility_factors
+) -> None:
+    """NaN gravity is centred onto its cohort before the rescale, never left NaN."""
+    modifier = accessibility_modifier(accessibility_addresses, accessibility_factors)
+
+    assert not modifier.isna().any()
+
+
+def test_a_cohort_of_one_gets_an_accessibility_modifier_of_one(
+    accessibility_addresses, accessibility_factors
+) -> None:
+    """A lone address has nothing to be more accessible than."""
+    modifier = accessibility_modifier(accessibility_addresses, accessibility_factors)
+
+    ta = accessibility_addresses["territorial_authority"]
+
+    assert modifier[ta == "Porirua City"].tolist() == pytest.approx([1.0])
+
+
+def test_the_clip_band_bounds_how_far_accessibility_can_move_value(
+    accessibility_factors,
+) -> None:
+    """The CBD fringe cannot run away from its cohort, however large the gap."""
+    addresses = make_accessibility_addresses(
+        [
+            ("Porirua City", "Titahi Bay", FLAT, 1.0, float("nan")),
+            ("Porirua City", "Titahi Bay", FLAT, 1e-6, float("nan")),
+        ]
+    )
+
+    modifier = accessibility_modifier(addresses, accessibility_factors)
+
+    band = (
+        accessibility_factors["accessibility_modifier_clip_max"]
+        / accessibility_factors["accessibility_modifier_clip_min"]
+    )
+    assert modifier.max() / modifier.min() == pytest.approx(band)
+
+
+def test_a_missing_accessibility_parameter_is_named(
+    accessibility_addresses, accessibility_factors
+) -> None:
+    """A parameter absent from the asset would otherwise raise a bare KeyError."""
+    without = {
+        name: value
+        for name, value in accessibility_factors.items()
+        if name != "accessibility_elasticity"
+    }
+
+    with pytest.raises(ValueError, match="accessibility_elasticity"):
+        accessibility_modifier(accessibility_addresses, without)
+
+
+def test_the_ta_mean_still_holds_with_accessibility(
+    accessibility_addresses, base_rates, accessibility_factors
+) -> None:
+    """Accessibility redistributes within an authority and never adds value to it."""
+    valued = estimate_land_value(
+        accessibility_addresses, base_rates=base_rates, factors=accessibility_factors
+    )
+
+    means = valued.groupby("territorial_authority")["land_value_nzd"].mean()
+
+    for ta_name, modelled_mean in means.items():
+        assert modelled_mean == pytest.approx(indexed_average(base_rates, ta_name))
+
+
+def test_without_the_accessibility_columns_the_modifier_is_not_read(
+    accessibility_addresses, base_rates, factors
+) -> None:
+    """No columns means no modifier, so the five parameters need not even exist."""
+    bare = accessibility_addresses.drop(
+        columns=[GRAVITY_COLUMN, STATION_DISTANCE_COLUMN]
+    )
+
+    valued = estimate_land_value(bare, base_rates=base_rates, factors=factors)
+
+    assert not valued["land_value_nzd"].isna().any()

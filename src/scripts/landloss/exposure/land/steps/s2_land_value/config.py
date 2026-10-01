@@ -5,9 +5,10 @@ file. The scripts beside it take these as arguments and hold no defaults of
 their own, so what a run did can be established by reading this file and the git
 history of it, rather than by remembering which flags were typed.
 
-Both `s1_build_terrain_attributes.py` and `s4_estimate_land_value.py` read from
-here. Sharing `PILOT` and `TERRAIN` is what keeps the valuation reading the
-terrain attributes the terrain script actually wrote.
+`s1_build_terrain_attributes.py`, `s2_build_accessibility.py`,
+`s4_estimate_land_value.py` and `fig_town_centres.py` read from here. Sharing
+`PILOT`, `TERRAIN` and `ACCESSIBILITY` is what keeps the valuation reading the
+attributes the earlier scripts actually wrote.
 
 Every path below is None by default, which means the standard location under
 temp/exposure/, with a `-pilot` suffix when PILOT is True so a pilot run cannot
@@ -32,6 +33,12 @@ SPINE = None
 # temp/exposure/terrain-by-address.geoparquet. If the file is not there, s4
 # falls back to valuing on landform class alone.
 TERRAIN = None
+
+# The accessibility attributes: where s2 writes them and where s4 and
+# fig_town_centres.py read them. None is
+# temp/exposure/accessibility-by-address.geoparquet. If the file is not there,
+# s4 values without the accessibility modifier.
+ACCESSIBILITY = None
 
 # Where s4 writes the valued addresses. None is
 # temp/exposure/land-value-by-address.geoparquet.

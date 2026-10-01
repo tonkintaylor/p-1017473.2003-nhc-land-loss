@@ -15,10 +15,10 @@ caches, and the input and output paths -- come from config.py beside this
 script rather than from the command line.
 
 The script is numbered s4 within this step, not s1, because terrain,
-accessibility and amenity are s1 to s3 of the same step. Terrain is the one of
-those three that Phase 2 builds, in s1_build_terrain_attributes.py; the gap at
-s2 and s3 is deliberate and the later scripts drop into it without anything
-being renamed.
+accessibility and amenity are s1 to s3 of the same step. Terrain is
+s1_build_terrain_attributes.py and accessibility s2_build_accessibility.py; the
+gap at s3 is deliberate and amenity drops into it without anything being
+renamed.
 
 Terrain is joined on when that s1 output exists, and it changes the answer in
 two ways. Flat addresses standing above the land around them are promoted to
@@ -32,6 +32,11 @@ this run prints is what that fix is measured by.
 The join is optional on purpose. With no terrain file the run falls back to
 Phase 1 behaviour and says so, so that the two steps can be run independently
 and a new extent can be valued before any DEM has been fetched for it.
+
+Accessibility from s2_build_accessibility.py is joined on the same way when its
+output exists, and feeds a second modifier that spreads value within each
+landform class by closeness to the main centres and to a railway station. It is
+optional for the same reason, and the run says when it goes without.
 
 The address spine is rebuilt from LINZ if it is not already on disk, so this can
 be run on its own. Set PILOT in config.py to work over the small Wellington
@@ -50,6 +55,10 @@ import requests
 
 from landloss.domain import constants
 from landloss.exposure.addresses import get_addresses
+from landloss.exposure.land.accessibility import (
+    GRAVITY_COLUMN,
+    STATION_DISTANCE_COLUMN,
+)
 from landloss.exposure.land.land_value import (
     COMMON_VALUATION_DATE,
     SLOPE_COLUMN,
@@ -88,6 +97,8 @@ SPINE_NAME = "address-spine.geoparquet"
 PILOT_SPINE_NAME = "address-spine-pilot.geoparquet"
 TERRAIN_NAME = "terrain-by-address.geoparquet"
 PILOT_TERRAIN_NAME = "terrain-by-address-pilot.geoparquet"
+ACCESSIBILITY_NAME = "accessibility-by-address.geoparquet"
+PILOT_ACCESSIBILITY_NAME = "accessibility-by-address-pilot.geoparquet"
 OUT_NAME = "land-value-by-address.geoparquet"
 PILOT_OUT_NAME = "land-value-by-address-pilot.geoparquet"
 COHORTS_NAME = "land-value-by-suburb.csv"
@@ -97,6 +108,7 @@ PILOT_COHORTS_NAME = "land-value-by-suburb-pilot.csv"
 # have to be there before the join is worth making.
 ID_COLUMN = "address_id"
 TERRAIN_COLUMNS = (ID_COLUMN, SLOPE_COLUMN, TOPOGRAPHIC_POSITION_COLUMN)
+ACCESSIBILITY_COLUMNS = (ID_COLUMN, GRAVITY_COLUMN, STATION_DISTANCE_COLUMN)
 
 # How high a flat address has to stand above its neighbourhood before it is
 # elevated flat. Read from the factors asset rather than set here, because it is
@@ -231,6 +243,77 @@ def attach_terrain(classified, terrain, factors):
     )
 
 
+def read_accessibility(path):
+    """Read the accessibility attributes, or say why the run goes without them.
+
+    Absence is a supported answer, as it is for terrain, and is said out loud for
+    the same reason.
+
+    Args:
+        path: The geoparquet s2_build_accessibility.py writes.
+
+    Returns:
+        The attributes as a plain DataFrame, or None if the file is not there.
+    """
+    if not path.exists():
+        print(f"\nNo accessibility attributes at {path}.")
+        print(
+            "  Valuing without the accessibility modifier, so an address's\n"
+            "  closeness to the centres and to a railway station changes nothing.\n"
+            "  Run s2_build_accessibility.py over this extent to turn it on."
+        )
+        return None
+
+    print(f"\nReading the accessibility attributes from {path} ...")
+    accessibility = gpd.read_parquet(path)
+    return pd.DataFrame(
+        accessibility.drop(columns=accessibility.geometry.name, errors="ignore")
+    )
+
+
+def attach_accessibility(classified, accessibility):
+    """Join the accessibility attributes onto the addresses, one-to-one.
+
+    Args:
+        classified: Addresses carrying ``address_id``.
+        accessibility: The attributes from :func:`read_accessibility`.
+
+    Returns:
+        The addresses with the two accessibility columns joined on, or the
+        addresses unchanged if the file does not carry what the join needs.
+    """
+    missing = [
+        column
+        for column in ACCESSIBILITY_COLUMNS
+        if column not in accessibility.columns
+    ]
+    if missing:
+        print(
+            f"  The accessibility file is missing {', '.join(missing)}, so it\n"
+            "  cannot be joined. Valuing without the accessibility modifier."
+        )
+        return classified
+
+    joined = classified.merge(
+        accessibility[list(ACCESSIBILITY_COLUMNS)],
+        on=ID_COLUMN,
+        how="left",
+        validate="one_to_one",
+    )
+
+    unmatched = int(joined[GRAVITY_COLUMN].isna().sum())
+    print(
+        f"  Addresses with accessibility: {len(joined) - unmatched:,} of {len(joined):,}"
+    )
+    if unmatched:
+        print(
+            f"  {unmatched:,} address(es) had no accessibility value and sit at the\n"
+            "  middle of their cohort. If this is not a handful, the accessibility\n"
+            "  file was built over a different extent."
+        )
+    return joined
+
+
 def describe_landform(classified):
     """Print the landform split per authority, including the elevated flat share.
 
@@ -362,7 +445,7 @@ def _default(path, pilot_name, name, *, pilot):
     return WORK_DIR / (pilot_name if pilot else name)
 
 
-def resolve_outputs(*, pilot, spine, terrain, out, cohorts):
+def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
     """Choose where the spine is read from and where the two outputs are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
@@ -373,16 +456,21 @@ def resolve_outputs(*, pilot, spine, terrain, out, cohorts):
         pilot: Whether the run is over the pilot box.
         spine: The address spine path from config.py, or None for the default.
         terrain: The terrain attributes path, or None for the default.
+        accessibility: The accessibility attributes path, or None for the
+            default.
         out: The valued address path, or None for the default.
         cohorts: The cohort table path, or None for the default.
 
     Returns:
-        The spine path, the terrain path, the valued address path and the cohort
-        table path.
+        The spine path, the terrain path, the accessibility path, the valued
+        address path and the cohort table path.
     """
     return (
         _default(spine, PILOT_SPINE_NAME, SPINE_NAME, pilot=pilot),
         _default(terrain, PILOT_TERRAIN_NAME, TERRAIN_NAME, pilot=pilot),
+        _default(
+            accessibility, PILOT_ACCESSIBILITY_NAME, ACCESSIBILITY_NAME, pilot=pilot
+        ),
         _default(out, PILOT_OUT_NAME, OUT_NAME, pilot=pilot),
         _default(cohorts, PILOT_COHORTS_NAME, COHORTS_NAME, pilot=pilot),
     )
@@ -469,7 +557,7 @@ def write_outputs(valued, cohorts, out, cohorts_out):
     print(f"  Rows    : {len(cohorts):,} suburb/landform cohorts")
 
 
-def main(*, pilot, fresh, spine, terrain, out, cohorts):
+def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
     """Estimate a land value for every address in the spine.
 
     Args:
@@ -481,6 +569,9 @@ def main(*, pilot, fresh, spine, terrain, out, cohorts):
         terrain: The terrain attributes from s1. None reads the standard
             location. If the file is not there the run falls back to valuing on
             landform class alone.
+        accessibility: The accessibility attributes from s2. None reads the
+            standard location. If the file is not there the run values without
+            the accessibility modifier.
         out: Where to write the valued addresses. None writes to the standard
             location.
         cohorts: Where to write the per-suburb cohort table. None writes to the
@@ -489,8 +580,13 @@ def main(*, pilot, fresh, spine, terrain, out, cohorts):
     Returns:
         1 if the spine or the flatland layer could not be had, otherwise None.
     """
-    spine_path, terrain_path, out, cohorts_out = resolve_outputs(
-        pilot=pilot, spine=spine, terrain=terrain, out=out, cohorts=cohorts
+    spine_path, terrain_path, accessibility_path, out, cohorts_out = resolve_outputs(
+        pilot=pilot,
+        spine=spine,
+        terrain=terrain,
+        accessibility=accessibility,
+        out=out,
+        cohorts=cohorts,
     )
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
@@ -521,6 +617,10 @@ def main(*, pilot, fresh, spine, terrain, out, cohorts):
     if attributes is not None:
         classified = attach_terrain(classified, attributes, factors)
 
+    reachable = read_accessibility(accessibility_path)
+    if reachable is not None:
+        classified = attach_accessibility(classified, reachable)
+
     describe_landform(classified)
 
     valued = estimate_land_value(classified, base_rates=base_rates, factors=factors)
@@ -540,6 +640,7 @@ if __name__ == "__main__":
         fresh=config.FRESH,
         spine=config.SPINE,
         terrain=config.TERRAIN,
+        accessibility=config.ACCESSIBILITY,
         out=config.LAND_VALUE_OUT,
         cohorts=config.COHORTS_OUT,
     )

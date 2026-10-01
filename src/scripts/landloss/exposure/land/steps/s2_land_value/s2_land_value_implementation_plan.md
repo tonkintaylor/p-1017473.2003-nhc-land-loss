@@ -1,13 +1,15 @@
 # Step 2 — Land value: implementation plan
 
-**Status:** Phases 0, 1 and 2 complete. Phase 3 is the next one to build, Phase 5
-waits on the District Valuation Roll data that register task T-20 covers, and
-Phase 6 on the hazard module.
+**Status:** Phases 0, 1 and 2 complete, and stage 3a of Phase 3 built but not
+yet run with the stations fetched. Stage 3b is decided by the Days Bay test
+below, Phase 4 is next, Phase 5 waits on the District Valuation Roll data that
+register task T-20 covers, and Phase 6 on the hazard module.
 
 The scripts in this folder are numbered so that `s1` to `s3` are the three
 attributes attached before the valuation and `s4` is the valuation itself.
-Terrain is `s1`, built by Phase 2; `s2` and `s3` are reserved for accessibility
-and amenity, so the remaining gap is deliberate rather than missing.
+Terrain is `s1`, built by Phase 2, and accessibility `s2`, built by Phase 3;
+`s3` is reserved for amenity, so the remaining gap is deliberate rather than
+missing.
 
 ## Phase 0 — The steps-folder convention (complete)
 
@@ -87,24 +89,56 @@ and amenity, so the remaining gap is deliberate rather than missing.
       read in each `__main__` block and passed into `main()` as keyword
       arguments. The figure scripts keep their own arguments for now.
 
-## Phase 3 — Accessibility
+## Phase 3 — Accessibility (stage 3a built)
 
-- [ ] Give each address a gravity decay to the main centres,
+- [x] Give each address a gravity decay to the main centres,
       `A_i = sum over centres c of W_c * exp(-d_ic / L_c)`, with `W_c` the
       centre's weight — Wellington CBD 1.00, Lower Hutt CBD 0.30, Porirua CBD
       0.20, Upper Hutt CBD 0.12, local centres 0.05 to 0.10 — and `L_c` its
       decay length, 6 km for the Wellington CBD and 3 km for the secondary
-      centres.
-- [ ] Add a rail proximity term, `1 + a * exp(-d_station / 400 m)`.
-- [ ] Stage 3a: straight-line distance, which is cheap and needs no network
-      data.
+      centres. The 3 km is applied to the local centres as well, which the plan
+      left open (`landloss.exposure.land.accessibility.gravity_accessibility`,
+      over `src/landloss/io/assets/land-value-centres.csv`).
+- [x] Add a rail proximity term, `1 + a * exp(-d_station / 400 m)`, measured to
+      the LINZ Topo50 station points
+      (`landloss.io.readers.get_nz_rail_stations`).
+- [x] Turn the two into a within-cohort modifier. Value is taken as
+      proportional to `A_i ** elasticity`, times the rail term, centred in logs
+      within territorial authority and landform class, clipped and rescaled to a
+      mean of one, as the terrain modifier is
+      (`landloss.exposure.land.land_value.accessibility_modifier`). The
+      elasticity, the rail premium and the clip band are judgement rows in the
+      factors asset.
+- [x] Stage 3a: straight-line distance, which is cheap and needs no network
+      data (`s2_build_accessibility.py`).
+- [~] Run s2 and s4 over the pilot and the full study area with the stations
+      fetched. s2 has run over the pilot, where no station is within the 2 km
+      fetch buffer, so the pilot tests the gravity term alone; the modifier holds
+      the authority mean and moves the pilot's suburb medians by about -6 to +5
+      percent. The full study area, which is where the rail term acts, has not
+      been run.
+- [x] Add Wellington Station by hand. The LINZ Topo50 layer carries all 39
+      suburban stations in the study area but not the terminus, which left
+      Thorndon and Pipitea measured to Crofton Downs, 2.6 to 2.9 km away
+      (`src/landloss/io/assets/land-value-extra-stations.csv`,
+      `landloss.exposure.land.accessibility.add_stations`).
+- [ ] Read the station list the run prints for stations that no longer take
+      passengers. Topo50 describes a station as a passenger or freight point,
+      and nothing filters it yet. Redwood appears twice, as its north and south
+      platforms, which changes no distance.
+- [ ] Check the centres on the figure. They are placed by hand on the main
+      shopping street and are approximate to a few hundred metres, which is
+      small against a 3 km decay. The local centre list is a first cut: Porirua
+      has none of its suburban centres (Whitby, Mana), and Upper Hutt none
+      besides its CBD.
 - [ ] Stage 3b: road-network travel time. The test that decides whether 3b is
       worth building is Days Bay and Eastbourne, about 9 km from the Wellington
       CBD in a straight line and a 25 minute drive around the harbour — if 3a
       prices them as inner suburbs, the network build is justified.
-- [ ] Show the centres and their weights in the figure produced by
+- [x] Show the centres and their weights in the figure produced by
       `fig_town_centres.py`, so the weights are reviewable on a map rather than
-      in a table.
+      in a table. Straight lines already show the problem stage 3b is for:
+      Makara village scores the same gravity as Tawa.
 
 ## Phase 4 — Amenity: sea view and winter sun
 
@@ -136,6 +170,9 @@ is where that argument is recorded.
       register task T-20 closes. Until then every factor in
       `src/landloss/io/assets/land-value-factors.csv` is engineering judgement
       and the within-authority distribution is unvalidated.
+- [ ] Fit `accessibility_elasticity` and `rail_station_premium` in the same
+      regression. Both are judgement: the elasticity was set so that Tawa comes
+      out at about half of Thorndon within Wellington City.
 - [ ] Fit `beta_slope` and `beta_tpi` in the same regression. Both are judgement
       set on what a standard deviation of terrain ought to be worth — 10 percent
       down for slope, 5 percent up for topographic position — and they are the

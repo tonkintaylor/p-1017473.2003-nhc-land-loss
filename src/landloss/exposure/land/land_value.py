@@ -57,6 +57,14 @@ The modifier is optional. An address frame without the terrain columns is valued
 on its landform class alone, which is what the first pass over a new extent does
 before any DEM has been fetched.
 
+A second modifier, for accessibility, multiplies the first and is built the same
+way: centred, clipped and rescaled to a mean of one within the same groups. It
+reads the straight-line gravity accessibility to the main centres and the
+distance to the nearest railway station, which
+:mod:`landloss.exposure.land.accessibility` measures, and it is what separates
+Kelburn from Makara -- both hill, both steep -- where the terrain cannot. It is
+optional in the same way as the terrain modifier.
+
 Two approximations are worth stating plainly, because they bound what any
 per-property figure from this module can be used for. The published averages are
 *residential* averages applied to every address, and the LINZ address layer has
@@ -73,6 +81,10 @@ import geopandas as gpd
 import pandas as pd
 
 from landloss.domain import constants
+from landloss.exposure.land.accessibility import (
+    GRAVITY_COLUMN,
+    STATION_DISTANCE_COLUMN,
+)
 from landloss.exposure.land.landform import ELEVATED_FLAT, FLAT, HILL
 from landloss.io import ASSETS_DIR
 
@@ -132,6 +144,25 @@ TERRAIN_PARAMETERS = (
     BETA_TOPOGRAPHIC_POSITION_PARAMETER,
     TERRAIN_CLIP_MIN_PARAMETER,
     TERRAIN_CLIP_MAX_PARAMETER,
+)
+
+# The accessibility attributes the second modifier reads, measured onto the
+# addresses by :mod:`landloss.exposure.land.accessibility`.
+ACCESSIBILITY_COLUMNS = (GRAVITY_COLUMN, STATION_DISTANCE_COLUMN)
+
+# The accessibility parameters read out of the factors asset. All judgement, to
+# be refitted against the District Valuation Roll; see the basis column.
+ACCESSIBILITY_ELASTICITY_PARAMETER = "accessibility_elasticity"
+RAIL_PREMIUM_PARAMETER = "rail_station_premium"
+RAIL_DECAY_PARAMETER = "rail_station_decay_length_m"
+ACCESSIBILITY_CLIP_MIN_PARAMETER = "accessibility_modifier_clip_min"
+ACCESSIBILITY_CLIP_MAX_PARAMETER = "accessibility_modifier_clip_max"
+ACCESSIBILITY_PARAMETERS = (
+    ACCESSIBILITY_ELASTICITY_PARAMETER,
+    RAIL_PREMIUM_PARAMETER,
+    RAIL_DECAY_PARAMETER,
+    ACCESSIBILITY_CLIP_MIN_PARAMETER,
+    ACCESSIBILITY_CLIP_MAX_PARAMETER,
 )
 
 
@@ -450,13 +481,106 @@ def terrain_modifier(
         upper=factors[TERRAIN_CLIP_MAX_PARAMETER],
     )
 
-    # Rescaled last, so the mean is exactly one whatever the clip did. The guard
-    # covers a clip band configured at or below zero, which would be a broken
-    # asset rather than unusual data, but not one worth a NaN.
+    return _rescale_within_groups(modifier, groups)
+
+
+def _rescale_within_groups(
+    modifier: pd.Series, groups: Sequence[pd.Series]
+) -> pd.Series:
+    """Rescale a modifier so that its mean within every group is exactly one.
+
+    Done last in each modifier, so the mean is exactly one whatever the clip did.
+    The guard covers a clip band configured at or below zero, which would be a
+    broken asset rather than unusual data, but not one worth a NaN.
+    """
     group_mean = modifier.groupby(list(groups), sort=False, dropna=False).transform(
         "mean"
     )
     return (modifier / group_mean.where(group_mean > 0)).fillna(1.0)
+
+
+def accessibility_modifier(
+    addresses: gpd.GeoDataFrame, factors: dict[str, float]
+) -> pd.Series:
+    """Spread value within a landform class according to accessibility.
+
+    Built like :func:`terrain_modifier`, so that it too can only move value
+    between the addresses of a cohort:
+
+    1. each address's raw accessibility is
+       ``gravity ** elasticity * (1 + premium * exp(-station_distance / L))``,
+       so the gravity term acts as an elasticity -- value proportional to a power
+       of accessibility -- and the station term as a premium that fades over a
+       walking distance;
+    2. its logarithm is centred on the mean within each
+       :data:`TERRAIN_GROUP_COLUMNS` group, so that "accessible" means accessible
+       for this territorial authority and this landform class;
+    3. the result is exponentiated and clipped, so that the CBD fringe cannot
+       run away from the rest of its cohort and a remote address cannot collapse;
+    4. it is rescaled so that its mean within each group is exactly one.
+
+    Centring in logs rather than dividing by the arithmetic mean matters in step
+    2. Gravity is heavily skewed -- a handful of CBD-fringe addresses carry many
+    times the accessibility of the rest -- and against an arithmetic mean nearly
+    every address would sit below one before the clip ever saw it.
+
+    The group is the same as the terrain modifier's, and for the same reason.
+    Flat land in Wellington City is mostly the CBD and the eastern suburbs, so a
+    gravity term running across the classes would pay the flat class again for
+    location its landform factor, read off market bands, already carries.
+
+    An address with no gravity value sits at the middle of its cohort, and one
+    with no station distance -- the extent had no stations in reach -- takes no
+    station premium.
+
+    Args:
+        addresses: Address points carrying :data:`ACCESSIBILITY_COLUMNS` and
+            :data:`TERRAIN_GROUP_COLUMNS`.
+        factors: The model parameters, carrying :data:`ACCESSIBILITY_PARAMETERS`.
+
+    Returns:
+        The multiplier for each address, indexed as ``addresses`` is, with a
+        mean of exactly one within each group. Never NaN.
+
+    Raises:
+        ValueError: If a required column or parameter is absent, naming what is
+            missing.
+    """
+    _check_present(
+        addresses.columns,
+        (*ACCESSIBILITY_COLUMNS, *TERRAIN_GROUP_COLUMNS),
+        "address frame column(s)",
+    )
+    _check_present(factors, ACCESSIBILITY_PARAMETERS, "land value factor(s)")
+
+    if addresses.empty:
+        return pd.Series(1.0, index=addresses.index, dtype=float)
+
+    gravity = addresses[GRAVITY_COLUMN].astype(float)
+    station_distance = addresses[STATION_DISTANCE_COLUMN].astype(float)
+
+    # A non-positive gravity has no logarithm. It cannot come out of the gravity
+    # formula, so it is treated like a missing one rather than raised on.
+    log_gravity = gravity.where(gravity > 0).map(math.log)
+    station = (
+        (-station_distance / factors[RAIL_DECAY_PARAMETER])
+        .map(math.exp)
+        .fillna(0.0)
+        .mul(factors[RAIL_PREMIUM_PARAMETER])
+        .add(1.0)
+        .map(math.log)
+    )
+    log_raw = factors[ACCESSIBILITY_ELASTICITY_PARAMETER] * log_gravity + station
+
+    groups = [addresses[column] for column in TERRAIN_GROUP_COLUMNS]
+    centre = log_raw.groupby(groups, sort=False, dropna=False).transform("mean")
+    centred = (log_raw - centre).fillna(0.0)
+
+    modifier = centred.map(math.exp).clip(
+        lower=factors[ACCESSIBILITY_CLIP_MIN_PARAMETER],
+        upper=factors[ACCESSIBILITY_CLIP_MAX_PARAMETER],
+    )
+    return _rescale_within_groups(modifier, groups)
 
 
 def estimate_land_value(
@@ -471,7 +595,9 @@ def estimate_land_value(
     1. the published average land value is indexed onto
        :data:`COMMON_VALUATION_DATE`;
     2. each address is given the landform multiplier for its class, multiplied
-       by its terrain modifier if the frame carries :data:`TERRAIN_COLUMNS`;
+       by its terrain modifier if the frame carries :data:`TERRAIN_COLUMNS` and
+       by its accessibility modifier if it carries
+       :data:`ACCESSIBILITY_COLUMNS`;
     3. a normalising constant is solved so that the scaled multipliers average to
        the indexed published figure;
     4. the resulting values are clipped to the configured multiples of that
@@ -488,9 +614,11 @@ def estimate_land_value(
         addresses: Address points carrying :data:`REQUIRED_ADDRESS_COLUMNS`, as
             produced by :func:`landloss.exposure.land.landform.classify_landform`.
             Carrying :data:`TERRAIN_COLUMNS` as well turns on the continuous
-            terrain modifier described in :func:`terrain_modifier`; without them
-            an address is valued on its landform class alone. Either is a
-            supported answer, and both hold the TA mean.
+            terrain modifier described in :func:`terrain_modifier`, and
+            :data:`ACCESSIBILITY_COLUMNS` the one described in
+            :func:`accessibility_modifier`; without them an address is valued
+            on its landform class alone. Every combination is a supported
+            answer, and all of them hold the TA mean.
         base_rates: The published anchors. Defaults to the packaged asset.
         factors: The model parameters. Defaults to the packaged asset.
 
@@ -540,6 +668,11 @@ def estimate_land_value(
     # leaves each TA's total exactly where it was and only redistributes inside.
     if all(column in valued.columns for column in TERRAIN_COLUMNS):
         factor = factor * terrain_modifier(valued, factors)
+
+    # The accessibility columns are optional in the same way, and for the same
+    # reason leave each TA's total where it was.
+    if all(column in valued.columns for column in ACCESSIBILITY_COLUMNS):
+        factor = factor * accessibility_modifier(valued, factors)
 
     land_value = pd.Series(float("nan"), index=valued.index, dtype=float)
 

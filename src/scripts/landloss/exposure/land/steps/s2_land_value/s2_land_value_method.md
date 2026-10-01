@@ -4,12 +4,12 @@
   `s1_build_terrain_attributes.py` and `s4_estimate_land_value.py` read
   `temp/exposure/address-spine.geoparquet` and rebuild it from LINZ in their own
   `get_spine()` if it is not there, so either script runs on a clean checkout.
-- The run settings of both scripts — `PILOT`, `FRESH`, the `SPINE`,
-  `TERRAIN`, `LAND_VALUE_OUT` and `COHORTS_OUT` path overrides and the
-  `WINDOW_M` override — are read from the one `config.py` in this folder and
-  passed into each `main()` as keyword arguments; neither script takes
-  command-line arguments. Sharing `PILOT` and `TERRAIN` keeps s4 reading
-  what s1 wrote.
+- The run settings of the scripts — `PILOT`, `FRESH`, the `SPINE`,
+  `TERRAIN`, `ACCESSIBILITY`, `LAND_VALUE_OUT` and `COHORTS_OUT` path overrides
+  and the `WINDOW_M` override — are read from the one `config.py` in this folder
+  and passed into each `main()` as keyword arguments; `s1`, `s2`, `s4` and
+  `fig_town_centres.py` take no command-line arguments. Sharing `PILOT`,
+  `TERRAIN` and `ACCESSIBILITY` keeps s4 reading what s1 and s2 wrote.
 - Each address is tagged flat or hill by
   `landloss.exposure.land.landform.classify_landform`, against the National
   Liquefaction Model flatland polygons read by
@@ -92,6 +92,43 @@
   addresses all share a value all resolve to a modifier of one rather than to
   NaN, which `_standardise_within_groups` carries and
   `tests/landloss/exposure/test_land_value.py` covers.
+- Accessibility is measured by `s2_build_accessibility.py`, which reads the
+  same spine and writes `temp/exposure/accessibility-by-address.geoparquet`
+  carrying `address_id`, `gravity_accessibility`, `nearest_station_m` and the
+  geometry, with a `-pilot` suffix when `PILOT` is True.
+- `gravity_accessibility` is the straight-line gravity sum computed by
+  `landloss.exposure.land.accessibility.gravity_accessibility` over the centres
+  in `src/landloss/io/assets/land-value-centres.csv`, one row per centre with its
+  weight, decay length, position and the basis for each on the row. The centres
+  and their weights are shown in the figure produced by `fig_town_centres.py`,
+  written to `report/exposure/land/land-value/fig/`, over the addresses
+  coloured by their gravity accessibility on a log scale.
+- `nearest_station_m` is the straight-line distance to the nearest LINZ Topo50
+  railway station, read by `landloss.io.readers.get_nz_rail_stations` over the
+  spine's extent buffered by `STATION_BUFFER_M` in `s2_build_accessibility.py`
+  and measured by `landloss.exposure.land.accessibility.distance_to_nearest`.
+  The run prints the names of the stations it found and does not filter them.
+- The LINZ layer carries no Wellington Station, so the stations in
+  `src/landloss/io/assets/land-value-extra-stations.csv` are added to it by
+  `landloss.exposure.land.accessibility.add_stations`: an added station is kept
+  if it falls inside the extent the layer was read over and is more than
+  `DUPLICATE_STATION_M` from every station the layer already carries. The run
+  names the stations it added.
+- The run prints the deciles of gravity accessibility per territorial authority
+  in `describe_gravity()` and the share of addresses within 400, 800 and 1,600 m
+  of a station in `describe_station_distance()`.
+- Within a landform class, value is also spread by the accessibility modifier
+  `landloss.exposure.land.land_value.accessibility_modifier`: the logarithm of
+  `gravity ** accessibility_elasticity * (1 + rail_station_premium *
+  exp(-nearest_station_m / rail_station_decay_length_m))` is centred within
+  each `TERRAIN_GROUP_COLUMNS` group, exponentiated, clipped to the
+  `accessibility_modifier_clip_min` and `accessibility_modifier_clip_max` rows
+  of the factors asset, and rescaled so the group mean is exactly one. The
+  function's docstring sets out why it is centred in logs and why the group is
+  the terrain modifier's.
+- An address with no gravity value sits at the middle of its cohort, and one
+  with no station distance takes no station premium; both resolve to a finite
+  modifier, which `tests/landloss/exposure/land/test_land_value.py` covers.
 - The published average land value for each territorial authority, its rating
   unit count, its index to the common valuation date and its median lot size are
   held in `src/landloss/io/assets/land-value-base-rates.csv`, one row per
@@ -103,8 +140,10 @@
 - Values are assigned by `landloss.exposure.land.land_value.estimate_land_value`: the
   published average is indexed onto `COMMON_VALUATION_DATE` by
   `index_base_rates`, each address takes its landform multiplier — multiplied by
-  its terrain modifier whenever the frame carries both of `TERRAIN_COLUMNS`, and
-  by the landform multiplier alone when it does not — a normalising
+  its terrain modifier whenever the frame carries both of `TERRAIN_COLUMNS` and
+  by its accessibility modifier whenever it carries both of
+  `ACCESSIBILITY_COLUMNS`, and by the landform multiplier alone when it carries
+  neither — a normalising
   constant from `solve_normalising_constant` scales the multipliers so the
   authority's mean equals the indexed average, the result is clipped to the
   configured multiples of that average, and the constant is re-solved once
@@ -121,6 +160,12 @@
   the file is absent it prints what the run is going without and values on
   landform class alone. `TERRAIN` in `config.py` points both scripts at
   a different file.
+- The accessibility join is optional in the same way. `s4_estimate_land_value.py`
+  reads the attributes with `read_accessibility()` and joins them with
+  `attach_accessibility()`, a left merge on `address_id` validated one-to-one
+  with the unmatched count printed, and without the file it prints that it is
+  valuing without the accessibility modifier. `ACCESSIBILITY` in `config.py`
+  points s2, s4 and `fig_town_centres.py` at a different file.
 - The run prints the calibration per territorial authority in
   `describe_calibration()` — the modelled mean, the indexed published average
   and the percentage difference between them — together with the hill, flat and
@@ -231,6 +276,12 @@
   of the join between two surveys rather than a landform, and every address
   within half a topographic position window of such a boundary has some of
   the other survey in its neighbourhood mean.
+- Accessibility is measured in straight lines, which overstates how close the
+  far side of the harbour is to the Wellington CBD — Days Bay and Eastbourne are
+  about 9 km away as the crow flies and a 25 minute drive — and gives Makara
+  village the same gravity as Tawa. The centres are placed by hand, and the
+  elasticity, the rail premium and the clip band are judgement, each on its row
+  of the two assets.
 - The published averages are residential averages applied to every address,
   because the LINZ NZ Addresses layer carries no residential flag. That gap
   belongs to step 1 and is carried in its method file as well.

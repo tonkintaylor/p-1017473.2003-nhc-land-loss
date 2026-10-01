@@ -28,7 +28,7 @@ from shapely import box, make_valid
 from ttpy.gis.koop import KoordinatesConnection, get_latest_layer
 
 from landloss.domain import constants
-from landloss.io import koopcache_dir
+from landloss.io import KOOPCACHE_DIR_ENV_VAR, koopcache_dir
 
 dotenv.load_dotenv()
 
@@ -70,6 +70,28 @@ def resolve_api_key(domain: str) -> str:
         raise ValueError(msg)
 
     return api_key
+
+
+def _get_latest_layer(conn: KoordinatesConnection, layer: int) -> Path:
+    """Fetch a Koordinates layer through ttpy, into this repository's cache.
+
+    ttpy reads ``KOOPCACHE_DIR`` from the environment for itself and refuses to
+    download anything when it is unset -- which is exactly how ``.env.example``
+    tells everyone to leave it, because :func:`landloss.io.koopcache_dir`
+    supplies the default. So the resolved root is handed to ttpy here, as an
+    absolute path, before every call. That also stops a relative value in an
+    older ``.env`` sending ttpy's downloads to wherever the script was launched
+    from while every other cache stays anchored at the repo root.
+
+    Args:
+        conn: An open connection to the layer's Koordinates domain.
+        layer: The Koordinates ID of the layer.
+
+    Returns:
+        The path ttpy downloaded or cached the layer at.
+    """
+    os.environ[KOOPCACHE_DIR_ENV_VAR] = str(koopcache_dir())
+    return get_latest_layer(conn=conn, layer_id=layer)
 
 
 def extent_cache_dir() -> Path:
@@ -128,7 +150,7 @@ def get_koordinates_layer_extent(
     if isinstance(layer, int):
         conn = KoordinatesConnection(api_key=resolve_api_key(domain), domain=domain)
         try:
-            layer_path = get_latest_layer(conn=conn, layer_id=layer)
+            layer_path = _get_latest_layer(conn, layer)
         finally:
             conn.close()
     else:
@@ -371,6 +393,48 @@ def get_nz_address_roads(
     """
     return get_koordinates_layer_extent(
         layer=constants.NZ_ADDRESS_ROADS_LAYER_ID,
+        crs=crs,
+        bbox=bbox,
+        domain=constants.LINZ_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
+def get_nz_rail_stations(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load the LINZ NZ Rail Station Points (Topo, 1:50k) layer for an extent.
+
+    One point per railway station on the Topo50 map series,
+    https://data.linz.govt.nz/layer/50318-nz-rail-station-points-topo-150k/,
+    described by LINZ as a point on a railway line used for picking up and
+    setting down passengers or freight. The land value accessibility term
+    measures each address's distance to the nearest of them.
+
+    Licence:
+        Creative Commons Attribution 4.0 International (CC BY 4.0),
+        https://data.linz.govt.nz/license/attribution-4-0-international/. That
+        obliges us to credit LINZ in anything published that is derived from
+        it, which here means the modelled land values.
+
+    Source:
+        Land Information New Zealand, data.linz.govt.nz. No DOI is published
+        for the layer.
+
+    Args:
+        bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``.
+            Omitting it returns every station in New Zealand.
+        crs: The coordinate reference system to return the stations in.
+        use_cache: Whether to read and write the clipped extent cache.
+
+    Returns:
+        A GeoDataFrame of station points.
+    """
+    return get_koordinates_layer_extent(
+        layer=constants.NZ_RAIL_STATION_POINTS_LAYER_ID,
         crs=crs,
         bbox=bbox,
         domain=constants.LINZ_DOMAIN,
@@ -814,7 +878,7 @@ def get_koordinates_raster(layer: int, domain: str = constants.TTGROUP_DOMAIN) -
     """
     conn = KoordinatesConnection(api_key=resolve_api_key(domain), domain=domain)
     try:
-        return get_latest_layer(conn=conn, layer_id=layer)
+        return _get_latest_layer(conn, layer)
     finally:
         conn.close()
 

@@ -163,6 +163,13 @@ NZ_ADDRESS_ROADS_LAYER_ID = 123110
 # building is what the extent is measured from.
 NZ_BUILDING_OUTLINES_LAYER_ID = 101290
 
+# https://data.linz.govt.nz/layer/50318-nz-rail-station-points-topo-150k/
+# The Topo50 railway stations, which the land value accessibility term measures
+# each address's distance to. Topo50 rather than a timetable feed because it is
+# on LINZ with the rest of the exposure data and needs no further key; whether
+# it carries stations that no longer take passengers is checked in the run.
+NZ_RAIL_STATION_POINTS_LAYER_ID = 50318
+
 # https://data.linz.govt.nz/layer/122657-nz-property-boundaries/
 # LINZ's best available representation of a property, built from rating units
 # first, then spatialised titles, then primary parcels. It is the only layer in
