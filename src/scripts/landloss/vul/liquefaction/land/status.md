@@ -32,7 +32,7 @@ contain -- evacuated and inundated land -- and `loss` does the costing.
 
 Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
-- [ ] Give each land damage state an **evacuated** (cracked) area and an
+- [x] Give each land damage state an **evacuated** (cracked) area and an
   **inundated** (ejecta) area, drawn uniformly within the state's range, from
   the MBIE descriptions of each state (**T-55**, owner Perrie Gilbert):
 
@@ -48,7 +48,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   Evacuated land is an area in m² and inundated land a percentage of the
   insured land (confirmed by Perrie Gilbert, 2026-09-30). Moderate inundation
   was first put at 5% to 25% and revised to 25% to 70% in the same call. All
-  the ranges are judgement (**L-39**).
+  the ranges are judgement (**L-39**). Done in step 2: the ranges are
+  `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in its `config.py`, and each claim
+  carries `evacuated_area_m2` and `inundated_area_m2`, each capped at the
+  insured area. Nothing downstream reads them yet.
 - [ ] Take the **total damaged area** as evacuated plus inundated less a 30%
   overlap between them, and value liquefied land in the land cover cap over
   that rather than over the whole insured area (**T-56**) -- the whole-area
@@ -109,8 +112,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 3. Gross the rates up for GST at the loss boundary. They arrive excluding it
    and the Act compares on a GST-inclusive basis.
 4. Run all three percentiles and report the portfolio total as a band.
-5. Add the evacuated and inundated areas per state (**T-55**), and the damaged
-   area the cap is valued over (**T-56**). Maxim Millen is revising the land
+5. Value the cap over the damaged area (**T-56**), from the evacuated and
+   inundated areas step 2 now draws (**T-55**). Maxim Millen is revising the land
    damage states themselves (**T-54**), which is where the two pieces of work
    first meet.
 6. Set the inundated and evacuated repair rates against the Canterbury table,
@@ -141,6 +144,10 @@ on feedback rather than derived.
   and Very severe fixed at 0%; feedback from Virginie Lacrosse and/or John
   Leeves (**T-64**, **Q-16**). Not applied until the costs are claimant-only
   (**T-65**).
+- **Evacuated area and inundated share per land damage state**,
+  `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in the same `config.py`. Judgement
+  from the MBIE state descriptions, agreed 2026-09-30 (**L-39**), to be tuned
+  with the repair rates against the Canterbury table (**T-57**).
 
 ## Open decisions
 

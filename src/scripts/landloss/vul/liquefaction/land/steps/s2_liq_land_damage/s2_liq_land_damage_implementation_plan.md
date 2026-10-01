@@ -1,6 +1,6 @@
 # Step 2 — Liquefaction land damage: implementation plan
 
-**Status:** Phases 1, 1a, 1b and 1c complete. Costs are the packaged Canterbury
+**Status:** Phases 1, 1a, 1b, 1c and 1d complete. Costs are the packaged Canterbury
 settlements; the drop-out draw is built but off, since those costs already
 include non-claimants, and its rates are placeholders.
 
@@ -52,6 +52,19 @@ include non-claimants, and its rates are placeholders.
       and the claimant-only rates check them only as means: drop-out = 1 −
       diluted mean ÷ claimant mean. Percentiles do not scale that way.
 - [ ] Calibrate the T-57 repair rates against claimants only, to match.
+
+## Phase 1d — Evacuated and inundated areas (complete)
+
+- [x] Draw an evacuated area in m² and an inundated share of the insured land
+      per property, uniformly within each state's range (**T-55**), from a
+      stream of their own.
+- [x] Cap each at the insured area, and zero both where `ld_state` is null.
+- [x] Hold the ranges in `config.py` as `EVACUATED_AREA_M2` and
+      `INUNDATED_SHARE`, flagged as judgement to be tuned (**L-39**, **T-57**).
+- [ ] Combine them into the damaged area, less the overlap, and hand it to the
+      land table for the cap (**T-56**).
+- [ ] Cost from the areas at repair rates per m² calibrated to the Canterbury
+      table, replacing the lookup (**T-57**).
 
 ## Phase 2 — Beyond the Canterbury lookup
 

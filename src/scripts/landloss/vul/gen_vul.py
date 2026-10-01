@@ -57,6 +57,8 @@ def main(*, pilot, realisation_ids):
                     **ids,
                     cost_percentile=liq_config.COST_PERCENTILE,
                     drop_out_rates=liq_config.DROP_OUT_RATES,
+                    evacuated_area_m2=liq_config.EVACUATED_AREA_M2,
+                    inundated_share=liq_config.INUNDATED_SHARE,
                 ),
             ),
             (

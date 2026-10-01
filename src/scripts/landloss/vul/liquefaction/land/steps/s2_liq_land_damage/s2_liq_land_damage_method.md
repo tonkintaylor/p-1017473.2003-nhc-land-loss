@@ -44,6 +44,22 @@
     claimant-only rates and setting it False switches the draw on (**T-65**).
     In the meantime many small costs meet the excess where a few full ones
     would, so settlements come out somewhat low (**L-43**).
+- **Each claim carries the ground it lost** (**T-55**): an evacuated area in
+  m² -- cracked or spread -- and an inundated area under ejecta, drawn
+  uniformly within its state's ranges by
+  `landloss.vul.liquefaction.damaged_area.draw_damaged_areas`, from a stream of
+  their own, `liquefaction_areas`, so switching the drop-out on does not move
+  them.
+  - Evacuated is drawn in m², because cracking is a few metres whatever the
+    section's size; inundated is drawn as a share and multiplied by the insured
+    area, because ejecta spreads over a fraction of it. Each is capped at the
+    insured area. They may sum to more than it, since they overlap; the
+    damaged area is **T-56**.
+  - Both are zero wherever `ld_state` is null -- off the grid, or dropped out.
+  - The ranges, `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in `config.py`, are
+    judgement from the MBIE state descriptions (**L-39**), to be tuned with the
+    repair rates (**T-57**). Nothing downstream reads the areas yet; the cost
+    is still the Canterbury lookup.
 - Costs are looked up, not modelled, by `landloss.vul.liquefaction.costs`. They
   are what NHC settled for land damage after the 2010 and 2011 Canterbury
   earthquakes, grouped by the damage state surveyed on the ground, and shipped

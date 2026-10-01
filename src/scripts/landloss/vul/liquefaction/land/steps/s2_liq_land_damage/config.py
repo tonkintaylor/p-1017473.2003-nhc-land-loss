@@ -43,3 +43,29 @@ DROP_OUT_RATES = {
     5: 0.0,  # Severe
     6: 0.0,  # Very severe
 }
+
+# The ground each land damage state takes, drawn uniformly within (low, high)
+# per property (T-55): evacuated land -- cracked or spread -- in m², and
+# inundated land -- under ejecta -- as a share of the insured land.
+#
+# JUDGEMENT, TO BE TUNED. Read off the MBIE descriptions of each state and agreed
+# on 2026-09-30 (L-39); Moderate inundation was first put at 5% to 25% and
+# revised to 25% to 70% in the same call. They are to be tuned with the repair
+# rates per m² that multiply them, so the modelled cost per state reproduces
+# the Canterbury table (T-57).
+EVACUATED_AREA_M2 = {
+    1: (0.0, 0.0),  # None
+    2: (1.0, 1.0),  # Minor
+    3: (1.0, 1.0),  # Moderate
+    4: (1.0, 10.0),  # Major
+    5: (10.0, 40.0),  # Severe
+    6: (40.0, 100.0),  # Very severe
+}
+INUNDATED_SHARE = {
+    1: (0.0, 0.0),  # None
+    2: (0.0, 0.0),  # Minor
+    3: (0.25, 0.70),  # Moderate
+    4: (0.30, 1.00),  # Major
+    5: (0.30, 1.00),  # Severe
+    6: (0.30, 1.00),  # Very severe
+}

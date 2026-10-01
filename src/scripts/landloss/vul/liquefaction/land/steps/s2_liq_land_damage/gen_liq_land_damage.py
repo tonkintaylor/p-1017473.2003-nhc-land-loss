@@ -39,6 +39,14 @@ average over every damaged property, non-claimants at $0, which
 count the drop-out twice. So every property on the grid claims, at the diluted
 cost, until claimant-only rates replace them (T-65, L-43).
 
+**Each claim carries the ground it lost** (T-55): an evacuated area in m² and an
+inundated area, drawn uniformly within its state's ranges in
+``config.EVACUATED_AREA_M2`` and ``config.INUNDATED_SHARE`` -- judgement, to be
+tuned with the repair rates (L-39, T-57). They are drawn from a stream of their
+own, so switching the drop-out on does not move them, and are zero wherever
+`ld_state` is null. Nothing downstream reads them yet; costing from them, and
+valuing the cap over the damaged area, is T-56 and T-57.
+
 What it runs over comes from ``config.py`` beside it.
 """
 
@@ -59,6 +67,12 @@ from landloss.vul.liquefaction.costs import (
     RATE_BASIS,
     ld_cost_nzd,
     load_ld_costs,
+)
+from landloss.vul.liquefaction.damaged_area import (
+    EVACUATED_AREA_COLUMN,
+    INUNDATED_AREA_COLUMN,
+    check_ranges,
+    draw_damaged_areas,
 )
 from landloss.vul.liquefaction.drop_out import check_drop_out_rates, draw_claims
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
@@ -86,6 +100,8 @@ CLAIMED_COLUMN = "liq_claimed"
 # Its own stream rather than the shared "vulnerability" one, so the claim draw
 # is independent of the wall and crossing damage draws of the same event.
 RNG_STREAM = "liquefaction_claims"
+# And the areas their own, so the drop-out going on does not reshuffle them.
+AREA_RNG_STREAM = "liquefaction_areas"
 # The state name a property off the liquefaction grid is written with. Its
 # ld_state is null, so the loss module reads it as not liquefied.
 OFF_GRID_STATE_NAME = "N/A"
@@ -131,13 +147,31 @@ def describe_damage(damage, properties, percentile, *, apply_drop_out):
         f"at the {percentile}th percentile of settled cost:"
     )
     print(counts.to_string())
+    claims = damage.loc[damage[CLAIMED_COLUMN]]
+    if not claims.empty:
+        print(RULE)
+        print("Ground lost per claim, by land damage state (mean m2):")
+        areas = claims.groupby([STATE_COLUMN, "state_name"])[
+            [EVACUATED_AREA_COLUMN, INUNDATED_AREA_COLUMN, "area_m2"]
+        ].mean()
+        print(areas.round(1).to_string())
     total = damage["cost_nzd"].sum()
     print(f"  total repair cost {total:,.0f} NZD, {COST_YEAR} dollars excluding GST")
 
 
-def main(*, pilot, realisation_ids, cost_percentile, drop_out_rates):
+def main(
+    *,
+    pilot,
+    realisation_ids,
+    cost_percentile,
+    drop_out_rates,
+    evacuated_area_m2,
+    inundated_share,
+):
     """Write the liquefaction land damage per property, per realisation."""
     check_drop_out_rates(drop_out_rates)
+    check_ranges(evacuated_area_m2, name="evacuated area")
+    check_ranges(inundated_share, name="inundated share", upper=1.0)
     apply_drop_out = not COSTS_INCLUDE_NON_CLAIMANTS
     if not apply_drop_out:
         print(
@@ -168,6 +202,13 @@ def main(*, pilot, realisation_ids, cost_percentile, drop_out_rates):
             ),
             0.0,
         )
+        evacuated, inundated = draw_damaged_areas(
+            sampled,
+            insured["area_m2"].to_numpy(),
+            evacuated_area_m2,
+            inundated_share,
+            realisation_seed(constants.BASE_SEED, realisation_id, AREA_RNG_STREAM),
+        )
         hazard_states = pd.Series(sampled).astype("Int64")
         states = hazard_states.where(claimed)
         state_names = (
@@ -185,6 +226,8 @@ def main(*, pilot, realisation_ids, cost_percentile, drop_out_rates):
                 CLAIMED_COLUMN: claimed,
                 "state_name": state_names.to_numpy(),
                 "area_m2": insured["area_m2"].to_numpy(),
+                EVACUATED_AREA_COLUMN: np.where(claimed, evacuated, 0.0),
+                INUNDATED_AREA_COLUMN: np.where(claimed, inundated, 0.0),
                 LAND_RATE_INCL_GST_COLUMN: insured[
                     LAND_RATE_INCL_GST_COLUMN
                 ].to_numpy(),
@@ -210,4 +253,6 @@ if __name__ == "__main__":
         realisation_ids=config.REALISATION_IDS,
         cost_percentile=config.COST_PERCENTILE,
         drop_out_rates=config.DROP_OUT_RATES,
+        evacuated_area_m2=config.EVACUATED_AREA_M2,
+        inundated_share=config.INUNDATED_SHARE,
     )
