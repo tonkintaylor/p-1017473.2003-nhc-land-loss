@@ -25,6 +25,20 @@ damage and carries a Canterbury cost; land that cannot liquefy has no
 liquefaction damage state at all. `on_liq_grid` records the same split as a
 flag.
 
+**Not every damaged property claims.** Each property on the grid draws whether
+its owner makes a land claim, at the drop-out rate for its state in
+``config.DROP_OUT_RATES`` -- placeholders awaiting tuning (T-64, Q-16). The
+state the hazard put there is kept as `hazard_ld_state`; `ld_state`, the column
+the loss module settles, is null for a property that drops out, and its cost is
+zero, so the loss module reads it exactly as it reads land off the grid: no
+liquefaction claim. `liq_claimed` records the draw.
+
+**The draw is off while the packaged costs already carry the drop-out.** They
+average over every damaged property, non-claimants at $0, which
+`COSTS_INCLUDE_NON_CLAIMANTS` records; drawing claims against them as well would
+count the drop-out twice. So every property on the grid claims, at the diluted
+cost, until claimant-only rates replace them (T-65, L-43).
+
 What it runs over comes from ``config.py`` beside it.
 """
 
@@ -38,12 +52,15 @@ from landloss.common.utils.terrain import sample_at_points
 from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LAND_ID_COLUMN
 from landloss.exposure.land.extent import LAND_RATE_INCL_GST_COLUMN
+from landloss.hazard.realisation import realisation_seed
 from landloss.vul.liquefaction.costs import (
     COST_YEAR,
+    COSTS_INCLUDE_NON_CLAIMANTS,
     RATE_BASIS,
     ld_cost_nzd,
     load_ld_costs,
 )
+from landloss.vul.liquefaction.drop_out import check_drop_out_rates, draw_claims
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
@@ -60,8 +77,15 @@ WORK_DIR = TEMP_DIR / "vul"
 OUT_STEM = "liq-land-damage"
 
 CAUSE = str(constants.Cause.LIQUEFACTION)
+# The state the loss module settles: the hazard's state where the property
+# claims, null where it drops out or is off the grid.
 STATE_COLUMN = "ld_state"
+HAZARD_STATE_COLUMN = "hazard_ld_state"
 ON_GRID_COLUMN = "on_liq_grid"
+CLAIMED_COLUMN = "liq_claimed"
+# Its own stream rather than the shared "vulnerability" one, so the claim draw
+# is independent of the wall and crossing damage draws of the same event.
+RNG_STREAM = "liquefaction_claims"
 # The state name a property off the liquefaction grid is written with. Its
 # ld_state is null, so the loss module reads it as not liquefied.
 OFF_GRID_STATE_NAME = "N/A"
@@ -74,8 +98,8 @@ def liq_land_damage_path(realisation_id, *, pilot):
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.parquet"
 
 
-def describe_damage(damage, properties, percentile):
-    """Print the states drawn and what they cost."""
+def describe_damage(damage, properties, percentile, *, apply_drop_out):
+    """Print the states drawn, how many claim, and what they cost."""
     known = damage[ON_GRID_COLUMN]
     print(RULE)
     print(f"Properties: {properties:,}")
@@ -90,17 +114,36 @@ def describe_damage(damage, properties, percentile):
     print(RULE)
     counts = (
         damage.loc[known]
-        .groupby([STATE_COLUMN, "state_name"])
-        .agg(properties=(CLAIM_ID_COLUMN, "size"), cost_nzd=("cost_nzd", "first"))
+        .groupby([HAZARD_STATE_COLUMN, "state_name"])
+        .agg(
+            properties=(CLAIM_ID_COLUMN, "size"),
+            claimed=(CLAIMED_COLUMN, "sum"),
+            total_cost_nzd=("cost_nzd", "sum"),
+        )
     )
-    print(f"By land damage state, at the {percentile}th percentile of settled cost:")
+    claims = (
+        "claims drawn at the placeholder drop-out rates"
+        if apply_drop_out
+        else "every property claiming"
+    )
+    print(
+        f"By land damage state, {claims}, "
+        f"at the {percentile}th percentile of settled cost:"
+    )
     print(counts.to_string())
     total = damage["cost_nzd"].sum()
     print(f"  total repair cost {total:,.0f} NZD, {COST_YEAR} dollars excluding GST")
 
 
-def main(*, pilot, realisation_ids, cost_percentile):
+def main(*, pilot, realisation_ids, cost_percentile, drop_out_rates):
     """Write the liquefaction land damage per property, per realisation."""
+    check_drop_out_rates(drop_out_rates)
+    apply_drop_out = not COSTS_INCLUDE_NON_CLAIMANTS
+    if not apply_drop_out:
+        print(
+            "Drop-out off: the packaged costs already average over non-claimants "
+            "at $0, so drawing claims against them would count it twice (T-65)."
+        )
     insured = gpd.read_parquet(insured_land_path(pilot=pilot))
     points = insured.geometry.representative_point()
     costs = load_ld_costs()
@@ -111,13 +154,25 @@ def main(*, pilot, realisation_ids, cost_percentile):
         print(f"Sampling {raster} at {len(insured):,} properties ...", flush=True)
         sampled = sample_at_points(raster, points).to_numpy()
         on_grid = ~np.isnan(sampled)
-        # A property off the grid has no state and costs nothing, rather than
-        # the Canterbury cost of state 1.
-        cost = np.nan_to_num(
-            ld_cost_nzd(sampled, percentile=cost_percentile, costs=costs)
+        if apply_drop_out:
+            rng = realisation_seed(constants.BASE_SEED, realisation_id, RNG_STREAM)
+            claimed = draw_claims(sampled, drop_out_rates, rng)
+        else:
+            claimed = on_grid
+        # A property off the grid, or one that does not claim, has no state to
+        # settle and costs nothing -- not the Canterbury cost of state 1.
+        cost = np.where(
+            claimed,
+            np.nan_to_num(
+                ld_cost_nzd(sampled, percentile=cost_percentile, costs=costs)
+            ),
+            0.0,
         )
-        states = pd.Series(sampled).astype("Int64")
-        state_names = states.map(names).astype("string").fillna(OFF_GRID_STATE_NAME)
+        hazard_states = pd.Series(sampled).astype("Int64")
+        states = hazard_states.where(claimed)
+        state_names = (
+            hazard_states.map(names).astype("string").fillna(OFF_GRID_STATE_NAME)
+        )
         damage = pd.DataFrame(
             {
                 "realisation_id": realisation_id,
@@ -125,7 +180,9 @@ def main(*, pilot, realisation_ids, cost_percentile):
                 CLAIM_ID_COLUMN: insured[CLAIM_ID_COLUMN].to_numpy(),
                 "cause": CAUSE,
                 STATE_COLUMN: states.array,
+                HAZARD_STATE_COLUMN: hazard_states.array,
                 ON_GRID_COLUMN: on_grid,
+                CLAIMED_COLUMN: claimed,
                 "state_name": state_names.to_numpy(),
                 "area_m2": insured["area_m2"].to_numpy(),
                 LAND_RATE_INCL_GST_COLUMN: insured[
@@ -137,7 +194,9 @@ def main(*, pilot, realisation_ids, cost_percentile):
                 "cost_percentile": cost_percentile,
             }
         )
-        describe_damage(damage, len(insured), cost_percentile)
+        describe_damage(
+            damage, len(insured), cost_percentile, apply_drop_out=apply_drop_out
+        )
 
         out_path = liq_land_damage_path(realisation_id, pilot=pilot)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,4 +209,5 @@ if __name__ == "__main__":
         pilot=config.PILOT,
         realisation_ids=config.REALISATION_IDS,
         cost_percentile=config.COST_PERCENTILE,
+        drop_out_rates=config.DROP_OUT_RATES,
     )

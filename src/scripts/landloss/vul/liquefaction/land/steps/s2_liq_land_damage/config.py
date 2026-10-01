@@ -21,3 +21,25 @@ REALISATION_IDS = [0]
 # as a column, because min(repair, cap) is non-linear -- a settlement computed
 # from a median cost is not the median settlement.
 COST_PERCENTILE = 50
+
+# The share of properties in each land damage state that do NOT make a
+# liquefaction land claim, keyed on the state (1 None to 6 Very severe).
+#
+# PLACEHOLDERS, TO BE TUNED. The values are a first guess by Perrie Gilbert and
+# need feedback from Virginie Lacrosse and/or John Leeves (T-64, Q-16). The
+# only firm expectation is that Severe and Very severe damage is always claimed.
+#
+# NOT APPLIED YET. The packaged Canterbury costs average over every damaged
+# property, non-claimants at $0, so they already carry the drop-out (Q-17);
+# drawing it again would count it twice. The step leaves the draw off while
+# landloss.vul.liquefaction.costs.COSTS_INCLUDE_NON_CLAIMANTS is True, and it
+# comes on when claimant-only rates replace them (T-65). Virginie Lacrosse's
+# counts of damaged properties and claimants per band will validate these.
+DROP_OUT_RATES = {
+    1: 0.95,  # None
+    2: 0.75,  # Minor
+    3: 0.40,  # Moderate
+    4: 0.15,  # Major
+    5: 0.0,  # Severe
+    6: 0.0,  # Very severe
+}

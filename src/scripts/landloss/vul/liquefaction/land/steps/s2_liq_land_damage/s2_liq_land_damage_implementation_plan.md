@@ -1,7 +1,8 @@
 # Step 2 — Liquefaction land damage: implementation plan
 
-**Status:** Phases 1, 1a and 1b complete. Costs are the packaged Canterbury
-settlements.
+**Status:** Phases 1, 1a, 1b and 1c complete. Costs are the packaged Canterbury
+settlements; the drop-out draw is built but off, since those costs already
+include non-claimants, and its rates are placeholders.
 
 ## Phase 1 — A priced state on every property (complete)
 
@@ -31,6 +32,26 @@ settlements.
       rather than as a missing state, and record `on_liq_grid` beside it.
 - [x] Carry the GST-inclusive land rate from the insured land rather than the
       exclusive one.
+
+## Phase 1c — Not every damaged property claims (complete)
+
+- [x] Draw per property whether it makes a land claim, at a drop-out rate per
+      state, from a seeded stream of its own (`liquefaction_claims`).
+- [x] Null `ld_state` and zero the cost for a property that drops out, keeping
+      the hazard's state as `hazard_ld_state` and the draw as `liq_claimed`.
+- [x] Hold the rates in `config.py` as `DROP_OUT_RATES`, flagged as
+      placeholders, with Severe and Very severe at 0%.
+- [x] Leave the draw off while the packaged costs include non-claimants at $0
+      (**Q-17**), keyed on `COSTS_INCLUDE_NON_CLAIMANTS` in the costs module.
+- [ ] Replace the costs with claimant-only rates from Virginie Lacrosse and set
+      `COSTS_INCLUDE_NON_CLAIMANTS` False, which switches the draw on
+      (**T-65**).
+- [ ] Validate the rates against her counts of damaged properties and
+      claimants per band, which give the drop-out directly, and tune them on
+      her and John Leeves' feedback (**T-64**, **Q-16**). The existing diluted
+      and the claimant-only rates check them only as means: drop-out = 1 −
+      diluted mean ÷ claimant mean. Percentiles do not scale that way.
+- [ ] Calibrate the T-57 repair rates against claimants only, to match.
 
 ## Phase 2 — Beyond the Canterbury lookup
 

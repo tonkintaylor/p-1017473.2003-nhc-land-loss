@@ -511,6 +511,14 @@
       "Phase": "2",
       "Source": "Wgtn Land Model 2026-10-01",
       "Status": "Open"
+    },
+    {
+      "ID": "T-65",
+      "Task": "Provide the Canterbury land damage costs per land damage state averaged over properties that lodged a claim only, rather than over all damaged properties, with the count of damaged properties and of claimants in each band. The counts give the drop-out rate per state directly and validate the Q-16 placeholders; the claimant-only costs replace costs_liq_ld_refined_states_2011.csv and switch the drop-out back on.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -807,6 +815,13 @@
       "Affects": "exposure/land",
       "Source": "Wgtn Land Model 2026-10-01",
       "Status": "Open"
+    },
+    {
+      "ID": "L-43",
+      "Limitation": "Until claimant-only costs arrive (T-65), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -1058,6 +1073,22 @@
       "Answer": "",
       "Source": "Wgtn Land Model 2026-10-01",
       "Status": "Open"
+    },
+    {
+      "ID": "Q-16",
+      "Question": "What share of flat land properties in each liquefaction land damage state (1 None to 6 Very severe) do not go on to make a land claim? The model runs on placeholder drop-out rates of 95%, 75%, 40%, 15%, 0% and 0%, set in DROP_OUT_RATES in the s2_liq_land_damage config, with Severe and Very severe always claimed. They are a tuning parameter to be adjusted on feedback.",
+      "Asked of": "Virginie Lacrosse, John Leeves",
+      "Answer": "",
+      "Source": "Perrie Gilbert 2026-10-02; follows T-64",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-17",
+      "Question": "Are the Canterbury land damage costs per state (Dec 2016 ILVR rates table) averaged over properties that claimed only, or do they include properties in that state that never claimed as $0? If they include them, the drop-out is already inside the rates and applying the Q-16 drop-out rates as well would count it twice; the T-57 repair rate calibration has to take the same basis.",
+      "Asked of": "Virginie Lacrosse",
+      "Answer": "They include them. The rates average over all damaged properties, not just those that lodged a claim -- 'watered down' with $0s, as Virginie Lacrosse described them. She is to supply rates over claimants only (T-65). Until then the drop-out is switched off, since these rates already carry it.",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Closed"
     }
   ]
 }
