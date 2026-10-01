@@ -17,13 +17,17 @@ from landloss.exposure.land.extent import (
     INSURED_LAND_BUFFER_M,
     MAX_DWELLING_FOOTPRINT_M2,
     OUTLINE_ID_COLUMN,
+    PROPERTY_ADDRESS_COUNT_COLUMN,
     PROPERTY_AREA_COLUMN,
+    PROPERTY_RATING_UNIT_COUNT_COLUMN,
+    SECTION_AREA_COLUMN,
     UNNAMED_BUILDING_USE,
     assign_buildings_to_properties,
     build_claim_properties,
     build_insured_land_extent,
     count_dwellings,
     drop_non_residential_buildings,
+    section_area_per_address,
 )
 
 # Two 40 m square sections side by side, each holding a 10 m square building in
@@ -381,3 +385,88 @@ def test_a_geographic_crs_is_refused_by_the_building_filter():
 
     with pytest.raises(ValueError, match="geographic"):
         drop_non_residential_buildings(buildings)
+
+
+# --- section area per address -------------------------------------------------
+
+
+def test_a_lone_address_takes_its_whole_property():
+    """One house on a 40 m square section is valued on all 1,600 m2."""
+    properties = build_claim_properties(make_boundaries([SECTION_A]))
+
+    areas = section_area_per_address(properties, make_addresses([("a", 20, 20)]))
+
+    assert areas[SECTION_AREA_COLUMN].tolist() == pytest.approx([1600.0])
+
+
+def test_addresses_on_one_property_each_take_its_whole_area():
+    """A land value is for the property, so its area is not split among addresses.
+
+    Splitting it three ways doubled the rate of a three-address Newtown property.
+    """
+    properties = build_claim_properties(make_boundaries([SECTION_A]))
+    flats = make_addresses([(f"unit_{n}", 20, 20) for n in range(3)])
+
+    areas = section_area_per_address(properties, flats)
+
+    assert areas[SECTION_AREA_COLUMN].tolist() == pytest.approx([1600.0] * 3)
+
+
+def test_each_address_takes_its_own_property():
+    """Side by side sections of different sizes give different areas."""
+    small = box(40, 0, 60, 40)
+    properties = build_claim_properties(make_boundaries([SECTION_A, small]))
+    addresses = make_addresses([("a", 20, 20), ("b", 50, 20)])
+
+    areas = section_area_per_address(properties, addresses).set_index(ADDRESS_ID_COLUMN)
+
+    assert areas.loc["a", SECTION_AREA_COLUMN] == pytest.approx(1600.0)
+    assert areas.loc["b", SECTION_AREA_COLUMN] == pytest.approx(800.0)
+
+
+def test_an_address_outside_every_property_is_absent():
+    """It falls back to the assumed lot downstream, so it must not be invented."""
+    properties = build_claim_properties(make_boundaries([SECTION_A]))
+    addresses = make_addresses([("in", 20, 20), ("out", 500, 500)])
+
+    areas = section_area_per_address(properties, addresses)
+
+    assert areas[ADDRESS_ID_COLUMN].tolist() == ["in"]
+
+
+def test_section_areas_refuse_a_geographic_crs():
+    """In degrees the area would be a tiny fraction and every value would shrink."""
+    properties = build_claim_properties(make_boundaries([SECTION_A])).to_crs(
+        "EPSG:4326"
+    )
+
+    with pytest.raises(ValueError, match="geographic"):
+        section_area_per_address(properties, make_addresses([("a", 174.7, -41.3)]))
+
+
+def test_each_address_carries_how_many_share_its_property():
+    """The land value model counts the property once, so it needs the count."""
+    properties = build_claim_properties(make_boundaries([SECTION_A, SECTION_B]))
+    addresses = make_addresses([("a1", 20, 20), ("a2", 20, 20), ("b", 60, 20)])
+
+    areas = section_area_per_address(properties, addresses).set_index(ADDRESS_ID_COLUMN)
+
+    assert areas.loc[["a1", "a2", "b"], PROPERTY_ADDRESS_COUNT_COLUMN].tolist() == [
+        2,
+        2,
+        1,
+    ]
+
+
+def test_a_unit_titled_block_carries_one_rating_unit_per_stacked_title():
+    """LINZ stacks one boundary per unit on a block's footprint; each is a unit."""
+    boundaries = make_boundaries(
+        [SECTION_A] * 3 + [SECTION_B], ids=["u1", "u2", "u3", "house"]
+    )
+    properties = build_claim_properties(boundaries)
+    addresses = make_addresses([("flat", 20, 20), ("house", 60, 20)])
+
+    areas = section_area_per_address(properties, addresses).set_index(ADDRESS_ID_COLUMN)
+
+    assert areas.loc["flat", PROPERTY_RATING_UNIT_COUNT_COLUMN] == 3
+    assert areas.loc["house", PROPERTY_RATING_UNIT_COUNT_COLUMN] == 1

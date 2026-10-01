@@ -89,6 +89,52 @@ missing.
       read in each `__main__` block and passed into `main()` as keyword
       arguments. The figure scripts keep their own arguments for now.
 
+## Phase 2b — Section size (complete)
+
+Hand checks of Wellington City land values on 2026-10-01 showed every
+address being valued as if it stood on the assumed 450 m2 lot, so a 1,006 m2
+Seatoun section and a 129 m2 Thorndon one were worth much the same, and every
+rate per square metre was divided by the assumption rather than the section.
+
+- [x] Measure each address's section as the whole LINZ property it stands on
+      (`landloss.exposure.land.extent.section_area_per_address`, joined in
+      `s4_estimate_land_value.py`). Splitting the area among the property's
+      addresses was tried first and dropped: a published land value is for the
+      property, and splitting doubled the rate of 13 Lawrence Street, Newtown,
+      one 170 m2 property with three address points.
+- [x] Size the value by `(section_area / assumed lot) ** 0.5`
+      (`landloss.exposure.land.land_value.section_size_factor`, elasticity in
+      the factors asset), leaving the per-authority normalisation to hold the
+      total.
+- [x] Divide the rate by the measured section rather than the assumed lot, with
+      the assumed lot as the fallback and `lot_size_source` saying which.
+- [x] Model the rate rather than the value: rate factor times site area is
+      the site value, calibrated as total site value over total rating units
+      against the published per-rating-unit average, so a unit-titled block is
+      the sum of its units (`estimate_land_value`, `_value_one_ta`). It replaced
+      a value-per-address model, under which every way of handling a property
+      with several addresses -- split, whole, or counted once -- misrated
+      apartment blocks or the houses around them.
+- [x] Size a unit-titled block per rating unit, floored at
+      `section_area_min_m2`, so a dense block is not extrapolated far below any
+      real section (`section_size_factor`).
+- [ ] Decide the size treatment for a freehold title with many dwellings on it.
+      Sized as one large section today, at about a fifth of its neighbours'
+      rate in Newtown. A cap on the size discount fixes those but would let
+      rural parcels swamp the calibration, so it needs an urban/rural signal --
+      the LCDB built-up class, or address density -- first.
+- [ ] Settle `section_area_min_m2`. At 150 m2 unit-titled blocks rate about 1.4
+      times their neighbouring houses in Te Aro and about twice in Thorndon and
+      Johnsonville.
+- [ ] Fit `section_area_elasticity` in the Phase 5 regression.
+- [x] Count each property once in the authority mean
+      (`landloss.exposure.land.land_value.property_weight`). Counted per
+      address, the 14.5% of pilot addresses on properties over 5,000 m2 each
+      took the whole property's size factor, and the normalisation took about
+      44% off every ordinary property's value to pay for it; 13 Lawrence Street
+      came out at 0.49 of its real rate, and 0.85 once each property counted
+      once.
+
 ## Phase 3 — Accessibility (stage 3a built)
 
 - [x] Give each address a gravity decay to the main centres,
@@ -191,15 +237,6 @@ is where that argument is recorded.
 
 ## Potential future improvements
 
-- Take land area from a measured polygon rather than the per-authority
-  `median_lot_size_m2` in the base rates asset. The agreed target for the
-  exposure land model is one row per `claim_id` carrying a rate per square metre
-  and the *insured land* polygon — the 8 m line from the dwelling — rather than
-  the full parcel, because that is the extent NHC settles on and the extent the
-  landslide hazard and vulnerability modules intersect against. The join that
-  supplies it is Phase 2 of step 1's plan,
-  `s1_address_spine_implementation_plan.md`, and this step consumes it when it
-  lands. Closes most of register task T-25.
 - Have a valuer sign off the `index_to_2025_09` factors, or replace them with a
   valuer's own basis. They are read off the published QV House Price Index for
   the greater Wellington region, with the September figure interpolated between

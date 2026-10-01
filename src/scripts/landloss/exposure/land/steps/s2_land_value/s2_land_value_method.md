@@ -206,8 +206,50 @@
   hundred of its addresses. The colour classes are taken from the whole study
   area by the `reference` argument of `classify_rates`, so a rate keeps one
   colour across the set and the four maps can be read side by side.
-- The rate per square metre divides the modelled land value by the per-authority
-  `median_lot_size_m2` from the base rates asset, not by a measured parcel area.
+- Each address is given its section area by `attach_section_areas()` in
+  `s4_estimate_land_value.py`: the LINZ property boundaries, read by
+  `landloss.io.readers.get_nz_property_boundaries` and reduced to claimable
+  ground by `landloss.exposure.land.extent.build_claim_properties` (the same
+  reduction step s5 uses), are joined to the addresses by
+  `landloss.exposure.land.extent.section_area_per_address`, which gives each
+  address the whole area of the property it stands on, so every address on a
+  property carries the same area, size factor and rate. The run prints the measured share and the quartiles of section area per
+  territorial authority against the assumed lot in `describe_section_areas()`.
+- **The rate per square metre is what is modelled, and the land value follows
+  from it** (`landloss.exposure.land.land_value.estimate_land_value`). Each
+  address's rate factor is its landform factor times its terrain and
+  accessibility modifiers times its section size factor; its property's site
+  value is that factor times the site area; and the per-authority constant is
+  solved so that total site value over total rating units equals the indexed
+  published average, which is how the published per-rating-unit figure is
+  built. `_value_one_ta` carries the solve.
+- `section_area_per_address` also carries `addresses_on_property` and
+  `rating_units_on_property`, the latter the property's `boundary_rows`: one per
+  unit of a unit-titled block, whose titles LINZ stacks on one footprint, and
+  one for a freehold title however many addresses stand on it.
+- The section size factor, `landloss.exposure.land.land_value.section_size_factor`,
+  multiplies the rate by `(max(area per rating unit, section_area_min_m2) /
+  median_lot_size_m2) ** (section_area_elasticity - 1)`, both parameters rows of
+  the factors asset. Per rating unit, so a unit-titled block is rated as the
+  sections its units would each have and its land is the sum of theirs; a
+  freehold property is sized on its whole area.
+- Each property counts once in the calibration:
+  `landloss.exposure.land.land_value.property_weight` weights an address by one
+  over the addresses on its property, since every address on a property
+  carries the property's area, rating units and site value.
+  `ta_mean_land_value` computes the same per-rating-unit mean for the run's
+  calibration table and for `check_land_value_totals.py`.
+- The value clip bounds the site value per rating unit to the
+  `rate_clip_min_multiple` and `rate_clip_max_multiple` rows times the indexed
+  average. The floor applies only to a property of one rating unit, because a
+  flat's share of its block's land is legitimately small.
+- The outputs carry `land_rate_nzd_per_m2`; `site_land_value_nzd`, the whole
+  property's land; `land_value_nzd`, that over the property's rating units,
+  which is what a published per-property land value is; and `lot_size_m2`, the
+  site area the rate is per, with `lot_size_source` `measured` or `assumed`. An
+  address standing in no property is one rating unit on the per-authority
+  `median_lot_size_m2` and takes a size factor of one, which is the model
+  before areas were measured.
 - The arithmetic is covered by `tests/landloss/exposure/test_land_value.py`,
   `tests/landloss/exposure/test_landform.py` and
   `tests/landloss/common/utils/test_terrain.py`, and the outputs of a real run are
@@ -233,12 +275,18 @@
   Wellington region, with the September figure interpolated between two
   published annual changes, as `src/landloss/io/assets/README.md` sets out. No
   valuer has signed it off.
-- Lot size is assumed. `median_lot_size_m2` is documented judgement anchored on
-  a 600 m2 regional convention, not a researched per-authority median, so
-  `land_rate_nzd_per_m2` is an order-of-magnitude figure for comparing cohorts
-  rather than a valuation of any one property. The derivation and the sense
-  check behind each of the four numbers are in
-  `src/landloss/io/assets/README.md`.
+- `median_lot_size_m2` is documented judgement anchored on a 600 m2 regional
+  convention, not a researched per-authority median. It is now the reference
+  the section size factor is relative to and the fallback for an unmeasured
+  address, rather than the divisor of every rate; the derivation behind each
+  of the four numbers is in `src/landloss/io/assets/README.md`.
+- A freehold property with many addresses -- a housing estate on one title --
+  is sized as one large section, so its rate is discounted as a big garden's
+  would be: Newtown's properties of 20 or more addresses, a median 6,538 m2,
+  rate at about a fifth of the suburb's houses. A rating unit that aggregates
+  several titles is measured over all of them, as Oriental Bay's 31 Hay Street
+  is (771 m2 against a 339 m2 title). `section_area_elasticity` and
+  `section_area_min_m2` are judgement.
 - The distribution within an authority rests entirely on the three-class
   landform split and the terrain modifier, and every number behind both is in
   the `basis` column of `src/landloss/io/assets/land-value-factors.csv` as

@@ -68,9 +68,10 @@ optional in the same way as the terrain modifier.
 Two approximations are worth stating plainly, because they bound what any
 per-property figure from this module can be used for. The published averages are
 *residential* averages applied to every address, and the LINZ address layer has
-no residential flag to narrow them with. And lot size is a per-TA median rather
-than a measured parcel area, so the rate per square metre is an order-of-
-magnitude figure for comparing cohorts, not a valuation of any one property.
+no residential flag to narrow them with. And lot size is measured only where the
+frame carries the area of each address's property (SECTION_AREA_COLUMN); an
+address without one falls back to a per-TA assumed lot, so its rate per square
+metre is an order-of-magnitude figure rather than a valuation of the property.
 """
 
 import math
@@ -84,6 +85,11 @@ from landloss.domain import constants
 from landloss.exposure.land.accessibility import (
     GRAVITY_COLUMN,
     STATION_DISTANCE_COLUMN,
+)
+from landloss.exposure.land.extent import (
+    PROPERTY_ADDRESS_COUNT_COLUMN,
+    PROPERTY_RATING_UNIT_COUNT_COLUMN,
+    SECTION_AREA_COLUMN,
 )
 from landloss.exposure.land.landform import ELEVATED_FLAT, FLAT, HILL
 from landloss.io import ASSETS_DIR
@@ -157,6 +163,24 @@ RAIL_PREMIUM_PARAMETER = "rail_station_premium"
 RAIL_DECAY_PARAMETER = "rail_station_decay_length_m"
 ACCESSIBILITY_CLIP_MIN_PARAMETER = "accessibility_modifier_clip_min"
 ACCESSIBILITY_CLIP_MAX_PARAMETER = "accessibility_modifier_clip_max"
+# How strongly a section's value follows its size, read out of the factors asset
+# only when the frame carries SECTION_AREA_COLUMN. Judgement; see its basis.
+SECTION_AREA_ELASTICITY_PARAMETER = "section_area_elasticity"
+SECTION_AREA_MIN_PARAMETER = "section_area_min_m2"
+SIZE_PARAMETERS = (SECTION_AREA_ELASTICITY_PARAMETER, SECTION_AREA_MIN_PARAMETER)
+
+# The whole property's land value. ``land_value_nzd`` is this over the property's
+# rating units, which is what a published per-property land value is.
+SITE_LAND_VALUE_COLUMN = "site_land_value_nzd"
+
+# The lot size the rate per square metre is divided by, and where it came from:
+# the measured area of the address's property, or the per-TA assumption when
+# no measured area is available for it.
+LOT_SIZE_COLUMN = "lot_size_m2"
+LOT_SIZE_SOURCE_COLUMN = "lot_size_source"
+MEASURED_LOT = "measured"
+ASSUMED_LOT = "assumed"
+
 ACCESSIBILITY_PARAMETERS = (
     ACCESSIBILITY_ELASTICITY_PARAMETER,
     RAIL_PREMIUM_PARAMETER,
@@ -247,7 +271,9 @@ def index_base_rates(base_rates: pd.DataFrame) -> pd.DataFrame:
 
 
 def solve_normalising_constant(
-    factors: Sequence[float] | pd.Series, target_mean: float
+    factors: Sequence[float] | pd.Series,
+    target_mean: float,
+    weights: Sequence[float] | pd.Series | None = None,
 ) -> float:
     """Return the constant that puts the mean of ``constant * factors`` on target.
 
@@ -257,10 +283,15 @@ def solve_normalising_constant(
     only on the *mix* of factors and not on how many addresses carry them --
     doubling the population leaves it unchanged.
 
+    With ``weights`` the mean is a weighted one. Weighting each address by one
+    over the addresses on its property makes it a mean over properties, which
+    is what a published average per rating unit is.
+
     Args:
         factors: The landform multipliers, one per address.
         target_mean: The mean the scaled factors have to average out to, which
             here is a TA's indexed published average land value.
+        weights: Optional weights, one per factor. Equal weights when omitted.
 
     Returns:
         The normalising constant.
@@ -279,7 +310,8 @@ def solve_normalising_constant(
         )
         raise ValueError(msg)
 
-    mean_factor = sum(values) / len(values)
+    shares = [1.0] * len(values) if weights is None else [float(w) for w in weights]
+    mean_factor = sum(v * w for v, w in zip(values, shares, strict=True)) / sum(shares)
     if mean_factor <= 0:
         msg = (
             f"The mean landform factor is {mean_factor}, but it has to be "
@@ -291,47 +323,64 @@ def solve_normalising_constant(
 
 
 def _value_one_ta(
-    factor: pd.Series, indexed_average: float, lower: float, upper: float
+    site_raw: pd.Series,
+    indexed_average: float,
+    lower: pd.Series,
+    upper: pd.Series,
+    weight: pd.Series,
+    units: pd.Series,
 ) -> pd.Series:
-    """Value the addresses of a single territorial authority.
+    """Value the sites of a single territorial authority.
+
+    The published average is per rating unit, so the target is the average times
+    the rating units the authority holds: the constant is solved so that the
+    weighted total of site values equals ``indexed_average * sum(weight * units)``.
+    Each property counts once through ``weight``, and a unit-titled block brings
+    all of its rating units into the count, as the published figure does.
 
     Args:
-        factor: The landform multiplier for each address in the TA.
-        indexed_average: The TA's published average land value, indexed onto the
-            common valuation date.
-        lower: The smallest land value an address may take.
-        upper: The largest land value an address may take.
+        site_raw: Each address's raw site value -- its rate factor times its
+            site area -- in arbitrary units.
+        indexed_average: The TA's published average land value per rating unit,
+            indexed onto the common valuation date.
+        lower: The smallest site value each address may take.
+        upper: The largest site value each address may take.
+        weight: Each address's weight: one over the addresses on its property.
+        units: The rating units on each address's property.
 
     Returns:
-        The land value of each address, indexed as ``factor`` is. The mean is the
-        indexed published average, except in the one case noted below.
+        The site value of each address, indexed as ``site_raw`` is. The weighted
+        total per rating unit is the indexed published average, except in the
+        one case noted below.
     """
-    constant = solve_normalising_constant(factor, indexed_average)
-    raw = constant * factor
+    target_total = indexed_average * float((weight * units).sum())
+    constant = solve_normalising_constant(
+        site_raw, target_total / float(weight.sum()), weight
+    )
+    raw = constant * site_raw
     value = raw.clip(lower=lower, upper=upper)
 
     # Clipping takes value off the extremes, which drags the TA mean off the
     # published average -- and holding that mean is the entire justification for
     # the model. So the constant is solved a second time, this time across only
-    # the addresses the clip did not bind, carrying whatever the clipped
-    # addresses gave up or gained. The clipped addresses stay pinned at their
-    # bounds, which is what makes the total come out exactly right.
+    # the sites the clip did not bind, carrying whatever the clipped sites gave
+    # up or gained. The clipped sites stay pinned at their bounds, which is what
+    # makes the total come out exactly right.
     binding = (raw < lower) | (raw > upper)
     free = ~binding
-    free_factor_total = float(factor[free].sum())
+    free_total = float((weight * site_raw)[free].sum())
 
-    if free_factor_total > 0:
-        residual = indexed_average * len(factor) - float(value[binding].sum())
-        constant = residual / free_factor_total
+    if free_total > 0:
+        residual = target_total - float((weight * value)[binding].sum())
+        constant = residual / free_total
 
         # Re-applied once, not iterated to convergence. Two cases leave the mean
-        # slightly off: the re-solve pushing a previously free address onto a
-        # bound, and -- handled by the guard above -- every address binding, so
-        # there is nobody free to carry the residual. Both need a clip band
-        # narrower than the spread of the factors themselves, which means the
-        # clip multiples and the factors disagree and one of them is wrong. With
-        # the values the study actually runs, nothing binds at all.
-        value.loc[free] = (constant * factor[free]).clip(lower=lower, upper=upper)
+        # slightly off: the re-solve pushing a previously free site onto a bound,
+        # and -- handled by the guard above -- every site binding, so there is
+        # nobody free to carry the residual.
+        value.loc[free] = (constant * site_raw[free]).clip(
+            lower=lower[free], upper=upper[free]
+        )
 
     return value
 
@@ -583,49 +632,149 @@ def accessibility_modifier(
     return _rescale_within_groups(modifier, groups)
 
 
+def property_weight(addresses: pd.DataFrame) -> pd.Series:
+    """Return each address's weight: one over the addresses on its property.
+
+    Everything an address carries from its property -- the area, the rating
+    units, the site value -- is the property's, so a property LINZ has put
+    thirty addresses on would otherwise count thirty times. Weighting by one
+    over the addresses on it counts it once. An address without the count, or
+    the whole frame without the column, weighs one.
+
+    Args:
+        addresses: Address points, optionally carrying
+            :data:`PROPERTY_ADDRESS_COUNT_COLUMN`.
+
+    Returns:
+        The weight of each address, indexed as ``addresses`` is.
+    """
+    if PROPERTY_ADDRESS_COUNT_COLUMN not in addresses.columns:
+        return pd.Series(1.0, index=addresses.index, dtype=float)
+    count = addresses[PROPERTY_ADDRESS_COUNT_COLUMN].astype(float)
+    return (1.0 / count.where(count > 0)).fillna(1.0)
+
+
+def _rating_units(addresses: pd.DataFrame) -> pd.Series:
+    """Return the rating units on each address's property, one where unknown."""
+    if PROPERTY_RATING_UNIT_COUNT_COLUMN not in addresses.columns:
+        return pd.Series(1.0, index=addresses.index, dtype=float)
+    units = addresses[PROPERTY_RATING_UNIT_COUNT_COLUMN].astype(float)
+    return units.where(units > 0).fillna(1.0)
+
+
+def ta_mean_land_value(valued: pd.DataFrame) -> pd.Series:
+    """Return each TA's modelled mean land value per rating unit.
+
+    Total site value over total rating units, each property counted once. It is
+    the mean :func:`estimate_land_value` holds on the published average, so the
+    run and the validation compare against the same thing.
+
+    Args:
+        valued: Addresses as :func:`estimate_land_value` returns them.
+
+    Returns:
+        The mean per territorial authority.
+    """
+    weight = property_weight(valued)
+    site = (
+        valued[SITE_LAND_VALUE_COLUMN]
+        if SITE_LAND_VALUE_COLUMN in valued
+        else (valued["land_value_nzd"])
+    )
+    ta = valued["territorial_authority"]
+    total_value = (site * weight).groupby(ta).sum()
+    total_units = (_rating_units(valued) * weight).groupby(ta).sum()
+    return total_value / total_units
+
+
+def section_size_factor(
+    area_per_rating_unit_m2: pd.Series,
+    assumed_lot_size_m2: pd.Series,
+    elasticity: float,
+    min_area_m2: float,
+) -> pd.Series:
+    """Scale the rate per square metre by the size of the section.
+
+    ``(max(area per rating unit, min_area) / assumed_lot) ** (elasticity - 1)``.
+    With the elasticity below one, a section's value grows more slowly than its
+    area, so its rate falls as it gets bigger: twice the assumed lot is worth
+    about 1.41 times as much at 0.5, and its rate is about 0.71 times.
+
+    The area is per rating unit, so a unit-titled block is sized as the sections
+    its flats would each have, and its land is the sum of theirs rather than one
+    oversized garden; a freehold property is sized on its whole area, however
+    many addresses stand on it. The floor stops a block of many small units, or
+    a slip of a section, extrapolating the curve far below any section a value
+    was ever set from.
+
+    Args:
+        area_per_rating_unit_m2: Each address's property area over its rating
+            units, in m2.
+        assumed_lot_size_m2: The per-TA lot size the factor is relative to.
+        elasticity: How value scales with area.
+        min_area_m2: The smallest area the factor is evaluated at.
+
+    Returns:
+        The rate multiplier for each address, indexed as the area is. One where
+        the area is missing or not positive.
+    """
+    area = area_per_rating_unit_m2.astype(float)
+    ratio = area.clip(lower=min_area_m2) / assumed_lot_size_m2.astype(float)
+    return ratio.where(area > 0).pow(elasticity - 1.0).fillna(1.0)
+
+
 def estimate_land_value(
     addresses: gpd.GeoDataFrame,
     base_rates: pd.DataFrame | None = None,
     factors: dict[str, float] | None = None,
 ) -> gpd.GeoDataFrame:
-    """Put a modelled land value on every address.
+    """Put a modelled land rate per square metre, and a land value, on every address.
 
-    For each territorial authority in turn:
+    The rate is what is modelled; the value follows from it. For each
+    territorial authority in turn:
 
-    1. the published average land value is indexed onto
+    1. the published average land value per rating unit is indexed onto
        :data:`COMMON_VALUATION_DATE`;
-    2. each address is given the landform multiplier for its class, multiplied
-       by its terrain modifier if the frame carries :data:`TERRAIN_COLUMNS` and
-       by its accessibility modifier if it carries
-       :data:`ACCESSIBILITY_COLUMNS`;
-    3. a normalising constant is solved so that the scaled multipliers average to
-       the indexed published figure;
-    4. the resulting values are clipped to the configured multiples of that
-       figure, so that no single address is modelled at an absurd value;
-    5. the constant is solved once more across the addresses the clip did not
+    2. each address is given a rate factor: the landform multiplier for its
+       class, times its terrain modifier if the frame carries
+       :data:`TERRAIN_COLUMNS`, its accessibility modifier if it carries
+       :data:`ACCESSIBILITY_COLUMNS`, and :func:`section_size_factor` if it
+       carries :data:`SECTION_AREA_COLUMN`;
+    3. the site value is that factor times the site area -- the measured
+       property, or the assumed lot where there is none -- and a constant is
+       solved so that total site value over total rating units is the indexed
+       published average, counting each property once;
+    4. each site is clipped to the configured multiples of the average per
+       rating unit, the floor applying only to a property of one rating unit,
+       because a flat's share of its block's land is legitimately small;
+    5. the constant is solved once more across the sites the clip did not
        bind, so that the TA mean still lands on the published average.
 
-    Step 5 is what makes the model arguable-with in a useful way. The landform
-    factors are judgement, and judgement moves value from one property to another
-    -- but never changes what the territorial authority is worth in total, which
-    stays exactly what the council published.
+    Step 5 is what makes the model arguable-with in a useful way. The factors
+    are judgement, and judgement moves value from one property to another -- but
+    never changes what the territorial authority is worth in total, which stays
+    exactly what the council published. Without a measured area every address is
+    one rating unit on its assumed lot, which is the model before areas were
+    measured.
 
     Args:
         addresses: Address points carrying :data:`REQUIRED_ADDRESS_COLUMNS`, as
             produced by :func:`landloss.exposure.land.landform.classify_landform`.
-            Carrying :data:`TERRAIN_COLUMNS` as well turns on the continuous
-            terrain modifier described in :func:`terrain_modifier`, and
-            :data:`ACCESSIBILITY_COLUMNS` the one described in
-            :func:`accessibility_modifier`; without them an address is valued
-            on its landform class alone. Every combination is a supported
-            answer, and all of them hold the TA mean.
+            :data:`TERRAIN_COLUMNS` and :data:`ACCESSIBILITY_COLUMNS` turn on
+            the two location modifiers. :data:`SECTION_AREA_COLUMN`, with
+            :data:`PROPERTY_ADDRESS_COUNT_COLUMN` and
+            :data:`PROPERTY_RATING_UNIT_COUNT_COLUMN`, measures each site. Every
+            combination is a supported answer, and all of them hold the TA mean.
         base_rates: The published anchors. Defaults to the packaged asset.
         factors: The model parameters. Defaults to the packaged asset.
 
     Returns:
-        A new GeoDataFrame, re-indexed from zero, with ``land_value_nzd``,
-        ``land_rate_nzd_per_m2`` and ``assumed_lot_size_m2`` added. The caller's
-        frame is left untouched.
+        A new GeoDataFrame, re-indexed from zero, with
+        ``land_rate_nzd_per_m2``; :data:`SITE_LAND_VALUE_COLUMN`, the whole
+        property's land; ``land_value_nzd``, that over its rating units, which is
+        what a published per-property land value is; ``assumed_lot_size_m2``;
+        :data:`LOT_SIZE_COLUMN`, the site area the rate is per; and
+        :data:`LOT_SIZE_SOURCE_COLUMN`. The caller's frame is left untouched.
 
     Raises:
         ValueError: If a required column or a required factor is absent, if an
@@ -674,7 +823,29 @@ def estimate_land_value(
     if all(column in valued.columns for column in ACCESSIBILITY_COLUMNS):
         factor = factor * accessibility_modifier(valued, factors)
 
-    land_value = pd.Series(float("nan"), index=valued.index, dtype=float)
+    assumed_lot = valued["territorial_authority"].map(rates["median_lot_size_m2"])
+    assumed_lot = assumed_lot.astype(float)
+
+    # The site is optional too. Without a measured area, an address is one rating
+    # unit on the assumed lot; with one, it is its property, with its rating units.
+    area = pd.Series(float("nan"), index=valued.index, dtype=float)
+    if SECTION_AREA_COLUMN in valued.columns:
+        _check_present(factors, SIZE_PARAMETERS, "land value factor(s)")
+        area = valued[SECTION_AREA_COLUMN].astype(float)
+    measured = area > 0
+    site_area = area.where(measured, assumed_lot)
+    units = _rating_units(valued).where(measured, 1.0)
+
+    if SECTION_AREA_COLUMN in valued.columns:
+        factor = factor * section_size_factor(
+            site_area / units,
+            assumed_lot,
+            factors[SECTION_AREA_ELASTICITY_PARAMETER],
+            factors[SECTION_AREA_MIN_PARAMETER],
+        )
+
+    weight = property_weight(valued)
+    site_value = pd.Series(float("nan"), index=valued.index, dtype=float)
 
     clip_min = factors[RATE_CLIP_MIN_PARAMETER]
     clip_max = factors[RATE_CLIP_MAX_PARAMETER]
@@ -684,19 +855,24 @@ def estimate_land_value(
     grouped = valued.groupby("territorial_authority", sort=False)
     for ta_name, rows in grouped.groups.items():
         indexed_average = float(rates.loc[ta_name, "indexed_land_value_nzd"])
-        land_value.loc[rows] = _value_one_ta(
-            factor.loc[rows],
+        single = units.loc[rows] == 1
+        site_value.loc[rows] = _value_one_ta(
+            factor.loc[rows] * site_area.loc[rows],
             indexed_average,
-            lower=clip_min * indexed_average,
-            upper=clip_max * indexed_average,
+            lower=(clip_min * indexed_average * single).astype(float),
+            upper=clip_max * indexed_average * units.loc[rows],
+            weight=weight.loc[rows],
+            units=units.loc[rows],
         )
 
-    lot_size = valued["territorial_authority"].map(rates["median_lot_size_m2"])
-    lot_size = lot_size.astype(float)
-
-    valued["land_value_nzd"] = land_value
-    valued["land_rate_nzd_per_m2"] = land_value / lot_size
-    valued["assumed_lot_size_m2"] = lot_size
+    valued["land_rate_nzd_per_m2"] = site_value / site_area
+    valued[SITE_LAND_VALUE_COLUMN] = site_value
+    valued["land_value_nzd"] = site_value / units
+    valued["assumed_lot_size_m2"] = assumed_lot
+    valued[LOT_SIZE_COLUMN] = site_area
+    valued[LOT_SIZE_SOURCE_COLUMN] = measured.map(
+        {True: MEASURED_LOT, False: ASSUMED_LOT}
+    )
 
     return valued
 

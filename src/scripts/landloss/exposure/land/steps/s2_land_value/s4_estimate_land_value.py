@@ -33,6 +33,11 @@ The join is optional on purpose. With no terrain file the run falls back to
 Phase 1 behaviour and says so, so that the two steps can be run independently
 and a new extent can be valued before any DEM has been fetched for it.
 
+Each address is also given its section area -- the area of the LINZ property
+it stands on, whole rather than shared among its addresses -- which sizes its value and is what its rate per square metre is
+divided by, in place of the per-TA assumed lot. An address standing in no
+property keeps the assumed lot, and the run says how many did.
+
 Accessibility from s2_build_accessibility.py is joined on the same way when its
 output exists, and feeds a second modifier that spreads value within each
 landform class by closeness to the main centres and to a railway station. It is
@@ -43,7 +48,9 @@ be run on its own. Set PILOT in config.py to work over the small Wellington
 box.
 
 Requires TNT_KOORDINATES_API_KEY in .env for the flatland layer, and LINZ_API_KEY
-if the address spine has to be rebuilt.
+for the property boundaries and if the address spine has to be rebuilt. The
+first full run downloads the national property boundaries layer, which is
+large; it is cached, and step s5 reads the same download.
 """
 
 import sys
@@ -59,6 +66,13 @@ from landloss.exposure.land.accessibility import (
     GRAVITY_COLUMN,
     STATION_DISTANCE_COLUMN,
 )
+from landloss.exposure.land.extent import (
+    PROPERTY_ADDRESS_COUNT_COLUMN,
+    PROPERTY_RATING_UNIT_COUNT_COLUMN,
+    SECTION_AREA_COLUMN,
+    build_claim_properties,
+    section_area_per_address,
+)
 from landloss.exposure.land.land_value import (
     COMMON_VALUATION_DATE,
     SLOPE_COLUMN,
@@ -68,6 +82,7 @@ from landloss.exposure.land.land_value import (
     load_base_rates,
     load_factors,
     summarise_by_suburb,
+    ta_mean_land_value,
 )
 from landloss.exposure.land.landform import (
     ELEVATED_FLAT,
@@ -79,6 +94,7 @@ from landloss.exposure.land.landform import (
     get_flatland,
 )
 from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
 
@@ -314,6 +330,83 @@ def attach_accessibility(classified, accessibility):
     return joined
 
 
+def attach_section_areas(classified, bbox, *, use_cache):
+    """Give every address the area of the property it stands on.
+
+    The property is the LINZ property boundary, reduced to claimable ground by
+    the same :func:`build_claim_properties` step s5 uses, so the area a value is
+    sized by is the area the claim is later measured on.
+
+    Args:
+        classified: The addresses, carrying ``address_id``.
+        bbox: The extent to read the property boundaries over.
+        use_cache: Whether to reuse an already-clipped extent of the layer.
+
+    Returns:
+        The addresses with :data:`SECTION_AREA_COLUMN` joined on, NaN for an
+        address standing in no property.
+    """
+    print("\nReading the LINZ property boundaries ...", flush=True)
+    boundaries = get_nz_property_boundaries(
+        bbox=bbox, crs=constants.DEFAULT_CRS, use_cache=use_cache
+    )
+    boundaries = boundaries.set_geometry(boundaries.geometry.make_valid())
+    properties = build_claim_properties(boundaries)
+    areas = section_area_per_address(properties, classified)
+
+    return classified.merge(
+        areas[
+            [
+                ID_COLUMN,
+                SECTION_AREA_COLUMN,
+                PROPERTY_ADDRESS_COUNT_COLUMN,
+                PROPERTY_RATING_UNIT_COUNT_COLUMN,
+            ]
+        ],
+        on=ID_COLUMN,
+        how="left",
+        validate="one_to_one",
+    )
+
+
+def describe_section_areas(classified, base_rates):
+    """Print how many addresses were measured, and their areas against the lot.
+
+    The last column is the measure of what this changes. The rate per square
+    metre used to be divided by the assumed lot for every address, so wherever
+    the median measured section sits far from it, rates in that authority move
+    the furthest.
+    """
+    assumed = base_rates.set_index("ta_name")["median_lot_size_m2"]
+
+    print(RULE)
+    print("Section area per address: the area of the property it stands on")
+    print(
+        f"{'Territorial authority':<24}{'Measured':>10}{'Of':>10}"
+        f"{'p25 m2':>9}{'Median':>9}{'p75 m2':>9}{'Assumed':>9}"
+    )
+    for ta_name, rows in classified.groupby("territorial_authority", sort=True):
+        area = rows[SECTION_AREA_COLUMN].dropna()
+        quartiles = area.quantile([0.25, 0.5, 0.75]) if not area.empty else None
+        cells = (
+            "".join(f"{value:>9,.0f}" for value in quartiles)
+            if quartiles is not None
+            else f"{'-':>9}" * 3
+        )
+        print(
+            f"{ta_name:<24}{len(area):>10,}{len(rows):>10,}{cells}"
+            f"{float(assumed.loc[ta_name]):>9,.0f}"
+        )
+
+    unmeasured = int(classified[SECTION_AREA_COLUMN].isna().sum())
+    if unmeasured:
+        print(
+            f"\n  {unmeasured:,} address(es) stood in no property and keep the assumed\n"
+            "  lot. If this is more than a handful, the boundaries were read over a\n"
+            "  different extent from the spine."
+        )
+
+
 def describe_landform(classified):
     """Print the landform split per authority, including the elevated flat share.
 
@@ -391,9 +484,12 @@ def describe_calibration(valued, base_rates):
         f"{'Modelled mean':>16}{'Published':>14}{'Diff':>9}"
     )
 
+    # Counting each property once, which is the mean the model holds.
+    means = ta_mean_land_value(valued)
+
     grouped = valued.groupby("territorial_authority", sort=True)
     for ta_name, rows in grouped:
-        modelled = float(rows["land_value_nzd"].mean())
+        modelled = float(means.loc[ta_name])
         published = float(indexed.loc[ta_name, "indexed_land_value_nzd"])
 
         # Relative rather than absolute, because a few dollars on a $621,000
@@ -620,6 +716,9 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
     reachable = read_accessibility(accessibility_path)
     if reachable is not None:
         classified = attach_accessibility(classified, reachable)
+
+    classified = attach_section_areas(classified, bbox, use_cache=not fresh)
+    describe_section_areas(classified, base_rates)
 
     describe_landform(classified)
 
