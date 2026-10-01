@@ -398,7 +398,7 @@
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30",
-      "Status": "In progress"
+      "Status": "Done"
     },
     {
       "ID": "T-51",
@@ -919,6 +919,22 @@
       "Improvement": "Give a retaining wall a retained height with some variation in it, rather than one set value per size class. Either draw within the class band or set the height off the slope the wall sits on. Both add spread the portfolio currently gets only from wall length and site ratings, and both would make the priced height round-trip back to its own size class, which the set value for small does not.",
       "Affects": "loss pricing",
       "Source": "vul output contract 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "I-15",
+      "Improvement": "Read the PDF-only claim reports. About 380 Kaikoura-list reports survive only as PDFs and are recorded but not read, since the extraction reads Word files only.",
+      "Rationale": "Earthquake claims are the thinnest part of the sample (496 accepted), and these PDFs could roughly double them. Needs a PDF library, which was declined on 2026-09-30.",
+      "Affects": "claim report extraction (T-50)",
+      "Source": "Claim report extraction 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "I-16",
+      "Improvement": "Check for T+T project numbers and folders holding land claim reports that the claims lists have not identified, beyond the IAG 1502000, Suncorp 1501000 and EQC 2013 and 2016 programmes already fetched.",
+      "Rationale": "The claims lists come from Site Search exports of known programmes; reports filed under other project numbers would be missed without anyone knowing.",
+      "Affects": "claim report extraction (T-50)",
+      "Source": "Claim report extraction 2026-10-01",
       "Status": "Open"
     }
   ],

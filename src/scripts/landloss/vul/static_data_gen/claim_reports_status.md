@@ -1,10 +1,16 @@
 # Claim reports: status
 
-**Status (2026-10-01):** The two steps and the claims lists are built and
-tested. About 190 reports are extracted across the four lists, 98% of them
-without a gap, over five templates: IAG 2021, Suncorp 2021, EQC Wellington 2016,
-EQC Nelson 2016 and EQC 2013. The full fetch (`--all`) is next, then the
-analysis, which does not exist yet.
+**Status (2026-10-01): done for now.** All four lists are fetched (2,474
+reports, 2,086 of them Word files) and extracted: 2,085 reports, 1,989 accepted
+land claims, 96% without a gap. The first analysis is written (see "First
+analysis" below). Two gaps are left open, logged in the register:
+
+- **PDF-only reports are not read** (I-15). About 380 Kaikōura-list reports
+  survive only as PDFs. They could roughly double the 496 earthquake claims,
+  but need a PDF library, which was declined on 2026-09-30.
+- **Unidentified project folders** (I-16). The claims lists cover the IAG
+  1502000, Suncorp 1501000 and EQC 2013 and 2016 programmes. Other project
+  numbers or folders holding land claim reports have not been looked for.
 
 The task comes from Maxim Millen's handover call on 2026-09-25 (**T-50**): pull the
 figures out of T+T's past claim reports to inform the landslide and retaining
@@ -81,20 +87,19 @@ Findings from report 0005 so far:
 
 ## Next
 
-1. **Fetch everything** with `--all`: IAG and Suncorp with `--study-area-only`,
-   and both earthquake lists in full, since their claims outside Wellington are
-   the point. About 2,800 reports; the text-only cache keeps it under 1 GB.
-2. **Re-extract all four lists** and look at the gaps with `--show`. On the
-   first 190 reports: two IAG reports had no summary table found (0218, 0257),
-   one had three rows missing (0220), and 13 had no event sentence the parse
-   recognises.
+1. **Fetched everything** with `--all` (2026-10-01).
+2. **Re-extracted all four lists** (2026-10-01); 80 reports (3.8%) still have
+   a gap.
 3. **Analysis written** (2026-10-01):
    `src/scripts/landloss/vul/research/analyse_claim_reports.py` writes
-   `research/vul/claim_reports/claim_report_findings.md` and a CSV per table,
+   `research/vul/claim_reports/claim_report_findings.md`, and the same tables
+   in `claim_report_findings.xlsx` (one sheet each, with a contents sheet),
    all local only. See "First analysis" below.
 4. **Join slope** at each claim's coordinates, for the ratio against slope.
 5. Look for earthquake claims in the programmes outside Wellington
    (`--programmes`); if they are few, report that as a finding.
+6. The open gaps: read the PDF-only reports (I-15), and look for project
+   numbers and folders the claims lists have not identified (I-16).
 
 ## Decisions
 

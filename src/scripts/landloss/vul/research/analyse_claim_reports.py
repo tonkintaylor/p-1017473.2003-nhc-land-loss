@@ -31,9 +31,9 @@ sample shaped by who claimed, which insurer sent the work to T+T, and which
 reports survive as Word files (PDF-only reports are not read). Read them as
 evidence for a choice, not as the choice.
 
-Writes ``claim_report_findings.md`` and one CSV per table to
-``research/vul/claim_reports/``, which is gitignored with the data it comes
-from.
+Writes ``claim_report_findings.md``, and ``claim_report_findings.xlsx`` with
+one sheet per table and a contents sheet, to ``research/vul/claim_reports/``,
+which is gitignored with the data it comes from.
 """
 
 import re
@@ -72,6 +72,7 @@ CONSTRUCTIONS = (
     ("stone/rock", r"stone|rock|boulder"),
 )
 TRIGGERS = ("earthquake", "rain", "unknown")
+EXCEL_SHEET_NAME_MAX = 31
 
 # A retained height over this is a typo in the report, not a wall:
 # one report gives "Approx. 600 m" for a wall 600 mm in the ground.
@@ -214,12 +215,21 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     lines: list[str] = ["# Claim reports: findings", ""]
     tables: dict[str, pd.DataFrame] = {}
+    # Each table's section, for the workbook's contents sheet.
+    contents: list[tuple[str, str]] = []
+    current = [""]
 
     def section(title: str) -> None:
         lines.extend(["", f"## {title}", ""])
+        current[0] = title
 
     def table(name: str, frame: pd.DataFrame, *, digits: int = 1) -> None:
+        # Excel caps a sheet name at 31 characters.
+        if len(name) > EXCEL_SHEET_NAME_MAX:
+            msg = f"Table name {name!r} is too long for an Excel sheet."
+            raise ValueError(msg)
         tables[name] = frame
+        contents.append((name, current[0]))
         lines.append(markdown(frame, digits))
         lines.append("")
 
@@ -242,7 +252,7 @@ def main() -> int:
     for column in AREAS:
         lines.append(f"**{column}**")
         lines.append("")
-        table(f"area_{column}", by_trigger(land, land[column]))
+        table(f"area_{column.removeprefix('total_')}", by_trigger(land, land[column]))
 
     section("Evacuation and inundation together")
     evac = land["total_evacuated_m2"].fillna(0) > 0
@@ -395,10 +405,15 @@ def main() -> int:
 
     out = OUT_DIR / "claim_report_findings.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    for name, frame in tables.items():
-        frame.to_csv(OUT_DIR / f"{name}.csv")
+    workbook = OUT_DIR / "claim_report_findings.xlsx"
+    with pd.ExcelWriter(workbook) as writer:
+        pd.DataFrame(contents, columns=["sheet", "section"]).to_excel(
+            writer, sheet_name="contents", index=False
+        )
+        for name, frame in tables.items():
+            frame.to_excel(writer, sheet_name=name)
     print("\n".join(lines))
-    print(f"\nWrote {out} and {len(tables)} tables beside it.")
+    print(f"\nWrote {out} and {workbook}.")
     return 0
 
 
