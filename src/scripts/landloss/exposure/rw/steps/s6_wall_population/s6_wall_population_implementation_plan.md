@@ -90,8 +90,8 @@ Candidate lines come from geometry that marks where a wall could be:
 - [ ] Segment and de-duplicate the candidates so one wall is one line, and record
       which source each line came from.
 
-Each line then takes a probability and a height distribution from the evidence
-around it:
+Each line then takes a probability from the evidence around it, and a height
+read from the DEM:
 
 - [ ] Start from slope across the line and on the land it would hold up.
 - [ ] Read the GNS 1:50,000 geology (`get_wellington_urban_geology`, confirmed
@@ -101,18 +101,20 @@ around it:
       Bay and Evans Bay are the worked examples). Colluvium, fan and fill units
       raise it, because walls there stabilise soil rather than rock. The SLIDE
       interpreted materials layer is the finer statement where it reaches.
-- [ ] Cluster retained height just under 1.5 m, the consent threshold, rather than
-      a smooth lognormal.
+- [ ] Read the retained height at each line from the 1 m DEM, as the face
+      height across it, and class it small, medium or large on the agreed
+      boundaries; no height distribution is drawn (decided 2026-10-01).
 - [ ] Give a property several lines of independent height and construction. A
       property with several walls is not all small or all large.
 - [ ] Mark lines on new subdivisions as very likely to have walls.
 - [ ] Draw each line independently in the realisation, apart from a property's
       shared initial condition, and write the drawn lines in the shape the
       contract already reads.
-- [ ] Key the draw on an exposure realisation id of its own, separate from the
-      hazard realisation id, so a few wall populations can be paired with many
-      hazard realisations (decided 2026-10-01). The `"exposure"` stream today
-      pairs a wall draw with the hazards of the same id.
+- [ ] Key the draw on an exposure seed and world id of its own, separate from
+      the hazard seed and realisation id, so a few wall populations can be
+      paired with many hazard realisations (decided 2026-10-01). The
+      `"exposure"` stream today pairs a wall draw with the hazards of the same
+      id under the one `BASE_SEED`.
 
 And be checked and calibrated against the claim report extraction (**T-50**),
 which is the only calibration source the study will have and arrives after the
@@ -133,9 +135,13 @@ be obtained (decided 2026-10-01).
 
 ## Phase 3 — Initial condition from age
 
-- [ ] Attach a dwelling age attribute to the address spine. Candidate sources are
-      the trig-point or aerial-photo route and the building-age dataset the
-      vulnerability model was trained on.
+- [ ] Read the building construction age parquet, built outside this build and
+      keyed to the address spine. Sources, in order: NHC's own property
+      attributes if it holds construction decade; the District Valuation Roll
+      building age code licensed from QV or CoreLogic, since LINZ publishes it
+      openly for five councils only, none in the study area; failing both, an
+      SA2 proxy from Stats NZ building consents since 1990 adjusted to the
+      regional decade split. Summarised in `../../status.md`.
 - [ ] Set `p_poor` from it, replacing the even split: pre-1990 walls (cast in situ
       concrete gravity walls from the 1970s and 80s) are more likely to be poor
       and replaced, and post-1991 Building Act walls, more often timber anchored,

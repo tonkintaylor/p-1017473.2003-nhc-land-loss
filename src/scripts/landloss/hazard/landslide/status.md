@@ -53,7 +53,9 @@ al. 1997), possibly the GNS/ESNZ model, and a bespoke refit. For small failures
 on modified slopes: one urban model. A strength-based model after Godt et al.
 (2008) is proposed, and Marc et al. (2016) calibrates every large model's total
 area. Set out in `potential-landslide-rebuild.md`; not yet agreed, apart from the large/small split, which is agreed (500 m² of
-source area as the working threshold). Extend-ESNZ becomes the GNS member of it.
+source area as the working threshold). The project lead now thinks 500 m² may be
+too low (2026-10-01): three GNS reports put cut and fill failures at
+10²–10⁵ m³, which spans it. Extend-ESNZ becomes the GNS member of it.
 Build plans for models 2 and 3, and for the calibration of every large model,
 are in `.agents/plans/building-kritikos-2015-landslide-model.md` and
 `.agents/plans/building-hancox-landslide-model-and-calibration.md`.
@@ -61,8 +63,9 @@ are in `.agents/plans/building-kritikos-2015-landslide-model.md` and
 **The urban model is coupled to the retaining wall exposure** (decided
 2026-10-01). It works on candidate failure polygons: sloping ground within
 100 m of a building and off the NLM flatland, delineated at several scales so
-a small face can sit inside a larger one, split at property boundaries, each
-carrying a fragility function of the demand rather than a probability. Land in
+a small face can sit inside a larger one, and snapped to the candidate wall
+lines, which alone are split at property boundaries. Each polygon carries a
+fragility function of the demand rather than a probability. Land in
 a polygon fails one of three ways: in a large-model landslide, which supersedes
 it; through its retaining wall, whose fragility by size and condition decides;
 or, with no wall, through a localised failure fragility. The wall population is
@@ -72,7 +75,8 @@ GeoParquet for review before any earthquake is drawn. Walls on flat land stand
 alone and fail by shaking in `vul/shaking/rw`. An urban failure rate setting,
 low, medium or high, scales the fragilities and is reported with every result.
 Topographic amplification is folded into each polygon's fragility. The geometry
-rules and the rate anchoring are still open; see `## Open decisions`.
+rules and the rate anchoring are still open; see `## Open decisions`. The build
+plan is `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
 
 **Forward-use scenario, for the report.** Where a landslide model or its
 calibration needs a magnitude or a source distance, every site in the study
@@ -245,6 +249,13 @@ The phased build for the new-model route is in
    from the diameter -- a decision to revisit. Maxim Millen expects to take this
    on (2026-09-30), and it may be deferred. **T-44** sets the regression rules
    to agree with John Leeves.
+9. Replace the runout rule, which moves every failure by a distance set by slope
+   alone (decided 2026-10-01). Runout is to depend on volume and failure style:
+   de Vilder, Brideau & Massey (2022), *Empirical and physics-based runout
+   models*, GNS Science Report 2019/38, gives reach angle (H/L) against volume
+   with exceedance lines. There, dry earthquake failures stop short (median H/L
+   about 0.86 at 1,000 m³), while fill and wet flow slides travel about twice as
+   far.
 
 ## Validation
 
@@ -407,8 +418,10 @@ cannot be signed off while they are open.
   footprint is close enough for a settlement question.
 - **Displacement depends on slope alone, not on the size of the failure.** A
   3 m² slip and a 3,000 m² one on the same hillside travel the same distance,
-  which no inventory supports. The decision is whether to make it a function of
-  volume as well, which arrives with the Newmark work in phase 3.
+  which no inventory supports. Decided 2026-10-01 that it changes (`## Next`,
+  item 9); still open is which relation replaces it, and whether earthquake
+  failures of fill take the dry or the flow-slide relation, which turns on how
+  wet the fill is assumed to be.
 - **Inundated polygons may overlap one another; evacuated ones may not.** The
   beta contract says polygons of the same type may not overlap, and runout does
   not meet it — two failures either side of a gully both land in its floor.
@@ -456,7 +469,8 @@ cannot be signed off while they are open.
 - **How greywacke strength is assigned spatially.** The strength values are
   compiled in `src/landloss/io/assets/wellington-greywacke-strength.csv` (c′,
   φ′, unit weight and Su by weathering grade, from published sources and T+T
-  Wellington projects), with depth-to-rock observations in
+  Wellington projects, plus GNS's own lab tests on Wellington fill and buried
+  colluvium from SR2019/40 and SR2019/51), with depth-to-rock observations in
   `wellington-greywacke-depth-to-rock.csv`. Weathering grade is not mapped, so
   it is still to be decided how a cell gets a material, a strength and a
   failure depth. This is the input that model 7 cannot run without.

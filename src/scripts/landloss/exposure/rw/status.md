@@ -43,7 +43,8 @@ Intended, not implemented.
   height**, and cost on size: initial condition changes the probability of
   failure only, not the cost.
 - **Set the initial state from the age of the dwelling**, as the available proxy
-  for whether a wall is modern or poor.
+  for whether a wall is modern or poor, read from a building construction age
+  layer built outside this build; see "Wall condition from building age" below.
 - **Constrain the wall count per property with the claim report extraction**
   (**T-50**) in a later phase. It arrives after the build starts, as a minimum
   and maximum number of walls per property, and raises the probabilities of the
@@ -88,6 +89,31 @@ meant to shape a prior rather than be applied as a rule.
 - [~] **Scan the Wellington NHC claims reports** for retaining walls in the site
   description to estimate how many properties have them (Perrie's extraction,
   **T-50**, in progress).
+
+### Wall condition from building age
+
+Not in this build. A building construction age parquet, one row per building
+keyed to the address spine, is to be built separately; the wall probability
+script reads it when it exists and falls back to a proxy until then.
+
+- Set the probability of a poor wall from the construction decade of the
+  dwelling: pre-1990 walls, often cast in situ concrete gravity walls of the
+  1970s and 80s, are more likely poor, and post-1991 Building Act walls more
+  often modern. Height under 1.5 m, likely unconsented, and wall type where
+  known raise it on top of age.
+- Where no age is held, use a suburb or SA2 proxy, so no line is left without
+  a condition probability.
+- The property-level source is the District Valuation Roll building age code,
+  a decade per rating unit under the Rating Valuations Rules 2008. LINZ
+  publishes it openly for five councils only, none in the study area, so for
+  Wellington it is licensed from QV or CoreLogic, or obtained through NHC,
+  which as an insurer likely holds construction decade for its portfolio.
+- The proxy, failing a property-level source: each SA2's share of stock
+  consented since 1990 from Stats NZ building consents, adjusted to the
+  regional decade split in Housing in Aotearoa New Zealand: 2025. GHS-OBAT
+  (satellite epochs, all pre-1980 stock in one class) and the RiskScape
+  inventory's construction eras at meshblock, held by GNS, are the coarser
+  alternatives.
 
 
 ## Beta build
@@ -171,8 +197,8 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 4. Read the claim report extraction (**T-50**) when it lands, in a later phase,
    and constrain the wall count per property to the minimum and maximum it
    gives.
-5. Attach a dwelling age attribute to the address spine, which the initial state
-   class reads.
+5. Read the building construction age parquet when it is built, outside this
+   build, and set the condition probability from it.
 6. Train the predictive model and write a wall population per property.
 
 ## Validation
@@ -192,6 +218,8 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 - Whether repair cost scales with wall length or wall height, and what the fixed
   per-job costs are (**T-32**).
 - What separates "modern" from "poor", and the dwelling age that divides them.
+- The building age source for Wellington: DVR building age licensed from QV or
+  CoreLogic, NHC's own property attributes, or the SA2 consents proxy.
 - **T-11**, **T-20** — the Wellington City Council retaining wall database and
   the council cut-and-fill models.
 - **T-09** — reuse of the Auckland Council cut-and-fill slope tool.

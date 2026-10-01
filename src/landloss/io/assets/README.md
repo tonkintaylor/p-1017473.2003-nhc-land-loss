@@ -13,7 +13,7 @@ committed. Nothing here is large enough to belong in a cache.
 | `land-value-extra-stations.csv` | Railway stations missing from the LINZ Topo50 station layer, added to it for the accessibility term | Maintained by hand — see below | `landloss.exposure.land.accessibility.load_extra_stations` |
 | `marc-2016-table-s1.csv` | Marc et al. (2016) Table S1, verbatim: the 40 earthquakes their total landslide area and volume expression was tested on | Converted from the supporting information's `.xls` (`context/lit/landslide/marc_2016/`) — see below | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` |
 | `marc-2016-table-s1-subevents.csv` | The same table parsed to numbers, one row per earthquake or per sub-event of an earthquake sequence | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` | The landslide calibration (`.agents/plans/building-hancox-landslide-model-and-calibration.md`) |
-| `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke and its soil mantle by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, 1 October 2026 — see below | Not yet read; for landslide model 7 |
+| `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke, its soil mantle and fill by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, and from GNS SLIDE reports SR2019/40 and SR2019/51, 1 October 2026 — see below | Not yet read; for landslide model 7 |
 | `wellington-greywacke-depth-to-rock.csv` | Observed depths to weathered greywacke rock, and thicknesses of the colluvium and residual soil mantle, at Wellington-region T+T sites | As above | Not yet read; for landslide model 7 |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
 
@@ -198,20 +198,38 @@ client names are not recorded.
   `practice` (a convention those reports describe) or `tt_project`.
 - `grade` normalises the weathering description: `RS` residual soil, `CW`,
   `HW`, `MW`, `SW`, `UW` and ranges between them (`CW-HW`), `COL` colluvium,
-  `RM` a rock mass of unstated grade.
+  `FILL` placed fill, `RM` a rock mass of unstated grade.
 - `basis` says how the values were derived — back-analysis, laboratory,
   Hoek-Brown, correlation or judgement. Back-analysed values are the ones the
   landslide rebuild note prefers.
 - **`check` is true where the excerpt was ambiguous.** Site Search returns
   tables flattened to text, and empty cells vanish, so a value can land in the
   wrong column. `note` says what is uncertain. Confirm those rows against the
-  document before relying on them.
+  document before relying on them. For the GNS rows it marks a value the
+  source contradicts elsewhere.
 - `document` is the path of the source under the T+T corporate share, relative
-  to its root.
+  to its root, or the DOI for a published GNS report.
 
 Most rows are design parameters for one slope or wall, not a regional ground
 model; the published values most often quoted are O'Riley et al. (2006) and
 Pender (1977), neither yet obtained.
+
+Rows S48–S57 come from two GNS SLIDE (Wellington) reports, read from the PDFs
+and checked against the page images on 1 October 2026:
+
+- **SR2019/40** (Lyndsell, Carey & Bruce 2019), S48–S51: GNS's own drained direct
+  shear tests on fill and buried colluvium at Orchy Crescent (intact core) and
+  Priscilla Crescent (the <2 mm fraction, remoulded). Unit weights are converted
+  from the reported bulk densities. All tests are drained and slow, at 50–400 kPa
+  normal stress; nothing cyclic or undrained was reported.
+- **SR2019/51** (Monteith 2020, prepared by Aurecon), S52–S57: the values GNS
+  supplied for slope modelling of the same two fills and of the Ngauranga Gorge
+  cut. Its colluvium (S53) disagrees with SR2019/40's (S50) for the same
+  material, and both rows are flagged `check`.
+
+The same two reports give unconfined compressive and Brazilian strengths of
+Wellington greywacke and cataclasite core by weathering grade, which have no
+column here.
 
 In the depth table, `horizon` says what the depth is measured to (Scala
 refusal, base of colluvium, top of CW–HW rock), because the reports differ.
