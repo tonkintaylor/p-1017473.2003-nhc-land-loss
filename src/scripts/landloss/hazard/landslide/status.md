@@ -2,9 +2,10 @@
 
 **Status:** A first cut of the extend-ESNZ route is running, and the Nowicki
 Jessee (2018) model is rebuilt and checked; the portfolio of models is proposed
-but not agreed.
+but not agreed, apart from the large/small split and the urban model's coupling
+to the retaining walls.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-01
 
 ## Approach
 
@@ -56,6 +57,22 @@ source area as the working threshold). Extend-ESNZ becomes the GNS member of it.
 Build plans for models 2 and 3, and for the calibration of every large model,
 are in `.agents/plans/building-kritikos-2015-landslide-model.md` and
 `.agents/plans/building-hancox-landslide-model-and-calibration.md`.
+
+**The urban model is coupled to the retaining wall exposure** (decided
+2026-10-01). It works on candidate failure polygons: sloping ground within
+100 m of a building and off the NLM flatland, delineated at several scales so
+a small face can sit inside a larger one, split at property boundaries, each
+carrying a fragility function of the demand rather than a probability. Land in
+a polygon fails one of three ways: in a large-model landslide, which supersedes
+it; through its retaining wall, whose fragility by size and condition decides;
+or, with no wall, through a localised failure fragility. The wall population is
+drawn per exposure realisation on its own stream, separate from the hazard
+realisations, and the realised model per exposure world is written as a
+GeoParquet for review before any earthquake is drawn. Walls on flat land stand
+alone and fail by shaking in `vul/shaking/rw`. An urban failure rate setting,
+low, medium or high, scales the fragilities and is reported with every result.
+Topographic amplification is folded into each polygon's fragility. The geometry
+rules and the rate anchoring are still open; see `## Open decisions`.
 
 **Forward-use scenario, for the report.** Where a landslide model or its
 calibration needs a magnitude or a source distance, every site in the study
@@ -409,11 +426,30 @@ cannot be signed off while they are open.
 - **T-22** — explicit extent against per-property classification. The drafted
   plan takes the explicit route, and the decision closes when the plan is agreed.
 - **T-15** — the site class. Carried as a parameter rather than blocking on it.
-- **T-11**, **T-19**, **T-20** — retaining wall and cut-and-fill data. The
-  Kaikōura inventory is natural slopes and the losses here are expected on
-  modified ones, so a second population conditioned on this data is the plan's
-  own largest technical risk. The raw source area and debris trail polygons are
+- **T-11**, **T-20**, **T-50** — retaining wall, cut-and-fill and claim report
+  data. The Kaikōura inventory is natural slopes and the losses here are
+  expected on modified ones, so a second population conditioned on this data
+  is the plan's own largest technical risk. The SME suburb estimate (**T-19**)
+  will not be obtained; the claim report extraction is the calibration source
+  for the urban population. The raw source area and debris trail polygons are
   now readable, via `landloss.io.kaikoura` — the fit itself is still to do.
+
+### About the urban model
+
+- **The fixed geometry rules.** Each polygon carries fixed evacuated, inundated
+  and imminent-risk polygons keyed by its wall state, so a realisation only
+  decides whether it fails. The headscarp band (**T-44**), the fill wedge
+  behind a failed wall, the runout length and the depth are to be researched
+  and justified in the report.
+- **Anchoring the rate setting.** What fixes the low, medium and high
+  fragilities: Kingsbury's slope failure opportunity table, the Hancox (1997)
+  intensity thresholds and the Port Hills 2011 cut, fill and wall failures are
+  the candidates.
+- **The intensity measure per fragility.** PGV for the ground, as the landslide
+  literature uses, against PGA for the published wall curves; each row names
+  its own.
+- **Slope unit delineation** for the large models, and whether a failure drawn
+  larger than its unit grows across the neighbouring units.
 
 ### About the strength-based model
 

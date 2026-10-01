@@ -55,9 +55,9 @@ probability per property; `gen_wall_population.py` draws a realisation.
       height.
 - [ ] Rerun over the four territorial authorities, not only the pilot box, and
       record the counts in the method file.
-- [ ] Check the expected walls per suburb against the SME estimate once it
-      arrives (**T-19**); the combining numbers in `wall_probability.py` are
-      judgement until then.
+- [ ] Check the expected walls per property against the claim report extraction
+      once it lands (**T-50**); the combining numbers in `wall_probability.py`
+      are judgement until then.
 
 ## Phase 2 — Candidate wall lines with a probability on each line
 
@@ -69,6 +69,10 @@ candidate lines that drew, each with its own height and condition.
 
 Candidate lines come from geometry that marks where a wall could be:
 
+- [ ] The edges of the urban slope model's candidate failure polygons, the toe
+      of a fill or the toe or crest of a cut, so that every wall on sloping
+      land has the polygon of land it holds (decided 2026-10-01); see
+      `hazard/landslide/status.md`.
 - [ ] The GNS SLIDE mapped retaining walls (`get_gns_slide_morphology`), as
       lines. They are the only observed walls, so they carry the highest
       probability. The mapping is one-sided (visible from above, Wellington City
@@ -105,18 +109,27 @@ around it:
 - [ ] Draw each line independently in the realisation, apart from a property's
       shared initial condition, and write the drawn lines in the shape the
       contract already reads.
+- [ ] Key the draw on an exposure realisation id of its own, separate from the
+      hazard realisation id, so a few wall populations can be paired with many
+      hazard realisations (decided 2026-10-01). The `"exposure"` stream today
+      pairs a wall draw with the hazards of the same id.
 
-And be checked and calibrated against:
+And be checked and calibrated against the claim report extraction (**T-50**),
+which is the only calibration source the study will have and arrives after the
+build starts, so that part is a later phase: the SME suburb estimate, the
+manual mapping study, the remote sensing pilot and the ICNZ database will not
+be obtained (decided 2026-10-01).
 
-- [ ] Obtain the SME estimate of wall prevalence by suburb (**T-19**) and
-      calibrate the expected walls per suburb against it.
-- [ ] Bring the manual mapping study and the remote sensing pilot into the
-      repository, measure the fraction of real walls the GNS mapping captures
-      (replacing the fixed 0.9), and train against them.
-- [ ] Scan the Wellington NHC claims reports for wall mentions in the site
-      description, to estimate how many properties have walls (Perrie's
-      extraction).
-- [ ] Obtain the ICNZ database and fit the size distribution to it.
+- [ ] Fit the wall length distribution along the contour to the GNS mapped wall
+      segments now, and check it against the extraction later.
+- [ ] Later phase: read the extraction, which gives a minimum and maximum number
+      of walls per property, and raise the probabilities of the candidate lines
+      inside each property so the drawn count falls within them.
+- [ ] Later phase: measure the fraction of real walls the GNS mapping captures
+      from the claims with walls at addresses inside the SLIDE footprint,
+      replacing the fixed 0.9.
+- [ ] Height, and so size class, stays a judgement until a source for it
+      exists.
 
 ## Phase 3 — Initial condition from age
 

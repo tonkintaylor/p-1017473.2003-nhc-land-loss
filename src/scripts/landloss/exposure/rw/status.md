@@ -44,13 +44,20 @@ Intended, not implemented.
   failure only, not the cost.
 - **Set the initial state from the age of the dwelling**, as the available proxy
   for whether a wall is modern or poor.
-- **Train the model on four sources** — the ICNZ database, a manual mapping
-  study, estimates from T+T Wellington SMEs, and automated detection from remote
-  sensing. Each covers a different part of the population and none covers it
-  alone.
-- Treat the **remote sensing detection as a pilot** rather than a primary
-  source. Dense vegetation obscures walls in exactly the suburbs of interest and
-  the detection rate is itself unknown (**L-05**).
+- **Constrain the wall count per property with the claim report extraction**
+  (**T-50**) in a later phase. It arrives after the build starts, as a minimum
+  and maximum number of walls per property, and raises the probabilities of the
+  candidate lines inside that property. The SME suburb estimate, the manual
+  mapping study, the remote sensing detection and the ICNZ database will not be
+  obtained (decided 2026-10-01).
+- **Draw the wall population per exposure realisation**, on its own stream,
+  separate from the hazard realisations: a few exposure realisations against
+  many hazard ones, because whether a wall exists is not something the
+  earthquake decides.
+- **Give every wall on sloping land a failure polygon** in the urban slope
+  model, so the wall and the land it holds fail together through the wall's
+  fragility; see `hazard/landslide/status.md`. Walls on flat land stand alone
+  and fail by shaking in `vul/shaking/rw`.
 
 
 ### Engineering review advice (Nick Peters)
@@ -78,8 +85,9 @@ meant to shape a prior rather than be applied as a rule.
 - [ ] **Expect walls in new subdivisions.** Almost all have them.
 - [ ] **Treat houses across gullies as possibly on thicker colluvium or fill**,
   with wetter soils at the base. Nick was not sure this is worth using.
-- [ ] **Scan the Wellington NHC claims reports** for retaining walls in the site
-  description to estimate how many properties have them (Perrie's extraction).
+- [~] **Scan the Wellington NHC claims reports** for retaining walls in the site
+  description to estimate how many properties have them (Perrie's extraction,
+  **T-50**, in progress).
 
 
 ## Beta build
@@ -147,9 +155,9 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 
 - Some of the other input datasets have been collected. They are held outside
   the repository, so nothing here reads them yet.
-- The manual mapping and the remote sensing detection have both been started
-  with Sophia. That work also sits outside the repository and cannot be re-run
-  from here.
+- The manual mapping and the remote sensing detection started with Sophia are
+  not being pursued, and neither feeds the model. The claim report extraction
+  (**T-50**) is in progress and is not yet readable from here.
 
 ## Next
 
@@ -160,24 +168,21 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
    each cell of the class, size and condition grid.
 3. Bring the collected input datasets into the repository, or record where they
    are held and how they are read, so the inputs are reproducible.
-4. Bring the manual mapping and the remote sensing pilot into the repository on
-   the same basis.
-5. Obtain the ICNZ database.
-6. Attach a dwelling age attribute to the address spine, which the initial state
+4. Read the claim report extraction (**T-50**) when it lands, in a later phase,
+   and constrain the wall count per property to the minimum and maximum it
+   gives.
+5. Attach a dwelling age attribute to the address spine, which the initial state
    class reads.
-7. Train the predictive model and write a wall population per property.
+6. Train the predictive model and write a wall population per property.
 
 ## Validation
 
-- Predicted wall prevalence by suburb against the SME suburb-by-suburb estimate
-  (**T-19**). That estimate is the only independent measure of prevalence the
-  study will have, so it is the primary check rather than one of several.
-- Predicted locations against the manual mapping study, held out of training
-  rather than trained on.
-- Detection rate of the remote sensing pilot against the same manual mapping, so
-  that the unknown detection rate behind **L-05** is measured rather than
-  assumed.
-- Size distribution against the ICNZ database.
+- Predicted wall count and length per property against the claim report
+  extraction (**T-50**), once it lands, by suburb where the sample allows. That
+  extraction is the only independent measure of prevalence the study will have,
+  so it is the primary check rather than one of several.
+- The share of real walls the GNS mapping captures, from the claims with walls
+  at addresses inside the SLIDE footprint, replacing the fixed 0.9.
 
 ## Open decisions
 
@@ -187,12 +192,9 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 - Whether repair cost scales with wall length or wall height, and what the fixed
   per-job costs are (**T-32**).
 - What separates "modern" from "poor", and the dwelling age that divides them.
-- Access to the ICNZ database, which is not covered by a register task.
-- **T-19** — the SME estimate of wall prevalence by suburb.
 - **T-11**, **T-20** — the Wellington City Council retaining wall database and
   the council cut-and-fill models.
-- **T-09**, **T-10** — reuse of the Auckland Council cut-and-fill slope tool,
-  and how remote sensing can support the detection.
+- **T-09** — reuse of the Auckland Council cut-and-fill slope tool.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.
