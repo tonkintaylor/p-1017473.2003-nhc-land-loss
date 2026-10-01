@@ -7,6 +7,7 @@ the particular numbers that happen to be in the asset this week.
 """
 
 import datetime
+import math
 
 import geopandas as gpd
 import pandas as pd
@@ -22,6 +23,7 @@ from landloss.exposure.land.land_value import (
     TERRAIN_GROUP_COLUMNS,
     TOPOGRAPHIC_POSITION_COLUMN,
     accessibility_modifier,
+    amenity_modifier,
     estimate_land_value,
     index_base_rates,
     load_base_rates,
@@ -1282,3 +1284,212 @@ def test_the_size_floor_stops_a_dense_block_extrapolating(
 def test_the_packaged_factors_carry_the_section_area_floor() -> None:
     """Read only when s4 measures section areas, so nothing else guards it."""
     assert load_factors()["section_area_min_m2"] > 0
+
+
+# --- the amenity modifier -----------------------------------------------------
+
+
+@pytest.fixture
+def amenity_factors(factors):
+    """The Phase 1 parameters plus the sea view premium and its clip band."""
+    return factors | {
+        "sea_view_premium": 1.0,
+        "coast_premium": 0.25,
+        "coast_decay_length_m": 250.0,
+        "winter_sun_premium": 0.3,
+        "amenity_modifier_clip_min": 0.80,
+        "amenity_modifier_clip_max": 2.00,
+    }
+
+
+def make_view_addresses(rows):
+    """Build addresses from (TA, suburb, landform, share[, coast distance]) rows.
+
+    A row without a coast distance is far from the sea, so the view is tested
+    on its own.
+    """
+    addresses = make_addresses([row[:3] for row in rows])
+    addresses["sea_view_share"] = [row[3] for row in rows]
+    addresses["coast_distance_m"] = [
+        row[4] if len(row) > 4 else float("nan") for row in rows
+    ]
+    addresses["winter_sun_share"] = [row[5] if len(row) > 5 else 1.0 for row in rows]
+    return addresses
+
+
+def test_a_view_of_the_sea_lifts_an_address_within_its_cohort(amenity_factors) -> None:
+    """Oriental Bay over Karori: both hill, separated only by the view."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Oriental Bay", HILL, 0.5),
+            ("Wellington City", "Karori", HILL, 0.0),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(1.5)
+
+
+def test_the_amenity_modifier_averages_one_within_every_cohort(amenity_factors) -> None:
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Oriental Bay", HILL, 0.5),
+            ("Wellington City", "Karori", HILL, 0.0),
+            ("Wellington City", "Kelburn", HILL, 0.1),
+            ("Lower Hutt City", "Eastbourne", FLAT, 0.4),
+            ("Lower Hutt City", "Wainuiomata", FLAT, 0.0),
+            ("Porirua City", "Titahi Bay", FLAT, 0.3),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    means = cohort_means(modifier, addresses)
+    assert means.tolist() == pytest.approx([1.0] * len(means))
+
+
+def test_an_address_off_the_dem_sits_at_the_middle_of_its_cohort(
+    amenity_factors,
+) -> None:
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Oriental Bay", HILL, 0.5),
+            ("Wellington City", "Karori", HILL, float("nan")),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    assert not modifier.isna().any()
+
+
+def test_the_ta_mean_still_holds_with_amenity(base_rates, amenity_factors) -> None:
+    """A view moves value between addresses and never into the authority."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Oriental Bay", HILL, 0.5),
+            ("Wellington City", "Karori", HILL, 0.0),
+            ("Lower Hutt City", "Eastbourne", FLAT, 0.4),
+            ("Lower Hutt City", "Wainuiomata", FLAT, 0.0),
+        ]
+    )
+
+    valued = estimate_land_value(
+        addresses, base_rates=base_rates, factors=amenity_factors
+    )
+
+    means = valued.groupby("territorial_authority")["land_value_nzd"].mean()
+    for ta_name, modelled_mean in means.items():
+        assert modelled_mean == pytest.approx(indexed_average(base_rates, ta_name))
+
+
+def test_a_missing_amenity_parameter_is_named(amenity_factors) -> None:
+    without = {
+        name: value
+        for name, value in amenity_factors.items()
+        if name != "sea_view_premium"
+    }
+    addresses = make_view_addresses([("Wellington City", "Karori", HILL, 0.0)])
+
+    with pytest.raises(ValueError, match="sea_view_premium"):
+        amenity_modifier(addresses, without)
+
+
+def test_the_packaged_factors_carry_what_the_amenity_step_reads() -> None:
+    """s3 and the modifier read these only once the amenity step has run."""
+    factors = load_factors()
+
+    for name in (
+        "sea_view_premium",
+        "coast_premium",
+        "coast_decay_length_m",
+        "winter_sun_premium",
+        "winter_sun_eye_height_m",
+        "winter_sun_first_day_of_year",
+        "winter_sun_last_day_of_year",
+        "winter_sun_days_sampled",
+        "winter_sun_minutes_step",
+        "amenity_modifier_clip_min",
+        "amenity_modifier_clip_max",
+        "sea_view_eye_height_m",
+        "sea_view_max_distance_m",
+        "sea_view_directions",
+        "sea_view_max_sea_elevation_m",
+    ):
+        assert name in factors
+
+
+def test_being_on_the_coast_lifts_an_address_without_a_view(amenity_factors) -> None:
+    """Behind the dune in Lyall Bay: no view of the water, but the beach is there."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Lyall Bay", FLAT, 0.0, 0.0),
+            ("Wellington City", "Newtown", FLAT, 0.0, float("nan")),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(1.25)
+
+
+def test_the_coastal_premium_fades_with_distance(amenity_factors) -> None:
+    """One decay length out, the premium is down to 1/e of itself."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Lyall Bay", FLAT, 0.0, 250.0),
+            ("Wellington City", "Newtown", FLAT, 0.0, float("nan")),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    expected = 1 + 0.25 * math.exp(-1)
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(expected)
+
+
+def test_the_view_and_the_coast_multiply(amenity_factors) -> None:
+    """On the water with half the compass of sea: both premiums at once."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Oriental Bay", HILL, 0.5, 0.0),
+            ("Wellington City", "Karori", HILL, 0.0, float("nan")),
+        ]
+    )
+    # A two-address cohort spreads the ratio either side of one, so the band is
+    # widened to test the multiplication rather than the clip.
+    wide = amenity_factors | {"amenity_modifier_clip_min": 0.1}
+
+    modifier = amenity_modifier(addresses, wide)
+
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(1.5 * 1.25)
+
+
+def test_winter_sun_lifts_a_section_against_one_in_shade(amenity_factors) -> None:
+    """Same view, same coast: the sunny section is worth the premium more."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Kelburn", HILL, 0.0, float("nan"), 1.0),
+            ("Wellington City", "Kelburn", HILL, 0.0, float("nan"), 0.0),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    assert modifier.iloc[0] / modifier.iloc[1] == pytest.approx(1.3)
+
+
+def test_a_missing_sun_share_is_neutral_not_shade(amenity_factors) -> None:
+    """An address the DEM missed takes its cohort's mean, not a winter in shadow."""
+    addresses = make_view_addresses(
+        [
+            ("Wellington City", "Kelburn", HILL, 0.0, float("nan"), 1.0),
+            ("Wellington City", "Kelburn", HILL, 0.0, float("nan"), 0.0),
+            ("Wellington City", "Kelburn", HILL, 0.0, float("nan"), float("nan")),
+        ]
+    )
+
+    modifier = amenity_modifier(addresses, amenity_factors)
+
+    assert modifier.iloc[0] > modifier.iloc[2] > modifier.iloc[1]

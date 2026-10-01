@@ -104,6 +104,13 @@ re-solves the per-authority normalising constant after clipping and re-applies
 the clip once, so clipping moves value between properties without changing the
 authority's modelled mean.
 
+The amenity rows -- `sea_view_premium`, `coast_premium`,
+`coast_decay_length_m`, `winter_sun_premium`, the two `amenity_modifier_clip_*`
+bounds, the four `sea_view_*` settings that say how the view is measured, and
+the five `winter_sun_*` settings that say how the sun is sampled --
+are judgement too; `s3_build_amenity.py` reads the settings and
+`landloss.exposure.land.land_value.amenity_modifier` the premium and bounds.
+
 The five accessibility rows -- `accessibility_elasticity`,
 `rail_station_premium`, `rail_station_decay_length_m` and the two
 `accessibility_modifier_clip_*` bounds -- are judgement too, apart from the

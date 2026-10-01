@@ -66,6 +66,11 @@ from landloss.exposure.land.accessibility import (
     GRAVITY_COLUMN,
     STATION_DISTANCE_COLUMN,
 )
+from landloss.exposure.land.amenity import (
+    COAST_DISTANCE_COLUMN,
+    SEA_VIEW_COLUMN,
+    WINTER_SUN_COLUMN,
+)
 from landloss.exposure.land.extent import (
     PROPERTY_ADDRESS_COUNT_COLUMN,
     PROPERTY_RATING_UNIT_COUNT_COLUMN,
@@ -115,6 +120,8 @@ TERRAIN_NAME = "terrain-by-address.geoparquet"
 PILOT_TERRAIN_NAME = "terrain-by-address-pilot.geoparquet"
 ACCESSIBILITY_NAME = "accessibility-by-address.geoparquet"
 PILOT_ACCESSIBILITY_NAME = "accessibility-by-address-pilot.geoparquet"
+AMENITY_NAME = "amenity-by-address.geoparquet"
+PILOT_AMENITY_NAME = "amenity-by-address-pilot.geoparquet"
 OUT_NAME = "land-value-by-address.geoparquet"
 PILOT_OUT_NAME = "land-value-by-address-pilot.geoparquet"
 COHORTS_NAME = "land-value-by-suburb.csv"
@@ -125,6 +132,7 @@ PILOT_COHORTS_NAME = "land-value-by-suburb-pilot.csv"
 ID_COLUMN = "address_id"
 TERRAIN_COLUMNS = (ID_COLUMN, SLOPE_COLUMN, TOPOGRAPHIC_POSITION_COLUMN)
 ACCESSIBILITY_COLUMNS = (ID_COLUMN, GRAVITY_COLUMN, STATION_DISTANCE_COLUMN)
+AMENITY_COLUMNS = (ID_COLUMN, SEA_VIEW_COLUMN, COAST_DISTANCE_COLUMN, WINTER_SUN_COLUMN)
 
 # How high a flat address has to stand above its neighbourhood before it is
 # elevated flat. Read from the factors asset rather than set here, because it is
@@ -327,6 +335,58 @@ def attach_accessibility(classified, accessibility):
             "  middle of their cohort. If this is not a handful, the accessibility\n"
             "  file was built over a different extent."
         )
+    return joined
+
+
+def read_amenity(path):
+    """Read the amenity attributes, or say why the run goes without them.
+
+    Args:
+        path: The geoparquet s3_build_amenity.py writes.
+
+    Returns:
+        The attributes as a plain DataFrame, or None if the file is not there.
+    """
+    if not path.exists():
+        print(f"\nNo amenity attributes at {path}.")
+        print(
+            "  Valuing without the sea view modifier, so a view of the sea\n"
+            "  changes nothing. Run s3_build_amenity.py over this extent to turn\n"
+            "  it on."
+        )
+        return None
+
+    print(f"\nReading the amenity attributes from {path} ...")
+    amenity = gpd.read_parquet(path)
+    return pd.DataFrame(amenity.drop(columns=amenity.geometry.name, errors="ignore"))
+
+
+def attach_amenity(classified, amenity):
+    """Join the amenity attributes onto the addresses, one-to-one.
+
+    Args:
+        classified: Addresses carrying ``address_id``.
+        amenity: The attributes from :func:`read_amenity`.
+
+    Returns:
+        The addresses with the sea view share joined on, or the addresses
+        unchanged if the file does not carry what the join needs.
+    """
+    missing = [column for column in AMENITY_COLUMNS if column not in amenity.columns]
+    if missing:
+        print(
+            f"  The amenity file is missing {', '.join(missing)}, so it cannot be\n"
+            "  joined. Valuing without the sea view modifier."
+        )
+        return classified
+
+    joined = classified.merge(
+        amenity[list(AMENITY_COLUMNS)], on=ID_COLUMN, how="left", validate="one_to_one"
+    )
+    unmatched = int(joined[SEA_VIEW_COLUMN].isna().sum())
+    print(
+        f"  Addresses with a sea view share: {len(joined) - unmatched:,} of {len(joined):,}"
+    )
     return joined
 
 
@@ -541,7 +601,7 @@ def _default(path, pilot_name, name, *, pilot):
     return WORK_DIR / (pilot_name if pilot else name)
 
 
-def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
+def resolve_outputs(*, pilot, spine, terrain, accessibility, amenity, out, cohorts):
     """Choose where the spine is read from and where the two outputs are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
@@ -554,12 +614,13 @@ def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
         terrain: The terrain attributes path, or None for the default.
         accessibility: The accessibility attributes path, or None for the
             default.
+        amenity: The amenity attributes path, or None for the default.
         out: The valued address path, or None for the default.
         cohorts: The cohort table path, or None for the default.
 
     Returns:
-        The spine path, the terrain path, the accessibility path, the valued
-        address path and the cohort table path.
+        The spine path, the terrain path, the accessibility path, the amenity
+        path, the valued address path and the cohort table path.
     """
     return (
         _default(spine, PILOT_SPINE_NAME, SPINE_NAME, pilot=pilot),
@@ -567,6 +628,7 @@ def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
         _default(
             accessibility, PILOT_ACCESSIBILITY_NAME, ACCESSIBILITY_NAME, pilot=pilot
         ),
+        _default(amenity, PILOT_AMENITY_NAME, AMENITY_NAME, pilot=pilot),
         _default(out, PILOT_OUT_NAME, OUT_NAME, pilot=pilot),
         _default(cohorts, PILOT_COHORTS_NAME, COHORTS_NAME, pilot=pilot),
     )
@@ -653,7 +715,7 @@ def write_outputs(valued, cohorts, out, cohorts_out):
     print(f"  Rows    : {len(cohorts):,} suburb/landform cohorts")
 
 
-def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
+def main(*, pilot, fresh, spine, terrain, accessibility, amenity, out, cohorts):
     """Estimate a land value for every address in the spine.
 
     Args:
@@ -668,6 +730,9 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
         accessibility: The accessibility attributes from s2. None reads the
             standard location. If the file is not there the run values without
             the accessibility modifier.
+        amenity: The amenity attributes from s3. None reads the standard
+            location. If the file is not there the run values without the sea
+            view modifier.
         out: Where to write the valued addresses. None writes to the standard
             location.
         cohorts: Where to write the per-suburb cohort table. None writes to the
@@ -676,11 +741,19 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
     Returns:
         1 if the spine or the flatland layer could not be had, otherwise None.
     """
-    spine_path, terrain_path, accessibility_path, out, cohorts_out = resolve_outputs(
+    (
+        spine_path,
+        terrain_path,
+        accessibility_path,
+        amenity_path,
+        out,
+        cohorts_out,
+    ) = resolve_outputs(
         pilot=pilot,
         spine=spine,
         terrain=terrain,
         accessibility=accessibility,
+        amenity=amenity,
         out=out,
         cohorts=cohorts,
     )
@@ -717,6 +790,10 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
     if reachable is not None:
         classified = attach_accessibility(classified, reachable)
 
+    views = read_amenity(amenity_path)
+    if views is not None:
+        classified = attach_amenity(classified, views)
+
     classified = attach_section_areas(classified, bbox, use_cache=not fresh)
     describe_section_areas(classified, base_rates)
 
@@ -740,6 +817,7 @@ if __name__ == "__main__":
         spine=config.SPINE,
         terrain=config.TERRAIN,
         accessibility=config.ACCESSIBILITY,
+        amenity=config.AMENITY,
         out=config.LAND_VALUE_OUT,
         cohorts=config.COHORTS_OUT,
     )

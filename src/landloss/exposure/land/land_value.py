@@ -86,6 +86,11 @@ from landloss.exposure.land.accessibility import (
     GRAVITY_COLUMN,
     STATION_DISTANCE_COLUMN,
 )
+from landloss.exposure.land.amenity import (
+    COAST_DISTANCE_COLUMN,
+    SEA_VIEW_COLUMN,
+    WINTER_SUN_COLUMN,
+)
 from landloss.exposure.land.extent import (
     PROPERTY_ADDRESS_COUNT_COLUMN,
     PROPERTY_RATING_UNIT_COUNT_COLUMN,
@@ -163,6 +168,27 @@ RAIL_PREMIUM_PARAMETER = "rail_station_premium"
 RAIL_DECAY_PARAMETER = "rail_station_decay_length_m"
 ACCESSIBILITY_CLIP_MIN_PARAMETER = "accessibility_modifier_clip_min"
 ACCESSIBILITY_CLIP_MAX_PARAMETER = "accessibility_modifier_clip_max"
+# The amenity attribute the third location modifier reads, measured onto the
+# addresses by :mod:`landloss.exposure.land.amenity`.
+AMENITY_COLUMNS = (SEA_VIEW_COLUMN, COAST_DISTANCE_COLUMN, WINTER_SUN_COLUMN)
+
+# The amenity parameters read out of the factors asset. Judgement, to be refitted
+# against the District Valuation Roll; see the basis column.
+SEA_VIEW_PREMIUM_PARAMETER = "sea_view_premium"
+COAST_PREMIUM_PARAMETER = "coast_premium"
+COAST_DECAY_PARAMETER = "coast_decay_length_m"
+WINTER_SUN_PREMIUM_PARAMETER = "winter_sun_premium"
+AMENITY_CLIP_MIN_PARAMETER = "amenity_modifier_clip_min"
+AMENITY_CLIP_MAX_PARAMETER = "amenity_modifier_clip_max"
+AMENITY_PARAMETERS = (
+    SEA_VIEW_PREMIUM_PARAMETER,
+    COAST_PREMIUM_PARAMETER,
+    COAST_DECAY_PARAMETER,
+    WINTER_SUN_PREMIUM_PARAMETER,
+    AMENITY_CLIP_MIN_PARAMETER,
+    AMENITY_CLIP_MAX_PARAMETER,
+)
+
 # How strongly a section's value follows its size, read out of the factors asset
 # only when the frame carries SECTION_AREA_COLUMN. Judgement; see its basis.
 SECTION_AREA_ELASTICITY_PARAMETER = "section_area_elasticity"
@@ -533,6 +559,92 @@ def terrain_modifier(
     return _rescale_within_groups(modifier, groups)
 
 
+def amenity_modifier(
+    addresses: gpd.GeoDataFrame, factors: dict[str, float]
+) -> pd.Series:
+    """Spread value within a landform class by the view of, and closeness to, the sea.
+
+    Built like :func:`accessibility_modifier`: the logarithm of
+
+    .. code-block:: text
+
+        (1 + sea_view_premium * sea_view_share)
+        * (1 + coast_premium * exp(-coast_distance_m / coast_decay_length_m))
+        * (1 + winter_sun_premium * winter_sun_share)
+
+    is centred on the mean within each
+    :data:`TERRAIN_GROUP_COLUMNS` group, exponentiated, clipped, and rescaled to a
+    mean of one. So it lifts Oriental Bay against the rest of Wellington's hill
+    land and Eastbourne against the rest of Lower Hutt's flat land, and never
+    changes what a landform class is worth in total.
+
+    The two terms are separate because they are separate things to a buyer: a
+    house up the hill can look over the whole harbour from a kilometre away,
+    and a house behind the dune in Lyall Bay sees none of it from fifty metres.
+    Winter sun is the third, and the one a plain aspect calculation misses: a
+    section in the shadow of the ridge across the valley gets none, whichever
+    way it faces. An address with no share -- off the DEM -- sits at the middle
+    of its cohort on that term, and one with no sea within the casting distance
+    takes no coastal premium.
+
+    Args:
+        addresses: Address points carrying :data:`AMENITY_COLUMNS` and
+            :data:`TERRAIN_GROUP_COLUMNS`.
+        factors: The model parameters, carrying :data:`AMENITY_PARAMETERS`.
+
+    Returns:
+        The multiplier for each address, indexed as ``addresses`` is, with a
+        mean of exactly one within each group. Never NaN.
+
+    Raises:
+        ValueError: If a required column or parameter is absent, naming what is
+            missing.
+    """
+    _check_present(
+        addresses.columns,
+        (*AMENITY_COLUMNS, *TERRAIN_GROUP_COLUMNS),
+        "address frame column(s)",
+    )
+    _check_present(factors, AMENITY_PARAMETERS, "land value factor(s)")
+
+    if addresses.empty:
+        return pd.Series(1.0, index=addresses.index, dtype=float)
+
+    share = addresses[SEA_VIEW_COLUMN].astype(float).clip(lower=0.0, upper=1.0)
+    view = (1.0 + factors[SEA_VIEW_PREMIUM_PARAMETER] * share).map(math.log)
+    coast = (
+        (
+            -addresses[COAST_DISTANCE_COLUMN].astype(float)
+            / factors[COAST_DECAY_PARAMETER]
+        )
+        .map(math.exp)
+        .fillna(0.0)
+        .mul(factors[COAST_PREMIUM_PARAMETER])
+        .add(1.0)
+        .map(math.log)
+    )
+    sun = (
+        1.0
+        + factors[WINTER_SUN_PREMIUM_PARAMETER]
+        * addresses[WINTER_SUN_COLUMN].astype(float).clip(lower=0.0, upper=1.0)
+    ).map(math.log)
+
+    groups = [addresses[column] for column in TERRAIN_GROUP_COLUMNS]
+    # An address with no sun share takes its cohort's mean, so that a missing
+    # value is neutral rather than read as permanent shade.
+    sun = sun.fillna(sun.groupby(groups, sort=False).transform("mean")).fillna(0.0)
+    log_raw = view + coast + sun
+
+    centre = log_raw.groupby(groups, sort=False, dropna=False).transform("mean")
+    centred = (log_raw - centre).fillna(0.0)
+
+    modifier = centred.map(math.exp).clip(
+        lower=factors[AMENITY_CLIP_MIN_PARAMETER],
+        upper=factors[AMENITY_CLIP_MAX_PARAMETER],
+    )
+    return _rescale_within_groups(modifier, groups)
+
+
 def _rescale_within_groups(
     modifier: pd.Series, groups: Sequence[pd.Series]
 ) -> pd.Series:
@@ -738,8 +850,9 @@ def estimate_land_value(
     2. each address is given a rate factor: the landform multiplier for its
        class, times its terrain modifier if the frame carries
        :data:`TERRAIN_COLUMNS`, its accessibility modifier if it carries
-       :data:`ACCESSIBILITY_COLUMNS`, and :func:`section_size_factor` if it
-       carries :data:`SECTION_AREA_COLUMN`;
+       :data:`ACCESSIBILITY_COLUMNS`, its amenity modifier if it carries
+       :data:`AMENITY_COLUMNS`, and :func:`section_size_factor` if it carries
+       :data:`SECTION_AREA_COLUMN`;
     3. the site value is that factor times the site area -- the measured
        property, or the assumed lot where there is none -- and a constant is
        solved so that total site value over total rating units is the indexed
@@ -760,8 +873,9 @@ def estimate_land_value(
     Args:
         addresses: Address points carrying :data:`REQUIRED_ADDRESS_COLUMNS`, as
             produced by :func:`landloss.exposure.land.landform.classify_landform`.
-            :data:`TERRAIN_COLUMNS` and :data:`ACCESSIBILITY_COLUMNS` turn on
-            the two location modifiers. :data:`SECTION_AREA_COLUMN`, with
+            :data:`TERRAIN_COLUMNS`, :data:`ACCESSIBILITY_COLUMNS` and
+            :data:`AMENITY_COLUMNS` turn on the three location modifiers.
+            :data:`SECTION_AREA_COLUMN`, with
             :data:`PROPERTY_ADDRESS_COUNT_COLUMN` and
             :data:`PROPERTY_RATING_UNIT_COUNT_COLUMN`, measures each site. Every
             combination is a supported answer, and all of them hold the TA mean.
@@ -822,6 +936,10 @@ def estimate_land_value(
     # reason leave each TA's total where it was.
     if all(column in valued.columns for column in ACCESSIBILITY_COLUMNS):
         factor = factor * accessibility_modifier(valued, factors)
+
+    # So is the sea view, and it too only moves value within a landform class.
+    if all(column in valued.columns for column in AMENITY_COLUMNS):
+        factor = factor * amenity_modifier(valued, factors)
 
     assumed_lot = valued["territorial_authority"].map(rates["median_lot_size_m2"])
     assumed_lot = assumed_lot.astype(float)

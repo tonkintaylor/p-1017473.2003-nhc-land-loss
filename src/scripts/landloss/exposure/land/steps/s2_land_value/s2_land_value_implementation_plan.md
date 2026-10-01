@@ -186,7 +186,7 @@ rate per square metre was divided by the assumption rather than the section.
       in a table. Straight lines already show the problem stage 3b is for:
       Makara village scores the same gravity as Tawa.
 
-## Phase 4 — Amenity: sea view and winter sun
+## Phase 4 — Amenity: sea view and winter sun (built)
 
 Phase 2 left this phase an explicit target to be judged against. The elevated
 flat factor was cut from 3.10 to 2.06 because the class is now assigned from
@@ -199,13 +199,31 @@ band, either they are too weak or the 2.06 is too low, and the `basis` cell of
 `landform_factor_elevated_flat` in `src/landloss/io/assets/land-value-factors.csv`
 is where that argument is recorded.
 
-- [ ] Sea view by inverted viewshed: because visibility is reciprocal, run
-      WhiteboxTools viewshed from a few hundred station points sampled on the
-      sea over a 10 m DEM and read the visible-station count off the land,
-      rather than running a viewshed from every property.
-- [ ] Winter sun by WhiteboxTools `time_in_daylight` over a June-July window
-      with terrain shadowing. This is what separates a good Wellington section
-      from a bad one, and what a plain aspect calculation misses.
+- [x] Sea view, as the share of 72 bearings in which the sea is visible within
+      5 km from 5 m above the ground (`landloss.exposure.land.amenity`,
+      `s3_build_amenity.py`), with a within-cohort modifier
+      (`landloss.exposure.land.land_value.amenity_modifier`). Measured by
+      casting rays from every address over the 10 m DEM in numpy rather than by
+      an inverted WhiteboxTools viewshed from points on the sea: it needs no new
+      binary dependency, and it gives a share of the compass rather than a
+      count of visible stations, which is what a view is priced on.
+- [x] Add closeness to the coast as a second amenity term, separate from the
+      view (`coast_distance_m` from `measure_sea`, `coast_premium` and
+      `coast_decay_length_m` in the factors asset), so a beachfront house behind
+      a dune is priced for the beach it cannot see.
+- [ ] Measure the view over the LINZ surface model, which carries buildings and
+      trees, rather than the bare-earth DEM, which overstates the view from flat
+      land behind the front row.
+- [ ] Check the sea view against the hand-checked rates of 31 Hay Street,
+      Oriental Bay, 14 Inglis Street, Seatoun, and 13 Karamu Street, Eastbourne,
+      once s3 and s4 have run over the full study area.
+- [x] Winter sun over a June-July window with terrain shadowing, as the share
+      of the time the sun is up that it clears the address's own horizon
+      (`winter_sun_share`, `landloss.exposure.land.amenity.sunlit_share`), with
+      a third term in the amenity modifier (`winter_sun_premium`). Measured on
+      the same rays as the sea view rather than by WhiteboxTools
+      `time_in_daylight`, for the same reason: no new binary dependency, and the
+      horizon comes free with the rays already cast.
 - [ ] Work at 10 m resolution. A 1 m DEM over the study area is about 3.2
       billion cells, which is not a sensible cost for an amenity multiplier.
 

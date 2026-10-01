@@ -126,6 +126,53 @@
   of the factors asset, and rescaled so the group mean is exactly one. The
   function's docstring sets out why it is centred in logs and why the group is
   the terrain modifier's.
+- The view of the sea is measured by `s3_build_amenity.py`, which writes
+  `temp/exposure/amenity-by-address.geoparquet` carrying `address_id`,
+  `sea_view_share`, `coast_distance_m`, `winter_sun_share` and the geometry, with a `-pilot` suffix when `PILOT` is
+  True. It fetches the DEM through `landloss.io.readers.get_dem` over the
+  spine's extent buffered by the casting distance, and masks nodata with
+  `mask_nodata()` from `s1_build_terrain_attributes.py`.
+- `landloss.exposure.land.amenity.sea_mask` takes a DEM cell as sea when it lies
+  outside the study area's land polygons (`get_study_areas`, land only) and
+  stands no higher than `sea_view_max_sea_elevation_m`, or has no value.
+  `landloss.exposure.land.amenity.sea_view_share` casts `sea_view_directions`
+  rays from `sea_view_eye_height_m` above the ground at each address, out to
+  `sea_view_max_distance_m` at the DEM's cell spacing, allowing for the Earth's
+  curvature and refraction, and returns the share of directions in which a
+  visible cell is sea. The four settings are rows of the factors asset.
+  `landloss.exposure.land.amenity.measure_sea` returns that share together with
+  `coast_distance_m`, the distance to the first sea cell along any ray whether
+  or not it is visible: the straight-line distance to the coast to within the
+  angle between two rays, NaN beyond the casting distance.
+- `winter_sun_share` comes from the same rays. `measure_sea`, given a
+  `landloss.exposure.land.amenity.WinterSun`, measures each address's horizon
+  along every ray from `winter_sun_eye_height_m` above the ground, and
+  `landloss.exposure.land.amenity.sunlit_share` runs the sun's path against it:
+  of every sampled moment the sun is above the flat horizon, the share in which
+  it also clears the address's horizon in that direction.
+  `landloss.exposure.land.amenity.solar_position` gives the path from Cooper's
+  declination and the hour angle in local solar time. The days are
+  `winter_sun_days_sampled` spread from `winter_sun_first_day_of_year` to
+  `winter_sun_last_day_of_year`, sampled every `winter_sun_minutes_step`
+  minutes, built by `winter_sun_settings()` in `s3_build_amenity.py`; all four
+  are rows of the factors asset.
+- The run prints the share of the DEM taken as sea, the share of addresses
+  with any view and the deciles of the share per territorial authority in
+  `describe_shares()`, the share within 100, 250, 500 and 1,000 m of the coast in
+  `describe_coast()`, the deciles of winter sun per authority in
+  `describe_sun()`, and the suburbs with the widest median view in
+  `describe_suburbs()`.
+- Within a landform class, value is also spread by the amenity modifier
+  `landloss.exposure.land.land_value.amenity_modifier`: the logarithm of `(1 +
+  sea_view_premium * sea_view_share) * (1 + coast_premium *
+  exp(-coast_distance_m / coast_decay_length_m)) * (1 + winter_sun_premium *
+  winter_sun_share)` is centred within each
+  `TERRAIN_GROUP_COLUMNS` group, exponentiated, clipped to the
+  `amenity_modifier_clip_min` and `amenity_modifier_clip_max` rows, and
+  rescaled to a group mean of one. `s4_estimate_land_value.py` joins the
+  attribute with `read_amenity()` and `attach_amenity()`, and values without
+  it, saying so, when the file is absent; `AMENITY` in `config.py` points s3
+  and s4 at a different file.
 - An address with no gravity value sits at the middle of its cohort, and one
   with no station distance takes no station premium; both resolve to a finite
   modifier, which `tests/landloss/exposure/land/test_land_value.py` covers.
@@ -330,6 +377,12 @@
   village the same gravity as Tawa. The centres are placed by hand, and the
   elasticity, the rail premium and the clip band are judgement, each on its row
   of the two assets.
+- The sea view is measured over the bare-earth DEM, so houses and trees in
+  front of an address do not block it, which overstates the view from flat
+  land a few rows back from a beach. One eye height serves every address. The
+  same holds for winter sun: a neighbouring house or tree does not shade a
+  section, only the terrain does, and the horizon is read along the nearest of
+  72 rays to the sun's bearing.
 - The published averages are residential averages applied to every address,
   because the LINZ NZ Addresses layer carries no residential flag. That gap
   belongs to step 1 and is carried in its method file as well.
