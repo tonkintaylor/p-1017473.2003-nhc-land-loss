@@ -192,6 +192,7 @@ report/**/*SYNTHETIC*
 # numbers, damage extents, walls, costs) may not.
 src/landloss/common/assets/claim_reports/*
 !src/landloss/common/assets/claim_reports/claims-lists/
+research/vul/claim_reports/
 src/scripts/landloss/vul/assets/claims-landslide-summary-iag-1502000.csv
 src/scripts/landloss/vul/assets/claims-report-paths-iag-1502000.csv
 

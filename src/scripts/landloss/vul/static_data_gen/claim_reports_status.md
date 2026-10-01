@@ -88,13 +88,10 @@ Findings from report 0005 so far:
    first 190 reports: two IAG reports had no summary table found (0218, 0257),
    one had three rows missing (0220), and 13 had no event sentence the parse
    recognises.
-3. **Write the analysis**: the imminent-to-evacuated ratio, the overlap of
-   evacuated and inundated land, failure size, wall counts and damaged
-   lengths, and the loss module's assumptions (site ratings, design fees,
-   replacement size and construction). Filter to `claim_accepted`, split by
-   `event_cause`, use the `total_*` columns, and treat reports with
-   `summary_columns` above 1 separately -- summing is right for one column
-   per landslip (2013) and double counts for one per inspection.
+3. **Analysis written** (2026-10-01):
+   `src/scripts/landloss/vul/research/analyse_claim_reports.py` writes
+   `research/vul/claim_reports/claim_report_findings.md` and a CSV per table,
+   all local only. See "First analysis" below.
 4. **Join slope** at each claim's coordinates, for the ratio against slope.
 5. Look for earthquake claims in the programmes outside Wellington
    (`--programmes`); if they are few, report that as a finding.
@@ -137,6 +134,37 @@ Findings from report 0005 so far:
 - **A replacement can change construction.** One Nelson report replaces a timber
   pole wall with 190 mm block masonry. The loss module assumes a replacement
   keeps the old wall's construction.
+
+## First analysis (2026-10-01)
+
+1,989 accepted land claims from 2,085 Word reports: 496 earthquake (459
+Kaikōura, 35 Seddon), 1,234 rain, 259 with no recognised cause. Land areas use
+the 1,766 single-column reports. Descriptive only: the sample is shaped by who
+claimed, which insurer used T+T, and which reports survive as Word files.
+
+- **Imminent against evacuated land.** Imminent evacuation over evacuated area:
+  0.14 pooled, median 0.31 per claim (rain 0.40, earthquake 0). 68% of claims
+  have some imminent evacuation. Earthquake claims evacuate more (median 7.5 m2
+  against 3 m2) and carry almost no imminent risk.
+- **Evacuation and inundation together.** Evacuated only 34%, both 41%,
+  inundated only 12%, neither 14%. Inundated over evacuated area: median 1.11
+  (earthquake 0.50, rain 1.20). Inundated depth (NHI Act reports): median
+  0.57 m.
+- **Failure size.** Landslip width median 5 m (p90 13 m).
+- **Walls.** 27% of claims list a wall. Timber 54%; concrete, block and crib
+  36%, against the 30% concrete the loss module assumes. Retained height
+  median 1.2 m (p90 2.4 m); whole length median 10 m; damaged share of the
+  length median 0.52.
+- **Replacements.** 33% are taller than the tallest existing wall (216 claims
+  with both heights); 46% change construction (290 pairs), mostly timber to
+  block or concrete and concrete to block. Supports the sizing rule added to
+  the loss module, and argues against keeping the old construction.
+- **Site ratings.** Construction access is mostly D (492 D, 282 E, 247 M);
+  earthworks and constructability are spread across E and M, with about a
+  quarter D. The older "hard" and "moderate" ratings are read as D and M.
+- **Design and consent fees.** Median $14,000 excl GST (earthquake $10,000,
+  rain $14,000; p10 $6,000, p90 $26,000) across all claims, wall or not,
+  against the $5,100 the loss module charges per claim with a wall.
 
 ## Open questions
 
