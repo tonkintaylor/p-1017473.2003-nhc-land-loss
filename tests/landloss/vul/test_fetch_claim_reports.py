@@ -6,6 +6,7 @@ asked for.
 """
 
 import os
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -171,9 +172,7 @@ def test_a_claims_list_fetches_across_projects_and_can_keep_the_study_area(
     )
     monkeypatch.setattr(fcr, "CLAIM_REPORTS_ASSETS_DIR", tmp_path / "assets")
     assert fcr.wanted_by_programme(claims) == {"85650": ["0001"], "86101": ["0001"]}
-    assert fcr.wanted_by_programme(claims, study_area_only=True) == {
-        "85650": ["0001"]
-    }
+    assert fcr.wanted_by_programme(claims, study_area_only=True) == {"85650": ["0001"]}
     assert fcr.wanted_by_programme(claims, programmes=["0086101"]) == {
         "86101": ["0001"]
     }
@@ -353,7 +352,9 @@ def test_the_index_is_saved_as_the_run_goes(tmp_path, cached, monkeypatch):
     saves = []
     real_write = fcr.write_index
     monkeypatch.setattr(
-        fcr, "write_index", lambda path, rows: (saves.append(len(rows)), real_write(path, rows))
+        fcr,
+        "write_index",
+        lambda path, rows: (saves.append(len(rows)), real_write(path, rows)),
     )
     project = tmp_path / PROJECT
     for number in range(1, 6):
@@ -374,10 +375,10 @@ def test_all_lifts_the_limit(monkeypatch):
     assert seen["limit"] > 10**9
 
 
-def make_docx(path: Path, *, text: bytes = b"<document/>", photo_bytes: int = 0) -> Path:
+def make_docx(
+    path: Path, *, text: bytes = b"<document/>", photo_bytes: int = 0
+) -> Path:
     """Write a minimal .docx: its document.xml, and optionally a large photo."""
-    import zipfile
-
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("word/document.xml", text)
@@ -419,19 +420,28 @@ def test_a_cache_of_whole_reports_is_slimmed_offline(tmp_path, monkeypatch):
         assets / "1502000" / fcr.INDEX_NAME,
         {
             "1502000.0001": fcr.IndexRow(
-                "1502000", "0001", "1502000.0001", fcr.FETCHED,
-                report_path="T:/x/Report.docx", cached_path=str(cached),
+                "1502000",
+                "0001",
+                "1502000.0001",
+                fcr.FETCHED,
+                report_path="T:/x/Report.docx",
+                cached_path=str(cached),
             ),
             "1502000.0002": fcr.IndexRow(
-                "1502000", "0002", "1502000.0002", fcr.FETCHED,
-                report_path="T:/x/Report.pdf", cached_path=str(pdf),
+                "1502000",
+                "0002",
+                "1502000.0002",
+                fcr.FETCHED,
+                report_path="T:/x/Report.pdf",
+                cached_path=str(pdf),
             ),
         },
     )
     slimmed, freed = fcr.slim_cache(assets)
     assert slimmed == 2
     assert freed > 90_000
-    assert not cached.exists() and not pdf.exists()
+    assert not cached.exists()
+    assert not pdf.exists()
     index = fcr.read_index(assets / "1502000" / fcr.INDEX_NAME)
     text = Path(index["1502000.0001"].cached_path)
     assert text.name == "Report.docx.document.xml"

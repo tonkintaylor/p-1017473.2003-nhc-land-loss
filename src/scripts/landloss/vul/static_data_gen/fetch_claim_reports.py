@@ -242,7 +242,11 @@ def choose_report(subproject_dir: Path) -> tuple[Path, Path] | None:
     """
     issued = subproject_dir / ISSUED_DOCUMENTS
     working = next(
-        (subproject_dir / name for name in WORKING_MATERIAL if (subproject_dir / name).is_dir()),
+        (
+            subproject_dir / name
+            for name in WORKING_MATERIAL
+            if (subproject_dir / name).is_dir()
+        ),
         None,
     )
     steps = []
@@ -326,7 +330,9 @@ def slim_cache(assets_dir: Path | None = None) -> tuple[int, int]:
         The reports slimmed, and the bytes freed.
     """
     slimmed = freed = 0
-    for index_file in sorted((assets_dir or CLAIM_REPORTS_ASSETS_DIR).glob("*/" + INDEX_NAME)):
+    for index_file in sorted(
+        (assets_dir or CLAIM_REPORTS_ASSETS_DIR).glob("*/" + INDEX_NAME)
+    ):
         index = read_index(index_file)
         changed = False
         for name, row in index.items():
@@ -425,9 +431,7 @@ def index_subproject(
         source_folder=folder.name,
         last_modified=modified.strftime("%Y-%m-%d"),
         cached_path=repo_relative(cached) if cached is not None else "",
-        fetched_at=(
-            datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M") if fetch else ""
-        ),
+        fetched_at=(datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M") if fetch else ""),
     )
 
 
@@ -459,15 +463,15 @@ def write_index(path: Path, rows: dict[str, IndexRow]) -> None:
     """Write the index, in subproject order."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=[field.name for field in fields(IndexRow)])
+        writer = csv.DictWriter(
+            f, fieldnames=[field.name for field in fields(IndexRow)]
+        )
         writer.writeheader()
         for name in sorted(rows):
             writer.writerow(asdict(rows[name]))
 
 
-def subproject_dirs(
-    project_dir: Path, wanted: list[str] | None = None
-) -> list[Path]:
+def subproject_dirs(project_dir: Path, wanted: list[str] | None = None) -> list[Path]:
     """Return the project's subproject folders, in order.
 
     Args:
@@ -557,6 +561,31 @@ def choose_across(copies: list[Path]) -> tuple[Path, Path] | None:
     return (docx or chosen or [None])[0]
 
 
+def gather_copies(
+    project_dirs: list[Path], wanted: list[str] | None
+) -> dict[str, list[Path]]:
+    """Return each subproject's folders across the project's roots, by name."""
+    copies: dict[str, list[Path]] = {}
+    for project_dir in project_dirs:
+        dirs = subproject_dirs(project_dir, wanted)
+        print(f"{len(dirs):,} subproject folders under {project_dir}")
+        for subproject_dir in dirs:
+            copies.setdefault(subproject_dir.name, []).append(subproject_dir)
+    return copies
+
+
+def describe(row: IndexRow) -> str:
+    """Return the line a run prints for one subproject."""
+    if row.status != FETCHED:
+        return row.status
+    notes = ["final" if row.is_final else "NOT marked final"]
+    if row.is_draft:
+        notes.append("DRAFT")
+    if row.source_folder != ISSUED_DOCUMENTS:
+        notes.append(f"from {row.source_folder}")
+    return f"{row.report_name} ({', '.join(notes)}, {row.last_modified})"
+
+
 def fetch(
     project: str,
     *,
@@ -585,13 +614,7 @@ def fetch(
     out = out or index_path(str(int(project)))
     project_dirs = find_project_dirs(project, project_roots)
     index = read_index(out)
-    # Each subproject's copies across the roots, in folder order.
-    copies: dict[str, list[Path]] = {}
-    for project_dir in project_dirs:
-        dirs = subproject_dirs(project_dir, wanted)
-        print(f"{len(dirs):,} subproject folders under {project_dir}")
-        for subproject_dir in dirs:
-            copies.setdefault(subproject_dir.name, []).append(subproject_dir)
+    copies = gather_copies(project_dirs, wanted)
 
     fetched = 0
     since_saved = 0
@@ -609,19 +632,8 @@ def fetch(
                 continue
             index[row.subproject] = row
             since_saved += 1
-            if row.status == FETCHED:
-                fetched += 1
-                final = "final" if row.is_final else "NOT marked final"
-                if row.is_draft:
-                    final += ", DRAFT"
-                if row.source_folder != ISSUED_DOCUMENTS:
-                    final += f", from {row.source_folder}"
-                print(
-                    f"  {row.subproject}: {row.report_name} "
-                    f"({final}, {row.last_modified})"
-                )
-            else:
-                print(f"  {row.subproject}: {row.status}")
+            fetched += row.status == FETCHED
+            print(f"  {row.subproject}: {describe(row)}")
             if not dry_run and since_saved >= CHECKPOINT_EVERY:
                 write_index(out, index)
                 since_saved = 0
@@ -673,7 +685,9 @@ def wanted_by_programme(
         grouped.setdefault(project, []).append(sub)
     if programmes:
         keep = {str(int(number)) for number in programmes}
-        grouped = {project: subs for project, subs in grouped.items() if project in keep}
+        grouped = {
+            project: subs for project, subs in grouped.items() if project in keep
+        }
     return grouped
 
 
@@ -747,8 +761,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--study-area-only",
         action="store_true",
-        help="with --claims-list, keep only claims inside the four study "
-        "authorities",
+        help="with --claims-list, keep only claims inside the four study authorities",
     )
     parser.add_argument(
         "--subprojects",

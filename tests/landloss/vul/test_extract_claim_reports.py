@@ -13,6 +13,7 @@ from xml.sax.saxutils import escape
 import pytest
 
 from scripts.landloss.vul.static_data_gen import extract_claim_reports as ecr
+from scripts.landloss.vul.static_data_gen import fetch_claim_reports as fcr
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 
@@ -249,7 +250,9 @@ REPORT_2016 = [
     paragraph("Collapse of 4 m length of RTW 2."),
     paragraph("EQC Considerations"),
     paragraph("Potential Remedial Works"),
-    paragraph("removing the damaged wall and constructing a timber pole retaining wall:"),
+    paragraph(
+        "removing the damaged wall and constructing a timber pole retaining wall:"
+    ),
     paragraph("4 m long wall;"),
     paragraph("1.2 m  maximum retained height;"),
     paragraph("Summary of Information"),
@@ -338,7 +341,9 @@ def test_rain_is_told_from_an_earthquake(extracted):
 def blocks(*items: str | tuple[str, ...]) -> list[ecr.Block]:
     """Build blocks directly: a string is a paragraph, a tuple a table row."""
     return [
-        ecr.Block(" | ".join(item), item) if isinstance(item, tuple) else ecr.Block(item)
+        ecr.Block(" | ".join(item), item)
+        if isinstance(item, tuple)
+        else ecr.Block(item)
         for item in items
     ]
 
@@ -414,8 +419,6 @@ def test_an_unnumbered_wall_and_a_replacement_in_another_material_are_read():
 def test_a_claims_list_is_extracted_across_projects_with_its_coordinates(
     tmp_path, monkeypatch
 ):
-    from scripts.landloss.vul.static_data_gen import fetch_claim_reports as fcr
-
     assets = tmp_path / "assets"
     monkeypatch.setattr(fcr, "CLAIM_REPORTS_ASSETS_DIR", assets)
     document = f"<w:document {NS}><w:body>{''.join(REPORT)}</w:body></w:document>"
@@ -465,8 +468,10 @@ def test_a_claims_list_is_extracted_across_projects_with_its_coordinates(
             None,
         ),
         (
-            "Construct an anchored 3.0 m long, 2.5 m high sprayed concrete "
-            "retaining wall.",
+            (
+                "Construct an anchored 3.0 m long, 2.5 m high sprayed concrete "
+                "retaining wall."
+            ),
             "anchored sprayed concrete",
             3.0,
             2.5,
@@ -529,15 +534,19 @@ def several_landslips() -> ecr.Extracted:
             ("New inundation", "Nil", "1 m2", "Nil"),
             ("Retaining Walls within 8 m of Dwelling or Appurtenant Structure", ""),
             (
-                "Retaining wall 1 – 160 mm dia SED timber poles at 2 m centres; "
-                "up to 800 mm retained height:",
+                (
+                    "Retaining wall 1 – 160 mm dia SED timber poles at 2 m centres; "
+                    "up to 800 mm retained height:"
+                ),
                 "",
             ),
             ("Damaged: (face area - m2);", "2 m2", "2 m2", "Nil"),
             ("At imminent risk: (face area - m2);", "Included above", "Nil", "Nil"),
             (
-                "Retaining wall 2 – 160 mm dia SED timber poles at 2.2 m centres; "
-                "up to 850 mm retained height:",
+                (
+                    "Retaining wall 2 – 160 mm dia SED timber poles at 2.2 m centres; "
+                    "up to 850 mm retained height:"
+                ),
                 "",
             ),
             ("Damaged: (face area - m2);", "Nil", "Nil", "2 m2"),
@@ -678,7 +687,13 @@ def test_the_access_way_block_does_not_overwrite_the_claims_own_areas():
             ("Area of insured land damaged on or supporting main access way:", ""),
             ("Evacuated:", "Nil"),
             ("Inundated:", "Nil"),
-            ("Area of insured land at imminent risk on or supporting main access way:", ""),
+            (
+                (
+                    "Area of insured land at imminent risk on or supporting main "
+                    "access way:"
+                ),
+                "",
+            ),
             ("Evacuation:", "Included in areas above"),
             ("New Inundation:", "Nil"),
             ("Re-inundation:", "Nil"),
@@ -748,7 +763,13 @@ def test_totals_add_the_access_way_to_the_land_by_the_dwelling():
             ("Evacuated:", "0.5 m2"),
             ("Inundated:", "0.5 m2"),
             ("Main access way within 60 m of dwelling", ""),
-            ("Insured area of insured land damaged on or supporting main access way:", ""),
+            (
+                (
+                    "Insured area of insured land damaged on or supporting main "
+                    "access way:"
+                ),
+                "",
+            ),
             ("Inundated:", "8.0 m2"),
             "Applicability",
         )
@@ -789,7 +810,132 @@ def test_damage_only_on_the_access_way_still_totals():
         ("A Person, Lot 2 DP 12345, Example Road", "Lot 2 DP 12345, Example Road"),
         ("A Person, Example Road, Suburb", "Example Road, Suburb"),
         ("35A Example Drive, Tawa", "35A Example Drive, Tawa"),
+        ("An Example Family 128 Trust, 84 Example Road", "84 Example Road"),
+        ("Example Trust No.2, 37 Example Street, Suburb", "37 Example Street, Suburb"),
+        ("A Person 1 Example Street, #3, Suburb", "1 Example Street, #3, Suburb"),
+        ("Body Corporate 12345, 5 & 5A Example Terrace", "5 & 5A Example Terrace"),
+        ("Unit 8, 30 Example Street, Suburb", "Unit 8, 30 Example Street, Suburb"),
+        ("FLAT 1 9A Example Street, Suburb", "FLAT 1 9A Example Street, Suburb"),
     ],
 )
 def test_the_claimants_name_is_taken_off_the_address(line, address):
     assert ecr.site_address(line) == address
+
+
+@pytest.fixture(scope="module")
+def nhi_act() -> ecr.Extracted:
+    """A report on the NHI Act template, with its unfilled example wall block."""
+    return ecr.extract(
+        blocks(
+            "Job No: 1501000.9999",
+            "25 November 2025",
+            "C/- Example Project Services Limited",
+            "By Email",
+            "Claim for Natural Hazard (Landslide) Damage",
+            "A Person and B Person, 330 Example Esplanade, Suburb, Wellington, 6023",
+            "Claim Number P000000000 L",
+            "This claim relates to a landslide that occurred in June 2025 following "
+            "a period of heavy rainfall.",
+            "The damage to the insured property consists of an 8 m wide landslide.",
+            "Assessed under the Natural Hazards Insurance Act 2023.",
+            "Summary of damage information",
+            ("Is this natural hazard damage?", "Yes (Landslide)"),
+            ("Land within 8 m of dwelling or appurtenant structures", "Yes"),
+            ("Area of insured land damaged:", ""),
+            ("Evacuated:", "Nil"),
+            ("Inundated on land:", "130 m2 / 210 m3"),
+            ("Area of insured land subject to imminent damage:", ""),
+            ("Evacuation:", "Nil"),
+            ("New inundation:", "12 m2 / 6 m3"),
+            ("Re-inundation on land:", "130 m2 / 40 m3"),
+            ("Main access way within 60 m of dwelling", "NA"),
+            (
+                (
+                    "Retaining walls supporting or protecting insured buildings and/or "
+                    "land located within 60 m of dwelling (or an appurtenant structure)"
+                ),
+                "NA**",
+            ),
+            ("Timber pole retaining wall – 200 mm diameter poles at 2 m centres:", ""),
+            ("Whole wall length:", "m"),
+            ("Retained height:", "m to m"),
+            ("Damaged: (insured face area):", "m2"),
+            ("Dwelling and appurtenant structure(s)", ""),
+            "Applicability",
+        )
+    )
+
+
+def test_the_nhi_act_template_is_read(nhi_act):
+    report = nhi_act.report
+    assert report["claim_type"] == "Landslide"
+    assert report["report_kind"] == "land"
+    assert report["claim_accepted"] is True
+    assert report["evacuated_m2"] == 0.0
+    assert report["inundated_m2"] == pytest.approx(130.0)
+    assert report["inundated_volume_m3"] == pytest.approx(210.0)
+    assert report["imminent_new_inundation_m2"] == pytest.approx(12.0)
+    assert report["imminent_reinundation_m2"] == pytest.approx(130.0)
+    assert report["missing"] == ""
+
+
+def test_an_unfilled_template_wall_block_is_not_a_wall(nhi_act):
+    assert nhi_act.walls == []
+    assert nhi_act.report["n_walls"] == 0
+
+
+def test_a_structural_report_is_labelled_as_one():
+    header = ecr.read_header(
+        blocks(
+            "Job No: 1502000.9999",
+            "Claim for Natural Hazard (Landslide) Structural Assessment",
+            "A Person, 18 Example Grove, Suburb, Lower Hutt",
+        )
+    )
+    assert header["claim_type"] == "Landslide"
+    assert header["report_kind"] == "structural"
+    assert header["address"] == "18 Example Grove, Suburb, Lower Hutt"
+
+
+def test_walls_in_a_table_after_the_summary_are_read():
+    result = ecr.extract(
+        blocks(
+            "Property Damage",
+            "Damage to a 4.5 m length of RTW1.",
+            "Damage to a 4.4 m length of RTW2.",
+            "NHCover considerations",
+            "Summary of damage information",
+            ("Is this natural hazard damage?", "Yes (Landslide)"),
+            ("Area of insured land damaged:", "", "", ""),
+            ("Evacuated:", "13 m2", "", ""),
+            ("Refer to retaining wall summary information below", "NA", "Yes", "NA"),
+            "*To be assessed by the cost estimator",
+            ("Dwelling", "Shared Land", "Flat 1 & 2", "Flat 3"),
+            (
+                "Retaining walls supporting or protecting insured land",
+                "NA",
+                "Yes",
+                "NA",
+            ),
+            ("Retaining Wall 1 (RTW1) – Cement mortar boulder wall", "", "", ""),
+            ("Whole wall length:", "", "8.2 m", ""),
+            ("Retained height:", "", "0.8 m", ""),
+            ("Damaged: (insured face area):", "", "3.6 m2", ""),
+            ("Imminent damage: (insured face area):", "", "Nil", ""),
+            ("Retaining Wall 2 – Metal pole timber lagged wall", "", "", ""),
+            ("Whole wall length:", "", "4.4 m", ""),
+            ("Damaged: (insured face area):", "", "4 m2", ""),
+            ("Construction access", "☐", "☒", "☐"),
+            ("TOTAL (Excluding GST)", "$ Nil *"),
+        )
+    )
+    first, second = result.walls
+    assert first["wall_number"] == 1
+    assert first["construction"] == "Cement mortar boulder wall"
+    assert first["whole_length_m"] == pytest.approx(8.2)
+    assert first["retained_height_m"] == pytest.approx(0.8)
+    assert first["damaged_face_m2"] == pytest.approx(3.6)
+    assert first["damaged_length_m"] == pytest.approx(4.5)
+    assert second["construction"] == "Metal pole timber lagged wall"
+    assert second["damaged_length_m"] == pytest.approx(4.4)
+    assert result.report["n_walls"] == 2
