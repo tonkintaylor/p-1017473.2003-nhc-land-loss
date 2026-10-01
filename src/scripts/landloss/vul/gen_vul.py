@@ -59,6 +59,7 @@ def main(*, pilot, realisation_ids):
                     drop_out_rates=liq_config.DROP_OUT_RATES,
                     evacuated_area_m2=liq_config.EVACUATED_AREA_M2,
                     inundated_share=liq_config.INUNDATED_SHARE,
+                    evacuated_overlap_share=liq_config.EVACUATED_OVERLAP_SHARE,
                 ),
             ),
             (

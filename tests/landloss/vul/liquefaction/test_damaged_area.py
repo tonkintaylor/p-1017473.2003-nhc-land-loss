@@ -1,7 +1,11 @@
 import numpy as np
 import pytest
 
-from landloss.vul.liquefaction.damaged_area import check_ranges, draw_damaged_areas
+from landloss.vul.liquefaction.damaged_area import (
+    check_ranges,
+    draw_damaged_areas,
+    liquefied_area_m2,
+)
 
 EVACUATED = {
     1: (0.0, 0.0),
@@ -90,3 +94,30 @@ def test_an_invalid_range_table_is_refused(ranges, upper):
 def test_mismatched_inputs_are_refused():
     with pytest.raises(ValueError, match="insured areas"):
         draw([3.0, 4.0], [500.0])
+
+
+def test_the_damaged_area_counts_the_overlap_once():
+    # 40 m2 evacuated, 30% of it (12 m2) under the 200 m2 inundated.
+    damaged = liquefied_area_m2([40.0], [200.0], [1_000.0], overlap_share=0.3)
+    assert damaged.tolist() == [pytest.approx(228.0)]
+
+
+def test_a_wholly_inundated_and_evacuated_property_is_damaged_once_over():
+    damaged = liquefied_area_m2([60.0], [500.0], [500.0], overlap_share=0.3)
+    assert damaged.tolist() == [500.0]
+
+
+def test_the_overlap_is_no_more_than_the_inundated_land():
+    # Nothing inundated, so nothing for the evacuated land to overlap.
+    damaged = liquefied_area_m2([10.0], [0.0], [500.0], overlap_share=0.3)
+    assert damaged.tolist() == [10.0]
+
+
+def test_no_ground_lost_is_no_damaged_area():
+    assert liquefied_area_m2([0.0], [0.0], [500.0], overlap_share=0.3).tolist() == [0.0]
+
+
+@pytest.mark.parametrize("share", [-0.1, 1.1])
+def test_an_overlap_share_outside_zero_to_one_is_refused(share):
+    with pytest.raises(ValueError, match="overlap_share"):
+        liquefied_area_m2([1.0], [1.0], [10.0], overlap_share=share)

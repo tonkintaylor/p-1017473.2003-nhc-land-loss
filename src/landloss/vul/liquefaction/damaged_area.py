@@ -18,7 +18,15 @@ table along with the repair rates they multiply (**T-57**).
 metres whatever the section's size, but ejecta spreads over a fraction of it.
 So the evacuated draw is in m² and the inundated draw is scaled by the insured
 area. Each is capped at the insured area; the two may still sum to more than
-it, because they overlap, and how much is for the damaged area (**T-56**).
+it, because they overlap.
+
+**The damaged area adds them less the overlap, and never exceeds the insured
+land** (**T-56**). The share of the evacuated land taken to lie under the
+inundated land is an assumption -- 30% for now (**L-44**) -- held by the
+caller. The overlap cannot exceed the inundated land itself, and the total is
+capped at the insured area, so a property both wholly inundated and evacuated
+is damaged over its whole insured land and no more. That damaged area is what
+the land cover cap is valued over.
 
 **One pair of uniform numbers is drawn per property, whatever its state**, so a
 changed range, or the hazard grid's reach, does not reshuffle the draws of the
@@ -31,6 +39,7 @@ import numpy as np
 
 EVACUATED_AREA_COLUMN = "evacuated_area_m2"
 INUNDATED_AREA_COLUMN = "inundated_area_m2"
+DAMAGED_AREA_COLUMN = "damaged_area_m2"
 
 # The land damage states a range must be given for: 1 None to 6 Very severe.
 STATES = tuple(range(1, 7))
@@ -125,3 +134,40 @@ def draw_damaged_areas(
     evacuated = _uniform_within(values, known, evacuated_m2, u[0])
     inundated = _uniform_within(values, known, inundated_share, u[1]) * area
     return np.minimum(evacuated, area), np.minimum(inundated, area)
+
+
+def liquefied_area_m2(
+    evacuated_m2: np.ndarray,
+    inundated_m2: np.ndarray,
+    insured_area_m2: np.ndarray,
+    overlap_share: float,
+) -> np.ndarray:
+    """Return the insured land damaged by liquefaction, counting overlap once.
+
+    Args:
+        evacuated_m2: The evacuated area per property.
+        inundated_m2: The inundated area per property.
+        insured_area_m2: The insured land area per property.
+        overlap_share: The share of the evacuated land taken to lie under the
+            inundated land, 0 to 1.
+
+    Returns:
+        ``evacuated + inundated - overlap`` per property, where the overlap is
+        ``overlap_share`` of the evacuated land but no more than the inundated
+        land, capped at the insured area.
+
+    Raises:
+        ValueError: If ``overlap_share`` is outside 0 to 1, or an area is
+            negative.
+    """
+    if not 0.0 <= overlap_share <= 1.0:
+        msg = f"overlap_share must lie between 0 and 1, got {overlap_share}"
+        raise ValueError(msg)
+    evacuated = np.asarray(evacuated_m2, dtype=float)
+    inundated = np.asarray(inundated_m2, dtype=float)
+    area = np.asarray(insured_area_m2, dtype=float)
+    if (evacuated < 0).any() or (inundated < 0).any() or (area < 0).any():
+        msg = "areas must not be negative"
+        raise ValueError(msg)
+    overlap = np.minimum(overlap_share * evacuated, inundated)
+    return np.minimum(evacuated + inundated - overlap, area)

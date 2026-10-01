@@ -44,8 +44,10 @@ inundated area, drawn uniformly within its state's ranges in
 ``config.EVACUATED_AREA_M2`` and ``config.INUNDATED_SHARE`` -- judgement, to be
 tuned with the repair rates (L-39, T-57). They are drawn from a stream of their
 own, so switching the drop-out on does not move them, and are zero wherever
-`ld_state` is null. Nothing downstream reads them yet; costing from them, and
-valuing the cap over the damaged area, is T-56 and T-57.
+`ld_state` is null. Their sum less the overlap -- ``config.EVACUATED_OVERLAP_SHARE``
+of the evacuated land, an assumption to be verified (L-44) -- capped at the
+insured area, is `damaged_area_m2`, which the loss module values the land cover
+cap over (T-56). The cost is still the Canterbury lookup until T-57.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -69,10 +71,12 @@ from landloss.vul.liquefaction.costs import (
     load_ld_costs,
 )
 from landloss.vul.liquefaction.damaged_area import (
+    DAMAGED_AREA_COLUMN,
     EVACUATED_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,
     check_ranges,
     draw_damaged_areas,
+    liquefied_area_m2,
 )
 from landloss.vul.liquefaction.drop_out import check_drop_out_rates, draw_claims
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
@@ -152,7 +156,12 @@ def describe_damage(damage, properties, percentile, *, apply_drop_out):
         print(RULE)
         print("Ground lost per claim, by land damage state (mean m2):")
         areas = claims.groupby([STATE_COLUMN, "state_name"])[
-            [EVACUATED_AREA_COLUMN, INUNDATED_AREA_COLUMN, "area_m2"]
+            [
+                EVACUATED_AREA_COLUMN,
+                INUNDATED_AREA_COLUMN,
+                DAMAGED_AREA_COLUMN,
+                "area_m2",
+            ]
         ].mean()
         print(areas.round(1).to_string())
     total = damage["cost_nzd"].sum()
@@ -167,6 +176,7 @@ def main(
     drop_out_rates,
     evacuated_area_m2,
     inundated_share,
+    evacuated_overlap_share,
 ):
     """Write the liquefaction land damage per property, per realisation."""
     check_drop_out_rates(drop_out_rates)
@@ -209,6 +219,14 @@ def main(
             inundated_share,
             realisation_seed(constants.BASE_SEED, realisation_id, AREA_RNG_STREAM),
         )
+        evacuated = np.where(claimed, evacuated, 0.0)
+        inundated = np.where(claimed, inundated, 0.0)
+        damaged = liquefied_area_m2(
+            evacuated,
+            inundated,
+            insured["area_m2"].to_numpy(),
+            evacuated_overlap_share,
+        )
         hazard_states = pd.Series(sampled).astype("Int64")
         states = hazard_states.where(claimed)
         state_names = (
@@ -226,8 +244,9 @@ def main(
                 CLAIMED_COLUMN: claimed,
                 "state_name": state_names.to_numpy(),
                 "area_m2": insured["area_m2"].to_numpy(),
-                EVACUATED_AREA_COLUMN: np.where(claimed, evacuated, 0.0),
-                INUNDATED_AREA_COLUMN: np.where(claimed, inundated, 0.0),
+                EVACUATED_AREA_COLUMN: evacuated,
+                INUNDATED_AREA_COLUMN: inundated,
+                DAMAGED_AREA_COLUMN: damaged,
                 LAND_RATE_INCL_GST_COLUMN: insured[
                     LAND_RATE_INCL_GST_COLUMN
                 ].to_numpy(),
@@ -255,4 +274,5 @@ if __name__ == "__main__":
         drop_out_rates=config.DROP_OUT_RATES,
         evacuated_area_m2=config.EVACUATED_AREA_M2,
         inundated_share=config.INUNDATED_SHARE,
+        evacuated_overlap_share=config.EVACUATED_OVERLAP_SHARE,
     )

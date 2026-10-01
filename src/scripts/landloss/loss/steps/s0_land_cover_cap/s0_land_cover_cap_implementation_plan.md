@@ -23,9 +23,11 @@
 - [ ] Replace the beta flat wall rate with a real mapping from size class and
       condition onto a construction type. The rates span a factor of 21, so this
       moves the wall half of the cap more than anything else.
-- [ ] Confirm the damaged area reading: that a liquefaction state damages the
-      whole insured area, and that the maximum is the right combination where
-      both causes reach one polygon.
+- [x] Value liquefied land over the damaged area `vul` sends,
+      `Liq_LD_damaged_area`, rather than the whole insured area (**T-56**).
+- [ ] Confirm the overlap assumption inside that area -- 30% of the evacuated
+      land lying under the inundated (**L-44**) -- and that the maximum is the
+      right combination where both causes reach one polygon.
 
 ## Phase 3 — The settlement
 

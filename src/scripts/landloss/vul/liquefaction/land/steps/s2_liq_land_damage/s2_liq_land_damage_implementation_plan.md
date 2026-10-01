@@ -61,8 +61,10 @@ include non-claimants, and its rates are placeholders.
 - [x] Cap each at the insured area, and zero both where `ld_state` is null.
 - [x] Hold the ranges in `config.py` as `EVACUATED_AREA_M2` and
       `INUNDATED_SHARE`, flagged as judgement to be tuned (**L-39**, **T-57**).
-- [ ] Combine them into the damaged area, less the overlap, and hand it to the
-      land table for the cap (**T-56**).
+- [x] Combine them into the damaged area, less 30% of the evacuated as
+      overlap, capped at the insured area, and hand it to the land table as
+      `Liq_LD_damaged_area` for the cap (**T-56**).
+- [ ] Verify the overlap assumption (**L-44**).
 - [ ] Cost from the areas at repair rates per m² calibrated to the Canterbury
       table, replacing the lookup (**T-57**).
 

@@ -69,3 +69,13 @@ INUNDATED_SHARE = {
     5: (0.30, 1.00),  # Severe
     6: (0.30, 1.00),  # Very severe
 }
+
+# The share of a claim's evacuated land taken to lie under its inundated land,
+# so counted once in the damaged area the land cover cap is valued over (T-56):
+# damaged = evacuated + inundated - overlap_share * evacuated, the overlap no
+# more than the inundated land, the total no more than the insured land.
+#
+# ASSUMPTION, TO BE VERIFIED (L-44). Set by Perrie Gilbert on 2026-10-02 as 30%
+# of the evacuated land; how the 30% overlap agreed on 2026-09-30 is measured
+# has to be checked.
+EVACUATED_OVERLAP_SHARE = 0.3

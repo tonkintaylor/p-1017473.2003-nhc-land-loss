@@ -52,10 +52,14 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in its `config.py`, and each claim
   carries `evacuated_area_m2` and `inundated_area_m2`, each capped at the
   insured area. Nothing downstream reads them yet.
-- [ ] Take the **total damaged area** as evacuated plus inundated less a 30%
+- [x] Take the **total damaged area** as evacuated plus inundated less a 30%
   overlap between them, and value liquefied land in the land cover cap over
   that rather than over the whole insured area (**T-56**) -- the whole-area
-  reading gives caps that are much too high.
+  reading gives caps that are much too high. Done: the overlap is read as 30%
+  of the evacuated land, no more than the inundated, and the total is capped at
+  the insured area. Step 2 writes it as `damaged_area_m2`, and the land table
+  carries it to `loss` as `Liq_LD_damaged_area`. How the 30% is measured is an
+  assumption to be verified (**L-44**).
 - [ ] Set **repair rates** for inundated and evacuated liquefied land, chosen so
   the modelled costs roughly reproduce the Canterbury cost table, and add a
   **no-SVA flag** that raises the inundated rate, since the Canterbury clearing
@@ -112,10 +116,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 3. Gross the rates up for GST at the loss boundary. They arrive excluding it
    and the Act compares on a GST-inclusive basis.
 4. Run all three percentiles and report the portfolio total as a band.
-5. Value the cap over the damaged area (**T-56**), from the evacuated and
-   inundated areas step 2 now draws (**T-55**). Maxim Millen is revising the land
-   damage states themselves (**T-54**), which is where the two pieces of work
-   first meet.
+5. Maxim Millen is revising the land damage states themselves (**T-54**),
+   which the evacuated and inundated ranges (**T-55**) and the damaged area
+   (**T-56**) are keyed on, so the two pieces of work meet there.
 6. Set the inundated and evacuated repair rates against the Canterbury table,
    with the no-SVA flag (**T-57**).
 7. Tune the drop-out rates, the share of properties in each state that do not
@@ -148,6 +151,10 @@ on feedback rather than derived.
   `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in the same `config.py`. Judgement
   from the MBIE state descriptions, agreed 2026-09-30 (**L-39**), to be tuned
   with the repair rates against the Canterbury table (**T-57**).
+- **Share of the evacuated land overlapping the inundated land**,
+  `EVACUATED_OVERLAP_SHARE` in the same `config.py`. 30%, an assumption by
+  Perrie Gilbert on 2026-10-02 about how the 30% overlap agreed on 2026-09-30
+  is measured; to be verified (**L-44**).
 
 ## Open decisions
 

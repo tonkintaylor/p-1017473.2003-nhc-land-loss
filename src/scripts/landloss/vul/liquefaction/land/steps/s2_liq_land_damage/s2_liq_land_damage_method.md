@@ -53,13 +53,20 @@
   - Evacuated is drawn in m², because cracking is a few metres whatever the
     section's size; inundated is drawn as a share and multiplied by the insured
     area, because ejecta spreads over a fraction of it. Each is capped at the
-    insured area. They may sum to more than it, since they overlap; the
-    damaged area is **T-56**.
+    insured area. They may sum to more than it, since they overlap.
+  - **The damaged area counts the overlap once** (**T-56**):
+    `damaged_area_m2` is evacuated plus inundated less
+    `EVACUATED_OVERLAP_SHARE` of the evacuated -- 30%, but no more than the
+    inundated land -- capped at the insured area, by
+    `landloss.vul.liquefaction.damaged_area.liquefied_area_m2`. A property
+    wholly inundated and evacuated is damaged over its insured land and no
+    more. The share is an assumption to be verified (**L-44**). The land table
+    carries it to `loss` as `Liq_LD_damaged_area`, which values the land cover
+    cap over it.
   - Both are zero wherever `ld_state` is null -- off the grid, or dropped out.
   - The ranges, `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in `config.py`, are
     judgement from the MBIE state descriptions (**L-39**), to be tuned with the
-    repair rates (**T-57**). Nothing downstream reads the areas yet; the cost
-    is still the Canterbury lookup.
+    repair rates (**T-57**). The cost is still the Canterbury lookup.
 - Costs are looked up, not modelled, by `landloss.vul.liquefaction.costs`. They
   are what NHC settled for land damage after the 2010 and 2011 Canterbury
   earthquakes, grouped by the damage state surveyed on the ground, and shipped

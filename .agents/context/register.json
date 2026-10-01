@@ -446,7 +446,7 @@
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Land Model Catch Up 2026-09-30",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-57",
@@ -819,6 +819,13 @@
     {
       "ID": "L-43",
       "Limitation": "Until claimant-only costs arrive (T-65), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-44",
+      "Limitation": "The liquefied damaged area takes 30% of the evacuated land as lying under the inundated land (no more than the inundated area itself), so damaged = evacuated + inundated - 0.3 x evacuated, capped at the insured area. This is an assumption about how the 30% overlap agreed on 2026-09-30 is measured, held as EVACUATED_OVERLAP_SHARE in the s2_liq_land_damage config, and is to be verified.",
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Open"

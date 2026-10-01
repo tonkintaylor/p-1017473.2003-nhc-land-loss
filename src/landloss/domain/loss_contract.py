@@ -29,6 +29,10 @@ LIQ_LD_STATE_COLUMN = "Liq_LD_state"
 # GST**, which is how the Canterbury rates are stated; the basis is in the name
 # because nothing else in the table says it and grossing up twice is silent.
 LIQ_LD_COST_COLUMN = "Liq_LD_cost_excl_gst_nzd"
+# The insured area liquefaction damaged -- evacuated plus inundated, less their
+# overlap, no more than the polygon -- which the land cover cap is valued over
+# (T-56). Zero where the polygon carries no state.
+LIQ_LD_AREA_COLUMN = "Liq_LD_damaged_area"
 TOTAL_INSURED_LAND_AREA_COLUMN = "total_insured_land_area"
 LANDSLIDE_AREA_COLUMN = "land_slide_total_insured_land_area"
 INUNDATED_AREA_COLUMN = "inundated_insured_area"
@@ -52,6 +56,7 @@ LAND_COLUMNS = (
     MARKET_VALUE_COLUMN,
     LIQ_LD_STATE_COLUMN,
     LIQ_LD_COST_COLUMN,
+    LIQ_LD_AREA_COLUMN,
     TOTAL_INSURED_LAND_AREA_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,

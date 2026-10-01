@@ -35,20 +35,22 @@
 - Walls are summed over the claim before the sub-cap applies, because the
   sub-cap limits a claim's walls together rather than each wall on its own.
 
-## The damaged area, which the two causes measure differently
+## The damaged area, from both causes
 
 - Landslide damage arrives as an area, `land_slide_total_insured_land_area`,
   already unioned over the evacuated and inundated footprints by vul step 3.
-- Liquefaction damage arrives as a **state** sampled at the property, with no
-  area at all. This step reads a damaging state as damaging the polygon's
-  **whole insured area**, on the grounds that the Canterbury cost rates the
-  state indexes are per property. State 1 is "None" and is not damage; a missing
-  state is not damage either.
+- Liquefaction damage arrives as an area too, `Liq_LD_damaged_area` (**T-56**):
+  the evacuated land plus the inundated land drawn for the claim's state, less
+  the share of the evacuated taken to lie under the inundated -- 30%, an
+  assumption to be verified (**L-44**) -- and no more than the polygon's insured
+  area. It is zero where the polygon has no state: off the grid, None, or not
+  claimed.
 - The two are combined with a **maximum, not a sum**. Ground both liquefied and
   buried is one piece of damaged ground, and adding would value some of it
   twice. The maximum is exact where one cause reaches all the ground the other
-  did, and conservative otherwise.
-- **Neither the reading nor the combination is confirmed.** They are the first
+  did; where they lie on different parts of the polygon it undercounts, by at
+  most the smaller of the two.
+- **The overlap and the combination are not confirmed.** They are the first
   thing to revisit if the land numbers look wrong.
 
 ## What the cap currently cannot count
