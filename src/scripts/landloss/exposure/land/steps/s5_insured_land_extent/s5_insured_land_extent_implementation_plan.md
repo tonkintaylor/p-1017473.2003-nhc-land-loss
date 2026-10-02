@@ -35,6 +35,11 @@ dwelling count, both at module level, and `s2` is the land value.
 - [x] Combine the driveway with the 8 metre buffer before the extent is clipped,
       so the part on the road reserve is removed with everything else outside
       the property.
+- [x] Route one main access way per property, from its largest building,
+      rather than one per building part (T-60).
+- [x] Insure only the first 60 m of the route from the dwelling, keeping the
+      full route length for the loss module's construction access rating
+      (T-61).
 - [ ] Decide the gradient above which a generated route is not a credible
       driveway, and what happens to a building with no route below it.
 

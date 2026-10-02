@@ -11,10 +11,26 @@ this engagement, so they are generated. This resolves **I-10**, which proposed
 mapping them by remote sensing: the geometry here is free and immediate, where
 remote sensing would be neither.
 
-A driveway is taken as the **straight line from the building to the nearest
-point on the nearest road**, given a width. That is the shortest path in the
-plane, which is what the approach says, and it is worth being clear about what
-it therefore is not:
+A driveway is taken as the **straight line from the property's main building to
+the nearest point on the nearest road**, given a width, and **only its first
+60 m is insured land**.
+
+Both limits are the Act's. Land cover extends to the main access way, so a
+property has one: it is routed from the property's largest building, taken as
+the main dwelling, and a garage, a shed or a second dwelling on the same
+property adds none. And the access way is covered within 60 m of the dwelling,
+measured in a straight horizontal line from it (the dwelling, not the boundary),
+so a route longer than that is cut at 60 m. Whether a second dwelling on the
+same property earns an access way of its own is register question Q-15, put to
+John Leeves; until it is answered, one per property.
+
+The route is still measured to the road in full, and carried as
+:data:`DRIVEWAY_LENGTH_COLUMN`, because how far the dwelling is from a road is
+what the loss module's construction access rating reads. The insured part is
+:data:`INSURED_DRIVEWAY_LENGTH_COLUMN`, and it is the part the corridor covers.
+
+The straight route is the shortest path in the plane, which is what the approach
+says, and it is worth being clear about what it therefore is not:
 
 - A real driveway bends around the house, the bank and the neighbour's fence,
   so a generated one is shorter than the real thing and in the wrong place along
@@ -48,7 +64,13 @@ DRIVEWAY_HALF_WIDTH_M = 1.5
 # a real thing and this study's extent includes some.
 MAX_DRIVEWAY_LENGTH_M = 300.0
 
+# The Act's limit: the main access way is insured land within 60 m of the
+# dwelling, in a straight horizontal line from it.
+MAX_INSURED_ACCESS_M = 60.0
+
+# The full route from the main building to the road, and the insured part of it.
 DRIVEWAY_LENGTH_COLUMN = "driveway_length_m"
+INSURED_DRIVEWAY_LENGTH_COLUMN = "insured_driveway_length_m"
 
 
 def nearest_road_points(
@@ -87,30 +109,66 @@ def nearest_road_points(
     return on_building, on_road, on_building.distance(on_road).to_numpy()
 
 
+def main_buildings(
+    buildings: gpd.GeoDataFrame, *, id_column: str = CLAIM_ID_COLUMN
+) -> gpd.GeoDataFrame:
+    """Return each property's main building: its largest.
+
+    The main access way runs to the dwelling, and on a residential section the
+    dwelling is the largest building; a garage, a shed or a sleep-out is smaller.
+    On a property with two houses this picks the larger, which is the one access
+    way the Act covers until Q-15 says otherwise.
+
+    Args:
+        buildings: The building parts, carrying ``id_column``.
+        id_column: The property identifier.
+
+    Returns:
+        One building per property, the largest by footprint area, ties going to
+        the first.
+    """
+    if buildings.empty:
+        return buildings
+    # By position rather than label, so a frame whose index repeats -- parts
+    # concatenated from several sources -- cannot return more than one per id.
+    indexed = buildings.reset_index(drop=True)
+    largest = indexed.geometry.area.groupby(indexed[id_column]).idxmax()
+    return indexed.loc[largest.to_numpy()]
+
+
 def generate_driveways(
     buildings: gpd.GeoDataFrame,
     roads: gpd.GeoDataFrame,
     *,
     half_width_m: float = DRIVEWAY_HALF_WIDTH_M,
     max_length_m: float = MAX_DRIVEWAY_LENGTH_M,
+    insured_length_m: float = MAX_INSURED_ACCESS_M,
     id_column: str = CLAIM_ID_COLUMN,
 ) -> gpd.GeoDataFrame:
-    """Generate a driveway corridor per building.
+    """Generate one main access way per property.
+
+    Routed from the property's main building (:func:`main_buildings`) to the
+    nearest road, and cut at ``insured_length_m`` from the building: the part
+    of the access way the Act insures.
 
     Args:
-        buildings: The building outlines, already attached to an address and
-            carrying ``id_column``.
+        buildings: The building outlines, already attached to a property and
+            carrying ``id_column``. Every building of a property may be passed;
+            only the main one is routed.
         roads: The road centrelines over the same extent.
         half_width_m: Half the width of the driveway corridor.
         max_length_m: Beyond this, a building is taken to have no road to reach.
-        id_column: The address identifier carried onto each driveway.
+        insured_length_m: How much of the route, from the building, is insured.
+        id_column: The property identifier carried onto each driveway.
 
     Returns:
-        One row per building that reached a road, carrying ``id_column``,
-        :data:`DRIVEWAY_LENGTH_COLUMN` and the corridor polygon. A building
-        already touching a road gets a corridor of zero length and so no
-        polygon; those rows are dropped, because the building buffer already
-        covers that ground.
+        At most one row per property, carrying ``id_column``,
+        :data:`DRIVEWAY_LENGTH_COLUMN` (the full route to the road),
+        :data:`INSURED_DRIVEWAY_LENGTH_COLUMN` (the part within
+        ``insured_length_m``) and the corridor polygon over the insured part. A
+        main building already touching a road gets a corridor of zero length
+        and so no polygon; those rows are dropped, because the building buffer
+        already covers that ground.
 
     Raises:
         ValueError: If the buildings carry no ``id_column``.
@@ -118,28 +176,31 @@ def generate_driveways(
     if id_column not in buildings.columns:
         msg = f"buildings carry no {id_column!r} column"
         raise ValueError(msg)
+    empty = gpd.GeoDataFrame(
+        {id_column: [], DRIVEWAY_LENGTH_COLUMN: [], INSURED_DRIVEWAY_LENGTH_COLUMN: []},
+        geometry=gpd.GeoSeries([], crs=buildings.crs),
+        crs=buildings.crs,
+    )
     if buildings.empty:
-        return gpd.GeoDataFrame(
-            {id_column: [], DRIVEWAY_LENGTH_COLUMN: []},
-            geometry=gpd.GeoSeries([], crs=buildings.crs),
-            crs=buildings.crs,
-        )
+        return empty
 
+    buildings = main_buildings(buildings, id_column=id_column)
     on_building, on_road, distance = nearest_road_points(buildings, roads)
 
     # A building already on a road has nothing to draw, and one too far from any
     # road is taken not to reach one at all.
     reaches = (distance > 0) & (distance <= max_length_m)
     if not reaches.any():
-        return gpd.GeoDataFrame(
-            {id_column: [], DRIVEWAY_LENGTH_COLUMN: []},
-            geometry=gpd.GeoSeries([], crs=buildings.crs),
-            crs=buildings.crs,
-        )
+        return empty
 
+    # Cut at the insured length, measured from the building along the straight
+    # route, which is a straight horizontal line from the dwelling.
+    insured = np.minimum(distance[reaches], insured_length_m)
     lines = [
-        LineString([start, end])
-        for start, end in zip(on_building[reaches], on_road[reaches], strict=True)
+        LineString([start, LineString([start, end]).interpolate(length)])
+        for start, end, length in zip(
+            on_building[reaches], on_road[reaches], insured, strict=True
+        )
     ]
     corridors = gpd.GeoSeries(lines, crs=buildings.crs).buffer(
         half_width_m, cap_style="flat"
@@ -149,6 +210,7 @@ def generate_driveways(
         {
             id_column: buildings.loc[reaches, id_column].to_numpy(),
             DRIVEWAY_LENGTH_COLUMN: distance[reaches],
+            INSURED_DRIVEWAY_LENGTH_COLUMN: insured,
         },
         geometry=corridors.to_numpy(),
         crs=buildings.crs,
@@ -208,22 +270,28 @@ def describe_driveways(
 
     Args:
         driveways: The generated corridors.
-        attached: How many attached outlines they were generated from. One
-            outline shared between several addresses is routed once per address,
-            so this is a count of building-address pairs and not of buildings.
+        attached: How many properties with a building they were generated for:
+            one main access way is routed per property.
 
     Returns:
-        The count, the share of attached outlines that reached a road, and the
-        length quartiles in metres.
+        The count, the share of those properties that reached a road, the share
+        whose route was cut at the insured length, and the route length
+        quartiles in metres.
     """
     lengths = driveways[DRIVEWAY_LENGTH_COLUMN].to_numpy(dtype=float)
     if lengths.size == 0:
-        return pd.Series({"driveways": 0, "share of attached outlines": 0.0})
+        return pd.Series({"driveways": 0, "share of properties": 0.0})
     quartiles = np.percentile(lengths, [0, 25, 50, 75, 100])
+    cut = (
+        driveways[INSURED_DRIVEWAY_LENGTH_COLUMN].to_numpy(dtype=float) < lengths
+        if INSURED_DRIVEWAY_LENGTH_COLUMN in driveways.columns
+        else np.zeros(len(lengths), dtype=bool)
+    )
     return pd.Series(
         {
             "driveways": len(lengths),
-            "share of attached outlines": len(lengths) / attached if attached else 0.0,
+            "share of properties": len(lengths) / attached if attached else 0.0,
+            "share cut at the insured length": float(cut.mean()),
             "min length m": quartiles[0],
             "25% length m": quartiles[1],
             "median length m": quartiles[2],

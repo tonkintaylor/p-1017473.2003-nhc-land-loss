@@ -144,15 +144,14 @@ polygon now includes the driveway and is cut to the property boundary.
    built (`steps/s2_land_value/s2_build_accessibility.py`), and so is Phase 4:
    sea view, distance to the coast and winter sun
    (`steps/s2_land_value/s3_build_amenity.py`).
-8. Generate one driveway per property, as its main access way, rather than one
-   per building (**T-60**). Reviewing the KML layers on 2026-10-01, parcel
-   3989118 carried two driveways because it has two dwellings, and outbuildings
-   at the back of a section add more. The Act covers the main access way only;
-   whether a second dwelling earns its own is **Q-15**, for John Leeves.
-9. Cap the driveway at the Act's 60 m (**T-61**, Maxim Millen to confirm).
-   `MAX_DRIVEWAY_LENGTH_M` is 300 m and is a no-road threshold, not the 60 m
-   rule, so drives longer than 60 m reach the extent today. Only the part of a
-   driveway inside the property boundary counts.
+8. Done 2026-10-02: one driveway per property, routed from its largest
+   building as the main dwelling (**T-60**). Parcel 3989118, which carried two
+   because it has two dwellings, now carries one. Whether a second dwelling
+   earns its own is still **Q-15**, for John Leeves.
+9. Done 2026-10-02: only the first 60 m of the route from the dwelling is
+   insured (**T-61**). `MAX_DRIVEWAY_LENGTH_M`, 300 m, stays as the distance
+   beyond which a dwelling has no road to reach. Only the part of a driveway
+   inside the property boundary counts, as before.
 10. Check for a newer roading layer over the new subdivision off Yabby Creek
     Road (as transcribed), where missing roads make the generated driveways long
     (**T-62**). The same area has no property boundaries or addresses yet
