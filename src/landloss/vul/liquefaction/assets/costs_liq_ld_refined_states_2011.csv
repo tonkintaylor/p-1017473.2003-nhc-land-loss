@@ -1,0 +1,7 @@
+LD_refined_state,state_name,source_band,cost_15th_percentile_nzd,cost_50th_percentile_nzd,cost_85th_percentile_nzd
+1,None,none or 1,0,200,1000
+2,Minor,2 or 2.5,200,500,2000
+3,Moderate,3 or 3.5,500,1500,4000
+4,Major,4,1000,2500,6000
+5,Severe,5 or 6,1500,4000,8000
+6,Very Severe,5 or 6,1500,4000,8000

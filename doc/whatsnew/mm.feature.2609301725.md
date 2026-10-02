@@ -1,0 +1,1 @@
+Add `landloss.exposure.rw.wall_probability`, a probability of a retaining wall per insured property built from slope and adjusted by the GNS SLIDE mapped walls, cut slopes and fill bodies and the NLM landform class, with `gen_wall_probability.py` writing it and `gen_wall_population.py` drawing a realisation from it.

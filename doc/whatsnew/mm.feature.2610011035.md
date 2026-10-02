@@ -1,0 +1,1 @@
+Add `wellington-greywacke-strength.csv` and `wellington-greywacke-depth-to-rock.csv` to the packaged assets: effective strength, unit weight and undrained strength of Wellington greywacke and its soil mantle by weathering grade, and observed depths to weathered rock, compiled from published sources and T+T Wellington projects for the strength-based landslide model.

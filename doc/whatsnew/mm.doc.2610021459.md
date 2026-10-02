@@ -1,0 +1,1 @@
+Add a skeleton plan for anchoring and calibrating the urban slope fragilities, `.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, setting out the placeholder numbers, the anchors built, and six questions marked for the external reviewer to develop.

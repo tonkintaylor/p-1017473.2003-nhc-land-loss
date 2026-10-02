@@ -1,3 +1,7 @@
+# Research scripts are exploratory and unmaintained, so no hook checks them; see
+# "Research scripts" in AGENTS.md.
+exclude: ^src/scripts/(.+/)?research/
+
 repos:
   - repo: local
     hooks:
@@ -56,7 +60,10 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=100000]
       - id: trailing-whitespace
-        exclude: (.*\.sh|.*\.d2|.*\.md|.*\.drawio|.*egg-info.*|)$
+        # No trailing | before the closing bracket: that leaves an empty
+        # alternative, which matches every path, and the hook then silently
+        # checks nothing at all.
+        exclude: (.*\.sh|.*\.d2|.*\.md|.*\.drawio|.*egg-info.*)$
       - id: check-merge-conflict
         args: [--assume-in-merge]
 
@@ -76,6 +83,23 @@ repos:
         entry: uv run --frozen --offline deptry src
         language: system
         always_run: true
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      # Changelog fragments are `{initials}.{type}.{yymmddhhmm}.md` (see AGENTS.md).
+      # Catch the old numbered form, and a name missing its timestamp.
+      - id: whatsnew-fragment-name
+        name: whatsnew fragment name
+        entry: name changelog fragments {initials}.{type}.{yymmddhhmm}.md; see AGENTS.md
+        language: fail
+        files: ^doc/whatsnew/([0-9][^/]*|[a-z]+\.[a-z]+\.md)$
+      # A draft build rejects unknown initials and two fragments with the same name.
+      - id: towncrier-draft
+        name: towncrier draft
+        entry: uv run --frozen --offline python -X utf8 -m towncrier build --draft --version check
+        language: system
+        files: ^(doc/whatsnew/|pyproject\.toml$)
         pass_filenames: false
 default_install_hook_types:
   - pre-commit

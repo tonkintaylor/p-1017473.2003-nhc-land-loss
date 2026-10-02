@@ -7,6 +7,8 @@ Guidance for Claude Code when working in this repository.
 `landloss` — NHC land loss project (job number 1017473.2003). Python 3.13, managed
 with `uv`. Source lives in `src/landloss`, tests in `tests`.
 
+See instructions under AGENTS.md
+
 ## Always run the pre-commit hooks after making changes
 
 This repo uses [prek](https://github.com/j178/prek) (a drop-in pre-commit runner)
@@ -47,5 +49,8 @@ uv run --frozen pytest
 ## Changelog
 
 Any user-facing change needs a changelog entry: add
-`doc/whatsnew/{issue_num}.{entry_type}.md`, where `{entry_type}` is one of
-`feature`, `bugfix`, `doc`, `removal`, `newhome`, `test`, or `devconfig`.
+`doc/whatsnew/{initials}.{entry_type}.{yymmddhhmm}.md`, where `{initials}` are the
+committing developer's (`git config user.name`), `{yymmddhhmm}` is the current time, and
+`{entry_type}` is one of `feature`, `bugfix`, `doc`, `removal`, `newhome`, `test`, or
+`devconfig`. Never append to an existing fragment; write a new one. See "Changelog
+fragments" in AGENTS.md.

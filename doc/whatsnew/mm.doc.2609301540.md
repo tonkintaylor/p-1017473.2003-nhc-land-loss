@@ -1,0 +1,1 @@
+Add Townsend et al. (2020), the GNS Science SLIDE geomorphological characterisation of the Wellington urban area (report 2019/28), and the GNS shop terms it was downloaded under, to `context/lit/landslide/`.

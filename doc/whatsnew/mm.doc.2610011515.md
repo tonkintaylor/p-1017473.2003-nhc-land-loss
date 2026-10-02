@@ -1,0 +1,1 @@
+Start `doc/references.bib`, the project's BibTeX file, with the landslide, runout, amplification and retaining wall fragility references and the reviewed GNS Science reports, keyed author_year to match `context/lit/`, so docstrings, method files and the report can cite by key.

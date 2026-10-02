@@ -1,0 +1,1 @@
+`landloss.io.readers.get_gwrc_slope_failure` now notes that the layer's `LSKEY` runs opposite to `SEVERITY` (1 on every `5 High` polygon, 5 on every `1 Low` one), so severity has to come from `severity_rank` and never from `LSKEY`.

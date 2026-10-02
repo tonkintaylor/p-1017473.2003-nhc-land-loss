@@ -1,0 +1,1 @@
+Record in the retaining wall exposure status and step 6 plan how wall condition is set from a building construction age layer built outside this build: the DVR building age code licensed from QV or CoreLogic or obtained through NHC, with an SA2 consents proxy as the fallback, combined with height under 1.5 m and wall type.

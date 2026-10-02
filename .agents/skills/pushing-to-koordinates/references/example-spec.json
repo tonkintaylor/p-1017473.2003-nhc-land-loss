@@ -1,0 +1,21 @@
+{
+  "apply": false,
+  "layers": [
+    {
+      "key": "example-wall-damage-state-r000-pilot",
+      "title": "EXAMPLE - Retaining wall damage state, realisation 0 (pilot)",
+      "group": 5452,
+      "store": "temp",
+      "sub_dirs": ["vul"],
+      "fname": "wall-damage-state-r000-pilot.geoparquet",
+      "description": "Retaining wall damage state for realisation 0, pilot area.",
+      "tags": ["nhc", "land-damage", "pilot"],
+      "field": "damage_state",
+      "categories": {
+        "no damage": ["#2c7bb6", "no damage"],
+        "replace": ["#d7191c", "replace"]
+      },
+      "style_name": "Damage state"
+    }
+  ]
+}

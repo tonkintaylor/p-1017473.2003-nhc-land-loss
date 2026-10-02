@@ -1,0 +1,1109 @@
+{
+  "Tasks": [
+    {
+      "ID": "T-01",
+      "Task": "Confirm the proposed study area of Wellington City, Lower Hutt, Upper Hutt and Porirua with Bridget Attwood and check for any adverse reaction.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-02",
+      "Task": "Send NHC the list of datasets required from them by the end of today.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-03",
+      "Task": "Set up a weekly check-in with Bridget Attwood as the single NHC point of contact so she can inform the policy paper.",
+      "Owner": "John Leeves",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-04",
+      "Task": "Lead the interpretation of the NHC Act and confirm the exact land cover policy wording with Bridget Attwood.",
+      "Owner": "John Leeves",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-05",
+      "Task": "Obtain from NHC the list of policy settings they are considering testing, which has not yet been provided.",
+      "Owner": "James Russell",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-06",
+      "Task": "Check with Nick Peters whether the proposed Wellington and Hutt TLAs capture low-value land, or whether Porirua is needed to do so.",
+      "Owner": "John Leeves",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-07",
+      "Task": "Take ownership of sourcing the LINZ datasets, delegating within the GIS team as needed.",
+      "Owner": "Daniel Le Roux",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-08",
+      "Task": "Check whether the LINZ property parcel data identifies multi-unit buildings, as it does cross-lease and freehold.",
+      "Owner": "Daniel Le Roux",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-09",
+      "Task": "Ask Andrew Flaws how mature the Auckland Council cut-and-fill slope tool is and whether it can be lifted and shifted for reuse here.",
+      "Owner": "Daniel Le Roux",
+      "Phase": "2",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-10",
+      "Task": "Brainstorm with Matt Cook how remote sensing could support the study, focusing on identifying retaining walls.",
+      "Owner": "James Russell",
+      "Phase": "2",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-11",
+      "Task": "Ask Amelia Stocks whether the Wellington City Council retaining wall database and cut-and-fill model are readily accessible.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-12",
+      "Task": "Send the full list of Wellington datasets internally to find out what T+T already holds on file and how to obtain the rest.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-13",
+      "Task": "Schedule a session with Daniel Le Roux, including Sofia, to agree how the geotechnical and GIS teams work together across incompatible ArcGIS and Python workflows.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-14",
+      "Task": "Confirm with the NHC loss modelling team whether the LINZ property ID is an acceptable unique identifier, and lock the choice in soon.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-15",
+      "Task": "Decide the VS site class or classes to pair with the TS1170.5 demands, likely one for flat land and one for sloping land.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-16",
+      "Task": "Request a slope failure estimate from the NHC loss modelling team, supplying the shaking intensities they need, for use as a cross-comparison.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-17",
+      "Task": "Request land damage claim costs for Wellington from NHC, or a sample if the full set is not feasible.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-18",
+      "Task": "Check whether the existing T+T Christchurch claims cost dataset was filtered to flat land, and whether Nathan at NHC holds an unfiltered version covering the hills.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-19",
+      "Task": "Sit down with Nick Peters to obtain a suburb-by-suburb estimate of the proportion of properties with retaining walls.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-20",
+      "Task": "Approach Wellington City, Hutt City, Upper Hutt, Porirua and Greater Wellington Regional Council for the cut-and-fill model, retaining wall data and capital and land values.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-21",
+      "Task": "Ask NHC to approach the councils in parallel, since a request coming from them may carry greater weight.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-22",
+      "Task": "Decide whether to estimate landslide spatial extent explicitly or to assign each property a full, partial or nil landslide, starting from an assumption either way.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-23",
+      "Task": "Quantify what proportion of properties in the study area are multi-unit buildings, cross-lease or shared land, so the decision to exclude them is evidenced.",
+      "Owner": "Daniel Le Roux",
+      "Phase": "1",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-24",
+      "Task": "Agree with a registered valuer the index factors used to bring the four territorial authority rating valuations onto a common 1 September 2025 basis, held in src/landloss/io/assets/land-value-base-rates.csv.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-25",
+      "Task": "Obtain a median residential lot size per territorial authority, or the LINZ parcel areas via T-07, to replace the assumed lot sizes the land value model uses to convert a value per property into a rate per square metre.",
+      "Owner": "Daniel Le Roux",
+      "Phase": "1",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-26",
+      "Task": "Decide whether the seismic demand comes from TS1170.5 or from NSHM (2022) scenario demands run through a GMPE in OpenQuake.",
+      "Owner": "Unassigned",
+      "Phase": "1",
+      "Source": "Shaking hazard status review 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-27",
+      "Task": "Confirm whether the Dec 2016 ILVR land liability rates include damage to retaining walls, culverts and bridges.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Liquefaction land vulnerability costs 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-28",
+      "Task": "Clarify whether the Dec 2016 ILVR rates table covers a land damage category 7, given the table is titled \"Cat 1 to 7\" but its bands stop at \"5 or 6\".",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Liquefaction land vulnerability costs 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-29",
+      "Task": "Confirm in writing with NHC that the Canterbury land claim cost dataset may be used for this study.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-30",
+      "Task": "Model retaining wall repair costs separately rather than leaving them averaged into the per-property land cost.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-31",
+      "Task": "Give Sophia the retaining wall size thresholds so the predicted wall population can be classified: small below 1 m, medium 1 to 2.5 m, large above 2.5 m.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-32",
+      "Task": "Decide whether retaining wall repair cost scales with wall length or wall height, plus the fixed costs per job.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-33",
+      "Task": "Run an expert elicitation on the number of landslips expected under the modelled earthquake, canvassing around ten people before any of them see the Earth Sciences New Zealand model output.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-34",
+      "Task": "Write the land settlement logic as pseudo-logic bullet points — the election between market value and repair cost, the sub-caps, the rule against mixing the two within one claim, and the treatment of imminent risk — and run it past John Leeves.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-35",
+      "Task": "Decide whether imminent risk is included in the modelled loss, and if so how it is represented.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-36",
+      "Task": "Obtain fragility curves for bridges and culverts, and decide how many damage states they carry.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-37",
+      "Task": "Email Chris Ewens to request the NHC costing tool spreadsheet, which he will release once it is approved to leave the department.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-38",
+      "Task": "Extract the rates from the costing tool's lists sheet into this project's own rate table rather than building on top of the spreadsheet.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-39",
+      "Task": "Check with Nick Peters how many bridges and culverts sit on residential property in the study area.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-40",
+      "Task": "Find an NHC engineering report carrying the access and easy, moderate and difficult ratings, so the team can see what the costing inputs look like on a real site.",
+      "Owner": "John Leeves",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-41",
+      "Task": "Start a Teams chat with John Leeves, Virginie Lacrosse and Chris Ewens listing the outstanding costing questions in numbered form.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-42",
+      "Task": "Follow up Mike Tyson on whether QV can lift the daily licence limit or supply a one-off dump of the land value dataset.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "1",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-43",
+      "Task": "Set up a meeting with John Leeves and Nick Peters to agree slope-angle rules for the landslide model.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-44",
+      "Task": "Agree with John Leeves the rules for how far evacuated land regresses under imminent risk, starting from half a metre on average and a metre on slopes steeper than 30 degrees.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-45",
+      "Task": "Extend the landslide realisation to add imminent-risk land: a new circle centred on the same place, the upslope part beyond the evacuated polygon taken as the additional evacuated land behind a regressed headscarp, imminent inundation taken as re-inundation of the same area, with its likelihood depending on slope and its extent derived from the diameter for now.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30 (Maxim to pick it up, possibly deferred)",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-46",
+      "Task": "Rebuild the waterways layer from the readers on the NLM lateral spreading branch, keeping its minimum pond area filter and its filter on centre lines named as rivers.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-47",
+      "Task": "Buffer the waterways at 100 m and 200 m and apply the lateral spreading adjustment to the probabilities of land damage states 4 to 6, raising them inside the buffers and lowering them outside, read off Ryan's baseline-probability figure.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-48",
+      "Task": "Review whether any further river centre lines should be added to the waterways layer manually by ID, as was done for the watercourses around Bottle Lake.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-49",
+      "Task": "Revise the property value estimate following .agents/plans/estimating-land-values-wellington.md, sense-checking it against a few CV land values looked up by hand from homes.co.nz or QV rather than scraped.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-50",
+      "Task": "Extract the claim type, address, evacuated, inundated and imminent-risk land areas, and the number, lengths and damaged lengths of retaining walls from past T+T claim reports, keeping the fetching of files separate from the extraction of data.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25; Land Model Catch Up 2026-09-30",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-51",
+      "Task": "Run the whole pipeline end to end, building the local data cache, and connect it to the loss module.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-52",
+      "Task": "Merge the working branches.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-53",
+      "Task": "Fix the CI pipeline, which fails when it pulls a package from Bitbucket.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Call with Perrie Gilbert 2026-09-25",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-54",
+      "Task": "Revise the land damage states for liquefaction.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-55",
+      "Task": "Add evacuated and inundated land areas to the liquefaction land vulnerability for each land damage state, drawn uniformly within the ranges agreed on 2026-09-30.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-56",
+      "Task": "Value liquefied land in the land cover cap over its damaged area -- inundated plus evacuated, allowing a 30% overlap between them -- rather than over the whole insured area.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-57",
+      "Task": "Set repair rates for inundated and evacuated liquefied land, chosen so the modelled costs roughly reproduce the Canterbury cost table, with a no-SVA flag that raises the inundated rate.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-58",
+      "Task": "Review every status document once a first model is in hand, around Tuesday 2026-10-06, and decide which remaining items are done now and which move to future improvements.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-59",
+      "Task": "Write the report by 2026-10-14: an executive summary of about three pages and a technical document of about 100 pages in the style of the NLM report, with content held in YAML files read into Typst and converted to docx.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-60",
+      "Task": "Generate one driveway per property, taken as its main access way, rather than one per building, so a second dwelling or an outbuilding on the section adds no further driveway (parcel 3989118 carries two).",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-61",
+      "Task": "Confirm whether generated driveways are capped at the 60 m main access way limit; driveways.py stops only at MAX_DRIVEWAY_LENGTH_M = 300 m, the distance beyond which a building is taken to have no road, and drives visibly longer than 60 m appear in the layer.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-62",
+      "Task": "Check whether a newer roading parcel layer covers the new subdivision off Yabby Creek Road (as transcribed), where roads missing from the data make every generated driveway implausibly long.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-63",
+      "Task": "Find a land use layer, such as Landcare Research's national land use map, that excludes non-residential sites like the zoo's animal houses next to Yabby Creek, rather than filtering them out by hand.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-64",
+      "Task": "Provide the table setting, for each liquefaction land damage state on flat land, whether a property in that state goes on to make a claim, since not every property carrying a damage state will claim.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-65",
+      "Task": "Provide the Canterbury land damage costs per land damage state averaged over properties that lodged a claim only, rather than over all damaged properties, with the count of damaged properties and of claimants in each band. The counts give the drop-out rate per state directly and validate the Q-16 placeholders; the claimant-only costs replace costs_liq_ld_refined_states_2011.csv and switch the drop-out back on.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "2",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-66",
+      "Task": "Ask the loss module owner to move the five loss_input_path calls, in loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py, loss/steps/s1_settlement/s1_gen_settlement.py, loss/validations/gen_calc_walkthrough.py (two calls) and loss/validations/gen_viewer_data.py, to world_loss_input_path(name, world_id, realisation_id, pilot=pilot) with a WORLD_IDS setting, so the loss module reads every exposure world rather than world 0 only and the deprecated loss_input_path can be deleted.",
+      "Owner": "Unassigned",
+      "Phase": "3",
+      "Source": "Urban slope build 2026-10-02",
+      "Status": "Open"
+    }
+  ],
+  "Limitations": [
+    {
+      "ID": "L-01",
+      "Limitation": "The study models a single high shaking demand, so conclusions about social equity may not hold at lower return periods where losses would be settled differently. The team accepted this because behaviour at lower PGA is far more sensitive to spatial variation and much harder to characterise.",
+      "Affects": "All phases",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-02",
+      "Limitation": "The outputs are a relative comparison between policy options rather than an absolute estimate of total land damage cost. Individual cost figures should not be quoted as a standalone number.",
+      "Affects": "Phase 4 reporting",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-03",
+      "Limitation": "Multi-unit buildings, cross-lease and shared land are excluded, so the interaction of multiple sub-caps and settlement split between insured interests is not modelled. This was accepted on the basis that such properties are a small proportion of the population, despite being close to the crux of the policy question.",
+      "Affects": "Phases 1 to 3",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-04",
+      "Limitation": "No retaining wall dataset exists for the study area, so the proportion of properties with walls will rest on an SME estimate varied by suburb. The Wellington City Council database covers council walls rather than the privately owned walls that matter here.",
+      "Affects": "Phase 2 variables",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-05",
+      "Limitation": "Detecting retaining walls from the LIDAR point cloud will be incomplete because dense vegetation obscures them in exactly the suburbs of interest. The detection rate is itself unknown, so a count cannot be reliably scaled up.",
+      "Affects": "Phase 2 variables",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-06",
+      "Limitation": "NHC claims cost data may not arrive in a usable timeframe and is not disaggregated by damage type such as retaining walls. The team agreed to plan on the realistic assumption that nothing is received.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-07",
+      "Limitation": "T+T's own event data gives better resolution on land damage but carries no cost information, so it cannot inform losses directly.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-08",
+      "Limitation": "The GNS slope failure model held in PRUE was discredited by one NHC reviewer and defended by another, so it will be used only as a cross-comparison against the T+T estimate rather than as an input.",
+      "Affects": "Phase 2 landslide estimates",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-09",
+      "Limitation": "The Canterbury earthquake sequence data may not contain enough landslide representation to constrain landslide costs, given it is dominated by flat land liquefaction damage.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-10",
+      "Limitation": "Which individual properties are insured is not knowable, so a blanket insurance penetration of 90% is applied as an editable model variable.",
+      "Affects": "Phase 1 tool",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-11",
+      "Limitation": "The LINZ property ID is the simplest and most stable unique identifier but is less useful to the NHC loss modelling team, who work at claim level. Superseded in part: as of the vul output contract of 2026-09-23, vul carries claim_id and hands it to loss on every table, so the key is no longer minted at the loss boundary. Where vul itself gets claim_id from is still to be settled.",
+      "Affects": "Phase 4 handover",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-12",
+      "Limitation": "The DEM is a merge of LIDAR surveys flown in different years across the study area, including Wellington in 2023 and Hutt City in 2025.",
+      "Affects": "Phase 3 spatial model",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-13",
+      "Limitation": "Driveways are not identified in the LINZ data and are hard to separate from kerbs and footpaths by remote sensing, which matters because driveways are where most retaining walls are. The effect is reduced by properties being small enough that the 8 metre insured land line often reaches the boundary anyway.",
+      "Affects": "Phase 2 insured land area",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-14",
+      "Limitation": "Private stormwater and wastewater services are not held on council GIS systems, only the connections, so private service infrastructure cannot be mapped directly.",
+      "Affects": "Phase 1 service infrastructure variable",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-15",
+      "Limitation": "Land inundated by failure of council retaining walls supporting roads is driven by cost of repair rather than land value, which does not fit the value-based cost logic used elsewhere in the tool.",
+      "Affects": "Phase 1 cost logic",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-16",
+      "Limitation": "Geology and geomorphology are taken from the National Liquefaction Model, which simplifies sloping land. It was accepted as a sensible base model rather than an accurate one.",
+      "Affects": "Phases 1 to 3",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-17",
+      "Limitation": "The model will be built quickly on a large number of assumptions, with inputs improved during the remaining time. Outputs should be read as converging on an answer rather than as final.",
+      "Affects": "All phases",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-18",
+      "Limitation": "The public Natural Hazards Portal cannot be used as a claims data source. Its terms of use prohibit automated extraction and incorporation into other databases, and it carries no claim cost, only a binary land damage flag. Claims data must come from NHC directly.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Portal terms review 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-19",
+      "Limitation": "The four territorial authorities were revalued on dates spanning a year, from Wellington City at 1 September 2024 to Porirua at 1 September 2025, across a falling market. Their published averages are brought onto a common date by an index factor that has not yet been signed off by a valuer, and unindexed they would overstate Wellington against the Hutt by roughly 10 to 20 per cent.",
+      "Affects": "Phase 1 land valuation",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-20",
+      "Limitation": "Land value is modelled from published QV district averages plus market and engineering judgement until council District Valuation Roll data arrives (T-20). Territorial authority totals are correct by construction because a normalising constant forces them onto the published average; the distribution within a territorial authority rests on judgement and is unvalidated.",
+      "Affects": "Phase 1 land valuation",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-21",
+      "Limitation": "The LINZ NZ Addresses layer carries neither a residential or commercial flag nor a land area, so the modelled population is every current land address until parcel data allows the population to be filtered and areas attached.",
+      "Affects": "Phases 1 to 3 exposure",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-22",
+      "Limitation": "Phase 1 of the land value model splits land into flat and hill only. The elevated flat premium, sea view, sun exposure and accessibility to centres are declared in the model but not assigned until the DEM phases are complete, so within-suburb variation is absent from the first cut.",
+      "Affects": "Phase 1 land valuation",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-23",
+      "Limitation": "The Canterbury land claim costs are in 2010 and 2011 dollars for the 2010 and 2011 events and exclude the 2016 event, so they need escalating before use.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-24",
+      "Limitation": "The Canterbury land claim costs exclude GST. If results are presented on that basis it has to be stated to NHC.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-25",
+      "Limitation": "The Canterbury land claim costs exclude increased liquefaction vulnerability and increased flooding vulnerability payments, so they cover observed land damage only.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-26",
+      "Limitation": "The Canterbury land claim cost rates are being used as placeholders and have not been revalidated for this study. Revalidation was agreed as time-permitting rather than planned.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Land loss model logic 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-27",
+      "Limitation": "The Canterbury land damage rates correlate two independent datasets: the per-property field survey of observed damage, and a separate T+T street-level mapping of liquefaction ejecta. The correlation is an assumption the team made, not a property of either dataset.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Wgtn Land Model 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-28",
+      "Limitation": "Inundation repair cost is represented by two rates per square metre — one for volumes removable by shovel and truck, one for volumes needing an excavator — varied by access. Finer variation in volume or method is not represented.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Wgtn Land Model 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-29",
+      "Limitation": "Enabling works and reinstatement are site-specific and priced from the assessor's judgement on the ground — what has to be cleared to get machinery in, traffic management, and occasionally helicopter access. The model can only approximate them from the easy, moderate and difficult bands.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-30",
+      "Limitation": "The costing tool's rates are quantity-surveyor derived and refreshed every four months, so any set extracted for this study is a point-in-time snapshot that will drift from the rates NHC assesses against.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-31",
+      "Limitation": "Partially damaged retaining walls that would be repaired rather than replaced are not modelled, so every damaged wall is costed as a replacement. John Leeves put partial repairs at about 1% of cases.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-32",
+      "Limitation": "Walls already tilted before the modelled event cannot be distinguished from walls tilted by it, so some replacements will be attributed to the event that were already owed.",
+      "Affects": "Phase 2 cost estimates",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-33",
+      "Limitation": "Inundation removal is folded into the earthworks difficulty rating rather than costed as its own line. The spoil volume sets the rating and buys nothing else, and because the site multiplier reaches wall construction alone, a claim with inundated ground and no retaining wall attracts nothing for the clearing -- real work priced at zero. Whether inundation removal should instead be its own line item, at a rate per cubic metre, is undecided.",
+      "Affects": "loss pricing, land repair cost",
+      "Source": "Inundation removal 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-34",
+      "Limitation": "Repair cost and undepreciated value come off the same retaining wall square-metre rate, the difference between them being the site multiplier alone. That is how the costing spreadsheet itself works, confirmed 2026-09-23, and it keeps repair cost above UDV by construction. The limitation is specification rather than rates: it assumes the replacement wall matches the one that failed, where in practice a failed wall is often rebuilt to a more substantial current standard, which would warrant a higher rate on the repair side than on the UDV side. The bias has a known direction: settlement is min(repair, cap) less the excess, so understating repair cost can only lower a settlement, meaning the study under-reports NHC's liability rather than over-reporting it.",
+      "Affects": "loss pricing, retaining wall settlements",
+      "Source": "Perrie Gilbert 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-35",
+      "Limitation": "The insured land extent is clipped to the claim's own property boundary, so a right of way or shared accessway over another title carries no insured land even though the claimant has an interest in it. A fee simple rear lot is unaffected, its leg being part of its own title.",
+      "Affects": "Insured land extent, and every hazard measured against it",
+      "Source": "Insured land extent rebuild 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-36",
+      "Limitation": "The study does not account for horizontal tectonic movement, such as lateral offset across a fault rupture. For scale, the last Wellington Fault rupture is noted as having had approximately 7 m of horizontal movement.",
+      "Affects": "Hazard scope, all phases",
+      "Source": "Maxim Millen 2026-09-29",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-37",
+      "Limitation": "The study does not account for tsunami or seiche effects. For scale, the 1855 Wairarapa earthquake generated a tsunami approximately 10 m high, with several further tsunamis in later aftershocks.",
+      "Affects": "Hazard scope, all phases",
+      "Source": "Maxim Millen 2026-09-29",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-38",
+      "Limitation": "Site class is assigned from Foster et al. (2019) Vs30 alone, without the profile criteria of TS1170.5 Table 3.3, so rock under weathered cover with Vs30 above 750 m/s would be taken as Site Class I, and Class VII sites take the Class VI spectrum without a site-specific analysis. Over the four territorial authorities Vs30 peaks at 618 m/s, so no cell is Class I at present.",
+      "Affects": "Shaking hazard: site class, and the Sa(1.0 s), PGV and PGA read from it (hazard/shaking s2_site_class, s3_pgv)",
+      "Source": "Maxim Millen 2026-09-30",
+      "Status": "Accepted"
+    },
+    {
+      "ID": "L-39",
+      "Limitation": "The evacuated and inundated areas assigned to each liquefaction land damage state are judgement ranges set in a project call from the MBIE descriptions of each state, not fitted to observations; the overlap between the two is likewise an assumed 30%.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-40",
+      "Limitation": "The Canterbury inundated-land costs carry the effect of the Student Volunteer Army clearing ejecta at no charge, so they understate what clearing inundated land would cost without that labour.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Land Model Catch Up 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-41",
+      "Limitation": "New subdivisions missing from the LINZ property boundaries, addresses and roads either drop out of the claim population or get driveways routed to a distant road. Whether that skews costs in those areas is to be checked once the model runs.",
+      "Affects": "exposure/land, loss",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-42",
+      "Limitation": "The building use field is too incomplete to filter on, so buildings default to being counted as residential, and sheds, outbuildings and non-residential sites such as the zoo carry insured land and driveways. Treated as a moderate, low-priority source of false positives.",
+      "Affects": "exposure/land",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-43",
+      "Limitation": "Until claimant-only costs arrive (T-65), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-44",
+      "Limitation": "The liquefied damaged area takes 30% of the evacuated land as lying under the inundated land (no more than the inundated area itself), so damaged = evacuated + inundated - 0.3 x evacuated, capped at the insured area. This is an assumption about how the 30% overlap agreed on 2026-09-30 is measured, held as EVACUATED_OVERLAP_SHARE in the s2_liq_land_damage config, and is to be verified.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
+    }
+  ],
+  "Improvements": [
+    {
+      "ID": "I-01",
+      "Improvement": "Run a sub-study on multi-unit buildings and the impact of the policy settings on buildings of various sizes.",
+      "Rationale": "Excluded from the main study as too complicated, but no two multi-unit developments settle the same way and the sub-caps are central to the policy question.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-02",
+      "Improvement": "Order a sample of Wellington property files, at roughly $35 plus GST and one working day each, and extract retaining wall and consented works information.",
+      "Rationale": "Parked because there is not sufficient time to access the data within this engagement, though it would need ordering immediately if taken up.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-03",
+      "Improvement": "Analyse the LIDAR point cloud directly to flag vertical surfaces, using return intensity to separate retaining walls from rock faces and vegetated faces.",
+      "Rationale": "The 1 metre gridded elevation model is too coarse to spot walls, but the point cloud may carry the signal; analysing it is complex work in its own right.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-04",
+      "Improvement": "Train an optical model on aerial imagery to identify retaining walls and cut-and-fill slopes, validated against a human-assessed sample.",
+      "Rationale": "A trained eye can pick retaining walls out of aerial imagery, and an existing Auckland Council tool already does this for cut-fill slopes from property file data.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-05",
+      "Improvement": "Incorporate the council retaining wall location model so that failures of road-supporting walls inundating properties below can be represented.",
+      "Rationale": "The last round of landslides included many council wall failures that inundated private property, which the current property-scale logic would miss.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-06",
+      "Improvement": "Obtain claims data from a landslide-heavy event such as the Nelson rain event to supplement the Canterbury dataset.",
+      "Rationale": "Raised by NHC as a way to address the thin landslide representation in the Canterbury data; dependent on the budget being resolved.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-07",
+      "Improvement": "Use the Marlborough District Council online property files as a surrogate dataset for retaining wall prevalence.",
+      "Rationale": "The files are freely available online, although the terrain is not really steep enough to be a close analogue for Wellington.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-08",
+      "Improvement": "Implement the GNS rules for landslide extent, which distinguish smaller and larger failures on the same slope, in place of a per-property assumption.",
+      "Rationale": "Estimating true spatial extent would capture landslides that run across multiple properties, but the rules are complicated and a sensitivity study is quicker to reach a result.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-09",
+      "Improvement": "Extend the analysis to lower shaking demands and lower return periods.",
+      "Rationale": "The main concern raised by the NHC loss modelling team about the single-scenario approach, and the basis for converting damage predictions into land damage vulnerability functions.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-10",
+      "Improvement": "Map driveways by remote sensing so that insured land area and retaining wall exposure can be resolved per property.",
+      "Rationale": "Driveways are where most retaining walls sit, but separating them from kerbs, footpaths and other impermeable surfaces is unresolved.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-11",
+      "Improvement": "Extend the study area to the wider Wellington region, including the south coast of Wellington, the Wairarapa and the Kapiti Coast.",
+      "Rationale": "Cut from the initial extent to stay near population centres and keep the problem tractable, with the south coast explicitly flagged to revisit later.",
+      "Phase": "Future",
+      "Source": "Kick-off 2026-09-16",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-12",
+      "Improvement": "Replace straight-line distance to centres with road-network travel time in the land value accessibility term.",
+      "Rationale": "Days Bay and Eastbourne sit about 9 km from the Wellington CBD in a straight line but about a 25 minute drive around the harbour, so straight-line distance materially overstates their accessibility and therefore their land value.",
+      "Phase": "Future",
+      "Source": "Land value model planning 2026-09-17",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-13",
+      "Improvement": "Use the costing tool's detailed retaining wall build-up, pricing piles, lagging, anchors and drainage individually, in place of the simple square-metre rates.",
+      "Rationale": "The simple calculator was chosen because wall dimensions are guessed rather than measured. If remote sensing later resolves wall geometry, the detailed build-up would be able to use it.",
+      "Phase": "Future",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-14",
+      "Improvement": "Give a retaining wall a retained height with some variation in it, rather than one set value per size class. Either draw within the class band or set the height off the slope the wall sits on. Both add spread the portfolio currently gets only from wall length and site ratings, and both would make the priced height round-trip back to its own size class, which the set value for small does not.",
+      "Affects": "loss pricing",
+      "Source": "vul output contract 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "I-15",
+      "Improvement": "Read the PDF-only claim reports. About 380 Kaikoura-list reports survive only as PDFs and are recorded but not read, since the extraction reads Word files only.",
+      "Rationale": "Earthquake claims are the thinnest part of the sample (496 accepted), and these PDFs could roughly double them. Needs a PDF library, which was declined on 2026-09-30.",
+      "Affects": "claim report extraction (T-50)",
+      "Source": "Claim report extraction 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "I-16",
+      "Improvement": "Check for T+T project numbers and folders holding land claim reports that the claims lists have not identified, beyond the IAG 1502000, Suncorp 1501000 and EQC 2013 and 2016 programmes already fetched.",
+      "Rationale": "The claims lists come from Site Search exports of known programmes; reports filed under other project numbers would be missed without anyone knowing.",
+      "Affects": "claim report extraction (T-50)",
+      "Source": "Claim report extraction 2026-10-01",
+      "Status": "Open"
+    }
+  ],
+  "Questions": [
+    {
+      "ID": "Q-01",
+      "Question": "Can a single property carry more than one land damage claim? A single claim cannot mix settling on market value with settling on repair cost, but whether a property can hold several claims that each make their own election is unknown.",
+      "Asked of": "John Leeves / NHC",
+      "Answer": "",
+      "Source": "Wgtn Land Model follow-up 2026-09-22",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-02",
+      "Question": "How do the sub-caps interact where a property carries more than one of them, and how does the total cap sit over them? The sub-caps themselves are known: $25k for bridges and culverts, and $50k per dwelling for retaining walls, both plus GST.",
+      "Asked of": "John Leeves / NHC",
+      "Answer": "",
+      "Source": "Wgtn Land Model follow-up 2026-09-22",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-03",
+      "Question": "Are the enabling works allowances for easy, moderate and difficult sites — nothing, about 15 and about 30 — dollar amounts in thousands or percentage multipliers on the base cost? Chris Ewens gave them as figures and then agreed they were multipliers, while John Leeves was discussing dollar amounts in the same exchange.",
+      "Asked of": "Chris Ewens",
+      "Answer": "Multipliers. The bands are the EEE, MMM and DDD rows of the costing tool's combination table -- 0%, 15% and 30% -- so the figures quoted at the demo were percentages on the base cost, not dollar amounts in thousands.",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Closed"
+    },
+    {
+      "ID": "Q-04",
+      "Question": "What are the excess earthworks and constructability percentages for easy, moderate and difficult? Chris Ewens described 15% for each, giving 30% or 45% on the subtotal, then revised it to nearer 0%, 5% and 10%, and separately said individual line items cap at 30%.",
+      "Asked of": "Chris Ewens",
+      "Answer": "0% easy, 5% moderate, 10% difficult, applied to each of three rated factors and summed: construction access, earthworks required, and constructability and reinstatement. The tool enumerates all 27 combinations and every row is that sum, so an all-difficult site reaches 30%, which is the line item cap. Carried in landloss.loss.pricing.",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Closed"
+    },
+    {
+      "ID": "Q-05",
+      "Question": "Does a replaced retaining wall always have to carry a council stormwater connection and a fall-from-height barrier to meet current legislation, and what do they add to the cost?",
+      "Asked of": "Chris Ewens",
+      "Answer": "",
+      "Source": "Costing tool demo 2026-09-21",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-06",
+      "Question": "Is land_slide_total_insured_land_area already the union of the evacuated and inundated footprints, or must loss take that union itself? Where the two overlap the ground is damaged once, so summing the columns would double count it.",
+      "Asked of": "Maxim Millen",
+      "Answer": "",
+      "Source": "vul output contract 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-07",
+      "Question": "Where does the dwelling count come from? Both land structure sub-caps and the excess multiply by dwellings in the residential building, and no table in the vul contract carries one. insured-land.geoparquet carries building_count, which is not the same thing.",
+      "Asked of": "Maxim Millen",
+      "Answer": "From the module-level exposure step s3_dwellings_per_property, which counts the address points standing inside each claim property and writes one row per claim. landloss.loss.claims.dwelling_counts reads it onto the claims being settled, refusing a claim with no count rather than defaulting it to one. Note the count is address points rather than self-contained dwellings, so it is a floor on a block of flats and an over-count on a mixed-use building.",
+      "Source": "vul output contract 2026-09-23",
+      "Status": "Closed"
+    },
+    {
+      "ID": "Q-08",
+      "Question": "What retained height does each rw_size stand for? The costing tool charges per square metre of wall face, which is retained height by length; rw_length arrives but rw_size is a band (small below 1 m, medium 1 to 2.5 m, large above 2.5 m) rather than a height.",
+      "Asked of": "Maxim Millen",
+      "Answer": "Set values for now: small 0.75 m, medium 1.75 m, large 2.75 m. Each is the middle of what its class can contain, the population drawing heights over 0.4 to 3.0 m, and each classifies back to its own size class -- which rules out 1 m for small, since the band is below 1 m and classify_wall_size reads 1 m as medium. Carried as BETA_SIZE_CLASS_HEIGHT_M in landloss.loss.pricing. A size class therefore carries no variation of its own; adding it back is I-14.",
+      "Source": "vul output contract 2026-09-23",
+      "Status": "Closed"
+    },
+    {
+      "ID": "Q-09",
+      "Question": "Why are culverts and bridges described asymmetrically in the vul contract? Culverts carry a generic is_damaged and no is_evacuated, while bridges carry is_damaged_by_shaking and do carry is_evacuated.",
+      "Asked of": "Maxim Millen",
+      "Answer": "Partly answered: bridges do carry a bridge_id, confirmed 2026-09-23, so every table identifies its own asset. The damage flag asymmetry is still open.",
+      "Source": "vul output contract 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-10",
+      "Question": "Can the retaining wall table carry the three site ratings -- construction access, earthworks required, and constructability and reinstatement, each easy, moderate or difficult? loss needs one of each per wall to price a replacement and the vul contract carries none, so no wall can be priced until they arrive. They are a per-wall figure because the multiplier applies to the wall construction subtotal alone. For a real claim they come from a table in the duty geotechnical report; for a synthetic population they have to be inferred, and the inputs -- slope, and the building-to-road path from landloss.exposure.land.driveways -- are already held in exposure.",
+      "Asked of": "Maxim Millen",
+      "Answer": "",
+      "Source": "vul output contract 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-11",
+      "Question": "At what spoil volumes does clearing inundated ground move between hand tools, a mini excavator, and a full excavator with truck cartage? The repository records the distinction only qualitatively -- two rates, 'one for volumes a shovel and a truck can clear, one for volumes needing an excavator' (L-28) -- with no volume attached to either. landloss.loss.pricing currently uses 20 m3 and 200 m3, which are engineering judgement fitted to nothing and set the earthworks rating on every land claim.",
+      "Asked of": "Chris Ewens",
+      "Answer": "Not answered. 20 m3 and 200 m3 adopted as a working assumption on 2026-09-23 so the chain could run, reasoned from plant capability rather than from any source, and explicitly not confirmed by NHC.",
+      "Source": "Inundation removal 2026-09-23",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-12",
+      "Question": "Does the T+T database of engineering characteristics of weathered and unweathered greywacke still exist, and where is it held? A T+T capability statement claims 'an extensive database of the engineering characteristics of the weathered and unweathered greywacke rock', built up through geotechnical investigation, instrumentation and laboratory testing; if it survives it could inform the greywacke strength and weathering assumptions in the landslide work.",
+      "Asked of": "Unassigned",
+      "Answer": "",
+      "Source": "Capability statement, T+T archive job 28971 (presentation/Capability.docx)",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-13",
+      "Question": "Do you know who to contact to track down the Precedent/Seismic team's database of slope height and slope angle for greywacke terrain in the Wellington Region? The Transmission Gully proposal methodology (I:\\83972\\Contractual\\Methodology.doc) says the team 'already have' it, and it is also mentioned in projects 24715 and 84947. If it can be found it could inform the slope-angle rules for the landslide model.",
+      "Asked of": "Nick Peters",
+      "Answer": "",
+      "Source": "User request 2026-09-30; Transmission Gully proposal (T+T archive job 83972, Contractual/Methodology.doc)",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-14",
+      "Question": "Which land excess does NHC apply: $500 per dwelling capped at $5,000, as the NHC explainer states and works its examples, or 10% of the amount otherwise payable per claim, floored at $500 and capped at $5,000, as Virginie Lacrosse described on 2026-09-25? The loss module defaults to the explainer's rule and can run either.",
+      "Asked of": "NHC",
+      "Answer": "",
+      "Source": "loss module, Virginie Lacrosse 2026-09-25; recorded 2026-09-30",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-15",
+      "Question": "Where a property has more than one dwelling or more than one access way, is only the main access way insured land, or can each dwelling's driveway be? Perrie Gilbert read the Act as covering only the main access way; the model is to assume one driveway per property until this is answered.",
+      "Asked of": "John Leeves",
+      "Answer": "",
+      "Source": "Wgtn Land Model 2026-10-01",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-16",
+      "Question": "What share of flat land properties in each liquefaction land damage state (1 None to 6 Very severe) do not go on to make a land claim? The model runs on placeholder drop-out rates of 95%, 75%, 40%, 15%, 0% and 0%, set in DROP_OUT_RATES in the s2_liq_land_damage config, with Severe and Very severe always claimed. They are a tuning parameter to be adjusted on feedback.",
+      "Asked of": "Virginie Lacrosse, John Leeves",
+      "Answer": "",
+      "Source": "Perrie Gilbert 2026-10-02; follows T-64",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-17",
+      "Question": "Are the Canterbury land damage costs per state (Dec 2016 ILVR rates table) averaged over properties that claimed only, or do they include properties in that state that never claimed as $0? If they include them, the drop-out is already inside the rates and applying the Q-16 drop-out rates as well would count it twice; the T-57 repair rate calibration has to take the same basis.",
+      "Asked of": "Virginie Lacrosse",
+      "Answer": "They include them. The rates average over all damaged properties, not just those that lodged a claim -- 'watered down' with $0s, as Virginie Lacrosse described them. She is to supply rates over claimants only (T-65). Until then the drop-out is switched off, since these rates already carry it.",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Closed"
+    }
+  ]
+}
