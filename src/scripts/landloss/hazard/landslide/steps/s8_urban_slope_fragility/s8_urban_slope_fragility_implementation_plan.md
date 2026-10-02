@@ -91,13 +91,40 @@ built against.
       Ux = 10% of H) as "replace", the 3 m and 6 m walls for the three size
       classes, and Fs = 1.1 as the poor condition.
 
+## Literature review (2026-10-02)
+
+Part A of the second review (`temp/handoff-remaining-review.md`) read this
+step's rules against `temp/gns_review/`. What it changes here, all proposals
+for the lead:
+
+- **The wall state comes from the face, not from edge lines.** On the face
+  polygons (faces plan, phase 3) a polygon is one face segment and its wall
+  is that face's wall, so `wall_state()`, `drawn_edge_walls()` and the
+  `wall_line_ids` list collapse to a join on the face id. The edge-line rules
+  in the method file go with step 7.
+- **The localised median reads the face's Kingsbury rating**, with the height
+  factor on the face height rather than `face-height-10m`.
+- **The anchoring and the rate setting:** see the reviewer's answers in
+  `.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`. The
+  anchors become shares of face area, A16, A19 and A21 are re-read, 2013
+  becomes the low-demand anchor, and the rate setting brackets antecedent
+  wetness, with one factor set for fill and one for everything else
+  [dellow_hancox_2006].
+- **The wall curves** are part C of the review.
+
 ## Phase 3 — The researched rules
 
 - [ ] Name the six wall classes and give the table a row per class, size and
       condition; `wall_class` is `unnamed` until then and
       `assign_fragility()` looks every wall up under that one class.
-- [ ] Bracket the amplification factor step 7 computes against
-      `sr2019-051-F35`, so the division recorded here is the researched one.
+- [ ] Replace the amplification factor with the researched one (proposal
+      for the lead, faces plan phase 3, reviewed 2026-10-02): the NZTA crest
+      factors by face height and ridge or terrace setting, 1.0 to 1.4 for
+      faces under 30 m [brabhaharan_2018] (`brabhaharan2018-F05`, `F06`), 1.0
+      for a terrace face under 13 m (`F23`), applied to the evacuated part near
+      the crest (`F07`). The Monteith 1.2 to 1.4 at slope tops
+      (`sr2019-051-F35`) sits inside the ridge range. The placeholder's
+      steepness term, which gives every 60° wall 1.5, goes.
 - [ ] A dwelling-age source for the wall population, which would move the
       share of poor walls and so the share of polygons on the lower curve.
 

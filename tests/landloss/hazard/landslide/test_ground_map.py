@@ -89,6 +89,8 @@ def test_every_mapper_lands_in_the_vocabulary():
     ground = set(gm.MATERIALS) | {gm.WATER}
     assert len(gm.SLIDE_MATERIALS) == 14
     assert set(gm.SLIDE_MATERIALS.values()) <= ground
+    assert set(gm.SLIDE_FILL_TYPES) <= set(gm.SLIDE_MATERIALS)
+    assert set(gm.SLIDE_MODIFICATIONS) == set(gm.SLIDE_FILL_TYPES)
     assert set(gm.GEOLOGY_MATERIALS.values()) <= set(gm.MATERIALS)
     assert set(gm.NLM_MATERIALS.values()) <= ground
     assert set(gm.GENESIS_MODIFICATIONS) == set(gm.GENESIS_MODIFICATION_TYPES)
@@ -101,7 +103,7 @@ def test_material_mappers_read_their_sources_classes():
     slide = gm.material_from_slide(
         pd.Series(["Rock at/near surface", "Mixed fill/rock", "Talus", "Water body"])
     )
-    assert slide.tolist() == ["rock", "fill_uncontrolled", "colluvium", gm.WATER]
+    assert slide.tolist() == ["rock", "rock", "colluvium", gm.WATER]
 
     geology = gm.material_from_geology(
         pd.Series(["Tt", "Q1nc", "Q1af", "uQal_t", "Q1b"])
@@ -129,6 +131,7 @@ def test_material_mappers_read_their_sources_classes():
         (gm.modification_from_genesis, ["Cut slope", "Modified terrain"]),
         (gm.modification_from_genesis, ["Landslide relict"]),
         (gm.modification_from_wcc, ["cut", "quarry"]),
+        (gm.modification_from_slide, ["Fill", "Rock at/near surface"]),
     ],
 )
 def test_a_mapper_refuses_a_class_it_has_no_rule_for(mapper, values):
@@ -147,6 +150,30 @@ def test_modification_mappers():
         "fill",
         "cut",
     ]
+
+
+def test_slide_mixed_fills_read_their_natural_material_with_fill_as_modification():
+    mixed = pd.Series(
+        [
+            "Fill",
+            "Mixed fill/rock",
+            "Mixed fill/colluvium",
+            "Mixed fill/colluvium/rock",
+            "Mixed fill/talus",
+            "Old alluvium (mixed fill)",
+        ]
+    )
+    # Colluvium wins over rock where a class names both: Wellington fills fail
+    # on the buried colluvium at their base.
+    assert gm.material_from_slide(mixed).tolist() == [
+        "fill_uncontrolled",
+        "rock",
+        "colluvium",
+        "colluvium",
+        "colluvium",
+        "alluvium",
+    ]
+    assert gm.modification_from_slide(mixed).tolist() == ["fill"] * 6
 
 
 def test_the_residual_classes_cut_fill_and_natural_about_the_threshold():
@@ -222,9 +249,9 @@ def test_the_strength_picks_on_the_committed_table_are_the_contracts_six():
         "colluvium": "S08",
         "loess": "S30",
         "alluvium": "S30",
-        "fill_engineered": "S48",
-        "fill_uncontrolled": "S48",
-        "reclamation": "S48",
+        "fill_engineered": "S52",
+        "fill_uncontrolled": "S52",
+        "reclamation": "S52",
         gm.UNKNOWN: None,
     }
     assert dict(zip(materials, strength["strength_source"], strict=True)) == expected
@@ -241,6 +268,12 @@ def test_the_strength_picks_on_the_committed_table_are_the_contracts_six():
         4.0,
         36.0,
         18.0,
+    )
+    fill = strength.loc[materials == "fill_uncontrolled"].iloc[0]
+    assert (fill["c_kpa"], fill["phi_deg"], fill["unit_weight_kn_m3"]) == (
+        2.0,
+        42.0,
+        22.0,
     )
     unknown = strength.loc[materials == gm.UNKNOWN].iloc[0]
     assert unknown[["c_kpa", "phi_deg", "unit_weight_kn_m3"]].isna().all()
@@ -277,6 +310,26 @@ def test_the_strength_pick_order_is_check_then_published_then_file_order():
     # The incomplete published COL row is passed over for the complete one.
     assert strength["strength_source"].tolist() == ["C", "F"]
     assert strength["c_kpa"].tolist() == [3.0, 6.0]
+
+
+def test_an_explicit_pick_overrides_the_pick_order():
+    table = strength_table(
+        [
+            ("S48", "published", "FILL", False, 0.0, 45.7, 19.5),
+            ("S52", "published", "FILL", False, 2.0, 42.0, 22.0),
+        ]
+    )
+    assert gm.STRENGTH_GRADE_PICKS == {"FILL": "S52"}
+    strength = gm.strength_from_material(pd.Series(["fill_engineered"]), table)
+    assert strength["strength_source"].tolist() == ["S52"]
+
+    # A pick missing from the table, or incomplete there, is refused rather
+    # than quietly replaced by the pick order.
+    with pytest.raises(ValueError, match="pick for grade 'FILL' is 'S52'"):
+        gm.strength_from_material(pd.Series(["fill_engineered"]), table.iloc[:1])
+    incomplete = table.assign(unit_weight_kn_m3=[19.5, np.nan])
+    with pytest.raises(ValueError, match="pick for grade 'FILL' is 'S52'"):
+        gm.strength_from_material(pd.Series(["fill_engineered"]), incomplete)
 
 
 def test_a_grade_with_no_complete_row_raises_naming_it():
@@ -717,6 +770,23 @@ def test_slide_material_sources_split_by_confidence_highest_first():
     ]
 
 
+def test_slide_modification_sources_carry_only_the_fill_types():
+    materials = frame(
+        [square(0, 0, 10, 10)] * 4,
+        Type=["Rock at/near surface", "Fill", "Mixed fill/rock", "Mixed fill/talus"],
+        confidence=["high", "low", "high (verified GE)", "medium"],
+    )
+    sources = step.slide_modification_sources(materials)
+    assert [s.confidence for s in sources] == ["high", "medium", "low"]
+    assert {s.attribute for s in sources} == {"modification"}
+    assert [s.frame["Type"].tolist() for s in sources] == [
+        ["Mixed fill/rock"],
+        ["Mixed fill/talus"],
+        ["Fill"],
+    ]
+    assert all((s.frame["modification"] == "fill").all() for s in sources)
+
+
 @ignore_affine_matmul
 def test_the_residual_is_polygonised_into_cut_and_fill():
     values = np.zeros((10, 10))
@@ -766,9 +836,13 @@ def synthetic_inputs(tmp_path, monkeypatch):
     monkeypatch.setattr(step, "resolve_extent", lambda *, pilot: (bbox, "synthetic"))
 
     materials = frame(
-        [square(20, 20, 60, 60), square(80, 80, 100, 100)],
-        Type=["Colluvium (anything that has moved downslope)", "Water body"],
-        confidence=["high", "low"],
+        [square(20, 20, 60, 60), square(80, 80, 100, 100), square(60, 0, 80, 20)],
+        Type=[
+            "Colluvium (anything that has moved downslope)",
+            "Water body",
+            "Mixed fill/colluvium",
+        ],
+        confidence=["high", "low", "medium"],
     )
     geology = frame([square(0, 0, 100, 50)], unit_code=["Tt"])
     landforms = frame([square(0, 0, 70, 100)], l3_yp=["Sedimentary"])
@@ -849,6 +923,12 @@ def test_the_step_writes_the_contracts_file_from_synthetic_sources(synthetic_inp
     assert at(ground, 15, 15)["modification"] == "cut"
     assert at(ground, 45, 15)["modification_source"] == "wcc_fill_areas"
     assert at(ground, 75, 75)["modification_source"] == "residual_30m"
+    mixed = at(ground, 65, 10)
+    assert (mixed["material"], mixed["modification"]) == ("colluvium", "fill")
+    assert (mixed["modification_source"], mixed["modification_confidence"]) == (
+        "slide_materials",
+        "medium",
+    )
     assert at(ground, 75, 75)["fill_thickness_m"] == pytest.approx(3.0)
     assert np.isnan(at(ground, 15, 15)["fill_thickness_m"])
     assert at(ground, 15, 85)["prior_failure"] == "relict"

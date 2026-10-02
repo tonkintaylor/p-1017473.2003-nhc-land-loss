@@ -22,7 +22,8 @@ and each piece takes its attributes by precedence, finest source first:
 - material: SLIDE interpreted materials, then the 1:50,000 geology, then the
   NLM ``l3_yp`` class, then ``unknown``;
 - modification: SLIDE genesis cut slopes, fill bodies, landfills and dams, then
-  the WCC cut and fill areas, then the thresholded 30 m residual, then
+  the WCC cut and fill areas, then the SLIDE materials that name fill (its fill
+  and mixed fill classes), then the thresholded 30 m residual, then
   ``natural``;
 - prior failure: SLIDE genesis landslides and rockfall, then ``none``;
 - groundwater depth: the NLM median depth polygonised over the flat land, then
@@ -170,6 +171,31 @@ def slide_material_sources(materials):
             frame.loc[frame["confidence"] == level],
             "material",
             "material",
+            level,
+        )
+        for level in ground_map.CONFIDENCES
+    ]
+
+
+def slide_modification_sources(materials):
+    """Build one fill modification source per SLIDE confidence level, highest first.
+
+    The SLIDE fill and mixed fill classes give the natural material as the
+    material and record the fill here, as the modification, so the two are
+    read separately. The frame is filtered to the fill types first, and split
+    by confidence as :func:`slide_material_sources` is.
+    """
+    filled = materials.loc[materials["Type"].isin(ground_map.SLIDE_FILL_TYPES)]
+    frame = filled.assign(
+        modification=ground_map.modification_from_slide(filled["Type"]),
+        confidence=slide_confidence(filled["confidence"]),
+    )
+    return [
+        GroundSource(
+            "slide_materials",
+            frame.loc[frame["confidence"] == level],
+            "modification",
+            "modification",
             level,
         )
         for level in ground_map.CONFIDENCES
@@ -482,6 +508,7 @@ def main(
         ),
         *genesis_sources(genesis),
         *wcc_sources(cut, fill),
+        *slide_modification_sources(materials),
         GroundSource("residual_30m", residual, "modification", "modification", "low"),
         GroundSource(
             ground_map.NLM_GWD_SOURCE, groundwater, "gw_depth_m", "gw_depth_m", "medium"

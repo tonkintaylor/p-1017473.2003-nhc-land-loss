@@ -79,11 +79,144 @@ rate a fragility has to produce depends on what one polygon is.
    anchors, by the fit's uncertainty, or by judgement, and should walls and
    localised failures move together?
 
+## Literature review (2026-10-02): the reviewer's answers
+
+Read against the GNS literature review in `temp/gns_review/` (finding ids in
+backticks, `out/findings.csv`). Every answer below is a **proposal for the
+lead**; numbers that are ours say so. First-batch findings (the SR reports)
+were checked against the page before being used here, as noted against each.
+
+### The anchor rows
+
+Three rows read their source more strongly than the source allows, and one
+row cites a source that does not say what the row needs:
+
+| Row | As built | What the page says | Proposal |
+| --- | --- | --- | --- |
+| A16 | Kaikōura 2016 at 0.15 g in central Wellington, "no urban cut or wall failures recorded", 0.001 | The finding (`sr2019-038-F13`) gives only the 0.15 g rock-site record. Nothing in the reviewed set records the absence of failures in 2016 | Replace the basis with 2013 (below) and keep 2016 only if a source for its absence of failures is found |
+| A19 | Every SH58 cut steeper than 1V:1H fails somewhere at MM8 to MM9, read as one polygon in two | The cuts are "expected to be affected by small to moderate-sized failures (10-1,000 m³)" (`sr1995-005-F08`, checked against the scan, PDF page 51) | Read it as a share of face area, not of polygons: a 10 to 1,000 m³ failure on a long cut takes part of it. With the face segments of the faces plan (phase 3), 0.5 of segments is the upper end |
+| A21 | At MM8 to MM10 many earth fills could crack and slump, read as three polygons in ten | "many earth fills could suffer **minor** cracking and slumping, and **in some cases** moderate to large earthquake-induced failures could occur, especially in fills that are poorly drained" (`sr2013-058-F29`, checked against the page) | Minor cracking and slumping is damaged ground that is not evacuated (A-14), not failure. Read the failing share from "in some cases", lower than 0.3 (**ours**: 0.05 to 0.1), and send the cracking to imminent ground |
+| A20 | Batters at 45 to 50° reasonably resistant at MM8 to MM9, 0.05 | "Local evidence indicates that batters cut at 45°-50° can be expected to be reasonably resistant to earthquake shaking" (`sr1995-005-F11`, checked against the scan, PDF page 47) | Keep. The evidence itself is not given |
+
+A new low-demand anchor, observed, from the second review batch (which had an
+independent check):
+
+- **The 2013 Cook Strait and Lake Grassmere earthquakes.** Wellington recorded
+  PGA of 0.21 to 0.26 g [holden_2013] (`holden2013-F01`, `F02`, `F04`), and
+  the only Wellington landslides seen were small debris falls in wave-cut
+  fill at Kaiwharawhara Point and a small rock fall off an old quarry face
+  at Lyall Bay, both on modified ground [van_dissen_2013]
+  (`vandissen2013-F01`, `F02`). The shaking is above Kaikōura's 0.15 g and
+  the outcome is observed, so this anchor should replace A16's reading.
+  Caveats: the ground inspected after the August event is not stated
+  (`vandissen2013-F22`), and the moderate shaking lasted under 8 s
+  (`holden2013-F05`, `F06`), against the minutes of a Hikurangi interface
+  event.
+
+### Question 1: what a fraction failing refers to
+
+**Anchor on the share of face area that evacuates, not on the share of
+polygons.** Kingsbury's classes describe how widespread failure is over a
+zone [kingsbury_1995], and the forecasts read the same way: the SH58 cuts are
+"affected by" failures of a given size (above). The expected evacuated share
+of a zone is `sum(p_i x A_i) / sum(A_i)` over its face polygons, so it can be
+compared with an anchor whatever size one polygon is. A per-polygon anchor
+changes meaning every time the face segmentation changes. The per-polygon
+`p_fail` stays what step 9 draws on.
+
+### Question 2: the net rate on the ground
+
+No change from the skeleton. A step inside a bank, or a segment beside its
+neighbour, both add to the evacuated share. The share in question 1 is
+counted after step 9's absorption, so nested failures are counted once.
+
+### Question 3: evidence at 1 to 2 g
+
+The observed record at this level is thin and is not Wellington:
+
+- **Port Hills 2011** (MM8 to MM9, about 1 to 2 g): highly damaging, but most
+  failures were under 100 m³ (`sr2015-016-F18`); cut slopes and some fill
+  slopes failed "in many cases" (`sr2019-038-F14`). Wellington's slope
+  modification is far greater in size and scale than Christchurch's (same
+  finding).
+- **The Priscilla and Orchy forecasts at 1.09 g** (the scaled 2,500-year
+  Kaikōura record): the as-built fills move 0.03 and 0.07 m drained by
+  Newmark, and 0.15 and 0.08 m in RS2; with the water table at the ground
+  surface they move about 2.2 m [monteith_2020] (`sr2019-051-F20`, Table 3,
+  checked against the page; `F21`). The saturated case is the authors' stated
+  worst case, "likely unrealistic" in full. **For fills, groundwater sets the
+  outcome at this demand more than the shaking does.**
+- **Dellow and Hancox (2006):** soil moisture moves the landslide response by
+  up to two MM units. In an MM8 zone, the landslide damage ranges from the
+  MM6 description when dry to the MM9 description when very wet
+  [dellow_hancox_2006] (`dellow2006-F01` to `F03`, a scan, read by the
+  second-batch checker).
+- **The MM scale:** "significant landsliding likely in susceptible areas"
+  first appears at MM8 [dowrick_2008] (`dowrick2008-F05`), one level above
+  the MM7 that A-11 takes from Hancox et al. (1997). Slides in roadside
+  cuttings and unsupported excavations are an MM8 effect in the scale QMAP
+  uses (`qmap10-2000-F21`, a scan from the first batch, not checked). Steep unsupported cuts over 3 m high fail from
+  MM6 [brabhaharan_2018; hancox_2015] (`brabhaharan2018-F03`,
+  `sr2015-016-F05`). So the curves should begin to rise at MM6 on the
+  steepest faces and reach significant shares at MM8, not MM7.
+
+The fit at 1 to 2 g is therefore an extrapolation constrained by Port Hills
+alone. The proposal is to say so in the report, and to let the rate setting
+carry the uncertainty (question 6) rather than add anchors that do not exist.
+
+### Question 4: the total
+
+**Keep the total-area check, but only as a check on the large and urban
+populations together, never as a target for the urban one.** Marc et al.
+(2016) and Nowicki Jessee et al. (2018) were fitted on natural landscapes,
+and the urban failures are small and on modified ground, which those
+inventories under-sample. GNS also rates its own earthquake-induced
+landslide model as under-estimating (`sr2025-001-F05`). The urban population
+is anchored on its own rows (Kingsbury, the forecasts, 2013, Port Hills).
+
+### Question 5: walls
+
+Deferred to part C of the review (the wall fragility and damage states),
+which reads Anderson et al. (2015) on the 2,991 Canterbury walls by type and
+height [anderson_2015]. One point bears on the anchoring now: about a third
+of the Canterbury walls fell into the Average or Poor performance classes,
+which have no counterpart in the model's two damage states
+(`anderson2015-F09`). A wall that is damaged but does not fail is neither
+"none" nor "replace".
+
+### Question 6: what low, medium and high bracket
+
+**Bracket by antecedent wetness, the one published driver of a two-unit
+spread** [dellow_hancox_2006]:
+
+- low = dry ground;
+- medium = average;
+- high = wet ground.
+
+This gives the setting a physical meaning the lead can state. Its size is
+**ours**: one MM unit is of the order of a doubling of PGA, so two units is
+a factor of about two to four on the median, wider than the 1.5 now set. That
+conversion still has to be taken from a published MM to PGA relation before
+the factors are set; the review set does not give one directly.
+
+Walls and localised failures should not move by the same factor:
+
+- fills, walled or not, are the groundwater-sensitive ground
+  (`sr2019-051-F20`, `F26`) and take the full spread;
+- dry rock cuts take less.
+
+**Proposal: two factor sets, one for fill and one for everything else.**
+
 ## Proposed phases (to be developed)
 
 ### Phase 1 — Review the anchors
 
-- [ ] The reviewer checks the 21 anchor rows and the class-word readings.
+- [x] The reviewer checks the 21 anchor rows and the class-word readings
+      (2026-10-02, "The anchor rows" above): A16, A19 and A21 read their
+      sources too strongly; A20 stands; the Kingsbury rows were not re-read.
+- [ ] The lead decides the A16, A19 and A21 corrections and the 2013 anchor,
+      and `urban-fragility-anchors.csv` is edited to match, each row's
+      `set_by` and `basis` saying who decided.
 - [ ] Add anchors from documents still to be obtained, with full citations:
       the Christchurch 2011 landslides (`dellow_2011`), Port Hills rockfall
       against PGA (`massey_2014`), and the unfiltered Canterbury hill-property
@@ -93,7 +226,9 @@ rate a fragility has to produce depends on what one polygon is.
 
 - [ ] Run the anchoring validation on the face-based polygons of the pilot.
 - [ ] Fit the localised medians and dispersion to the net rate on the ground.
-- [ ] Set the low and high multipliers.
+- [ ] Set the low and high multipliers, by antecedent wetness, one set for
+      fill and one for everything else (question 6), once a published MM to
+      PGA relation fixes the size of one MM unit.
 
 ### Phase 3 — Check the result
 
@@ -107,8 +242,13 @@ rate a fragility has to produce depends on what one polygon is.
 ## References
 
 `kingsbury_1995`, `koutsoupaki_2023`, `marc_2016`, `nowicki_jessee_2018`,
-`hancox_1997`, `de_vilder_2022`, `dellow_2011`, `massey_2014`, and the GNS
+`hancox_1997`, `de_vilder_2022`, `dellow_2011`, `massey_2014`,
+`dellow_hancox_2006`, `dowrick_2008`, `holden_2013`, `van_dissen_2013`,
+`monteith_2020`, `hancox_brabhaharan_1995`, `hancox_2013_slope_types`,
+`brabhaharan_2018`, `anderson_2015`, and the GNS
 report findings cited by id in the anchor table (`temp/gns_review/`). Keys are
 in `doc/references.bib`.
 
-Written 2026-10-02 as a skeleton for review.
+Written 2026-10-02 as a skeleton for review. Reviewed against the GNS
+literature review on 2026-10-02 (the section above): the answers are
+proposals, and the method is still the lead's to settle.

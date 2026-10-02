@@ -92,6 +92,31 @@ the contract is sections 3.10, 5 and 7.11 of
       string `landslide_id` rows (contract section 3.9) and step 8 writes the
       model file.
 
+## Literature review (2026-10-02)
+
+Part A of the second review read this step against `temp/gns_review/`. The
+draw, supersession and absorption stand. What changes, all proposals for the
+lead, follows from the face polygons (faces plan, phase 3):
+
+- [ ] **Group by face segment.** One wall is one face; a long face is cut
+      into segments of about `BETA_FACE_SEGMENT_VOLUME_M3` along the contour,
+      so a wall's draw is per segment, not per wall line. The "wall fails with
+      any of its polygons" rule then fails one segment of a long wall, not the
+      whole of it, which matches walls that collapsed in part in Canterbury
+      (`anderson2015-F24`). The shared-uniform and transitive-line grouping
+      reduce to the face segment id.
+- [ ] **The geometry is read, not computed here.** The inundated polygon is
+      the reach-angle runout from the crest, clipped at the next building or
+      road, and the imminent polygon the band to a 35° repose line from the
+      toe, both written by the faces step [de_vilder_2022; de_vilder_2024].
+      No change to `to_landslide_rows`.
+- [ ] **Absorption and the inundated strip.** Under the face rules an
+      inundated strip routinely runs past the evacuated ground of the polygon
+      that absorbs it, so the open question below ("an inundated strip of an
+      absorbed failure ... is lost with it") matters more than before. The
+      proposal is to keep the absorbed polygon's inundated ground where it
+      falls outside the absorber's.
+
 ## Phase 3 — Checks
 
 - [ ] Over the pilot: the realised share of polygons failing against the
@@ -99,7 +124,12 @@ the contract is sections 3.10, 5 and 7.11 of
 - [ ] The share of urban failures confined to one property, against the local
       expectation under "Local failures versus global failures" in
       `.agents/context/land-damage-mechanisms.md`, and the failed polygon sizes
-      against the Wellington cut-failure record.
+      against the Wellington cut-failure record, about 10² to 10⁴ m³
+      [hancox_2013_slope_types] (`sr2013-058-F12`). Multi-property failures
+      are expected on gully fills and colluvium (`brown2005-F29`,
+      `sr2013-058-F06`).
+- [ ] The evacuated share of face area by Kingsbury zone, after absorption,
+      against the anchors read as shares of area (anchoring plan, question 1).
 
 ## Potential future improvements
 

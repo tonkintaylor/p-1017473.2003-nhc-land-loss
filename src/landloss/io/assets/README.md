@@ -255,13 +255,14 @@ Pender's own paper is not held. φ′ falls from 35.7° at void ratio 0.25–0.4
 the guide advises c′ = 0 under high groundwater. These rows give no unit weight,
 so `strength_from_material` does not choose them.
 
-**Which fill row the ground map reads.** `strength_from_material` takes the
-first complete, published, unflagged row of grade `FILL`, which is S48. That is
-φ′ 45.7° with c′ 0, from the first shear stage of one intact core sample at
-Orchy Crescent, and it showed no peak. S52 (22 kN/m³, c′ 2 kPa, φ′ 42°) is the
-value GNS supplied for modelling the same fills. Which one the model should read
-is a choice for the model owner; the table's row order alone currently decides
-it.
+**Which fill row the ground map reads.** S52 (22 kN/m³, c′ 2 kPa, φ′ 42°), the
+value GNS supplied for modelling the Priscilla and Orchy Crescent fills, named
+explicitly in `STRENGTH_GRADE_PICKS` in `landloss.hazard.landslide.ground_map`
+(the lead, 2026-10-02). The pick rule alone would take S48, the first complete,
+published, unflagged `FILL` row: φ′ 45.7° with c′ 0 from the first shear stage
+of one intact core sample at Orchy Crescent, which densified over successive
+stages and showed no peak. Both rows stay unflagged; the choice is the code's,
+not the row order's.
 
 In the depth table, `horizon` says what the depth is measured to (Scala
 refusal, base of colluvium, top of CW–HW rock), because the reports differ.

@@ -250,3 +250,35 @@ def get_qv_rating_roll(*, copy_to_local: bool = True) -> pd.DataFrame:
     roll[_DATE_COLUMN] = pd.to_datetime(roll[_DATE_COLUMN], format=_DATE_FORMAT)
 
     return roll
+
+
+# How the LINZ property boundaries write a valuation reference: the roll, a
+# hyphen, the assessment padded to five digits, and a hyphen and the suffix
+# where there is one, as "17110-00302-A".
+_LINZ_ASSESSMENT_DIGITS = 5
+
+
+def linz_valuation_reference(roll: pd.DataFrame) -> pd.Series:
+    """Return each unit's valuation number as the LINZ property boundaries write it.
+
+    The roll carries the valuation number in three parts, while the
+    ``valuation_reference`` of
+    :func:`landloss.io.readers.get_nz_property_boundaries` is one string. Built
+    this way, 98% of the LINZ unit-of-property polygons over the small
+    Wellington pilot find a unit on the roll, which is what puts the roll -- and
+    through ``qpid`` the NZMM land attributes -- on a map.
+
+    Args:
+        roll: Units from :func:`get_qv_rating_roll`.
+
+    Returns:
+        The reference, as "17110-00100" or "17110-00302-A", aligned to ``roll``;
+        missing where the roll or the assessment is.
+    """
+    suffix = roll["valuation_no_suffix"].str.strip()
+    return (
+        roll["valuation_no_roll"].str.strip()
+        + "-"
+        + roll["valuation_no_assessment"].str.strip().str.zfill(_LINZ_ASSESSMENT_DIGITS)
+        + ("-" + suffix).fillna("")
+    )

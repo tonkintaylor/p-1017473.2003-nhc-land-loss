@@ -4,8 +4,13 @@
 large failures placed in slope units on the supplied ESNZ grid, and urban
 failures on slopes near buildings, coupled to the retaining walls. The urban
 result fails far too much ground; its polygons are being rebuilt from faces
-and its fragilities are placeholders until they are anchored. The portfolio
-of large models is proposed, not agreed.
+and its fragilities are placeholders until they are anchored. The first part
+of that rebuild, steps 3 to 5 and the faces plan up to the wall candidates, was
+reviewed against the GNS literature review (`temp/gns_review/`) on 2026-10-02
+and is ready to build once the lead settles the step test (Next, 1). The
+second part, the failure polygons, steps 8 and 9 and the anchoring skeleton,
+was reviewed the same day; its proposals wait on the lead (Next, 3). The
+portfolio of large models is proposed, not agreed.
 
 **Updated:** 2026-10-02
 
@@ -52,11 +57,16 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
   (step 4) and the slope units (step 5).
 - [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
   superseded, because no published method supports it.
-- [>] Find faces, crest to toe, once from the 1 m DEM as a static layer, by
-  geomorphons [jasiewicz_stepinski_2013] and the step test, and build one
-  failure polygon per face: the wedge behind the crest [nzgs_mbie_2017], the
-  runout below the toe [de_vilder_2022; hunter_fell_2003], the Kingsbury rating
-  [kingsbury_1995], checked against the SLIDE breaks in slope [townsend_2020]
+- [>] Find faces, crest to toe, once from the 1 m LiDAR DEM as a static
+  layer, by geomorphons [jasiewicz_stepinski_2013], each with its height and
+  overall angle. A face is a step, and a wall candidate, where it is steeper
+  than its ground stands unsupported at that height, from one lookup of eight
+  fixed height bands by three ground groups: NZGS Unit 7C.2 Figure 35 for
+  rock, 35° for soil and fill [nzgs_2025_torlesse]. Build one failure polygon per face: the wedge behind
+  the crest [nzgs_mbie_2017], the runout below the toe [de_vilder_2022;
+  hunter_fell_2003], the Kingsbury rating [kingsbury_1995], checked against
+  the SLIDE breaks in slope [townsend_2020] and the Wellington slope profiles
+  [hancox_2013_slope_types]
   (`.agents/plans/building-face-based-urban-slope-polygons.md`).
 - [~] Attach a fragility per polygon (step 8); built, with placeholder medians,
   dispersion and rate factors until the anchoring
@@ -94,30 +104,115 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 - **Changed since the run, and needing a rerun of the pilot from step 3:**
   vegetation height masks the building outlines, so roofs no longer read as
   canopy in the step 6 candidates, and the wall lines are step-tested
-  (exposure rw status).
+  (exposure rw status). The ground map's two fill changes are built: SLIDE's
+  mixed fill classes read their natural material with fill as the
+  modification, and fill reads the GNS modelling set S52 (step 4 plan,
+  phase 2); step 4 needs a rerun to see the fill share fall from 71%.
 - **Literature models:** Nowicki Jessee (2018) is rebuilt and reproduces the
   USGS at Loma Prieta (`validations/nowicki_2018/`); Marc et al. (2016)
   reproduces the paper's fit (`validations/calibration/`); the Hancox
   relationships and the calibration interface are built. None has been run over
   Wellington.
-- The faces plan, the anchoring skeleton and the per-territorial-authority plan
-  are written and not reviewed.
+- **Literature review of the first part, 2026-10-02.** Steps 3 to 5 and the
+  faces plan's phases 0 to 2 were read against the 991 findings of
+  `temp/gns_review/`, and the plans edited in place with citations: the faces
+  plan, the step 3 and step 4 plans, and exposure rw step 6. What it changed:
+  - the step test now has a published basis, NZGS Figure 35 for rock
+    [nzgs_2025_torlesse], checked against the page image; the faces carry an
+    overall angle crest to toe, the quantity every Wellington cut criterion is
+    written in [grant_taylor_1964; kingsbury_1995; hancox_brabhaharan_1995];
+  - three ground map changes are proposed before the faces read it: the mixed
+    fills to their natural material with fill as the modification, the fill
+    strength from the GNS analysis set rather than one densifying sample
+    [monteith_2020; lyndsell_2019], and the sheared zone west of the
+    Wellington Fault as crushed rock [grant_taylor_1964];
+  - faces only on LiDAR, with a source mask from step 3 [de_vilder_2024;
+    nzgs_2025_recognition].
+
+  Step 5, the slope units, feeds only the large failures and the review found
+  nothing that moves it. Findings from the first review batch, the SR reports,
+  had no independent check, so their numbers are read off the page before
+  adoption.
+- **Literature review of the urban polygons, fragility and draw, 2026-10-02**
+  (part A of `temp/handoff-remaining-review.md`). Read: faces plan phase 3,
+  steps 8 and 9, the anchoring skeleton, and A-03, A-07, A-08, A-10, A-14 and
+  A-15. Edited in place: the faces plan (phase 3 rewritten, new phase 4
+  checks), the anchoring skeleton (the reviewer's answers), and the step 8 and
+  9 plans. Every number it relies on from a first-batch report was checked
+  against the page, including both de Vilder et al. reach-angle fits against
+  the figure images. What it proposes, all for the lead:
+  - **long faces cut into segments** of about 1,000 m³ along the contour,
+    because Wellington cut failures are 10² to 10⁴ m³ and none takes a whole
+    road cut [hancox_2013_slope_types; hancox_brabhaharan_1995], so a long
+    wall no longer fails whole;
+  - **the evacuated wedge by face type**: a wall's on the retained ground's
+    φ′ (0.45 H for fill) [nzgs_mbie_2017; monteith_2020]; a fill bank's at
+    0.45 H with 0.25 H (our reading of the Priscilla RS2 plot) and 0.65 H
+    (the buried colluvium) as cases; a cut bank with no wall keeps T-44;
+  - **runout by reach angle from the crest** (A-08 replaced): the dry debris
+    avalanche line for cuts and natural banks, the fill flow slide line for
+    every fill, because Wellington fills fail after the shaking as water
+    enters the cracks [de_vilder_2022; brown_larkin_2005; monteith_2020];
+  - **imminent ground to a 35° repose line from the toe** (A-10 revised,
+    T-45), the GNS planning screen [de_vilder_2024];
+  - **amplification by face height and ridge or terrace setting**, 1.0 for
+    most house-lot faces, in place of the placeholder that gives every 60°
+    wall 1.5 [brabhaharan_2018];
+  - **the anchoring**: anchors as shares of face area; A16, A19 and A21 read
+    their sources too strongly; the 2013 Cook Strait earthquakes, 0.21 to
+    0.26 g in Wellington with two small failures on modified ground
+    [holden_2013; van_dissen_2013], become the low-demand anchor; the rate
+    setting brackets antecedent wetness, up to two MM units
+    [dellow_hancox_2006], with one factor set for fill and one for the rest;
+    significant landsliding starts at MM8, not MM7 [dowrick_2008].
+
+  A-07, the circular footprint, is retired for the urban population. The
+  large failures (part B) and the walls (part C) are not yet reviewed.
+- The anchoring skeleton and the per-territorial-authority plan are written
+  and not reviewed.
 
 ## Next
 
-1. Build the faces layer and the face-based polygons (faces plan, phases 0 to
-   3), then rerun the pilot and record the counts and timings.
-2. Develop and run the anchoring (anchoring skeleton), on the face polygons.
-3. Run per territorial authority (per-TA plan).
-4. Ask the supplier what an ESNZ cell's probability is a probability of, and
+1. **The lead settles the step test** (faces plan, phase 1): the eight height
+   bands and the angle lookup, the soil-like 35° in particular. The three
+   ground map changes (step 4 plan, phase 2) were accepted on 2026-10-02.
+2. **Rebuild the first part**, in this order, each on the pilot:
+   1. one extent for every step and the vectorised zonal statistics (faces
+      plan, phase 0);
+   2. step 3's DEM source mask and survey year (step 3 plan, phase 5), then
+      rerun step 3, which also rewrites the vegetation height with the
+      building mask;
+   3. the ground map changes the lead accepts (the two fill changes built
+      2026-10-02; the Wellington Fault sheared zone not yet), then rerun
+      step 4 over the common extent and review its area shares and strength
+      picks;
+   4. the faces layer (faces plan, phase 1) and its figures, for the lead's
+      review;
+   5. the wall candidates and their probability on the faces (faces plan,
+      phase 2; exposure rw step 6, phase 2e), and the phase 4 checks that need
+      only the walls: GNS mapped wall recall and the height shape against
+      Anderson et al. [anderson_2015].
+
+   Step 5 needs a rerun only for the common extent.
+3. **The lead decides the phase 3 proposals** (faces plan, phase 3, and its
+   open decisions): the segment volume, the fill bank width, the failure
+   style per face, the repose angle and the amplification rule. Then build
+   the face-based polygons, rerun the pilot and record the counts and
+   timings.
+4. Develop and run the anchoring on the face polygons, after the lead decides
+   the reviewer's answers in the anchoring skeleton and the anchor table is
+   edited to match.
+5. Run per territorial authority (per-TA plan).
+6. Ask the supplier what an ESNZ cell's probability is a probability of, and
    what shaking it is conditioned on.
-5. Choose the large-model route, and run Nowicki Jessee over Wellington and the
+7. Choose the large-model route, and run Nowicki Jessee over Wellington and the
    calibration on Kaikōura.
-6. Replace the runout rule with the de Vilder et al. (2022) reach angles.
-7. Add imminent-risk land to each landslide (**T-45**), with the regression
-   rules of **T-44**.
-8. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
-   phase 3).
+8. Replace the large-model runout rule with the de Vilder et al. (2022) reach
+   angles; the urban rule is in the faces plan, phase 3.
+9. Add imminent-risk land to each large landslide (**T-45**), with the same
+   repose-line rule proposed for the urban faces.
+10. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
+    phase 3).
 
 ## Validation
 
@@ -126,8 +221,11 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 - Large-model density against the Greater Wellington `SEVERITY` zonation, as a
   rank correlation (`validations/fig_landslide_vulnerability_model_gwrc.py`).
 - Sizes and reach angles against the Kaikōura inventory (`landloss.io.kaikoura`).
-- Faces against the GNS mapped walls and the SLIDE breaks in slope (faces plan,
-  phase 4).
+- Faces against the GNS mapped walls and the SLIDE breaks in slope, face
+  heights and angles against the Wellington slope profiles
+  [hancox_2013_slope_types], and tall step faces against NZGS Figure 36 and
+  Grant-Taylor's envelope [nzgs_2025_torlesse; grant_taylor_1964] (faces
+  plan, phase 4).
 - The share of failures confined to one property, against the expectation in
   `.agents/context/land-damage-mechanisms.md`.
 - The 1855 and 1848 historical accounts, as qualitative rank-order checks only;
@@ -147,19 +245,32 @@ otherwise.
   built (`LARGE_MIN_SOURCE_AREA_M2`).
 - **The largest credible single failure**, the 3,000 m² cap.
 - **How much spatial correlation** to add.
-- **Which runout relation** replaces the translation, and whether a fill in an
-  earthquake takes the dry or the flow-slide relation.
+- **Which runout relation** replaces the translation. For the urban faces the
+  review proposes the de Vilder et al. reach angles from the crest, dry for
+  cuts and natural banks and the flow-slide line for every fill (faces plan,
+  phase 3); for the large failures it is part B of the review.
 - **Depth where two runouts overlap**: the deeper or the sum.
 - **The face detection and geometry rules**: the faces plan's open decisions,
-  and the headscarp band (**T-44**).
+  and the headscarp band (**T-44**). The step test is proposed from NZGS
+  Figure 35 [nzgs_2025_torlesse]; which Figure 35 row each rock class reads
+  waits on a weathering grade the ground map does not yet carry.
 - **Converting the PGA wall curves to PGV** at each site's ratio, as built.
 - **SLIDE's mixed fill classes.** "Mixed fill/rock", "Mixed fill/colluvium"
   and "Mixed fill/colluvium/rock", 65% of the SLIDE area over the pilot, are
   mapped to uncontrolled fill (`landloss.hazard.landslide.ground_map`), which
   makes 71% of the pilot fill and puts Kingsbury's geology factor at its top.
-  Left as it is (the lead, 2026-10-02). **The reviewer is invited to propose a
-  mapping**, for example the dominant natural material with fill recorded as
-  the modification.
+  **Accepted by the lead on 2026-10-02 and built in code the same day, not yet
+  rerun** (step 4 plan, phase 2): the natural material as the material and fill as the
+  modification, colluvium ahead of rock where both are named, because
+  Wellington fills fail on the buried colluvium at their base
+  [brown_larkin_2005; lyndsell_2019; monteith_2020]. It also gives the wall
+  chain's rock-cut factor rock to act on.
+- **The fill strength.** Every fill reads φ′ 45.7° from one Orchy Crescent
+  sample's first shear stage, a maximum on a densifying sample
+  [lyndsell_2019]; the GNS analysis set, φ′ 42° and c′ 2 kPa
+  [monteith_2020], is accepted (2026-10-02) and built as an explicit pick,
+  with Brown and Larkin's 32° and 5 kPa [brown_larkin_2005] as the low case.
+  It sets the width of the fill wedge.
 - **How strength is assigned spatially** for the strength-based model, and
   whether to build a weathering surface from the NZGD.
 - **The pilot box is mostly flat suburb**; whether to move it onto hill country.

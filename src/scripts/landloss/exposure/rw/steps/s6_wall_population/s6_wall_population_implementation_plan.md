@@ -158,7 +158,10 @@ Each line takes a probability from what the lines step read onto it
       more often retained than a cut toe the owner may have left as a batter.
 - [ ] Soil over rock at the line (the ground map's `material` beyond the rock
       cut rule) raising the prior, because walls there stabilise soil rather
-      than rock.
+      than rock. The cover over Wellington greywacke is usually under 1 m and
+      0.5 to 3 m on typical slopes [nzgs_2025_torlesse;
+      hancox_2013_slope_types], so a cut shorter than the cover is a soil cut;
+      phase 2e makes this the face height test on the rock factor.
 - [ ] Mark lines on new subdivisions as very likely to have walls, from the
       subdivision or dwelling age once held.
 - [ ] Wall type where known (anchored timber, gravity concrete, crib) moving
@@ -225,7 +228,56 @@ remote sensing pilot and the ICNZ database will not be obtained (decided
 - [ ] Height, and so size class, stays a judgement until a source for it
       exists; the set heights the loss module prices at (0.75, 1.75, 2.75 m)
       are to be re-confirmed against the 0.5–1.0, 1.0–2.5 and 2.5+ m ranges
-      the DEM face height gives (**I-14**).
+      the DEM face height gives (**I-14**). Anderson et al.'s 2,991
+      Christchurch walls are the nearest published height distribution: 54%
+      under 1.5 m, 26% 1.5 to 2.5 m, 11% 2.5 to 3.5 m, 9% over 3.5 m
+      [anderson_2015] (`anderson2015-F05`), weighted to road walls and to
+      walls over 1.5 m, so a shape check rather than a target. The 2.5 m break
+      matches theirs; the 1 m break cannot be tested against it.
+
+### Phase 2e — Rebuild on the faces (literature review, 2026-10-02)
+
+The candidates are rebuilt from the step faces of the static faces layer
+(`.agents/plans/building-face-based-urban-slope-polygons.md`, phases 1 and 2),
+which replaces phase 2a's line sources with evidence on one face. What the
+review of `temp/gns_review/` adds:
+
+- [ ] **A candidate is a face steeper than its ground stands unsupported**,
+      read from one lookup of eight fixed height bands by three ground groups,
+      NZGS Unit 7C.2 Figure 35 for rock and 35° for soil and fill
+      [nzgs_2025_torlesse], not every face over `MIN_WALL_HEIGHT_M` (faces
+      plan, phase 1). The wall carries the band; the size class is a union of
+      bands.
+- [ ] **The rock-cut factor needs rock on the ground map.** With SLIDE's mixed
+      fill classes mapped to fill, 71% of the pilot is fill and `is_rock_cut`
+      is rarely true, so the factor that carries Nick Peters's advice does
+      little. The step 4 remap is the prerequisite (step 4 plan, phase 2;
+      accepted by the lead 2026-10-02).
+- [ ] **The rock-cut factor applies to a cut taller than the cover**, height
+      band 4 and up (over 2.5 m), because greywacke cuts commonly
+      stand unsupported at 55 to 75° [nzgs_2025_torlesse]
+      (`nzgs2025-u7c2-F25`) while the soil cover above them does not; not to
+      crushed rock near the Wellington Fault [grant_taylor_1964;
+      nzgs_2025_torlesse].
+- [ ] **A cut-and-fill platform has two walls**, a cut at its back and a fill
+      at its front, with houses straddling the contact [monteith_2020]
+      (`sr2019-051-F09`): two faces, two candidates, consistent with Nick
+      Peters's two to four walls per property.
+- [ ] **No faces off LiDAR.** Where step 3's source mask says the contour
+      model, report the claims with no candidate for that reason rather than
+      as claims with no wall [de_vilder_2024; nzgs_2025_recognition].
+- [ ] **Age into condition and the fill class**, from step 8: suburb earthworks
+      followed the 1950s machinery [lyndsell_2019], earthfill standards came in
+      the mid-1970s [monteith_2020], pre-1960 cuts and non-engineered fills are
+      a warning sign [nzgs_2025_recognition]. Anderson et al. tie wall type to
+      era in Christchurch, stone masonry the oldest and worst performing, crib,
+      gabion, block and timber pole more modern [anderson_2015]
+      (`anderson2015-F07`, `F11`), the evidence for reading age as type.
+- [ ] Keep every weight `BETA_`: the literature gives the direction of each
+      piece of evidence, not its size, and no published source gives wall
+      prevalence in Wellington (`sr2019-040-F32`, `sr2019-051-F33`: walls are
+      "a typical Wellington construction method", no counts). **T-50** stays
+      the only calibration.
 
 ## Phase 3 — Initial condition from age
 
