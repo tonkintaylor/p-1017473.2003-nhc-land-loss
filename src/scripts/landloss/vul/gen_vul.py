@@ -65,7 +65,12 @@ def main(*, pilot, world_ids, realisation_ids):
             (
                 "liquefaction land s2, land damage",
                 lambda: gen_liq_land_damage.main(
-                    **ids, cost_percentile=liq_config.COST_PERCENTILE
+                    **ids,
+                    cost_percentile=liq_config.COST_PERCENTILE,
+                    drop_out_rates=liq_config.DROP_OUT_RATES,
+                    evacuated_area_m2=liq_config.EVACUATED_AREA_M2,
+                    inundated_share=liq_config.INUNDATED_SHARE,
+                    evacuated_overlap_share=liq_config.EVACUATED_OVERLAP_SHARE,
                 ),
             ),
             (

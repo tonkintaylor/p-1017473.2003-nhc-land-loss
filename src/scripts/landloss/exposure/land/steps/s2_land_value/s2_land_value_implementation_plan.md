@@ -89,6 +89,63 @@ missing.
       read in each `__main__` block and passed into `main()` as keyword
       arguments. The figure scripts keep their own arguments for now.
 
+## Phase 2b — Section size (complete)
+
+Hand checks of Wellington City land values on 2026-10-01 showed every
+address being valued as if it stood on the assumed 450 m2 lot, so a 1,006 m2
+Seatoun section and a 129 m2 Thorndon one were worth much the same, and every
+rate per square metre was divided by the assumption rather than the section.
+
+- [x] Measure each address's section as the whole LINZ property it stands on
+      (`landloss.exposure.land.extent.section_area_per_address`, joined in
+      `s4_estimate_land_value.py`). Splitting the area among the property's
+      addresses was tried first and dropped: a published land value is for the
+      property, and splitting doubled the rate of 13 Lawrence Street, Newtown,
+      one 170 m2 property with three address points.
+- [x] Size the value by `(section_area / assumed lot) ** 0.5`
+      (`landloss.exposure.land.land_value.section_size_factor`, elasticity in
+      the factors asset), leaving the per-authority normalisation to hold the
+      total.
+- [x] Divide the rate by the measured section rather than the assumed lot, with
+      the assumed lot as the fallback and `lot_size_source` saying which.
+- [x] Model the rate rather than the value: rate factor times site area is
+      the site value, calibrated as total site value over total rating units
+      against the published per-rating-unit average, so a unit-titled block is
+      the sum of its units (`estimate_land_value`, `_value_one_ta`). It replaced
+      a value-per-address model, under which every way of handling a property
+      with several addresses -- split, whole, or counted once -- misrated
+      apartment blocks or the houses around them.
+- [x] Size a unit-titled block per rating unit, floored at
+      `section_area_min_m2`, so a dense block is not extrapolated far below any
+      real section (`section_size_factor`).
+- [x] Rate a measured lot under 10 m2 from its neighbours rather than on its
+      own (`min_lot_size_m2`, `neighbour_rate_count`,
+      `rate_from_neighbours`). Five addresses stand on lots that small, and the
+      clip floor of a quarter of the authority's average spread over a few
+      square metres gave them $15,000 to $144,000 per m2.
+- [x] Rate a multi-dwelling site -- several rating units, or five or more
+      addresses on one title -- from its nearest single-dwelling neighbours,
+      before the calibration (`_multi_dwelling`, `_neighbour_factor`). Applied
+      to every title with two or more addresses at first, it took a house and
+      flat off their own size: Seatoun's 14 Inglis Street went to 1.69 of
+      actual, so `multi_dwelling_min_addresses` is 5.
+- [x] Solve the calibration exactly with the clip in place (`_value_one_ta`),
+      and set the value ceiling per dwelling. A single re-solve after clipping
+      left houses pinned at the floor once very large sites dominated the first
+      pass, and the per-rating-unit ceiling held estates to four averages. Sized per rating
+      unit, unit-titled blocks had rated 1.4 to 2 times their neighbouring
+      houses; sized whole, freehold estates had rated about a fifth of theirs.
+      The size factor and `section_area_min_m2` now apply to single-dwelling
+      sites only.
+- [ ] Fit `section_area_elasticity` in the Phase 5 regression.
+- [x] Count each property once in the authority mean
+      (`landloss.exposure.land.land_value.property_weight`). Counted per
+      address, the 14.5% of pilot addresses on properties over 5,000 m2 each
+      took the whole property's size factor, and the normalisation took about
+      44% off every ordinary property's value to pay for it; 13 Lawrence Street
+      came out at 0.49 of its real rate, and 0.85 once each property counted
+      once.
+
 ## Phase 3 — Accessibility (stage 3a built)
 
 - [x] Give each address a gravity decay to the main centres,
@@ -140,7 +197,7 @@ missing.
       in a table. Straight lines already show the problem stage 3b is for:
       Makara village scores the same gravity as Tawa.
 
-## Phase 4 — Amenity: sea view and winter sun
+## Phase 4 — Amenity: sea view and winter sun (built)
 
 Phase 2 left this phase an explicit target to be judged against. The elevated
 flat factor was cut from 3.10 to 2.06 because the class is now assigned from
@@ -153,13 +210,31 @@ band, either they are too weak or the 2.06 is too low, and the `basis` cell of
 `landform_factor_elevated_flat` in `src/landloss/io/assets/land-value-factors.csv`
 is where that argument is recorded.
 
-- [ ] Sea view by inverted viewshed: because visibility is reciprocal, run
-      WhiteboxTools viewshed from a few hundred station points sampled on the
-      sea over a 10 m DEM and read the visible-station count off the land,
-      rather than running a viewshed from every property.
-- [ ] Winter sun by WhiteboxTools `time_in_daylight` over a June-July window
-      with terrain shadowing. This is what separates a good Wellington section
-      from a bad one, and what a plain aspect calculation misses.
+- [x] Sea view, as the share of 72 bearings in which the sea is visible within
+      5 km from 5 m above the ground (`landloss.exposure.land.amenity`,
+      `s3_build_amenity.py`), with a within-cohort modifier
+      (`landloss.exposure.land.land_value.amenity_modifier`). Measured by
+      casting rays from every address over the 10 m DEM in numpy rather than by
+      an inverted WhiteboxTools viewshed from points on the sea: it needs no new
+      binary dependency, and it gives a share of the compass rather than a
+      count of visible stations, which is what a view is priced on.
+- [x] Add closeness to the coast as a second amenity term, separate from the
+      view (`coast_distance_m` from `measure_sea`, `coast_premium` and
+      `coast_decay_length_m` in the factors asset), so a beachfront house behind
+      a dune is priced for the beach it cannot see.
+- [ ] Measure the view over the LINZ surface model, which carries buildings and
+      trees, rather than the bare-earth DEM, which overstates the view from flat
+      land behind the front row.
+- [ ] Check the sea view against the hand-checked rates of 31 Hay Street,
+      Oriental Bay, 14 Inglis Street, Seatoun, and 13 Karamu Street, Eastbourne,
+      once s3 and s4 have run over the full study area.
+- [x] Winter sun over a June-July window with terrain shadowing, as the share
+      of the time the sun is up that it clears the address's own horizon
+      (`winter_sun_share`, `landloss.exposure.land.amenity.sunlit_share`), with
+      a third term in the amenity modifier (`winter_sun_premium`). Measured on
+      the same rays as the sea view rather than by WhiteboxTools
+      `time_in_daylight`, for the same reason: no new binary dependency, and the
+      horizon comes free with the rays already cast.
 - [ ] Work at 10 m resolution. A 1 m DEM over the study area is about 3.2
       billion cells, which is not a sensible cost for an amenity multiplier.
 
@@ -191,15 +266,6 @@ is where that argument is recorded.
 
 ## Potential future improvements
 
-- Take land area from a measured polygon rather than the per-authority
-  `median_lot_size_m2` in the base rates asset. The agreed target for the
-  exposure land model is one row per `claim_id` carrying a rate per square metre
-  and the *insured land* polygon — the 8 m line from the dwelling — rather than
-  the full parcel, because that is the extent NHC settles on and the extent the
-  landslide hazard and vulnerability modules intersect against. The join that
-  supplies it is Phase 2 of step 1's plan,
-  `s1_address_spine_implementation_plan.md`, and this step consumes it when it
-  lands. Closes most of register task T-25.
 - Have a valuer sign off the `index_to_2025_09` factors, or replace them with a
   valuer's own basis. They are read off the published QV House Price Index for
   the greater Wellington region, with the September figure interpolated between

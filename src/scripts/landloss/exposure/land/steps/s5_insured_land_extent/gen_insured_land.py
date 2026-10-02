@@ -351,8 +351,8 @@ def describe_extent(extent, occupied, addresses, dwellings):
         f"step 2 assumed to build its rate -- {measured / assumed:,.2f} times it"
     )
     print(
-        "  the rate per square metre is still built on the assumption, so the "
-        "two describe different pieces of ground until T-25 closes"
+        "  step 2 now divides each rate by the address's measured share of its "
+        "property, so the assumption is only the fallback for unmeasured ones"
     )
 
 

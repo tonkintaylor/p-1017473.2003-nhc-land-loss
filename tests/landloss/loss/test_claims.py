@@ -148,11 +148,12 @@ def test_the_sub_caps_and_the_excess_scale_with_dwellings():
 
 
 def land_table(rows):
-    """Build a land table from (claim, liq state, total area, landslide area)."""
+    """Build a land table from (claim, liquefied area, total area, landslide
+    area, market rate, dwellings)."""
     return pd.DataFrame(
         {
             CLAIM_ID_COLUMN: [row[0] for row in rows],
-            loss_contract.LIQ_LD_STATE_COLUMN: [row[1] for row in rows],
+            loss_contract.LIQ_LD_AREA_COLUMN: [row[1] for row in rows],
             loss_contract.TOTAL_INSURED_LAND_AREA_COLUMN: [row[2] for row in rows],
             loss_contract.LANDSLIDE_AREA_COLUMN: [row[3] for row in rows],
             loss_contract.MARKET_VALUE_COLUMN: [row[4] for row in rows],
@@ -161,33 +162,33 @@ def land_table(rows):
     )
 
 
-def test_a_damaging_liquefaction_state_damages_the_whole_insured_area():
-    land = land_table([("c1", 3.0, 500.0, 0.0, 750.0, 1)])
-    assert damaged_area_m2(land).tolist() == [500.0]
+def test_liquefaction_damages_the_area_vul_sends_not_the_whole_polygon():
+    land = land_table([("c1", 180.0, 500.0, 0.0, 750.0, 1)])
+    assert damaged_area_m2(land).tolist() == [180.0]
 
 
-def test_state_one_is_no_damage_and_neither_is_a_missing_state():
+def test_a_missing_liquefied_area_is_no_damage():
     land = land_table(
-        [("c1", 1.0, 500.0, 0.0, 750.0, 1), ("c2", np.nan, 500.0, 0.0, 750.0, 1)]
+        [("c1", 0.0, 500.0, 0.0, 750.0, 1), ("c2", np.nan, 500.0, 0.0, 750.0, 1)]
     )
     assert damaged_area_m2(land).tolist() == [0.0, 0.0]
 
 
 def test_the_two_causes_are_combined_with_a_maximum_not_a_sum():
     # Ground both liquefied and buried is one piece of damaged ground. Adding
-    # would value the overlap twice, which on this row would give 700.
-    land = land_table([("c1", 4.0, 500.0, 200.0, 750.0, 1)])
-    assert damaged_area_m2(land).tolist() == [500.0]
+    # would value the overlap twice, which on this row would give 500.
+    land = land_table([("c1", 300.0, 500.0, 200.0, 750.0, 1)])
+    assert damaged_area_m2(land).tolist() == [300.0]
 
 
 def test_landslide_alone_is_the_damaged_area_where_nothing_liquefied():
-    land = land_table([("c1", 1.0, 500.0, 200.0, 750.0, 1)])
+    land = land_table([("c1", 0.0, 500.0, 200.0, 750.0, 1)])
     assert damaged_area_m2(land).tolist() == [200.0]
 
 
 def test_the_polygons_of_a_claim_have_their_damaged_areas_added():
     land = land_table(
-        [("c1", 1.0, 500.0, 100.0, 750.0, 1), ("c1", 1.0, 500.0, 300.0, 750.0, 1)]
+        [("c1", 0.0, 500.0, 100.0, 750.0, 1), ("c1", 0.0, 500.0, 300.0, 750.0, 1)]
     )
     claims = land_by_claim(land)
     assert claims.loc["c1", DAMAGED_AREA_COLUMN] == pytest.approx(400.0)
@@ -197,7 +198,7 @@ def test_the_rate_is_weighted_by_the_damaged_area_it_values():
     # 100 m2 at $1,000 and 300 m2 at $500 is $250,000 over 400 m2, so the one
     # rate that values the claim the same is $625 -- not the plain mean of $750.
     land = land_table(
-        [("c1", 1.0, 500.0, 100.0, 1000.0, 1), ("c1", 1.0, 500.0, 300.0, 500.0, 1)]
+        [("c1", 0.0, 500.0, 100.0, 1000.0, 1), ("c1", 0.0, 500.0, 300.0, 500.0, 1)]
     )
     claims = land_by_claim(land)
     assert claims.loc["c1", LAND_RATE_COLUMN] == pytest.approx(625.0)
@@ -206,7 +207,7 @@ def test_the_rate_is_weighted_by_the_damaged_area_it_values():
 
 
 def test_a_claim_with_no_damaged_ground_falls_back_to_the_plain_rate():
-    land = land_table([("c1", 1.0, 500.0, 0.0, 800.0, 1)])
+    land = land_table([("c1", 0.0, 500.0, 0.0, 800.0, 1)])
     claims = land_by_claim(land)
     assert claims.loc["c1", DAMAGED_AREA_COLUMN] == 0.0
     assert claims.loc["c1", LAND_RATE_COLUMN] == pytest.approx(800.0)
@@ -214,7 +215,7 @@ def test_a_claim_with_no_damaged_ground_falls_back_to_the_plain_rate():
 
 def test_polygons_disagreeing_about_the_dwelling_count_are_refused():
     land = land_table(
-        [("c1", 1.0, 500.0, 0.0, 750.0, 1), ("c1", 1.0, 500.0, 0.0, 750.0, 4)]
+        [("c1", 0.0, 500.0, 0.0, 750.0, 1), ("c1", 0.0, 500.0, 0.0, 750.0, 4)]
     )
     with pytest.raises(ValueError, match="disagree about the dwelling count"):
         land_by_claim(land)
@@ -223,7 +224,7 @@ def test_polygons_disagreeing_about_the_dwelling_count_are_refused():
 def test_the_aggregated_land_table_can_supply_its_own_dwelling_counts():
     # The land table carries the count the contract sends, so the reader that
     # validates it works against this frame as well as against exposure's.
-    land = land_table([("c1", 3.0, 500.0, 0.0, 750.0, 2)])
+    land = land_table([("c1", 300.0, 500.0, 0.0, 750.0, 2)])
     claims = land_by_claim(land)
     assert dwelling_counts(claims.index.to_numpy(), claims.reset_index()) == [2.0]
 

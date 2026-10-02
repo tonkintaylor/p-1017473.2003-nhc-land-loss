@@ -52,6 +52,7 @@ from landloss.exposure.land.land_value import (
     COMMON_VALUATION_DATE,
     index_base_rates,
     load_base_rates,
+    ta_mean_land_value,
 )
 from scripts.landloss.paths import TEMP_DIR
 
@@ -173,7 +174,8 @@ def check_totals(valued, indexed):
     rows = []
     status = PASS
 
-    modelled = valued.groupby("territorial_authority")["land_value_nzd"].mean()
+    # Each property counted once, the mean estimate_land_value holds.
+    modelled = ta_mean_land_value(valued)
 
     for ta_name in sorted(modelled.index):
         published = float(indexed.loc[ta_name, "indexed_land_value_nzd"])

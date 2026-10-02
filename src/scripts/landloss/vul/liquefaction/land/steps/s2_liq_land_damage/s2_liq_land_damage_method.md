@@ -19,6 +19,54 @@
   state passes through to `Liq_LD_state` in the land table, which the loss
   module reads as not liquefied. `on_liq_grid` records which properties were
   sampled, and the run prints the split.
+- **Not every damaged property claims.** Each property on the grid draws, once
+  per realisation, whether its owner makes a land claim, at the **drop-out
+  rate** for its state: the share of properties in that state that do not
+  claim. `landloss.vul.liquefaction.drop_out.draw_claims` makes the draw, from
+  its own seeded stream, `liquefaction_claims`, so it is reproducible and
+  independent of the wall and crossing draws. `liq_claimed` records it.
+  - A property that drops out keeps the hazard's state in `hazard_ld_state`,
+    but `ld_state` is null and the cost is zero, so the loss module reads it as
+    it reads land off the grid: no liquefaction claim, and no damaged area in
+    the cap. `state_name` names the hazard state.
+  - It is a draw, not a weight. Scaling each cost by its claim rate gives the
+    same expected repair cost, but the excess and `min(repair, cap)` are
+    non-linear, so it would get the settlement wrong.
+  - **The rates are placeholders and a tuning parameter**, `DROP_OUT_RATES` in
+    `config.py`: 95%, 75%, 40% and 15% for None to Major, 0% for Severe and
+    Very severe, which are always claimed. They await Virginie Lacrosse's
+    table (**T-64**) and feedback from her and John Leeves (**Q-16**).
+  - **The draw is off for now.** The packaged Canterbury costs average over
+    every damaged property, non-claimants at $0 (**Q-17**), so the drop-out is
+    already inside them. `COSTS_INCLUDE_NON_CLAIMANTS` in
+    `landloss.vul.liquefaction.costs` records that, and while it is True every
+    property on the grid claims at the diluted cost. Replacing the CSV with
+    claimant-only rates and setting it False switches the draw on (**T-65**).
+    In the meantime many small costs meet the excess where a few full ones
+    would, so settlements come out somewhat low (**L-43**).
+- **Each claim carries the ground it lost** (**T-55**): an evacuated area in
+  m² -- cracked or spread -- and an inundated area under ejecta, drawn
+  uniformly within its state's ranges by
+  `landloss.vul.liquefaction.damaged_area.draw_damaged_areas`, from a stream of
+  their own, `liquefaction_areas`, so switching the drop-out on does not move
+  them.
+  - Evacuated is drawn in m², because cracking is a few metres whatever the
+    section's size; inundated is drawn as a share and multiplied by the insured
+    area, because ejecta spreads over a fraction of it. Each is capped at the
+    insured area. They may sum to more than it, since they overlap.
+  - **The damaged area counts the overlap once** (**T-56**):
+    `damaged_area_m2` is evacuated plus inundated less
+    `EVACUATED_OVERLAP_SHARE` of the evacuated -- 30%, but no more than the
+    inundated land -- capped at the insured area, by
+    `landloss.vul.liquefaction.damaged_area.liquefied_area_m2`. A property
+    wholly inundated and evacuated is damaged over its insured land and no
+    more. The share is an assumption to be verified (**L-44**). The land table
+    carries it to `loss` as `Liq_LD_damaged_area`, which values the land cover
+    cap over it.
+  - Both are zero wherever `ld_state` is null -- off the grid, or dropped out.
+  - The ranges, `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in `config.py`, are
+    judgement from the MBIE state descriptions (**L-39**), to be tuned with the
+    repair rates (**T-57**). The cost is still the Canterbury lookup.
 - Costs are looked up, not modelled, by `landloss.vul.liquefaction.costs`. They
   are what NHC settled for land damage after the 2010 and 2011 Canterbury
   earthquakes, grouped by the damage state surveyed on the ground, and shipped

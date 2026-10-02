@@ -11,15 +11,12 @@ brought onto `claim_id` before any of the arithmetic applies. Land polygons are
 non-overlapping, so their damaged areas add; the market rate does not, and is
 weighted by the damaged area it values.
 
-**The damaged area is assembled from two causes that are measured differently.**
-`vul` gives landslide damage as an area already unioned over the evacuated and
-inundated footprints, and liquefaction damage as a *state* sampled at the
-property, with no area at all. The reading taken here is that a damaging
-liquefaction state damages the polygon's whole insured area, since that is the
-scope the Canterbury cost rates are per-property against. The two are combined
-with a maximum rather than a sum, so ground damaged by both causes is valued
-once. Neither the reading nor the combination is confirmed -- see
-`src/scripts/landloss/loss/status.md`.
+**The damaged area is assembled from two causes.** `vul` gives each as an area:
+landslide damage unioned over its evacuated and inundated footprints, and
+liquefaction damage as its evacuated plus inundated land less their overlap,
+no more than the polygon (**T-56**). The two are combined with a maximum rather
+than a sum, so ground damaged by both causes is valued once. The combination is
+not confirmed -- see `src/scripts/landloss/loss/status.md`.
 
 **The dwelling count is the piece that has to come from here.** Both land
 structure sub-caps and the excess are multiplied by the number of dwellings in
@@ -60,9 +57,8 @@ from landloss.domain.loss_contract import (
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
-    LIQ_LD_STATE_COLUMN,
+    LIQ_LD_AREA_COLUMN,
     MARKET_VALUE_COLUMN,
-    TOTAL_INSURED_LAND_AREA_COLUMN,
 )
 
 # The claim key, and the count written against it by the dwellings-per-property
@@ -163,15 +159,6 @@ def dwelling_counts(
     return values
 
 
-# The liquefaction land damage state that means no damage: flat land the hazard
-# grid reached and found undamaged. Land off the grid is a different thing and
-# `vul` says so, writing **no state at all** rather than this one -- state 1
-# carries a Canterbury cost, and ground that cannot liquefy should not be
-# charged the cost of ground that was surveyed and found sound. So anything
-# above this is damage, and a missing state is no claim.
-# Written out rather than imported, for the reason the columns above are.
-LIQ_STATE_NONE = 1.0
-
 # What `land_by_claim` writes. The rate carries `_incl_gst_` because that is the
 # basis the Act compares on and the basis `settle` expects; `vul` sends it as
 # `$/m2 market value`, which says nothing about GST.
@@ -192,16 +179,17 @@ CROSSING_FLAG_COLUMNS = (
 def damaged_area_m2(land: pd.DataFrame) -> np.ndarray:
     """Return each land polygon's damaged insured area, over both causes.
 
-    Landslide damage arrives as an area, already unioned over the evacuated and
-    inundated footprints by `vul`. Liquefaction damage arrives as a state with
-    no area at all, and is read here as damaging the polygon's **whole insured
-    area**, because that is the scope the Canterbury rates are per-property
-    against.
+    Both causes arrive as areas from `vul`. Landslide damage is unioned over
+    the evacuated and inundated footprints. Liquefaction damage is the
+    evacuated plus the inundated land less their overlap, capped at the
+    polygon's insured area (**T-56**), and zero where the polygon has no state
+    -- off the grid, undamaged, or not claimed.
 
     The two are combined with a **maximum, not a sum**: a polygon both
     liquefied and buried is one piece of damaged ground, and adding the two
     would value some of it twice. The maximum is exact where one cause reaches
-    all of the ground the other did, and conservative otherwise.
+    all of the ground the other did. Where the two lie on different parts of
+    the polygon it undercounts, by at most the smaller of the two areas.
 
     Args:
         land: The contract's land table, one row per insured land polygon.
@@ -212,22 +200,13 @@ def damaged_area_m2(land: pd.DataFrame) -> np.ndarray:
     Raises:
         ValueError: If a column the calculation needs is missing.
     """
-    needed = (
-        LIQ_LD_STATE_COLUMN,
-        TOTAL_INSURED_LAND_AREA_COLUMN,
-        LANDSLIDE_AREA_COLUMN,
-    )
+    needed = (LIQ_LD_AREA_COLUMN, LANDSLIDE_AREA_COLUMN)
     missing = [column for column in needed if column not in land.columns]
     if missing:
         msg = f"the land table carries no {missing} column(s)"
         raise ValueError(msg)
 
-    state = land[LIQ_LD_STATE_COLUMN].to_numpy(dtype=float)
-    liquefied = np.where(
-        np.isfinite(state) & (state > LIQ_STATE_NONE),
-        land[TOTAL_INSURED_LAND_AREA_COLUMN].to_numpy(dtype=float),
-        0.0,
-    )
+    liquefied = np.nan_to_num(land[LIQ_LD_AREA_COLUMN].to_numpy(dtype=float))
     slipped = np.nan_to_num(land[LANDSLIDE_AREA_COLUMN].to_numpy(dtype=float))
     return np.maximum(liquefied, slipped)
 

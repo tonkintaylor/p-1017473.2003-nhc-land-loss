@@ -50,7 +50,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   keeps the deprecated `loss_input_path` resolving world 0 (contract section
   3.15, decision 37, built), so the loss module's reads work and read world 0.
   Moving the loss module's calls onto worlds is the loss owner's, register task
-  **T-65**.
+  **T-66**.
 
 ## Next
 

@@ -45,6 +45,7 @@ from landloss.domain.loss_contract import (
     IS_DAMAGED_BY_SHAKING_COLUMN,
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
+    LIQ_LD_AREA_COLUMN,
     LIQ_LD_STATE_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
@@ -173,7 +174,7 @@ COLUMN_FORMULA = {
 }
 
 WORKED_FORMULA = {
-    3: "whole insured area where liquefied, else the slip",
+    3: "MAX(liquefied land, the slip)",
     5: "MIN(damaged land, area cap) x land rate",
     6: "face area x wall rate x GST; see the Repair cost tab",
     7: "MIN(wall UDV, sub-cap x dwellings)",
@@ -1083,14 +1084,11 @@ def land_areas_by_claim(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
     """
     land = gpd.read_parquet(loss_input_path("land", realisation_id, pilot=pilot))
     state = land[LIQ_LD_STATE_COLUMN]
-    # Summed over the polygons that liquefied rather than over all of them, so
-    # a claim with one liquefied polygon and one sound is valued on the first
-    # alone -- which is what `claims.damaged_area_m2` does, one at a time.
+    # vul's liquefied area per polygon, summed over the claim, which is what
+    # `claims.damaged_area_m2` takes for liquefaction, one polygon at a time.
     land = land.assign(
         **{
-            LIQ_DAMAGED_AREA_COLUMN: land[TOTAL_INSURED_LAND_AREA_COLUMN].where(
-                state.notna() & (state > loss_claims.LIQ_STATE_NONE), 0.0
-            ),
+            LIQ_DAMAGED_AREA_COLUMN: land[LIQ_LD_AREA_COLUMN].fillna(0.0),
             LIQ_STATE_COLUMN: state.fillna(0.0),
         }
     )
@@ -1181,8 +1179,9 @@ REPAIR_NOTES = [
         "C1. Canterbury settled costs per property, $200 to $4,000 by damage "
         "state, in 2010/2011 dollars and NOT yet inflated. They exclude ILV "
         "and IFV, so they are the minor-damage tier only. The cap the state "
-        "is compared against is the land rate over the whole insured area, "
-        "because that is the scope those rates are per-property against."
+        "is compared against is the land rate over the liquefied land: "
+        "evacuated plus inundated, less the share of the evacuated assumed "
+        "to overlap (L-44), no more than the insured area."
     ),
     (
         "D1. The six professional fees from the tool's fee table, $5,100 "

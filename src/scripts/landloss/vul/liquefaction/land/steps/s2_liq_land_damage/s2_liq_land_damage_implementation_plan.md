@@ -1,7 +1,8 @@
 # Step 2 — Liquefaction land damage: implementation plan
 
-**Status:** Phases 1, 1a and 1b complete. Costs are the packaged Canterbury
-settlements.
+**Status:** Phases 1, 1a, 1b, 1c and 1d complete. Costs are the packaged Canterbury
+settlements; the drop-out draw is built but off, since those costs already
+include non-claimants, and its rates are placeholders.
 
 ## Phase 1 — A priced state on every property (complete)
 
@@ -31,6 +32,41 @@ settlements.
       rather than as a missing state, and record `on_liq_grid` beside it.
 - [x] Carry the GST-inclusive land rate from the insured land rather than the
       exclusive one.
+
+## Phase 1c — Not every damaged property claims (complete)
+
+- [x] Draw per property whether it makes a land claim, at a drop-out rate per
+      state, from a seeded stream of its own (`liquefaction_claims`).
+- [x] Null `ld_state` and zero the cost for a property that drops out, keeping
+      the hazard's state as `hazard_ld_state` and the draw as `liq_claimed`.
+- [x] Hold the rates in `config.py` as `DROP_OUT_RATES`, flagged as
+      placeholders, with Severe and Very severe at 0%.
+- [x] Leave the draw off while the packaged costs include non-claimants at $0
+      (**Q-17**), keyed on `COSTS_INCLUDE_NON_CLAIMANTS` in the costs module.
+- [ ] Replace the costs with claimant-only rates from Virginie Lacrosse and set
+      `COSTS_INCLUDE_NON_CLAIMANTS` False, which switches the draw on
+      (**T-65**).
+- [ ] Validate the rates against her counts of damaged properties and
+      claimants per band, which give the drop-out directly, and tune them on
+      her and John Leeves' feedback (**T-64**, **Q-16**). The existing diluted
+      and the claimant-only rates check them only as means: drop-out = 1 −
+      diluted mean ÷ claimant mean. Percentiles do not scale that way.
+- [ ] Calibrate the T-57 repair rates against claimants only, to match.
+
+## Phase 1d — Evacuated and inundated areas (complete)
+
+- [x] Draw an evacuated area in m² and an inundated share of the insured land
+      per property, uniformly within each state's range (**T-55**), from a
+      stream of their own.
+- [x] Cap each at the insured area, and zero both where `ld_state` is null.
+- [x] Hold the ranges in `config.py` as `EVACUATED_AREA_M2` and
+      `INUNDATED_SHARE`, flagged as judgement to be tuned (**L-39**, **T-57**).
+- [x] Combine them into the damaged area, less 30% of the evacuated as
+      overlap, capped at the insured area, and hand it to the land table as
+      `Liq_LD_damaged_area` for the cap (**T-56**).
+- [ ] Verify the overlap assumption (**L-44**).
+- [ ] Cost from the areas at repair rates per m² calibrated to the Canterbury
+      table, replacing the lookup (**T-57**).
 
 ## Phase 2 — Beyond the Canterbury lookup
 

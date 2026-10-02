@@ -33,6 +33,11 @@ The join is optional on purpose. With no terrain file the run falls back to
 Phase 1 behaviour and says so, so that the two steps can be run independently
 and a new extent can be valued before any DEM has been fetched for it.
 
+Each address is also given its section area -- the area of the LINZ property
+it stands on, whole rather than shared among its addresses -- which sizes its value and is what its rate per square metre is
+divided by, in place of the per-TA assumed lot. An address standing in no
+property keeps the assumed lot, and the run says how many did.
+
 Accessibility from s2_build_accessibility.py is joined on the same way when its
 output exists, and feeds a second modifier that spreads value within each
 landform class by closeness to the main centres and to a railway station. It is
@@ -43,7 +48,9 @@ be run on its own. Set PILOT in config.py to work over the small Wellington
 box.
 
 Requires TNT_KOORDINATES_API_KEY in .env for the flatland layer, and LINZ_API_KEY
-if the address spine has to be rebuilt.
+for the property boundaries and if the address spine has to be rebuilt. The
+first full run downloads the national property boundaries layer, which is
+large; it is cached, and step s5 reads the same download.
 """
 
 import sys
@@ -59,6 +66,18 @@ from landloss.exposure.land.accessibility import (
     GRAVITY_COLUMN,
     STATION_DISTANCE_COLUMN,
 )
+from landloss.exposure.land.amenity import (
+    COAST_DISTANCE_COLUMN,
+    SEA_VIEW_COLUMN,
+    WINTER_SUN_COLUMN,
+)
+from landloss.exposure.land.extent import (
+    PROPERTY_ADDRESS_COUNT_COLUMN,
+    PROPERTY_RATING_UNIT_COUNT_COLUMN,
+    SECTION_AREA_COLUMN,
+    build_claim_properties,
+    section_area_per_address,
+)
 from landloss.exposure.land.land_value import (
     COMMON_VALUATION_DATE,
     SLOPE_COLUMN,
@@ -68,6 +87,7 @@ from landloss.exposure.land.land_value import (
     load_base_rates,
     load_factors,
     summarise_by_suburb,
+    ta_mean_land_value,
 )
 from landloss.exposure.land.landform import (
     ELEVATED_FLAT,
@@ -79,6 +99,7 @@ from landloss.exposure.land.landform import (
     get_flatland,
 )
 from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
 
@@ -99,6 +120,8 @@ TERRAIN_NAME = "terrain-by-address.geoparquet"
 PILOT_TERRAIN_NAME = "terrain-by-address-pilot.geoparquet"
 ACCESSIBILITY_NAME = "accessibility-by-address.geoparquet"
 PILOT_ACCESSIBILITY_NAME = "accessibility-by-address-pilot.geoparquet"
+AMENITY_NAME = "amenity-by-address.geoparquet"
+PILOT_AMENITY_NAME = "amenity-by-address-pilot.geoparquet"
 OUT_NAME = "land-value-by-address.geoparquet"
 PILOT_OUT_NAME = "land-value-by-address-pilot.geoparquet"
 COHORTS_NAME = "land-value-by-suburb.csv"
@@ -109,6 +132,7 @@ PILOT_COHORTS_NAME = "land-value-by-suburb-pilot.csv"
 ID_COLUMN = "address_id"
 TERRAIN_COLUMNS = (ID_COLUMN, SLOPE_COLUMN, TOPOGRAPHIC_POSITION_COLUMN)
 ACCESSIBILITY_COLUMNS = (ID_COLUMN, GRAVITY_COLUMN, STATION_DISTANCE_COLUMN)
+AMENITY_COLUMNS = (ID_COLUMN, SEA_VIEW_COLUMN, COAST_DISTANCE_COLUMN, WINTER_SUN_COLUMN)
 
 # How high a flat address has to stand above its neighbourhood before it is
 # elevated flat. Read from the factors asset rather than set here, because it is
@@ -314,6 +338,135 @@ def attach_accessibility(classified, accessibility):
     return joined
 
 
+def read_amenity(path):
+    """Read the amenity attributes, or say why the run goes without them.
+
+    Args:
+        path: The geoparquet s3_build_amenity.py writes.
+
+    Returns:
+        The attributes as a plain DataFrame, or None if the file is not there.
+    """
+    if not path.exists():
+        print(f"\nNo amenity attributes at {path}.")
+        print(
+            "  Valuing without the sea view modifier, so a view of the sea\n"
+            "  changes nothing. Run s3_build_amenity.py over this extent to turn\n"
+            "  it on."
+        )
+        return None
+
+    print(f"\nReading the amenity attributes from {path} ...")
+    amenity = gpd.read_parquet(path)
+    return pd.DataFrame(amenity.drop(columns=amenity.geometry.name, errors="ignore"))
+
+
+def attach_amenity(classified, amenity):
+    """Join the amenity attributes onto the addresses, one-to-one.
+
+    Args:
+        classified: Addresses carrying ``address_id``.
+        amenity: The attributes from :func:`read_amenity`.
+
+    Returns:
+        The addresses with the sea view share joined on, or the addresses
+        unchanged if the file does not carry what the join needs.
+    """
+    missing = [column for column in AMENITY_COLUMNS if column not in amenity.columns]
+    if missing:
+        print(
+            f"  The amenity file is missing {', '.join(missing)}, so it cannot be\n"
+            "  joined. Valuing without the sea view modifier."
+        )
+        return classified
+
+    joined = classified.merge(
+        amenity[list(AMENITY_COLUMNS)], on=ID_COLUMN, how="left", validate="one_to_one"
+    )
+    unmatched = int(joined[SEA_VIEW_COLUMN].isna().sum())
+    print(
+        f"  Addresses with a sea view share: {len(joined) - unmatched:,} of {len(joined):,}"
+    )
+    return joined
+
+
+def attach_section_areas(classified, bbox, *, use_cache):
+    """Give every address the area of the property it stands on.
+
+    The property is the LINZ property boundary, reduced to claimable ground by
+    the same :func:`build_claim_properties` step s5 uses, so the area a value is
+    sized by is the area the claim is later measured on.
+
+    Args:
+        classified: The addresses, carrying ``address_id``.
+        bbox: The extent to read the property boundaries over.
+        use_cache: Whether to reuse an already-clipped extent of the layer.
+
+    Returns:
+        The addresses with :data:`SECTION_AREA_COLUMN` joined on, NaN for an
+        address standing in no property.
+    """
+    print("\nReading the LINZ property boundaries ...", flush=True)
+    boundaries = get_nz_property_boundaries(
+        bbox=bbox, crs=constants.DEFAULT_CRS, use_cache=use_cache
+    )
+    boundaries = boundaries.set_geometry(boundaries.geometry.make_valid())
+    properties = build_claim_properties(boundaries)
+    areas = section_area_per_address(properties, classified)
+
+    return classified.merge(
+        areas[
+            [
+                ID_COLUMN,
+                SECTION_AREA_COLUMN,
+                PROPERTY_ADDRESS_COUNT_COLUMN,
+                PROPERTY_RATING_UNIT_COUNT_COLUMN,
+            ]
+        ],
+        on=ID_COLUMN,
+        how="left",
+        validate="one_to_one",
+    )
+
+
+def describe_section_areas(classified, base_rates):
+    """Print how many addresses were measured, and their areas against the lot.
+
+    The last column is the measure of what this changes. The rate per square
+    metre used to be divided by the assumed lot for every address, so wherever
+    the median measured section sits far from it, rates in that authority move
+    the furthest.
+    """
+    assumed = base_rates.set_index("ta_name")["median_lot_size_m2"]
+
+    print(RULE)
+    print("Section area per address: the area of the property it stands on")
+    print(
+        f"{'Territorial authority':<24}{'Measured':>10}{'Of':>10}"
+        f"{'p25 m2':>9}{'Median':>9}{'p75 m2':>9}{'Assumed':>9}"
+    )
+    for ta_name, rows in classified.groupby("territorial_authority", sort=True):
+        area = rows[SECTION_AREA_COLUMN].dropna()
+        quartiles = area.quantile([0.25, 0.5, 0.75]) if not area.empty else None
+        cells = (
+            "".join(f"{value:>9,.0f}" for value in quartiles)
+            if quartiles is not None
+            else f"{'-':>9}" * 3
+        )
+        print(
+            f"{ta_name:<24}{len(area):>10,}{len(rows):>10,}{cells}"
+            f"{float(assumed.loc[ta_name]):>9,.0f}"
+        )
+
+    unmeasured = int(classified[SECTION_AREA_COLUMN].isna().sum())
+    if unmeasured:
+        print(
+            f"\n  {unmeasured:,} address(es) stood in no property and keep the assumed\n"
+            "  lot. If this is more than a handful, the boundaries were read over a\n"
+            "  different extent from the spine."
+        )
+
+
 def describe_landform(classified):
     """Print the landform split per authority, including the elevated flat share.
 
@@ -391,9 +544,12 @@ def describe_calibration(valued, base_rates):
         f"{'Modelled mean':>16}{'Published':>14}{'Diff':>9}"
     )
 
+    # Counting each property once, which is the mean the model holds.
+    means = ta_mean_land_value(valued)
+
     grouped = valued.groupby("territorial_authority", sort=True)
     for ta_name, rows in grouped:
-        modelled = float(rows["land_value_nzd"].mean())
+        modelled = float(means.loc[ta_name])
         published = float(indexed.loc[ta_name, "indexed_land_value_nzd"])
 
         # Relative rather than absolute, because a few dollars on a $621,000
@@ -445,7 +601,7 @@ def _default(path, pilot_name, name, *, pilot):
     return WORK_DIR / (pilot_name if pilot else name)
 
 
-def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
+def resolve_outputs(*, pilot, spine, terrain, accessibility, amenity, out, cohorts):
     """Choose where the spine is read from and where the two outputs are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
@@ -458,12 +614,13 @@ def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
         terrain: The terrain attributes path, or None for the default.
         accessibility: The accessibility attributes path, or None for the
             default.
+        amenity: The amenity attributes path, or None for the default.
         out: The valued address path, or None for the default.
         cohorts: The cohort table path, or None for the default.
 
     Returns:
-        The spine path, the terrain path, the accessibility path, the valued
-        address path and the cohort table path.
+        The spine path, the terrain path, the accessibility path, the amenity
+        path, the valued address path and the cohort table path.
     """
     return (
         _default(spine, PILOT_SPINE_NAME, SPINE_NAME, pilot=pilot),
@@ -471,6 +628,7 @@ def resolve_outputs(*, pilot, spine, terrain, accessibility, out, cohorts):
         _default(
             accessibility, PILOT_ACCESSIBILITY_NAME, ACCESSIBILITY_NAME, pilot=pilot
         ),
+        _default(amenity, PILOT_AMENITY_NAME, AMENITY_NAME, pilot=pilot),
         _default(out, PILOT_OUT_NAME, OUT_NAME, pilot=pilot),
         _default(cohorts, PILOT_COHORTS_NAME, COHORTS_NAME, pilot=pilot),
     )
@@ -557,7 +715,7 @@ def write_outputs(valued, cohorts, out, cohorts_out):
     print(f"  Rows    : {len(cohorts):,} suburb/landform cohorts")
 
 
-def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
+def main(*, pilot, fresh, spine, terrain, accessibility, amenity, out, cohorts):
     """Estimate a land value for every address in the spine.
 
     Args:
@@ -572,6 +730,9 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
         accessibility: The accessibility attributes from s2. None reads the
             standard location. If the file is not there the run values without
             the accessibility modifier.
+        amenity: The amenity attributes from s3. None reads the standard
+            location. If the file is not there the run values without the sea
+            view modifier.
         out: Where to write the valued addresses. None writes to the standard
             location.
         cohorts: Where to write the per-suburb cohort table. None writes to the
@@ -580,11 +741,19 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
     Returns:
         1 if the spine or the flatland layer could not be had, otherwise None.
     """
-    spine_path, terrain_path, accessibility_path, out, cohorts_out = resolve_outputs(
+    (
+        spine_path,
+        terrain_path,
+        accessibility_path,
+        amenity_path,
+        out,
+        cohorts_out,
+    ) = resolve_outputs(
         pilot=pilot,
         spine=spine,
         terrain=terrain,
         accessibility=accessibility,
+        amenity=amenity,
         out=out,
         cohorts=cohorts,
     )
@@ -621,6 +790,13 @@ def main(*, pilot, fresh, spine, terrain, accessibility, out, cohorts):
     if reachable is not None:
         classified = attach_accessibility(classified, reachable)
 
+    views = read_amenity(amenity_path)
+    if views is not None:
+        classified = attach_amenity(classified, views)
+
+    classified = attach_section_areas(classified, bbox, use_cache=not fresh)
+    describe_section_areas(classified, base_rates)
+
     describe_landform(classified)
 
     valued = estimate_land_value(classified, base_rates=base_rates, factors=factors)
@@ -641,6 +817,7 @@ if __name__ == "__main__":
         spine=config.SPINE,
         terrain=config.TERRAIN,
         accessibility=config.ACCESSIBILITY,
+        amenity=config.AMENITY,
         out=config.LAND_VALUE_OUT,
         cohorts=config.COHORTS_OUT,
     )

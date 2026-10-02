@@ -42,6 +42,7 @@ def liquefaction():
             "land_id": ["1-L01", "2-L01"],
             "ld_state": [3, 1],
             "cost_nzd": [12_000.0, 0.0],
+            "damaged_area_m2": [180.0, 0.0],
         }
     )
 
@@ -130,6 +131,13 @@ def test_the_land_table_carries_the_contract_columns_and_the_extras():
     # Only the GST-inclusive rate is handed on.
     assert land["$/m2 market value"].tolist() == [575.0, 805.0]
     assert land["total_insured_land_area"].tolist() == [400.0, 900.0]
+
+
+def test_the_liquefied_area_is_passed_through_and_missing_land_has_none():
+    liquefied = liquefaction().iloc[:1]
+    land = build_land_table(insured(), liquefied, landslide()).set_index("land_id")
+    assert land.loc["1-L01", "Liq_LD_damaged_area"] == pytest.approx(180.0)
+    assert land.loc["2-L01", "Liq_LD_damaged_area"] == 0.0
 
 
 def test_land_no_landslide_reached_has_no_damaged_area_and_no_depth():

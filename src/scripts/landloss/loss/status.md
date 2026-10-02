@@ -126,10 +126,12 @@ The settlement core is built and is the only part that needed no upstream data.
    `landloss.loss.claims`.
 6. Settle, once a repair cost exists for either side. The cap is built and
    `settle` is tested, so this is wiring rather than arithmetic.
-7. Value liquefied land in the cap over its damaged area -- inundated plus
-   evacuated, less a 30% overlap -- rather than the whole insured area, which
-   gives caps far too high (**T-56**, agreed 2026-09-30). The areas come from
-   `vul` per land damage state (**T-55**).
+7. ~~Value liquefied land in the cap over its damaged area~~ — **done**
+   (**T-56**). `vul` sends `Liq_LD_damaged_area`, evacuated plus inundated less
+   30% of the evacuated as overlap (an assumption, **L-44**), no more than the
+   polygon. Over the pilot it cut the land value the cap compares against from
+   $1,520M to $445M across 1,767 liquefied claims; the cap now binds on 3, all
+   Minor, where 1 m² evacuated is worth less than the $575 repair.
 8. Price inundated and evacuated liquefied land at rates set to roughly
    reproduce the Canterbury table, with a no-SVA flag on the inundated rate
    (**T-57**).

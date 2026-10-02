@@ -1303,7 +1303,7 @@ The reviewer's form, `world_id` as a keyword with no default on
 As built (decision 37, K): as specified. The deprecated function says so in
 its docstring and raises no runtime `DeprecationWarning`; the step's plan
 carries an open box for deleting it, and the request to the loss owner is
-register task **T-65**. Not run over the pilot.
+register task **T-66**. Not run over the pilot.
 
 ### 3.16 Validation — `hazard/landslide/validations/urban/` (new)
 
@@ -2664,7 +2664,7 @@ inputs and not run over the pilot:
     realisation_id, *, pilot)`; `loss_input_path(table, realisation_id, *,
     pilot)` is kept, deprecated, resolving world 0, for the loss module until
     its owner moves to worlds (section 3.15). Built (K); the move is register
-    task **T-65**.
+    task **T-66**.
 
 ## As built, close-out review (2026-10-02)
 

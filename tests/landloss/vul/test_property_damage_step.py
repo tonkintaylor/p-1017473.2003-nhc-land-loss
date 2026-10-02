@@ -77,6 +77,7 @@ def liq_land_damage(realisation_id=0):
             "claim_id": ["C01", "C02"],
             "ld_state": [3, None],
             "cost_nzd": [12_000.0, 0.0],
+            "damaged_area_m2": [180.0, 0.0],
         }
     )
 

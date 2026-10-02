@@ -65,7 +65,10 @@ valuation date; the index only has to cover the gap after it.
 
 ### `median_lot_size_m2` — judgement, not researched
 
-The model divides a modelled land value by this to get a rate in $/m2. No
+Since 2026-10-01 the model rates each LINZ property on its measured area, per
+rating unit for a unit-titled block. This figure is now the reference the
+section size factor is relative to, and the divisor only for an address that
+stands in no property. No
 council, Stats NZ or LINZ publication gives a median residential lot size per
 territorial authority. The Wellington Regional Housing and Business Development
 Capacity Assessment uses a notional 600 m2 section for the region as a whole,
@@ -98,10 +101,19 @@ so a valuer can check the number without reading any code.
 `hill` and `flat`. Separating elevated flat land needs the DEM, which arrives in
 Phase 2, so the factor sits here waiting rather than being applied.
 
-The clip multiples are judgement bounds, not researched figures. The model
+The clip multiples are judgement bounds, not researched figures. They bound
+the land value per rating unit, and the floor applies only to a property of one
+rating unit. The model
 re-solves the per-authority normalising constant after clipping and re-applies
 the clip once, so clipping moves value between properties without changing the
 authority's modelled mean.
+
+The amenity rows -- `sea_view_premium`, `coast_premium`,
+`coast_decay_length_m`, `winter_sun_premium`, the two `amenity_modifier_clip_*`
+bounds, the four `sea_view_*` settings that say how the view is measured, and
+the five `winter_sun_*` settings that say how the sun is sampled --
+are judgement too; `s3_build_amenity.py` reads the settings and
+`landloss.exposure.land.land_value.amenity_modifier` the premium and bounds.
 
 The five accessibility rows -- `accessibility_elasticity`,
 `rail_station_premium`, `rail_station_decay_length_m` and the two

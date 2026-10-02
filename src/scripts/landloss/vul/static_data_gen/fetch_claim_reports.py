@@ -561,6 +561,31 @@ def choose_across(copies: list[Path]) -> tuple[Path, Path] | None:
     return (docx or chosen or [None])[0]
 
 
+def gather_copies(
+    project_dirs: list[Path], wanted: list[str] | None
+) -> dict[str, list[Path]]:
+    """Return each subproject's folders across the project's roots, by name."""
+    copies: dict[str, list[Path]] = {}
+    for project_dir in project_dirs:
+        dirs = subproject_dirs(project_dir, wanted)
+        print(f"{len(dirs):,} subproject folders under {project_dir}")
+        for subproject_dir in dirs:
+            copies.setdefault(subproject_dir.name, []).append(subproject_dir)
+    return copies
+
+
+def describe(row: IndexRow) -> str:
+    """Return the line a run prints for one subproject."""
+    if row.status != FETCHED:
+        return row.status
+    notes = ["final" if row.is_final else "NOT marked final"]
+    if row.is_draft:
+        notes.append("DRAFT")
+    if row.source_folder != ISSUED_DOCUMENTS:
+        notes.append(f"from {row.source_folder}")
+    return f"{row.report_name} ({', '.join(notes)}, {row.last_modified})"
+
+
 def fetch(
     project: str,
     *,
@@ -589,13 +614,7 @@ def fetch(
     out = out or index_path(str(int(project)))
     project_dirs = find_project_dirs(project, project_roots)
     index = read_index(out)
-    # Each subproject's copies across the roots, in folder order.
-    copies: dict[str, list[Path]] = {}
-    for project_dir in project_dirs:
-        dirs = subproject_dirs(project_dir, wanted)
-        print(f"{len(dirs):,} subproject folders under {project_dir}")
-        for subproject_dir in dirs:
-            copies.setdefault(subproject_dir.name, []).append(subproject_dir)
+    copies = gather_copies(project_dirs, wanted)
 
     fetched = 0
     since_saved = 0
@@ -613,19 +632,8 @@ def fetch(
                 continue
             index[row.subproject] = row
             since_saved += 1
-            if row.status == FETCHED:
-                fetched += 1
-                final = "final" if row.is_final else "NOT marked final"
-                if row.is_draft:
-                    final += ", DRAFT"
-                if row.source_folder != ISSUED_DOCUMENTS:
-                    final += f", from {row.source_folder}"
-                print(
-                    f"  {row.subproject}: {row.report_name} "
-                    f"({final}, {row.last_modified})"
-                )
-            else:
-                print(f"  {row.subproject}: {row.status}")
+            fetched += row.status == FETCHED
+            print(f"  {row.subproject}: {describe(row)}")
             if not dry_run and since_saved >= CHECKPOINT_EVERY:
                 write_index(out, index)
                 since_saved = 0

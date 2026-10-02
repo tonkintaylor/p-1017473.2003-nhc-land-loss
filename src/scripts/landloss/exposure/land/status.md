@@ -58,8 +58,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [~] Supply the `$/m2 market value`, written both sides of GST as
   `land_rate_excl_gst_nzd_per_m2` and `land_rate_incl_gst_nzd_per_m2` by
   `landloss.domain.gst.add_gst`; only the inclusive rate reaches `loss`. Still
-  the mean of the address rates on an assumed lot size (`Next` 2 and 3), and
-  step 2's rate is assumed to exclude GST.
+  the mean of the address rates (`Next` 2), each now divided by its measured
+  section rather than an assumed lot, and step 2's rate is assumed to exclude
+  GST.
 - [x] Supply `total_insured_land_area`, written as `area_m2`.
 - [x] Supply coordinates, as the insured land polygon.
 - [x] Supply `dwelling_count`. The contract omits it, but `loss` needs it for
@@ -110,19 +111,26 @@ polygon now includes the driveway and is cut to the property boundary.
 - The 2 m premium is not implemented.
 - QV's rating roll is read by `landloss.io.qv_rating_roll.get_qv_rating_roll`;
   nothing in the land chain reads it yet.
-- Land area is measured on the insured land layer, but the rate per square metre
-  is still built on the per-authority `median_lot_size_m2` assumption, so the
-  two describe different pieces of ground. The run prints one against the other.
+- The rate per square metre is modelled directly, per site, and calibrated
+  so that total site value over total rating units is each authority's
+  published average (2026-10-01). It is built on the measured area of each
+  address's property, so the rate and the property area the insured land is
+  cut from now describe the same ground. The per-authority
+  `median_lot_size_m2` survives only as the reference the size factor is
+  relative to and the fallback for an address standing in no property.
 
 ## Next
 
 1. Decide how a route too steep to be a driveway is handled, and what happens
    to a building with no drivable route below it.
 2. Value the claim from the property rather than from the mean of the rates of
-   the addresses standing on it, which is the stand-in in use now.
-3. Feed the measured insured area back into the land value step, replacing the
-   assumed lot size. The property area is carried on every row, so the
-   comparison is already there. This closes most of **T-25**.
+   the addresses standing on it. Since 2026-10-01 the land value step models
+   the rate per site and every address on a property carries it, so the mean is
+   exact for a property; what is left is valuing it as one row.
+3. Done 2026-10-01: the land value step measures each address's property from
+   the property boundaries and divides the rate by its area (Phase 2b of
+   `steps/s2_land_value/`). What is left of **T-25** is the fallback lot size
+   for the few addresses in no property.
 4. Add the 2 m premium to the rate per square metre.
 5. Dissolve property boundaries that overlap heavily without being identical.
    0.2 ha of the pilot's 225.7 ha is still claimed by two properties.
@@ -137,8 +145,9 @@ polygon now includes the driveway and is cut to the property boundary.
    2026-10-02 and the land value is to switch to it (item 12); keep
    progressing until then. Stage 3a of the plan,
    straight-line accessibility to the main centres and to railway stations, is
-   built (`steps/s2_land_value/s2_build_accessibility.py`) but has not yet been
-   run with LINZ access; Phase 4, sea view and winter sun, is next.
+   built (`steps/s2_land_value/s2_build_accessibility.py`), and so is Phase 4:
+   sea view, distance to the coast and winter sun
+   (`steps/s2_land_value/s3_build_amenity.py`).
 8. Generate one driveway per property, as its main access way, rather than one
    per building (**T-60**). Reviewing the KML layers on 2026-10-01, parcel
    3989118 carried two driveways because it has two dwellings, and outbuildings
@@ -179,7 +188,9 @@ polygon now includes the driveway and is cut to the property boundary.
 
 - **T-07** — the remaining LINZ datasets. **Closed.** Building outlines, roads
   and property boundaries are all read and pinned as named constants.
-- **T-25** — the assumed lot size, which a measured insured area replaces.
+- **T-25** — the assumed lot size. Mostly closed: rates are divided by the
+  measured section, and the assumed lot is left as the fallback and the
+  reference for the size factor.
 - **L-11** — the claim-level identifier. **Closed.** The claim is the property,
   and `claim_id` is the LINZ property boundary's own source identifier.
 - **T-23** — multi-unit, cross-lease and shared-land properties. A block now

@@ -34,6 +34,7 @@ so a claim's areas can be summed without double counting.
 | `claim_id` | The claim it belongs to |
 | `$/m2 market value` | The market rate the damaged area is valued at |
 | `Liq_LD_state` | The liquefaction land damage state |
+| `Liq_LD_damaged_area` | Insured area damaged by liquefaction: evacuated plus inundated less their overlap, no more than the polygon. Added 2026-10-02 (**T-56**), beyond the contract as confirmed |
 | `total_insured_land_area` | The whole insured area of the polygon |
 | `land_slide_total_insured_land_area` | Insured area taken by landslide |
 | `inundated_insured_area` | Insured area buried by material coming to rest |

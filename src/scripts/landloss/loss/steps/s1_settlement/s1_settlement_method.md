@@ -84,11 +84,12 @@ their bands marked as invented.
 
 ## Known wrongness, carried deliberately
 
-- **The cap is built on the whole insured area wherever liquefaction is
-  recorded.** Any state above "None" marks the polygon's entire insured land as
-  damaged, and insured land is 93.5% of the property at the median, so a "Minor"
-  state -- a $500 repair -- values a whole section. This is the single largest
-  reason the cap does not bind, and it is an assumption, not a finding.
+- **The liquefied land the cap values is drawn, not observed.** Its evacuated
+  and inundated areas come from judgement ranges per state (**L-39**) and their
+  overlap from an assumption (**L-44**). It replaced the whole insured area on
+  2026-10-02 (**T-56**), which valued a whole section for a $500 Minor repair.
+  The cap still rarely binds on liquefaction, because the Canterbury costs it
+  is compared against run $200 to $4,000 a property.
 - **The Canterbury costs are 2010/2011 dollars and are not inflated**, only
   grossed up for GST. They are compared against land values and wall rates in
   today's dollars. Nothing in the repository supplies an index to correct it.

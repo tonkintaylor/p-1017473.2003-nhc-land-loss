@@ -6,7 +6,8 @@ their own, so what a run did can be established by reading this file and the git
 history of it, rather than by remembering which flags were typed.
 
 `s1_build_terrain_attributes.py`, `s2_build_accessibility.py`,
-`s4_estimate_land_value.py` and `fig_town_centres.py` read from here. Sharing
+`s3_build_amenity.py`, `s4_estimate_land_value.py` and `fig_town_centres.py`
+read from here. Sharing
 `PILOT`, `TERRAIN` and `ACCESSIBILITY` is what keeps the valuation reading the
 attributes the earlier scripts actually wrote.
 
@@ -39,6 +40,11 @@ TERRAIN = None
 # temp/exposure/accessibility-by-address.geoparquet. If the file is not there,
 # s4 values without the accessibility modifier.
 ACCESSIBILITY = None
+
+# The amenity attributes: where s3 writes them and where s4 reads them. None is
+# temp/exposure/amenity-by-address.geoparquet. If the file is not there, s4
+# values without the sea view modifier.
+AMENITY = None
 
 # Where s4 writes the valued addresses. None is
 # temp/exposure/land-value-by-address.geoparquet.

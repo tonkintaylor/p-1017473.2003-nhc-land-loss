@@ -2,7 +2,7 @@
 
     uv run --frozen python src/scripts/landloss/exposure/gen_exposure.py
 
-The address spine, the terrain and accessibility attributes and the land value
+The address spine, the terrain, accessibility and amenity attributes and the land value
 per address, the insured land extent and the dwellings on each claim, then the
 retaining wall population in three steps -- the candidate wall lines, a
 probability on each, and one draw per exposure world -- and the crossing
@@ -28,6 +28,7 @@ from scripts.landloss.exposure.land.steps.s2_land_value import (
 from scripts.landloss.exposure.land.steps.s2_land_value import (
     s1_build_terrain_attributes,
     s2_build_accessibility,
+    s3_build_amenity,
     s4_estimate_land_value,
 )
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent import (
@@ -98,6 +99,15 @@ def main(*, pilot, realisation_ids, world_ids):
                 ),
             ),
             (
+                "land s2, amenity",
+                lambda: s3_build_amenity.main(
+                    pilot=pilot,
+                    fresh=land_value_config.FRESH,
+                    spine=land_value_config.SPINE,
+                    out=land_value_config.AMENITY,
+                ),
+            ),
+            (
                 "land s2, land value per address",
                 lambda: s4_estimate_land_value.main(
                     pilot=pilot,
@@ -105,6 +115,7 @@ def main(*, pilot, realisation_ids, world_ids):
                     spine=land_value_config.SPINE,
                     terrain=land_value_config.TERRAIN,
                     accessibility=land_value_config.ACCESSIBILITY,
+                    amenity=land_value_config.AMENITY,
                     out=land_value_config.LAND_VALUE_OUT,
                     cohorts=land_value_config.COHORTS_OUT,
                 ),

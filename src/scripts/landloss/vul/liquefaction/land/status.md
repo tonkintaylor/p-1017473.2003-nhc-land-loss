@@ -3,7 +3,7 @@
 **Status:** Canterbury observed damage database built, and the cost rates now
 price a Wellington realisation end to end.
 
-**Updated:** 2026-10-01
+**Updated:** 2026-10-02
 
 ## Approach
 
@@ -32,7 +32,7 @@ contain -- evacuated and inundated land -- and `loss` does the costing.
 
 Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
-- [ ] Give each land damage state an **evacuated** (cracked) area and an
+- [x] Give each land damage state an **evacuated** (cracked) area and an
   **inundated** (ejecta) area, drawn uniformly within the state's range, from
   the MBIE descriptions of each state (**T-55**, owner Perrie Gilbert):
 
@@ -48,11 +48,18 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   Evacuated land is an area in m² and inundated land a percentage of the
   insured land (confirmed by Perrie Gilbert, 2026-09-30). Moderate inundation
   was first put at 5% to 25% and revised to 25% to 70% in the same call. All
-  the ranges are judgement (**L-39**).
-- [ ] Take the **total damaged area** as evacuated plus inundated less a 30%
+  the ranges are judgement (**L-39**). Done in step 2: the ranges are
+  `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in its `config.py`, and each claim
+  carries `evacuated_area_m2` and `inundated_area_m2`, each capped at the
+  insured area. Nothing downstream reads them yet.
+- [x] Take the **total damaged area** as evacuated plus inundated less a 30%
   overlap between them, and value liquefied land in the land cover cap over
   that rather than over the whole insured area (**T-56**) -- the whole-area
-  reading gives caps that are much too high.
+  reading gives caps that are much too high. Done: the overlap is read as 30%
+  of the evacuated land, no more than the inundated, and the total is capped at
+  the insured area. Step 2 writes it as `damaged_area_m2`, and the land table
+  carries it to `loss` as `Liq_LD_damaged_area`. How the 30% is measured is an
+  assumption to be verified (**L-44**).
 - [ ] Set **repair rates** for inundated and evacuated liquefied land, chosen so
   the modelled costs roughly reproduce the Canterbury cost table, and add a
   **no-SVA flag** that raises the inundated rate, since the Canterbury clearing
@@ -88,6 +95,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   4,764 properties carry a state; the remainder sit outside the liquefaction
   grid, which covers flat land as expected, and are written as state 1, None,
   at no cost, with `on_liq_grid` recording which were sampled.
+- Step 2 carries a drop-out draw -- which properties on the grid go on to
+  claim -- but leaves it off, because the current costs already average over
+  non-claimants at $0. Every property on the grid claims at the diluted cost
+  until claimant-only rates arrive (**T-65**, **L-43**). With the draw on at
+  the placeholder rates, 908 of the pilot's 2,484 properties on the grid
+  claimed, all 197 Severe and Very severe among them.
 - The percentile is a run-level scenario rather than a column, because
   `min(repair, cap)` is non-linear and a settlement computed from a median cost
   is not the median settlement.
@@ -103,17 +116,18 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 3. Gross the rates up for GST at the loss boundary. They arrive excluding it
    and the Act compares on a GST-inclusive basis.
 4. Run all three percentiles and report the portfolio total as a band.
-5. Add the evacuated and inundated areas per state (**T-55**), and the damaged
-   area the cap is valued over (**T-56**). Maxim Millen is revising the land
-   damage states themselves (**T-54**), which is where the two pieces of work
-   first meet.
+5. Maxim Millen is revising the land damage states themselves (**T-54**),
+   which the evacuated and inundated ranges (**T-55**) and the damaged area
+   (**T-56**) are keyed on, so the two pieces of work meet there.
 6. Set the inundated and evacuated repair rates against the Canterbury table,
    with the no-SVA flag (**T-57**).
-7. Apply Virginie Lacrosse's table of which land damage states lead to a claim
-   (**T-64**, the table is hers to provide). Every flat land property carries a
-   state, but not every one will claim. A property off the liquefaction grid,
-   or where the state is not applicable, maps to NaN and carries no
-   liquefaction cost; the layer reviewed on 2026-10-01 predated that.
+7. Tune the drop-out rates, the share of properties in each state that do not
+   claim. Step 2 can draw claims at **placeholder** rates, `DROP_OUT_RATES`
+   in its `config.py` -- 95%, 75%, 40% and 15% for None to Major, 0% for
+   Severe and Very severe -- and they wait on Virginie Lacrosse's table
+   (**T-64**) and her and John Leeves' feedback (**Q-16**). The draw is off
+   until her claimant-only costs replace the current ones (**T-65**); her
+   counts of damaged properties and claimants per band will validate it.
 
 ## Validation
 
@@ -123,7 +137,32 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - Distribution of properties across states 1 to 6, against the observed
   distribution in the Canterbury data.
 
+## Tuning parameters
+
+Values the model runs on that are judgement, held in config, and to be adjusted
+on feedback rather than derived.
+
+- **Drop-out rate per land damage state**, `DROP_OUT_RATES` in
+  `steps/s2_liq_land_damage/config.py`. Placeholders by Perrie Gilbert, Severe
+  and Very severe fixed at 0%; feedback from Virginie Lacrosse and/or John
+  Leeves (**T-64**, **Q-16**). Not applied until the costs are claimant-only
+  (**T-65**).
+- **Evacuated area and inundated share per land damage state**,
+  `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in the same `config.py`. Judgement
+  from the MBIE state descriptions, agreed 2026-09-30 (**L-39**), to be tuned
+  with the repair rates against the Canterbury table (**T-57**).
+- **Share of the evacuated land overlapping the inundated land**,
+  `EVACUATED_OVERLAP_SHARE` in the same `config.py`. 30%, an assumption by
+  Perrie Gilbert on 2026-10-02 about how the 30% overlap agreed on 2026-09-30
+  is measured; to be verified (**L-44**).
+
 ## Open decisions
+
+- **The drop-out and the costs have to be on one basis.** The current
+  Canterbury costs include non-claimants at $0 (**Q-17**, closed), so the
+  drop-out stays off against them. Once claimant-only costs arrive (**T-65**)
+  it comes on, and the T-57 repair rates are to be calibrated against
+  claimants only, to match.
 
 - **Whether retaining walls are handled explicitly or left inside the land
   damage cost.** The Canterbury rates may already include retaining wall,

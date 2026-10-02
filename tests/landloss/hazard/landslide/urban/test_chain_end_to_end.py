@@ -666,6 +666,7 @@ def run_chain(root):
             LAND_ID_COLUMN: pd.Series([], dtype=object),
             "ld_state": pd.Series([], dtype=object),
             "cost_nzd": pd.Series([], dtype=float),
+            "damaged_area_m2": pd.Series([], dtype=float),
         }
     )
     tables = loss_tables(insured, walls, liquefaction)

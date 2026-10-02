@@ -124,6 +124,15 @@ MAX_DWELLING_FOOTPRINT_M2 = 500.0
 ADDRESS_ID_COLUMN = "address_id"
 AREA_COLUMN = "area_m2"
 PROPERTY_AREA_COLUMN = "property_area_m2"
+# The area of the property an address stands on, carried on the address. What
+# the land value model sizes a section by and divides the rate by.
+SECTION_AREA_COLUMN = "section_area_m2"
+# How many addresses stand on that property. The land value model counts each
+# property once, not once per address, when it holds a TA to its average.
+PROPERTY_ADDRESS_COUNT_COLUMN = "addresses_on_property"
+# How many rating units the property is: the boundary rows dissolved into its
+# footprint, one per unit of a unit-titled block and one for a freehold title.
+PROPERTY_RATING_UNIT_COUNT_COLUMN = "rating_units_on_property"
 BUILDING_COUNT_COLUMN = "building_count"
 DWELLING_COUNT_COLUMN = "dwelling_count"
 # The land rate the insured land carries, both sides of GST. The loss module is
@@ -358,6 +367,75 @@ def count_dwellings(
     ordered = located.sort_values(id_column, kind="stable")
     ordered = ordered[~ordered.index.duplicated(keep="first")]
     return ordered[[address_id_column, id_column]].reset_index(drop=True)
+
+
+def section_area_per_address(
+    properties: gpd.GeoDataFrame,
+    addresses: gpd.GeoDataFrame,
+    *,
+    id_column: str = CLAIM_ID_COLUMN,
+    address_id_column: str = ADDRESS_ID_COLUMN,
+) -> pd.DataFrame:
+    """Give every address the area of the property it stands on.
+
+    The whole property's area, not a share of it. A published land value is for
+    the property, however many addresses LINZ has put on it: 13 Lawrence Street,
+    Newtown, is one 170 m2 property valued at $540,000 with three address points,
+    and splitting its area three ways doubled its modelled rate per square metre.
+    Every address on a property therefore carries the same area, and so the same
+    size factor and the same rate. The addresses are placed by
+    :func:`count_dwellings`, so an address in two overlapping properties is
+    placed once.
+
+    Args:
+        properties: The claim properties, carrying ``id_column`` and
+            :data:`PROPERTY_AREA_COLUMN`, as :func:`build_claim_properties`
+            returns them.
+        addresses: The address points, carrying ``address_id_column``.
+        id_column: The claim identifier.
+        address_id_column: The address identifier.
+
+    Returns:
+        One row per address that landed in a property, carrying
+        ``address_id_column``, ``id_column``, :data:`SECTION_AREA_COLUMN` in
+        square metres, :data:`PROPERTY_ADDRESS_COUNT_COLUMN` and
+        :data:`PROPERTY_RATING_UNIT_COUNT_COLUMN`. Addresses outside every
+        property are absent.
+
+    Raises:
+        ValueError: If the properties are in a geographic coordinate reference
+            system, where their areas would be in square degrees.
+    """
+    _check_projected(properties.crs)
+
+    placed = count_dwellings(
+        properties, addresses, id_column=id_column, address_id_column=address_id_column
+    )
+    if placed.empty:
+        return placed.assign(
+            **{
+                SECTION_AREA_COLUMN: pd.Series(dtype=float),
+                PROPERTY_ADDRESS_COUNT_COLUMN: pd.Series(dtype=int),
+                PROPERTY_RATING_UNIT_COUNT_COLUMN: pd.Series(dtype=int),
+            }
+        )
+
+    indexed = properties.set_index(id_column)
+    area = placed[id_column].map(indexed[PROPERTY_AREA_COLUMN])
+    sharing = placed.groupby(id_column)[address_id_column].transform("size")
+    # A property built without the dissolve count is one rating unit.
+    units = (
+        placed[id_column].map(indexed[BOUNDARY_ROW_COLUMN])
+        if BOUNDARY_ROW_COLUMN in indexed.columns
+        else 1
+    )
+    return placed.assign(
+        **{
+            SECTION_AREA_COLUMN: area,
+            PROPERTY_ADDRESS_COUNT_COLUMN: sharing,
+            PROPERTY_RATING_UNIT_COUNT_COLUMN: units,
+        }
+    )
 
 
 def assign_buildings_to_properties(

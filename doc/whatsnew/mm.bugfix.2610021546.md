@@ -1,0 +1,1 @@
+`gen_exposure.py` now runs the amenity step (`s3_build_amenity.py`) between accessibility and the land value, and passes its output to `s4_estimate_land_value.py`, which since the loss module merge requires it. The urban slope build's register task on moving the loss module onto exposure worlds is renumbered T-66, since T-65 is the claimant-only liquefaction costs.

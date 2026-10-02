@@ -111,8 +111,16 @@ MONTH_YEAR = re.compile(
 JOB_NUMBER = re.compile(r"^(?:job no\.?|t[&+]t ref)\s*:?\s*(\S+)", re.IGNORECASE)
 # "Claim for Natural Disaster (Landslip) Damage", or without the brackets:
 # "Claim for Natural Disaster Landslip Damage".
+# The NHI Act template says "Natural Hazard" where the EQC Act ones say
+# "Natural Disaster"; a structural report is headed "… Structural Assessment".
 CLAIM_HEADING = re.compile(
-    r"^claim for natural disaster\s*\(?\s*([^)]*?)\s*\)?\s*damage\b", re.IGNORECASE
+    r"^claim for natural (?:disaster|hazard)\s*\(?\s*([^)]*?)\s*\)?\s*"
+    r"(damage|structural assessment)\b",
+    re.IGNORECASE,
+)
+# Where a site address starts: a street number, or a unit, flat or lot.
+ADDRESS_START = re.compile(
+    r"^(?:\d|(?:unit|units|flat|apartment|apt|lot)\b)", re.IGNORECASE
 )
 # A claim number standing alone on the line after the address: "P034050981".
 BARE_CLAIM_NUMBER = re.compile(r"^[A-Z]{1,4}\d{6,}$")
@@ -162,10 +170,14 @@ ACTS = {
 # The summary table's section headings, in the order the template gives them.
 # "Summary of Information" (2016 on) or "Summary Information (all costs excl
 # GST)" (2013).
-SUMMARY_HEADING = re.compile(r"^summary (?:of )?information", re.IGNORECASE)
+# … or "Summary of damage information" (NHI Act).
+SUMMARY_HEADING = re.compile(r"^summary (?:of )?(?:damage )?information", re.IGNORECASE)
 # "Area of insured land damaged" (2021) or "Area of Land damaged" (2016).
 LAND_DAMAGED = re.compile(r"area of (?:insured )?land damaged", re.IGNORECASE)
-LAND_IMMINENT = re.compile(r"land at imminent risk", re.IGNORECASE)
+# "… at imminent risk" (EQC Act) or "… subject to imminent damage" (NHI Act).
+LAND_IMMINENT = re.compile(
+    r"land (?:at imminent risk|subject to imminent damage)", re.IGNORECASE
+)
 ACCESS_WAY = re.compile(r"^main access ?way", re.IGNORECASE)
 WALLS_SECTION = re.compile(r"^retaining walls? (?:supporting|within)", re.IGNORECASE)
 # "Retaining wall 1 – Timber pole…" (2021) or "RTW 2 – Red brick…" (2016).
@@ -179,7 +191,9 @@ UNNUMBERED_WALL = re.compile(r"retaining wall.*:\s*$", re.IGNORECASE)
 DWELLING = re.compile(r"^dwelling (?:and|&) appurtenant", re.IGNORECASE)
 SERVICES = re.compile(r"^services within", re.IGNORECASE)
 CROSSINGS = re.compile(r"^bridges? or culverts?", re.IGNORECASE)
-NATURAL_DISASTER = re.compile(r"^is this natural disaster damage", re.IGNORECASE)
+NATURAL_DISASTER = re.compile(
+    r"^is this natural (?:disaster|hazard) damage", re.IGNORECASE
+)
 REMEDIAL = re.compile(r"^(?:conceptual remedial works|remedial option)", re.IGNORECASE)
 REMEDIAL_HEADING = r"^(?:conceptual|potential|proposed) remedial works"
 NOTE = re.compile(r"^note\s*:", re.IGNORECASE)
@@ -274,6 +288,7 @@ def read_blocks(path: Path) -> list[Block]:
     # ".document.xml" file; a whole .docx is still read from inside its zip.
     # The reports are T+T's own, copied from the T: drive, so they are trusted.
     if path.name.lower().endswith(".xml"):
+        # Word's own document part, from T+T's own reports: not untrusted input.
         root = ET.fromstring(path.read_bytes())  # noqa: S314
     else:
         with zipfile.ZipFile(path) as archive:
@@ -414,6 +429,7 @@ class Summary:
     imminent_evacuation_m2: float | None = None
     imminent_new_inundation_m2: float | None = None
     imminent_reinundation_m2: float | None = None
+    inundated_volume_m3: float | None = None
     access_evacuated_m2: float | None = None
     access_inundated_m2: float | None = None
     access_imminent_evacuation_m2: float | None = None
@@ -502,6 +518,135 @@ LAND_SECTIONS = {
 }
 
 
+def _heading(summary: Summary, name: str, text: str, section: str) -> str | None:
+    """Return the section a heading row opens, or ``None`` if it is not one.
+
+    The main access way can carry its own damaged and imminent blocks, whose
+    rows must not overwrite the claim's own ("Evacuation: Included in areas
+    above"), so its headings are told apart from the claim's.
+    """
+    if NATURAL_DISASTER.match(name):
+        summary.natural_disaster = text
+        return section
+    access = bool(re.search(r"main access", name, re.IGNORECASE))
+    opened: str | None = None
+    if LAND_DAMAGED.search(name):
+        opened = "access_damaged" if access else "damaged"
+    elif LAND_IMMINENT.search(name):
+        opened = "access_imminent" if access else "imminent"
+    elif ACCESS_WAY.match(name):
+        summary.main_access_way = text
+        opened = "access"
+    elif WALLS_SECTION.match(name):
+        opened = "walls"
+    elif REMEDIAL.match(name):
+        opened = "remedial"
+    else:
+        for pattern, attribute in (
+            (DWELLING, "dwelling"),
+            (SERVICES, "services"),
+            (CROSSINGS, "bridges_culverts"),
+        ):
+            if pattern.match(name):
+                setattr(summary, attribute, text)
+                opened = ""
+                break
+    return opened
+
+
+def _new_wall(summary: Summary, name: str, text: str, section: str) -> Wall | None:
+    """Return the wall a row opens a block for, or ``None`` if it opens none."""
+    if match := WALL_START.match(name):
+        # "Retaining Wall 1 (RTW1) – Cement mortar boulder wall": the bracketed
+        # label repeats the number, so it is dropped before the construction
+        # is read off.
+        number = int(match.group(1))
+        description = re.sub(
+            r"^\(rtw\s*\d+\)\s*[–—-]?\s*",
+            "",
+            match.group(2).strip(),
+            flags=re.IGNORECASE,
+        )
+    elif section == "walls" and not text and UNNUMBERED_WALL.search(name):
+        # Numbered in order, so a single unnumbered wall is RTW 1 -- which is
+        # how the damage bullets of those reports refer to it.
+        number, description = len(summary.walls) + 1, name.rstrip(":").strip()
+    else:
+        return None
+    return Wall(
+        wall_number=number,
+        description=description,
+        construction=description.split("–")[0].split(" - ")[0].strip(),
+    )
+
+
+def _read_wall_row(wall: Wall, name: str, row: Block, text: str) -> None:
+    """Fill the wall attribute a row inside a wall block carries."""
+    for pattern, (attribute, parse) in WALL_ROWS.items():
+        if pattern.match(name):
+            setattr(
+                wall,
+                attribute,
+                area_across(row.cells[1:]) if parse is area else parse(text),
+            )
+            if attribute == "retained_height_m":
+                wall.retained_height_text = text
+            return
+
+
+def _read_land_row(summary: Summary, section: str, name: str, row: Block) -> None:
+    """Fill the land area a row inside a land section carries."""
+    for pattern, field_name in LAND_SECTIONS[section]:
+        if re.match(pattern, name, re.IGNORECASE):
+            setattr(summary, field_name, area_across(row.cells[1:]))
+            summary.seen.add(field_name)
+            if field_name == "inundated_m2":
+                # "5 m2 / 3 m3": the NHI Act template gives the volume too.
+                volumes = [
+                    float(found.group(1))
+                    for cell in row.cells[1:]
+                    if (found := VOLUME.search(cell))
+                ]
+                summary.inundated_volume_m3 = sum(volumes) if volumes else None
+            summary.summary_columns = max(summary.summary_columns, len(row.cells) - 1)
+            return
+
+
+def _has_figures(wall: Wall) -> bool:
+    """Return whether a wall block carries any figure at all."""
+    return any(
+        getattr(wall, attribute) is not None for attribute, _ in WALL_ROWS.values()
+    ) or bool(HEADING_HEIGHT.search(wall.description))
+
+
+def _later_walls(blocks: list[Block], summary_row_count: int) -> list[Wall]:
+    """Return the wall blocks in the tables after the summary table.
+
+    The NHI Act template lists its retaining walls in a table of their own
+    after the summary ("Refer to retaining wall summary information below"),
+    with the same rows as a wall block inside the summary. Only a numbered
+    "Retaining Wall N" heading opens a block here, so nothing else in those
+    later tables -- ratings, costs, photograph captions -- is taken for a wall.
+    """
+    start = next(
+        (i for i, block in enumerate(blocks) if SUMMARY_HEADING.match(block.text)),
+        None,
+    )
+    if start is None:
+        return []
+    later = [block for block in blocks[start + 1 :] if block.is_row]
+    walls: list[Wall] = []
+    wall: Wall | None = None
+    for row in later[summary_row_count:]:
+        name, text = label(row).strip(), value(row)
+        if WALL_START.match(name):
+            wall = _new_wall(Summary(), name, text, "")
+            walls.append(wall)
+        elif wall is not None:
+            _read_wall_row(wall, name, row, text)
+    return [each for each in walls if _has_figures(each)]
+
+
 def read_summary(blocks: list[Block]) -> Summary:
     """Read the Summary of Information table, row by row."""
     rows = summary_rows(blocks)
@@ -510,70 +655,24 @@ def read_summary(blocks: list[Block]) -> Summary:
     wall: Wall | None = None
     for row in rows:
         name, text = label(row).strip(), value(row)
-        # The main access way can carry its own damaged and imminent blocks,
-        # whose rows must not overwrite the claim's own ("Evacuation: Included
-        # in areas above"), so its headings are told apart first.
-        access = bool(re.search(r"main access", name, re.IGNORECASE))
-        if NATURAL_DISASTER.match(name):
-            summary.natural_disaster = text
-        elif LAND_DAMAGED.search(name):
-            section = "access_damaged" if access else "damaged"
-        elif LAND_IMMINENT.search(name):
-            section = "access_imminent" if access else "imminent"
-        elif ACCESS_WAY.match(name):
-            section, summary.main_access_way = "access", text
-        elif WALLS_SECTION.match(name):
-            section = "walls"
-        elif match := WALL_START.match(name):
-            section = "walls"
-            description = match.group(2).strip()
-            wall = Wall(
-                wall_number=int(match.group(1)),
-                description=description,
-                construction=description.split("–")[0].split(" - ")[0].strip(),
-            )
-            summary.walls.append(wall)
-        elif section == "walls" and not text and UNNUMBERED_WALL.search(name):
-            # Numbered in order, so a single unnumbered wall is RTW 1 -- which
-            # is how the damage bullets of those reports refer to it.
-            description = name.rstrip(":").strip()
-            wall = Wall(
-                wall_number=len(summary.walls) + 1,
-                description=description,
-                construction=description.split("–")[0].split(" - ")[0].strip(),
-            )
-            summary.walls.append(wall)
-        elif DWELLING.match(name):
-            section, summary.dwelling = "", text
-        elif SERVICES.match(name):
-            section, summary.services = "", text
-        elif CROSSINGS.match(name):
-            section, summary.bridges_culverts = "", text
-        elif REMEDIAL.match(name):
-            section = "remedial"
+        if (heading := _heading(summary, name, text, section)) is not None:
+            section = heading
+        elif (opened := _new_wall(summary, name, text, section)) is not None:
+            section, wall = "walls", opened
+            summary.walls.append(opened)
         elif section == "remedial" and text:
             summary.remedial_works = f"{name}: {text}"
             section = ""
         elif section == "walls" and wall is not None:
-            for pattern, (attribute, parse) in WALL_ROWS.items():
-                if pattern.match(name):
-                    setattr(
-                        wall,
-                        attribute,
-                        area_across(row.cells[1:]) if parse is area else parse(text),
-                    )
-                    if attribute == "retained_height_m":
-                        wall.retained_height_text = text
-                    break
+            _read_wall_row(wall, name, row, text)
         elif section in LAND_SECTIONS:
-            for pattern, field_name in LAND_SECTIONS[section]:
-                if re.match(pattern, name, re.IGNORECASE):
-                    setattr(summary, field_name, area_across(row.cells[1:]))
-                    summary.seen.add(field_name)
-                    summary.summary_columns = max(
-                        summary.summary_columns, len(row.cells) - 1
-                    )
-                    break
+            _read_land_row(summary, section, name, row)
+    # The NHI Act template ships an example wall block ("Whole wall length:
+    # m", "Retained height: m to m") that is left unfilled when the walls are
+    # given in a separate table instead. A block with nothing in it is that
+    # template, not a wall.
+    summary.walls = [each for each in summary.walls if _has_figures(each)]
+    summary.walls += _later_walls(blocks, len(rows))
     # A 2013 wall block has no height row; the height is in its heading.
     for each in summary.walls:
         if each.retained_height_m is None and (
@@ -663,6 +762,43 @@ class RemedialWall:
     embedment_m: float | None = None
 
 
+def _from_construct_phrase(match: re.Match[str], paragraph: str) -> RemedialWall:
+    """Return the wall a "construct a … retaining wall" sentence proposes.
+
+    The dimensions can be written into the phrase itself: "construct a 16m
+    long anchored sprayed concrete retaining wall", or "an anchored 3.0 m long,
+    2.5 m high sprayed concrete retaining wall". They are lifted out, and what
+    is left is the construction.
+    """
+    replaces = REMEDIAL_FOR.search(paragraph)
+    phrase = match.group(2)
+    long_in = INLINE_LONG.search(phrase)
+    high_in = INLINE_HIGH.search(phrase)
+    construction = INLINE_HIGH.sub("", INLINE_LONG.sub("", phrase))
+    return RemedialWall(
+        replaces=replaces.group(0).upper().replace(" ", "") if replaces else "",
+        construction=re.sub(r"[\s,]+", " ", construction).strip(" ,"),
+        length_m=float(long_in.group(1)) if long_in else None,
+        max_retained_height_m=float(high_in.group(1)) if high_in else None,
+    )
+
+
+def _fill_dimensions(wall: RemedialWall, paragraph: str) -> None:
+    """Fill whichever of a proposed wall's dimensions a paragraph gives."""
+    if (found := LONG_WALL.search(paragraph)) and wall.length_m is None:
+        wall.length_m = float(found.group(1))
+    if (found := LONG_WALL_TYPE.search(paragraph)) and wall.length_m is None:
+        wall.length_m = float(found.group(1))
+        if not wall.construction:
+            wall.construction = found.group(2).strip()
+    if (found := MAX_HEIGHT.search(paragraph)) and wall.max_retained_height_m is None:
+        wall.max_retained_height_m = metres(found.group(1), found.group(2))
+    if (found := SED.search(paragraph)) and wall.pole_sed_mm is None:
+        wall.pole_sed_mm = float(found.group(1))
+    if (found := EMBEDMENT.search(paragraph)) and wall.embedment_m is None:
+        wall.embedment_m = float(found.group(1))
+
+
 def read_remedial_walls(paragraphs: list[str]) -> list[RemedialWall]:
     """Return the walls the remedial works propose, with their dimensions."""
     walls: list[RemedialWall] = []
@@ -675,77 +811,59 @@ def read_remedial_walls(paragraphs: list[str]) -> list[RemedialWall]:
             walls.append(
                 RemedialWall(replaces="", construction=several, label=match.group(1))
             )
-            continue
-        if match := REMEDIAL_WALL.search(paragraph):
-            if match.group(1).lower() not in ("a", "an"):
+        elif match := REMEDIAL_WALL.search(paragraph):
+            if match.group(1).lower() in ("a", "an"):
+                walls.append(_from_construct_phrase(match, paragraph))
+            else:
                 several = match.group(2).strip()
-                continue
-            replaces = REMEDIAL_FOR.search(paragraph)
-            # The dimensions can be written into the phrase itself: "construct
-            # a 16m long anchored sprayed concrete retaining wall", or "an
-            # anchored 3.0 m long, 2.5 m high sprayed concrete retaining wall".
-            phrase = match.group(2)
-            long_in = INLINE_LONG.search(phrase)
-            high_in = INLINE_HIGH.search(phrase)
-            construction = INLINE_HIGH.sub("", INLINE_LONG.sub("", phrase))
+        elif match := REMEDIAL_REPLACE.search(paragraph):
             walls.append(
                 RemedialWall(
-                    replaces=replaces.group(0).upper().replace(" ", "")
-                    if replaces
-                    else "",
-                    construction=re.sub(r"[\s,]+", " ", construction).strip(" ,"),
-                    length_m=float(long_in.group(1)) if long_in else None,
-                    max_retained_height_m=float(high_in.group(1)) if high_in else None,
+                    replaces=match.group(1).upper().replace(" ", ""), construction=""
                 )
             )
-            continue
-        if match := REMEDIAL_REPLACE.search(paragraph):
-            walls.append(
-                RemedialWall(
-                    replaces=match.group(1).upper().replace(" ", ""),
-                    construction="",
-                )
-            )
-            continue
-        if not walls:
-            continue
-        wall = walls[-1]
-        if (found := LONG_WALL.search(paragraph)) and wall.length_m is None:
-            wall.length_m = float(found.group(1))
-        if (found := LONG_WALL_TYPE.search(paragraph)) and wall.length_m is None:
-            wall.length_m = float(found.group(1))
-            if not wall.construction:
-                wall.construction = found.group(2).strip()
-        if (
-            found := MAX_HEIGHT.search(paragraph)
-        ) and wall.max_retained_height_m is None:
-            wall.max_retained_height_m = metres(found.group(1), found.group(2))
-        if (found := SED.search(paragraph)) and wall.pole_sed_mm is None:
-            wall.pole_sed_mm = float(found.group(1))
-        if (found := EMBEDMENT.search(paragraph)) and wall.embedment_m is None:
-            wall.embedment_m = float(found.group(1))
+        elif walls:
+            _fill_dimensions(walls[-1], paragraph)
     return walls
 
 
 def site_address(line: str) -> str:
     """Return the site address from the report's claimant line, without names.
 
-    The line reads "Claimant name(s), street address, suburb, city". The CSVs
-    are committed, so the claimant's name is dropped here rather than kept:
-    everything before the first part carrying a street number goes. A line
-    with no number in it at all loses its first part anyway, since that is
-    where the name sits, and losing a road name is the lesser harm.
+    The line reads "Claimant name(s), street address, suburb, city", and the
+    claimant's name is dropped here so that no copy of the CSVs carries it. The
+    address starts at, in order of preference:
+
+    1. the first part that *begins* with a street number, or with "Unit",
+       "Flat", "Apartment" or "Lot" -- so a trust or body corporate named with
+       a number ("… Family 128 Trust, 84 Example Road") is not mistaken for it;
+    2. failing that, the first number inside a part, for a name with no comma
+       after it ("A Person 1 Example Street");
+    3. failing that, the second part, since the first is where the name sits
+       and losing a road name is the lesser harm.
 
     Examples:
         >>> site_address("A Person & B Person, 26 Example Street, Wellington")
         '26 Example Street, Wellington'
+        >>> site_address("An Example Family 128 Trust, 84 Example Road, Suburb")
+        '84 Example Road, Suburb'
+        >>> site_address("A Person 1 Example Street, #3, Suburb")
+        '1 Example Street, #3, Suburb'
+        >>> site_address("Body Corporate 12345, Unit 3, 3A Example Way")
+        'Unit 3, 3A Example Way'
         >>> site_address("C Person, Example Road, Suburb")
         'Example Road, Suburb'
     """
-    parts = [part.strip() for part in line.split(",")]
-    numbered = next((i for i, part in enumerate(parts) if re.search(r"\d", part)), None)
-    keep = parts[numbered:] if numbered is not None else parts[1:]
-    return ", ".join(part for part in keep if part)
+    parts = [part.strip() for part in line.split(",") if part.strip()]
+    starts = next(
+        (i for i, part in enumerate(parts) if ADDRESS_START.match(part)), None
+    )
+    if starts is not None:
+        return ", ".join(parts[starts:])
+    for i, part in enumerate(parts):
+        if found := re.search(r"\d", part):
+            return ", ".join([part[found.start() :], *parts[i + 1 :]])
+    return ", ".join(parts[1:])
 
 
 def read_header(blocks: list[Block]) -> dict[str, str]:
@@ -760,6 +878,7 @@ def read_header(blocks: list[Block]) -> dict[str, str]:
             "report_date",
             "addressee",
             "claim_type",
+            "report_kind",
             "address",
             "claim_number",
         ),
@@ -776,6 +895,9 @@ def read_header(blocks: list[Block]) -> dict[str, str]:
                     out["addressee"] = following[1]
         elif (match := CLAIM_HEADING.match(text)) and not out["claim_type"]:
             out["claim_type"] = match.group(1).strip()
+            out["report_kind"] = (
+                "structural" if "structural" in match.group(2).lower() else "land"
+            )
             if i + 1 < len(paragraphs):
                 out["address"] = site_address(paragraphs[i + 1])
             if i + 2 < len(paragraphs) and BARE_CLAIM_NUMBER.match(paragraphs[i + 2]):
@@ -948,6 +1070,7 @@ def extract(blocks: list[Block], *, subproject: str = "") -> Extracted:
         ),
         "evacuated_m2": summary.evacuated_m2,
         "inundated_m2": summary.inundated_m2,
+        "inundated_volume_m3": summary.inundated_volume_m3,
         "imminent_evacuation_m2": summary.imminent_evacuation_m2,
         "imminent_new_inundation_m2": summary.imminent_new_inundation_m2,
         "imminent_reinundation_m2": summary.imminent_reinundation_m2,
@@ -1183,13 +1306,21 @@ def show(subprojects: list[str]) -> None:
             print(f"  {text}")
         for heading, until in (
             (r"^property damage", r"^(eqc|nhc|natural hazards) consid"),
-            (r"^imminent risk", REMEDIAL_HEADING),
+            (r"^imminent (?:risk|damage)$", REMEDIAL_HEADING),
         ):
             print(f"-- {heading.strip('^')}")
             for text in section_paragraphs(blocks, heading, until)[:15]:
                 print(f"  {text}")
         print("-- summary table rows")
         for block in summary_rows(blocks):
+            print("  " + " | ".join(cell for cell in block.cells))
+        print("-- every table row after the summary heading (first 60)")
+        start = next(
+            (i for i, block in enumerate(blocks) if SUMMARY_HEADING.match(block.text)),
+            len(blocks),
+        )
+        later = [block for block in blocks[start + 1 :] if block.is_row]
+        for block in later[len(summary_rows(blocks)) : len(summary_rows(blocks)) + 60]:
             print("  " + " | ".join(cell for cell in block.cells))
 
 

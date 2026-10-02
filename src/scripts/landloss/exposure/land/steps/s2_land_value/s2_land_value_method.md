@@ -126,6 +126,53 @@
   of the factors asset, and rescaled so the group mean is exactly one. The
   function's docstring sets out why it is centred in logs and why the group is
   the terrain modifier's.
+- The view of the sea is measured by `s3_build_amenity.py`, which writes
+  `temp/exposure/amenity-by-address.geoparquet` carrying `address_id`,
+  `sea_view_share`, `coast_distance_m`, `winter_sun_share` and the geometry, with a `-pilot` suffix when `PILOT` is
+  True. It fetches the DEM through `landloss.io.readers.get_dem` over the
+  spine's extent buffered by the casting distance, and masks nodata with
+  `mask_nodata()` from `s1_build_terrain_attributes.py`.
+- `landloss.exposure.land.amenity.sea_mask` takes a DEM cell as sea when it lies
+  outside the study area's land polygons (`get_study_areas`, land only) and
+  stands no higher than `sea_view_max_sea_elevation_m`, or has no value.
+  `landloss.exposure.land.amenity.sea_view_share` casts `sea_view_directions`
+  rays from `sea_view_eye_height_m` above the ground at each address, out to
+  `sea_view_max_distance_m` at the DEM's cell spacing, allowing for the Earth's
+  curvature and refraction, and returns the share of directions in which a
+  visible cell is sea. The four settings are rows of the factors asset.
+  `landloss.exposure.land.amenity.measure_sea` returns that share together with
+  `coast_distance_m`, the distance to the first sea cell along any ray whether
+  or not it is visible: the straight-line distance to the coast to within the
+  angle between two rays, NaN beyond the casting distance.
+- `winter_sun_share` comes from the same rays. `measure_sea`, given a
+  `landloss.exposure.land.amenity.WinterSun`, measures each address's horizon
+  along every ray from `winter_sun_eye_height_m` above the ground, and
+  `landloss.exposure.land.amenity.sunlit_share` runs the sun's path against it:
+  of every sampled moment the sun is above the flat horizon, the share in which
+  it also clears the address's horizon in that direction.
+  `landloss.exposure.land.amenity.solar_position` gives the path from Cooper's
+  declination and the hour angle in local solar time. The days are
+  `winter_sun_days_sampled` spread from `winter_sun_first_day_of_year` to
+  `winter_sun_last_day_of_year`, sampled every `winter_sun_minutes_step`
+  minutes, built by `winter_sun_settings()` in `s3_build_amenity.py`; all four
+  are rows of the factors asset.
+- The run prints the share of the DEM taken as sea, the share of addresses
+  with any view and the deciles of the share per territorial authority in
+  `describe_shares()`, the share within 100, 250, 500 and 1,000 m of the coast in
+  `describe_coast()`, the deciles of winter sun per authority in
+  `describe_sun()`, and the suburbs with the widest median view in
+  `describe_suburbs()`.
+- Within a landform class, value is also spread by the amenity modifier
+  `landloss.exposure.land.land_value.amenity_modifier`: the logarithm of `(1 +
+  sea_view_premium * sea_view_share) * (1 + coast_premium *
+  exp(-coast_distance_m / coast_decay_length_m)) * (1 + winter_sun_premium *
+  winter_sun_share)` is centred within each
+  `TERRAIN_GROUP_COLUMNS` group, exponentiated, clipped to the
+  `amenity_modifier_clip_min` and `amenity_modifier_clip_max` rows, and
+  rescaled to a group mean of one. `s4_estimate_land_value.py` joins the
+  attribute with `read_amenity()` and `attach_amenity()`, and values without
+  it, saying so, when the file is absent; `AMENITY` in `config.py` points s3
+  and s4 at a different file.
 - An address with no gravity value sits at the middle of its cohort, and one
   with no station distance takes no station premium; both resolve to a finite
   modifier, which `tests/landloss/exposure/land/test_land_value.py` covers.
@@ -206,8 +253,70 @@
   hundred of its addresses. The colour classes are taken from the whole study
   area by the `reference` argument of `classify_rates`, so a rate keeps one
   colour across the set and the four maps can be read side by side.
-- The rate per square metre divides the modelled land value by the per-authority
-  `median_lot_size_m2` from the base rates asset, not by a measured parcel area.
+- Each address is given its section area by `attach_section_areas()` in
+  `s4_estimate_land_value.py`: the LINZ property boundaries, read by
+  `landloss.io.readers.get_nz_property_boundaries` and reduced to claimable
+  ground by `landloss.exposure.land.extent.build_claim_properties` (the same
+  reduction step s5 uses), are joined to the addresses by
+  `landloss.exposure.land.extent.section_area_per_address`, which gives each
+  address the whole area of the property it stands on, so every address on a
+  property carries the same area, size factor and rate. The run prints the measured share and the quartiles of section area per
+  territorial authority against the assumed lot in `describe_section_areas()`.
+- **The rate per square metre is what is modelled, and the land value follows
+  from it** (`landloss.exposure.land.land_value.estimate_land_value`). Each
+  address's rate factor is its landform factor times its terrain and
+  accessibility modifiers times its section size factor; its property's site
+  value is that factor times the site area; and the per-authority constant is
+  solved so that total site value over total rating units equals the indexed
+  published average, which is how the published per-rating-unit figure is
+  built. `_value_one_ta` carries the solve.
+- `section_area_per_address` also carries `addresses_on_property` and
+  `rating_units_on_property`, the latter the property's `boundary_rows`: one per
+  unit of a unit-titled block, whose titles LINZ stacks on one footprint, and
+  one for a freehold title however many addresses stand on it.
+- The section size factor, `landloss.exposure.land.land_value.section_size_factor`,
+  multiplies the rate by `(max(area per rating unit, section_area_min_m2) /
+  median_lot_size_m2) ** (section_area_elasticity - 1)`, both parameters rows of
+  the factors asset. Per rating unit, so a unit-titled block is rated as the
+  sections its units would each have and its land is the sum of theirs; a
+  freehold property is sized on its whole area.
+- Each property counts once in the calibration:
+  `landloss.exposure.land.land_value.property_weight` weights an address by one
+  over the addresses on its property, since every address on a property
+  carries the property's area, rating units and site value.
+  `ta_mean_land_value` computes the same per-rating-unit mean for the run's
+  calibration table and for `check_land_value_totals.py`.
+- A measured lot under the `min_lot_size_m2` row of the factors asset is not
+  taken as a section. It is left out of the calibration and given the median
+  rate of its `neighbour_rate_count` nearest addresses with a lot of their own
+  (`landloss.exposure.land.land_value.rate_from_neighbours`), its site value
+  being that rate times its own area, with `lot_size_source` `neighbours`; it
+  is left out of `ta_mean_land_value` too.
+- A site with several dwellings -- more than one rating unit, or at least the
+  `multi_dwelling_min_addresses` row's count of addresses on one title -- takes
+  the median rate factor of its
+  `neighbour_rate_count` nearest single-dwelling sites before the calibration
+  (`_multi_dwelling` and `_neighbour_factor` in
+  `landloss.exposure.land.land_value`). Its land is then priced as the houses
+  around it are, whatever its size or unit count, and its site value is that
+  rate times its whole area; because its rate scales with the same constant as
+  its neighbours', the calibration still holds exactly. `rate_source` is
+  `neighbours` for these addresses and for the lots too small to be a section,
+  and `own` otherwise.
+- The value clip bounds the site value to the `rate_clip_min_multiple` and
+  `rate_clip_max_multiple` rows times the indexed average: the ceiling per
+  dwelling, scaled by the site's rating units or addresses, whichever is more;
+  the floor only for a property of one rating unit, because a flat's share of
+  its block's land is legitimately small. `_value_one_ta` solves the constant
+  exactly with the clip in place, by bisection, so each authority's mean lands
+  on its published average.
+- The outputs carry `land_rate_nzd_per_m2`; `site_land_value_nzd`, the whole
+  property's land; `land_value_nzd`, that over the property's rating units,
+  which is what a published per-property land value is; and `lot_size_m2`, the
+  site area the rate is per, with `lot_size_source` `measured` or `assumed`. An
+  address standing in no property is one rating unit on the per-authority
+  `median_lot_size_m2` and takes a size factor of one, which is the model
+  before areas were measured.
 - The arithmetic is covered by `tests/landloss/exposure/test_land_value.py`,
   `tests/landloss/exposure/test_landform.py` and
   `tests/landloss/common/utils/test_terrain.py`, and the outputs of a real run are
@@ -233,12 +342,17 @@
   Wellington region, with the September figure interpolated between two
   published annual changes, as `src/landloss/io/assets/README.md` sets out. No
   valuer has signed it off.
-- Lot size is assumed. `median_lot_size_m2` is documented judgement anchored on
-  a 600 m2 regional convention, not a researched per-authority median, so
-  `land_rate_nzd_per_m2` is an order-of-magnitude figure for comparing cohorts
-  rather than a valuation of any one property. The derivation and the sense
-  check behind each of the four numbers are in
-  `src/landloss/io/assets/README.md`.
+- `median_lot_size_m2` is documented judgement anchored on a 600 m2 regional
+  convention, not a researched per-authority median. It is now the reference
+  the section size factor is relative to and the fallback for an unmeasured
+  address, rather than the divisor of every rate; the derivation behind each
+  of the four numbers is in `src/landloss/io/assets/README.md`.
+- A multi-dwelling site takes its neighbours' location, so its own sea view,
+  coast and winter sun do not count; a block unusual for its street is priced
+  as the street. A rating unit that aggregates
+  several titles is measured over all of them, as Oriental Bay's 31 Hay Street
+  is (771 m2 against a 339 m2 title). `section_area_elasticity` and
+  `section_area_min_m2` are judgement.
 - The distribution within an authority rests entirely on the three-class
   landform split and the terrain modifier, and every number behind both is in
   the `basis` column of `src/landloss/io/assets/land-value-factors.csv` as
@@ -282,6 +396,12 @@
   village the same gravity as Tawa. The centres are placed by hand, and the
   elasticity, the rail premium and the clip band are judgement, each on its row
   of the two assets.
+- The sea view is measured over the bare-earth DEM, so houses and trees in
+  front of an address do not block it, which overstates the view from flat
+  land a few rows back from a beach. One eye height serves every address. The
+  same holds for winter sun: a neighbouring house or tree does not shade a
+  section, only the terrain does, and the horizon is read along the nearest of
+  72 rays to the sun's bearing.
 - The published averages are residential averages applied to every address,
   because the LINZ NZ Addresses layer carries no residential flag. That gap
   belongs to step 1 and is carried in its method file as well.
