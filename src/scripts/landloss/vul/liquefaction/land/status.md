@@ -60,12 +60,20 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   the insured area. Step 2 writes it as `damaged_area_m2`, and the land table
   carries it to `loss` as `Liq_LD_damaged_area`. How the 30% is measured is an
   assumption to be verified (**L-44**).
-- [ ] Set **repair rates** for inundated and evacuated liquefied land, chosen so
+- [~] Set **repair rates** for inundated and evacuated liquefied land, chosen so
   the modelled costs roughly reproduce the Canterbury cost table, and add a
   **no-SVA flag** that raises the inundated rate, since the Canterbury clearing
   costs carry the Student Volunteer Army's unpaid work (**T-57**, **L-40**). The
   Canterbury rates stay for the liquefaction repair cost until the new rates
-  replace them.
+  replace them. The machinery is built and the rates are **provisional**:
+  `steps/s3_repair_rate_calibration/` fits $10.39 per m² inundated, $19.66 per
+  m² evacuated and $995 per claim to the diluted Canterbury means, Minor to
+  Very severe, within 0.83 to 1.24 of each (**L-45**). A fixed cost per claim
+  was added because Minor loses almost no ground. Step 2 prices every claim
+  from its ground lost as `area_cost_nzd`, beside the lookup, and nothing
+  settles on it. Against diluted costs with the drop-out off, the rates only
+  re-express the Canterbury means per m²; they become a result when refitted
+  against claimant-only costs with the drop-out on (**T-65**).
 
 ## Loss contract
 
@@ -119,8 +127,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 5. Maxim Millen is revising the land damage states themselves (**T-54**),
    which the evacuated and inundated ranges (**T-55**) and the damaged area
    (**T-56**) are keyed on, so the two pieces of work meet there.
-6. Set the inundated and evacuated repair rates against the Canterbury table,
-   with the no-SVA flag (**T-57**).
+6. Decide whether `area_cost_nzd`, the cost from the ground lost (**T-57**),
+   replaces the Canterbury lookup as the repair cost the loss module settles
+   on. It reproduces means, so its pilot total is about 1.8 times the lookup's
+   at the 50th percentile. Refit it when claimant-only costs arrive
+   (**T-65**).
 7. Tune the drop-out rates, the share of properties in each state that do not
    claim. Step 2 can draw claims at **placeholder** rates, `DROP_OUT_RATES`
    in its `config.py` -- 95%, 75%, 40% and 15% for None to Major, 0% for
@@ -155,6 +166,13 @@ on feedback rather than derived.
   `EVACUATED_OVERLAP_SHARE` in the same `config.py`. 30%, an assumption by
   Perrie Gilbert on 2026-10-02 about how the 30% overlap agreed on 2026-09-30
   is measured; to be verified (**L-44**).
+- **Repair rates**, `REPAIR_RATES` in the same `config.py`: per m² inundated,
+  per m² evacuated, and per claim. **Provisional**, fitted by step 3 to the
+  diluted Canterbury means and not validated (**L-45**); refit whenever the ranges, the overlap or the cost table
+  change, and against claimant-only costs once they arrive (**T-65**).
+- **No-SVA multiplier on the inundated rate**, `NO_SVA_INUNDATED_MULTIPLIER`,
+  applied when `NO_SVA` is set. 1.5 is a placeholder by Perrie Gilbert,
+  awaiting feedback from Virginie Lacrosse and/or John Leeves (**Q-18**).
 
 ## Open decisions
 
