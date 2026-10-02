@@ -36,8 +36,10 @@
   "shaking")`, so realisation 3's shaking belongs to the same modelled
   earthquake as its liquefaction and landslides.
 - The output is `temp/hazard/shaking/beta-pga-rNNN[-pilot].tif` from
-  `pga_path()`, a raster of PGA in g named `pga_g`. It is read by the retaining
-  wall and culvert/bridge damage state steps (`vul/shaking/*/steps/s9_*`).
-- `src/scripts/landloss/hazard/gen_hazard.py` runs steps 2, 3 and 4 in order.
+  `pga_path()`, a raster of PGA in g named `pga_g`. It is read by the culvert
+  and bridge damage state step
+  (`vul/shaking/culverts_bridges/steps/s9_structure_damage_state/`); the
+  retaining wall damage state step reads step 5's PGV instead.
+- `src/scripts/landloss/hazard/gen_hazard.py` runs steps 2 to 5 in order.
 
 Potential future improvements: see `s4_pga_realisation_implementation_plan.md`.

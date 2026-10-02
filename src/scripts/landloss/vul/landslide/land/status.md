@@ -1,19 +1,22 @@
 # Landslide vulnerability, land: status
 
-**Status:** Damaged area and depth per property now run end to end. Nothing is
-priced: the repair schedule is not in the repository.
+**Status:** Damaged area and depth per property now run end to end, and are
+moved onto the combined large and urban realisation per exposure world and
+earthquake, not yet rerun since. Nothing is priced: the repair schedule is not
+in the repository.
 
-**Updated:** 2026-09-23
+**Updated:** 2026-10-02
 
 ## Approach
 
 Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
-Intended, not implemented.
-
 - [x] Read the hazard module's source and runout polygons **separately** and produce
   an outcome per cause, because loss of support and runout are settled
   differently.
+- [x] Read the large and urban landslides alike, from landslide step 9's
+  combined realisation per exposure world and earthquake, and leave the urban
+  model's imminent land unmeasured until **T-45** is decided.
 - [x] Work per property against the **insured land polygon**, the 8 m line from the
   dwelling, since that is the extent NHC settles on. The chain runs on
   `claim_id`, the LINZ property from exposure step 5, and each insured land
@@ -68,18 +71,27 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 ## Where it is now
 
-- `steps/s3_landslide_land_damage/` intersects the realisation's evacuated and
-  inundated polygons with the insured land and writes the area and depth of each
-  kind of damaged ground per property. Inundated pieces are unioned rather than
-  summed, so ground two landslides both reached is counted once, and the run
+- `steps/s3_landslide_land_damage/` intersects the combined realisation's
+  evacuated and inundated polygons, large and urban, with the insured land and
+  writes the area and depth of each kind of damaged ground per property, to
+  `temp/vul/landslide-land-damage-wNNN-rNNN[-pilot].parquet`. Inundated
+  pieces are unioned rather than summed, so ground two landslides both
+  reached is counted once, and the run
   checks that neither kind exceeds the property's own insured area. Rows are
   keyed on `land_id` with `claim_id`, and the union of the two kinds is written
   as `landslide_area_m2`.
+- Vul step 10 writes the loss tables per exposure world and earthquake, and
+  keeps the deprecated `loss_input_path` resolving world 0 (contract section
+  3.15, decision 37, built), so the loss module, which asks per earthquake
+  only, reads world 0. Moving its five calls onto worlds is register task
+  **T-65**.
 - Over the Wellington pilot 37 properties of 4,764 are reached. That number is
   not to be quoted: the hazard realisation currently produces about two orders
   of magnitude less damaged ground than the ESNZ grid's own expectation, because
   the size power law is sampled far below the scale it was fitted at. The shape
-  of the output is right and the quantity is not.
+  of the output is right and the quantity is not. That run predates the step 1
+  rework and the urban model; the step is tested on synthetic inputs since and
+  has not been rerun.
 - Nothing is priced. The rate schedule has not been brought into the repository;
   it is still a workbook held outside it, alongside the Toka Tū Ake EQC Costing
   Tool v10.42 that applies a different set of square-metre rates to the same
@@ -99,6 +111,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 5. Add the scheme feasibility table and the cheapest-feasible selection.
 6. Add the repair-against-value settlement test, reading the land value rate
    from the exposure module.
+7. Rerun over the pilot once landslide step 9 has written the combined
+   realisation.
 
 ## Validation
 
@@ -118,6 +132,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   upstream `claim_id` from exposure step 5, and `land_id` is per polygon.
 - **T-17**, **T-18** — NHC land damage claim costs, needed to validate modelled
   repair costs against settled ones.
+- **T-45** — imminent-risk land. The urban model writes it and this step does
+  not measure it until the decision is made.
 - Holding the cost model in `vul` departs from the module split in
   `.agents/context/code-structure.md`, which puts money in `loss`. This was
   agreed deliberately so the repair scheme stays with the geometry that sizes

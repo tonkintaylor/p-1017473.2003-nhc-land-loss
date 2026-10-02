@@ -119,7 +119,10 @@ its own fragility, and the realisation draws both. If the bank fails the face
 is absorbed, its wall flagged, its ground counted once inside the bank's
 polygon; if only the face fails, the face's geometry applies. The net chance
 that the face's ground is damaged is one minus the product of the two survival
-probabilities, so the rate anchoring targets the net rate on ground.
+probabilities, so the rate anchoring targets the net rate on ground. A wall is
+different: its published curve is applied as given, not anchored, so the
+polygons that share one wall line share one uniform in the draw (section 5.1)
+and the wall fails at its published rate however many scales it bounds.
 
 ### 1.3 The ground map (hazard)
 
@@ -271,14 +274,18 @@ the pilot.
 - Method: draw whether each line is a wall and its condition on the exposure
   seed and world id, with the count truncated to the bounds where they exist;
   keep the coverage filter; mint `rw_id` and carry `wall_line_id`.
-- Output: `temp/exposure/wall-population-w<NNN>[-pilot].geoparquet`.
+- Output: `temp/exposure/wall-population-w<NNN>[-pilot].geoparquet`, the
+  insured walls, and `temp/exposure/drawn-walls-w<NNN>[-pilot].geoparquet`,
+  every wall drawn before the claim and coverage filters, because a road or
+  back-of-section wall that is not insured still holds the slope the hazard
+  models.
 
 ### 3.3 The urban model, probabilistic, per exposure world
 
 **`hazard/landslide/steps/s8_urban_slope_fragility/gen_urban_slope_fragility.py`** (new)
 
-- Input: the failure polygons, the wall population for world `w`, the wall
-  fragility table and the anchor table in `src/landloss/io/assets/`, the PGV to
+- Input: the failure polygons, every wall drawn in world `w`, insured or
+  not, the wall fragility table and the anchor table in `src/landloss/io/assets/`, the PGV to
   PGA ratio from the shaking grids, `config.URBAN_RATE`.
 - Method: join each polygon to the drawn wall on its edge, if that line drew
   one in world `w`; give the polygon the wall-derived fragility by class, size
@@ -436,13 +443,22 @@ For each world `w` and earthquake `r`, `gen_urban_slope_realisation.py`:
 1. Reads the model file for `w` and the PGV field for `r`, and samples PGV at
    each polygon's representative point.
 2. Evaluates each row's fragility and draws a uniform from the `"urban"` stream
-   seeded on `w` and `r`.
+   seeded on `w` and `r`. Rows sharing a drawn wall line share the uniform of
+   the first of them, so the wall fails at its published rate (section 1.2).
 3. Resolves nesting among the failed polygons largest first: a failed polygon
-   whose evacuated polygon intersects a larger surviving one is absorbed, as
-   `drop_overlapping()` does today.
-4. Reads the large-model realisation for `r`. An urban failure whose evacuated
-   polygon intersects a large-model evacuated polygon is superseded: its ground
-   counts once, in the large polygon.
+   whose evacuated polygon shares ground with a larger surviving one is
+   absorbed, as `drop_overlapping()` does today. Two polygons share ground
+   where their intersection has an area above a small numerical tolerance
+   (`SHARED_GROUND_TOLERANCE_M2`, 0.01 m²); polygons that only touch along an
+   edge or at a corner do not, since the candidates tile the domain at each
+   scale and neighbouring failures always touch. Nesting is resolved among the
+   failed polygons step 4 left unsuperseded, so every absorber is a survivor.
+4. Reads the large-model realisation for `r`. Only failed polygons are
+   superseded: an urban failure whose evacuated polygon shares ground with a
+   large-model evacuated polygon is superseded, and its ground counts once, in
+   the large polygon. This is tested before nesting. A polygon that did not
+   fail is standing whatever a large slide does around it; a wall the large
+   slide reaches is flagged by its line intersection in vul (section 5.2).
 5. Writes the evacuated, inundated and imminent-risk polygons of the surviving
    urban failures from their fixed geometry, each with a `landslide_id`, its
    `slope_id`, a `population` of `urban` and its depth, beside the large-model
@@ -586,6 +602,11 @@ Depth for larger polygons falls back on the volume to area relation in
 
 ## 8. Delineation of the candidates
 
+**Superseded (2026-10-02).** The banded patches below are not tied to a
+published method and did not find crests and toes in the pilot run; the urban
+polygons and the wall candidates are to be built from faces instead, as set
+out in `.agents/plans/building-face-based-urban-slope-polygons.md`. This section is kept as the record of what was built.
+
 ### 8.1 Domain
 
 Off the NLM flatland (`get_nlm_flatland`, the release pinned by
@@ -713,56 +734,71 @@ boundary of the range is reported.
 
 ### Phase 0 — Prerequisites
 
-- [ ] `EXPOSURE_BASE_SEED` in `landloss.domain.constants`, and a world id on
+- [x] `EXPOSURE_BASE_SEED` in `landloss.domain.constants`, and a world id on
       `realisation_seed`.
-- [ ] `hazard/shaking/steps/s5_pgv_realisation`.
-- [ ] `doc/references.bib` (done) and the AGENTS.md note on citing by key.
+- [x] `hazard/shaking/steps/s5_pgv_realisation`.
+- [x] `doc/references.bib` (done) and the AGENTS.md note on citing by key.
 
 ### Phase 1 — Ground work
 
-- [ ] Step 3 extended: 1 and 3 m scales, aspect, and `gen_terrain_derivatives.py`
+- [x] Step 3 extended: 1 and 3 m scales, aspect, and `gen_terrain_derivatives.py`
       with `terrain.local_relief`, a residual function, curvature and vegetation
       height added to `landloss.common.utils.terrain`.
-- [ ] Step 4, the ground map, with `landloss.hazard.landslide.ground_map`
+- [x] Step 4, the ground map, with `landloss.hazard.landslide.ground_map`
       holding the precedence rules and the attribute lookups.
-- [ ] Step 5, slope units, with `landloss.hazard.landslide.slope_units` on
-      pysheds.
-- [ ] Step 6, the slope candidates, with
+- [x] Step 5, slope units, with `landloss.hazard.landslide.slope_units`. Built
+      on `landloss.common.utils.hydrology.route_grid`, not pysheds, as the
+      contract's section 12 decided.
+- [x] Step 6, the slope candidates, with
       `landloss.hazard.landslide.urban.delineation`.
-- [ ] `gen_wall_lines.py`, with `landloss.exposure.rw.lines`.
-- [ ] Step 7, the failure polygons, with `landloss.hazard.landslide.urban.geometry`
+- [x] `gen_wall_lines.py`, with `landloss.exposure.rw.lines`.
+- [x] Step 7, the failure polygons, with `landloss.hazard.landslide.urban.geometry`
       holding each geometry rule as a named function with its source in the
       docstring.
 - [ ] Research and justify the geometry rules; record the sources in
       `context/lit/landslide/` and the bib.
+- [ ] Run steps 3 to 7 and the wall lines over the pilot in order; only the
+      step 3 DEM, slope and aspect are run. The boxes above mark the steps
+      built and tested on synthetic inputs, not run.
 
 ### Phase 2 — The wall population
 
-- [ ] `gen_wall_probability.py` reworked to lines, with the condition model.
-- [ ] `gen_wall_population.py` reworked to draw per world on the exposure seed,
+- [x] `gen_wall_probability.py` reworked to lines, with the condition model.
+- [x] `gen_wall_population.py` reworked to draw per world on the exposure seed,
       carrying `wall_line_id`.
-- [ ] Later: `gen_wall_count_bounds.py` and the constrained draw.
+- [ ] Later: `gen_wall_count_bounds.py` and the constrained draw. The scaling,
+      `wall_probability.apply_count_bounds`, is written and tested and not yet
+      called.
 
 ### Phase 3 — The urban model
 
-- [ ] `landloss.hazard.landslide.urban.fragility`: the lognormal, the rating to
+- [x] `landloss.hazard.landslide.urban.fragility`: the lognormal, the rating to
       median function, the amplification factor, the PGA to PGV conversion, the
       rate setting.
-- [ ] `src/landloss/io/assets/retaining-wall-fragility.csv` and
+- [x] `src/landloss/io/assets/retaining-wall-fragility.csv` and
       `urban-fragility-anchors.csv`, with readers.
-- [ ] The anchoring validation figure and table.
+- [ ] The anchoring validation figure and table. Both scripts are built and
+      tested (`validations/urban/`); they read the TS1170.5 grids and have not
+      been run, so the localised constants, their dispersion and the low and
+      high rate factors are still placeholders.
 - [ ] Step 8, the model file, and its review by the project lead before phase 4.
+      The step, its table and its figure are built and tested on synthetic
+      inputs; no model file has been written over the pilot.
 
 ### Phase 4 — The draws and the vul changes
 
-- [ ] Step 1 reworked onto slope units.
-- [ ] Step 9, the urban realisation, with
+- [x] Step 1 reworked onto slope units.
+- [x] Step 9, the urban realisation, with
       `landloss.hazard.landslide.urban.realisation`.
-- [ ] Step 9 of `vul/shaking/rw` restricted to flat-land walls on PGV; step 11
+- [x] Step 9 of `vul/shaking/rw` restricted to flat-land walls on PGV; step 11
       of `vul/landslide/rw` on the outcome table; the land, crossing and
       property damage steps on the new file names and ids.
-- [ ] Checks: the share of urban failures confined to one property (A-15), and
-      failed polygon sizes against the Wellington cut-failure record.
+- [ ] Run phases 2 to 4 over the pilot, after phase 1's steps: every step above
+      is tested end to end on synthetic inputs and none has been run.
+- [ ] Checks: the share of urban failures confined to one property, against
+      the expectation under "Local failures versus global failures" in
+      `.agents/context/land-damage-mechanisms.md`, and failed polygon sizes
+      against the Wellington cut-failure record.
 
 ### Later
 
@@ -776,7 +812,8 @@ boundary of the range is reported.
 ## Files
 
 **New library code** (`src/landloss/`): `exposure/rw/lines.py`,
-`exposure/rw/population.py` (the per-world draw and the count bounds);
+`exposure/rw/population.py` (the per-world draw; the count bounds scaling is
+`apply_count_bounds` in `exposure/rw/wall_probability.py`);
 `hazard/landslide/ground_map.py`, `slope_units.py`; `hazard/landslide/urban/`
 with `delineation.py`, `geometry.py`, `fragility.py`, `realisation.py`;
 `hazard/realisation.py` gains the world id; `domain/constants.py` gains
@@ -785,10 +822,20 @@ with `delineation.py`, `geometry.py`, `fragility.py`, `realisation.py`;
 `TOPOGRAPHIC_AMPLIFICATION_MAX`, `LOCALISED_FRAGILITY_BETA`; `io/assets/`
 gains the two CSVs and their readers.
 
-**Changed:** `exposure/rw/wall_probability.py` (lines), `vul/shaking/rw` step 9,
-`vul/landslide/rw` step 11, `vul/landslide/land` step 3,
-`vul/landslide/culverts_bridges` step 11 and `vul/steps/s10_property_damage`
-(file names and ids).
+**Changed:** `exposure/rw/wall_probability.py` (lines),
+`exposure/rw/beta_population.py` (size and condition classes only),
+`hazard/landslide/steps/s1_landslide_realisation/` (onto slope units),
+`vul/shaking/fragility.py`, `vul/landslide/flags.py`, `vul/loss_input.py`,
+`vul/shaking/rw` step 9, `vul/landslide/rw` step 11, `vul/landslide/land`
+step 3, `vul/landslide/culverts_bridges` step 11 and
+`vul/steps/s10_property_damage` (file names and ids), and the runners
+`gen_hazard.py` (with `main_urban`), `gen_exposure.py`, `gen_vul.py` and
+`gen_all.py`. The wall population is now
+`temp/exposure/wall-population-wNNN[-pilot].geoparquet` (was
+`beta-wall-population-rNNN`).
+
+**Reference:** Koutsoupaki et al. (2023), the source of the wall curves, in
+`context/lit/landslide/koutsoupaki_2023/`.
 
 **New step folders:** `hazard/landslide/steps/s4_ground_map/`, `s5_slope_units/`,
 `s6_urban_slope_candidates/`, `s7_urban_slope_polygons/`,
@@ -809,8 +856,10 @@ sources; seeds keyed on both ids reproducing.
 - The curves against the anchors in section 6, in the validation figure.
 - Over the pilot: the realised share of polygons failing against the fragility
   they were drawn from, per rate setting.
-- The share of urban failures confined to one property (A-15) and the failed
-  polygon sizes against the Wellington cut-failure record.
+- The share of urban failures confined to one property, against the
+  expectation under "Local failures versus global failures" in
+  `.agents/context/land-damage-mechanisms.md`, and the failed polygon sizes
+  against the Wellington cut-failure record.
 - Every run prints the rate setting, the world and earthquake ids, the counts
   of polygons by wall state, failed, absorbed and superseded, and the summed and
   dissolved areas by kind of ground.

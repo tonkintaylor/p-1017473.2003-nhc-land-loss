@@ -1,6 +1,8 @@
 # Step 3 — Landslide land damage: implementation plan
 
-**Status:** Phases 1 and 1a complete. The quantity is measured; nothing is priced.
+**Status:** Phases 1, 1a and 1b complete. The quantity is measured per world
+and earthquake; nothing is priced. The pilot has not been run since the
+combined realisation landed.
 
 ## Phase 1 — Damaged area and depth per property (complete)
 
@@ -19,7 +21,26 @@
 - [x] Write the union of evacuated and inundated ground as `landslide_area_m2`,
       the contract's `land_slide_total_insured_land_area` (**Q-06**).
 - [x] Print the union total and the double count the sum would have made.
-- [ ] Rerun the pilot once exposure step 5 has been rerun with `land_id`.
+
+## Phase 1b — The combined realisation, per world and earthquake (complete)
+
+Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
+
+- [x] Read landslide step 9's combined realisation
+      (`combined_realisation_path(world_id, realisation_id, pilot=...)`), the
+      large model's polygons and the urban slope model's together, in place of
+      step 1's large-model file.
+- [x] Take the land classes from `landloss.hazard.landslide.land_class`
+      through `damaged_area`, and ignore the urban model's third class,
+      `imminent land`, until **T-45** decides how it is settled
+      (`IGNORED_LAND_CLASSES`).
+- [x] Loop over `WORLD_IDS` as well as `REALISATION_IDS`, and name the output
+      on both, `landslide-land-damage-w<NNN>-r<NNN>[-pilot].parquet`, with
+      `world_id` after `realisation_id`.
+- [x] Run the step end to end on synthetic inputs in
+      `tests/landloss/vul/landslide/land/test_landslide_land_damage_step.py`.
+- [ ] Rerun the pilot once exposure step 5 and landslide steps 1 to 9 have
+      been run for world 0, and record the counts in the method document.
 
 ## Phase 2 — Pricing
 
@@ -29,23 +50,25 @@
 - [ ] Decide whether evacuated and inundated ground are priced by the same
       schedule. Reinstating support and clearing debris are different works.
 - [ ] Settle how a property carrying both kinds is settled, given they overlap.
+- [ ] Settle **T-45**: whether imminent ground behind an urban headscarp is a
+      claimable loss, and if so what this step measures for it.
 
 ## Phase 3 — Once the hazard is calibrated
 
-- [ ] Rerun when the landslide size distribution is refitted. The realisation
-      currently produces two orders of magnitude less damaged ground than the
-      ESNZ grid's own expectation, because the size power law is sampled far
-      below the scale it was fitted at. Everything this step reports scales
-      directly with that, so the areas here are structurally right and
-      numerically not to be quoted.
-- [ ] Take the inundated footprint from a runout model rather than the source
-      circle moved downhill, at which point the evacuated and inundated depths
-      stop being equal.
+- [ ] Rerun when the large landslide size distribution is refitted. The
+      realisation currently produces far less damaged ground than the ESNZ
+      grid's own expectation, because the size power law is sampled far below
+      the scale it was fitted at. Everything this step reports scales directly
+      with that, so the areas here are structurally right and numerically not
+      to be quoted.
+- [ ] Take the large model's inundated footprint from a runout model rather
+      than the source ellipse moved downhill, at which point its evacuated and
+      inundated depths stop being equal.
 
 ## Potential future improvements
 
 - Report the share of each property's insured land that was damaged, not only
   the area. The settlement compares against the value of the damaged land, so
   the fraction is what the loss module ultimately wants.
-- Intersect against retaining walls and crossings as well as land, so a
-  landslide can write off a structure rather than only the ground.
+- Report the damaged area by population (large, urban) as well as in total, so
+  the two models' contributions to the land loss can be read apart.

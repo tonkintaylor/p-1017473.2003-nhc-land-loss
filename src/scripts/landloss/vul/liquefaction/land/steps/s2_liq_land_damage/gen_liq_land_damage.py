@@ -37,7 +37,7 @@ liquefaction claim. `liq_claimed` records the draw.
 average over every damaged property, non-claimants at $0, which
 `COSTS_INCLUDE_NON_CLAIMANTS` records; drawing claims against them as well would
 count the drop-out twice. So every property on the grid claims, at the diluted
-cost, until claimant-only rates replace them (T-65, L-43).
+cost, until claimant-only rates replace them (T-66, L-43).
 
 **Each claim carries the ground it lost** (T-55): an evacuated area in m² and an
 inundated area, drawn uniformly within its state's ranges in
@@ -213,7 +213,7 @@ def main(
     if not apply_drop_out:
         print(
             "Drop-out off: the packaged costs already average over non-claimants "
-            "at $0, so drawing claims against them would count it twice (T-65)."
+            "at $0, so drawing claims against them would count it twice (T-66)."
         )
     insured = gpd.read_parquet(insured_land_path(pilot=pilot))
     points = insured.geometry.representative_point()

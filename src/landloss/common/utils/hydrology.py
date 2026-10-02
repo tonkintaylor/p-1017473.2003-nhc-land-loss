@@ -20,6 +20,7 @@ a geographic grid, so distances are passed in metres per row.
 """
 
 import heapq
+from typing import NamedTuple
 
 import numpy as np
 
@@ -144,3 +145,40 @@ def flow_accumulation(
         if downstream != OUTLET:
             total[downstream] += total[idx]
     return total.reshape(shape)
+
+
+class FlowRouting(NamedTuple):
+    """The routing of one grid, as :func:`route_grid` returns it."""
+
+    #: The depression-filled DEM, NaN where the input was.
+    filled: np.ndarray
+    #: The flat index of every valid cell in flood order, downstream first.
+    order: np.ndarray
+    #: Per flat index, the receiving cell's flat index, or :data:`OUTLET`.
+    receiver: np.ndarray
+    #: Upstream contributing area per cell in square metres, the cell's own
+    #: included, NaN where the DEM is.
+    upstream_area_m2: np.ndarray
+
+
+def route_grid(dem: np.ndarray, *, dx_m: float, dy_m: float) -> FlowRouting:
+    """Fill, route and accumulate a grid of equal cells in one call.
+
+    The three stages are :func:`priority_flood`, :func:`d8_receivers` and
+    :func:`flow_accumulation` weighted by the cell area, which is what a
+    projected grid such as NZTM wants; a geographic grid, whose cell width
+    changes with latitude, calls the three stages itself with a spacing per row.
+
+    Args:
+        dem: Elevation, 2D. NaN is nodata.
+        dx_m: The east-west cell spacing in metres.
+        dy_m: The north-south cell spacing in metres.
+
+    Returns:
+        The filled DEM, the flood order, the receivers and the upstream area.
+    """
+    filled, order, parent = priority_flood(dem)
+    receiver = d8_receivers(filled, parent, np.full(dem.shape[0], dx_m), dy_m)
+    cell_area = np.where(np.isnan(filled), np.nan, dx_m * dy_m)
+    upstream_area_m2 = flow_accumulation(receiver, order, cell_area)
+    return FlowRouting(filled, order, receiver, upstream_area_m2)

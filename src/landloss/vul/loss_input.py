@@ -1,7 +1,7 @@
 """The four tables the vulnerability module hands to the loss module.
 
-Per realisation, vul hands loss one table each for land, retaining walls,
-culverts and bridges, with the columns set out in section 1 of
+Per exposure world and earthquake, vul hands loss one table each for land,
+retaining walls, culverts and bridges, with the columns set out in section 1 of
 ``.agents/plans/asset-pricing-approach.md`` and named in
 :mod:`landloss.domain.loss_contract`. This module only assembles them: every
 number in them was worked out by an earlier vul step and is carried here keyed
@@ -9,8 +9,12 @@ on the asset id minted in exposure.
 
 - **Land** is spined on the insured land, one row per polygon, so land no hazard
   reached still appears, with zero damaged area.
-- **Retaining walls** take their shaking damage state from the shaking step and
-  their landslide flags from the wall landslide step.
+- **Retaining walls** are spined on the world's wall population, so every
+  insured wall appears whether it stands on flat land or on a slope. The
+  shaking step writes a damage state for flat-land walls only; the wall
+  landslide step writes the three contract flags for every wall, with the
+  shaking flag of a sloping wall set by its urban slope outcome. A wall is
+  damaged by shaking when either says so.
 - **Culverts and bridges** are detected together as crossings and split here by
   structure kind, the crossing id becoming the culvert or bridge id.
 
@@ -67,6 +71,11 @@ from landloss.vul.shaking.fragility import DAMAGE_STATE_COLUMN, REPLACE
 
 LOSS_TABLES = ("land", "rw", "culverts", "bridges")
 
+# The exposure world a table was built for, written after the realisation id on
+# every table (contract section 3.15). Not a contract column: the loss module
+# reads the world from the file name.
+WORLD_ID_COLUMN = "world_id"
+
 # Exposure's column names for what the contract renames.
 SIZE_CLASS_COLUMN = "size_class"
 LENGTH_COLUMN = "length_m"
@@ -87,10 +96,15 @@ def _geo(
 
 
 def _merge_flags(
-    assets: gpd.GeoDataFrame, flags: pd.DataFrame, id_column: str, *, table: str
+    assets: gpd.GeoDataFrame,
+    flags: pd.DataFrame,
+    id_column: str,
+    *,
+    table: str,
+    columns: tuple[str, ...] = FLAG_COLUMNS,
 ) -> pd.DataFrame:
     """Attach the landslide flags to each asset, refusing any without them."""
-    flags = flags[[id_column, *FLAG_COLUMNS]]
+    flags = flags[[id_column, *columns]]
     merged = assets.merge(
         flags, on=id_column, how="left", validate="one_to_one", indicator=True
     )
@@ -102,9 +116,20 @@ def _merge_flags(
         )
         raise ValueError(msg)
     merged = merged.drop(columns="_merge")
-    for column in FLAG_COLUMNS:
+    for column in columns:
         merged[column] = merged[column].astype(bool)
     return merged
+
+
+def _check_unique(frame: pd.DataFrame, id_column: str, *, what: str) -> None:
+    """Refuse a frame whose ids repeat."""
+    duplicated = frame[id_column].duplicated()
+    if duplicated.any():
+        msg = (
+            f"{int(duplicated.sum())} {what} are duplicated, for example "
+            f"{frame.loc[duplicated, id_column].iloc[0]!r}"
+        )
+        raise ValueError(msg)
 
 
 def build_land_table(
@@ -142,13 +167,7 @@ def build_land_table(
         ValueError: If ``land_id`` is duplicated in ``insured``, or a contract
             column is missing.
     """
-    duplicated = insured[LAND_ID_COLUMN].duplicated()
-    if duplicated.any():
-        msg = (
-            f"{int(duplicated.sum())} land ids are duplicated in the insured "
-            f"land, for example {insured.loc[duplicated, LAND_ID_COLUMN].iloc[0]!r}"
-        )
-        raise ValueError(msg)
+    _check_unique(insured, LAND_ID_COLUMN, what="land ids in the insured land")
 
     land_ids = insured[LAND_ID_COLUMN]
     liquefied = liquefaction.set_index(LAND_ID_COLUMN)
@@ -186,38 +205,69 @@ def build_land_table(
     return land
 
 
-def build_rw_table(walls: gpd.GeoDataFrame, flags: pd.DataFrame) -> gpd.GeoDataFrame:
+def build_rw_table(
+    walls: gpd.GeoDataFrame, states: pd.DataFrame, flags: pd.DataFrame
+) -> gpd.GeoDataFrame:
     """Assemble the retaining wall table, one row per insured wall.
 
+    The table is spined on the world's wall population, so a wall on sloping
+    ground, which the shaking step never sees, appears beside the flat-land
+    walls it does (contract section 7.14).
+
     Args:
-        walls: The walls with their shaking damage state, carrying ``rw_id``,
-            ``claim_id``, ``size_class``, ``length_m`` and ``damage_state``.
-        flags: The wall landslide step's ``is_evacuated`` and ``is_inundated``
-            per ``rw_id``.
+        walls: The world's wall population, carrying ``rw_id``, ``claim_id``,
+            ``size_class``, ``length_m`` and the line geometry.
+        states: The shaking step's ``damage_state`` per ``rw_id``, for the
+            flat-land walls only. A wall with no row has no shaking damage
+            from this source.
+        flags: The wall landslide step's ``is_damaged_by_shaking``,
+            ``is_evacuated`` and ``is_inundated`` per ``rw_id``, for every
+            wall.
 
     Returns:
         :data:`~landloss.domain.loss_contract.RW_COLUMNS` then the geometry, in
         the order and CRS of ``walls``. A wall is damaged by shaking when its
-        damage state is replace.
+        damage state is replace or the landslide step's flag says so.
 
     Raises:
-        ValueError: If any wall has no flags row, or a contract column is
-            missing.
+        ValueError: If ``rw_id`` repeats in ``walls`` or ``states``, a state
+            names a wall not in the population, any wall has no flags row, or
+            a contract column is missing.
     """
+    _check_unique(walls, RW_ID_COLUMN, what="wall ids in the population")
+    _check_unique(states, RW_ID_COLUMN, what="wall ids in the damage states")
+    state_of = states.set_index(RW_ID_COLUMN)[DAMAGE_STATE_COLUMN]
+    strangers = state_of.index[~state_of.index.isin(walls[RW_ID_COLUMN])]
+    if len(strangers):
+        msg = (
+            f"{len(strangers)} damage states name walls not in the population, "
+            f"for example {strangers[0]!r}"
+        )
+        raise ValueError(msg)
+    # A wall the shaking step did not write (a sloping wall) is not shaking
+    # damaged by that route: a missing state compares unequal to replace.
+    replaced = (walls[RW_ID_COLUMN].map(state_of) == REPLACE).to_numpy()
+
     table = pd.DataFrame(
         {
             RW_ID_COLUMN: walls[RW_ID_COLUMN],
             CLAIM_ID_COLUMN: walls[CLAIM_ID_COLUMN],
             RW_SIZE_COLUMN: walls[SIZE_CLASS_COLUMN],
             RW_LENGTH_COLUMN: walls[LENGTH_COLUMN].astype("float64"),
-            IS_DAMAGED_BY_SHAKING_COLUMN: (
-                walls[DAMAGE_STATE_COLUMN] == REPLACE
-            ).astype(bool),
             "geometry": walls.geometry,
         },
         index=walls.index,
     )
-    merged = _merge_flags(table, flags, RW_ID_COLUMN, table="rw")
+    merged = _merge_flags(
+        table,
+        flags,
+        RW_ID_COLUMN,
+        table="rw",
+        columns=(IS_DAMAGED_BY_SHAKING_COLUMN, *FLAG_COLUMNS),
+    )
+    merged[IS_DAMAGED_BY_SHAKING_COLUMN] = (
+        replaced | merged[IS_DAMAGED_BY_SHAKING_COLUMN].to_numpy()
+    )
     rw = _geo(merged, list(RW_COLUMNS), walls.crs)
     check_contract_columns(rw.columns, RW_COLUMNS, table="rw")
     return rw

@@ -1,23 +1,30 @@
 # Step 10 — Property damage: method
 
-- The step writes the **four tables vul hands to loss**, per realisation, as
-  set out in section 1 of `.agents/plans/asset-pricing-approach.md`: land,
-  retaining walls, culverts and bridges. It is run by `gen_property_damage.py`
-  and adds no modelling of its own. Every number it writes was decided by the
-  step it came from.
+- The step writes the **four tables vul hands to loss**, per exposure world
+  and modelled earthquake, as set out in section 1 of
+  `.agents/plans/asset-pricing-approach.md`: land, retaining walls, culverts
+  and bridges. It is run by `gen_property_damage.py` and adds no modelling of
+  its own. Every number it writes was decided by the step it came from.
 - The assembly is in `landloss.vul.loss_input`: `build_land_table()`,
   `build_rw_table()` and `build_crossing_tables()`. The contract column names
   come from `landloss.domain.loss_contract`, and each builder checks them with
   `check_contract_columns()` before returning.
-- It reads seven files, each through its own step's path function:
-  - the insured land (exposure step 5);
-  - the liquefaction land damage (vul step 2) and the landslide land damage
-    (vul step 3), both keyed on `land_id`;
-  - the retaining wall damage states (`vul/shaking/rw` step 9) and the wall
-    landslide flags (`vul/landslide/rw` step 11), keyed on `rw_id`;
+- It reads eight files per world and earthquake, each through its own step's
+  path function:
+  - the insured land (exposure step 5, `insured_land_path(pilot=...)`);
+  - the world's wall population (exposure rw step 6,
+    `wall_population_path(world_id, pilot=...)`);
+  - the liquefaction land damage (vul step 2, `liq_land_damage_path(r)`, per
+    earthquake only) and the landslide land damage (vul step 3,
+    `landslide_land_damage_path(w, r)`), both keyed on `land_id`;
+  - the retaining wall damage states (`vul/shaking/rw` step 9,
+    `wall_damage_state_path(w, r)`, flat-land walls only) and the wall
+    landslide flags (`vul/landslide/rw` step 11,
+    `wall_landslide_damage_path(w, r)`, every wall), keyed on `rw_id`;
   - the culvert and bridge damage states (`vul/shaking/culverts_bridges`
-    step 9) and the crossing landslide flags (`vul/landslide/culverts_bridges`
-    step 11), keyed on `crossing_id`.
+    step 9, `structure_damage_state_path(r)`, per earthquake only) and the
+    crossing landslide flags (`vul/landslide/culverts_bridges` step 11,
+    `crossing_landslide_damage_path(w, r)`), keyed on `crossing_id`.
 - Every row carries its asset id and the `claim_id` of the LINZ property it
   belongs to, both minted in exposure and carried unchanged. Only insured
   assets reach this step: the exposure steps filter walls and crossings to the
@@ -33,12 +40,21 @@
     inundated ground from vul step 3, not their sum;
   - landslide areas default to zero where no landslide reached the polygon,
     and `inundated_mean_depth` defaults to missing;
-  - `Liq_LD_state` is 1, None, on land off the liquefaction grid, as written by
+  - `Liq_LD_state` is null on land off the liquefaction grid, as written by
     vul step 2;
   - `dwelling_count` is carried as an extra column, pending Q-07.
-- **Retaining walls**, one row per insured wall: `rw_id`, `claim_id`,
-  `rw_size`, `rw_length`, `is_damaged_by_shaking` (the shaking damage state is
-  replace), `is_evacuated` and `is_inundated`.
+- **Retaining walls**, one row per insured wall, **spined on the world's wall
+  population** (`build_rw_table(walls, states, flags)`), so a wall on sloping
+  ground, which the shaking step never sees, appears beside the flat-land walls
+  it does: `rw_id`, `claim_id`, `rw_size`, `rw_length`,
+  `is_damaged_by_shaking`, `is_evacuated` and `is_inundated`.
+  `is_damaged_by_shaking` is true when the shaking step's damage state is
+  replace **or** the wall landslide step's flag is set (a sloping wall whose
+  urban polygon failed through it); a wall with no damage state row is not
+  shaking damaged by that route. `is_evacuated` and `is_inundated` come from
+  the wall landslide step, which already OR-ed the urban outcome with the
+  geometry. The run prints how many walls carry a damage state and how many
+  take their shaking flag from the urban outcome (`describe_walls()`).
 - **Culverts and bridges** are split from the crossings by structure kind, the
   `crossing_id` becoming `culvert_id` or `bridge_id`:
   - culverts: `culvert_id`, `claim_id`, `is_inundated`, `is_damaged` (the
@@ -47,26 +63,43 @@
   - bridges: `bridge_id`, `claim_id`, `is_damaged_by_shaking`, `is_evacuated`
     and `is_inundated`.
 - An asset with no landslide flags row stops the run rather than defaulting to
-  undamaged (`_merge_flags()` in `landloss.vul.loss_input`).
+  undamaged (`_merge_flags()` in `landloss.vul.loss_input`); so does a wall
+  damage state naming a wall not in the population.
 - The geometry comes from the exposure layers (the insured land polygon, the
   wall line and the crossing geometry) and supplies the coordinates. Each table
   is written in EPSG:2193, reprojected if needed, and refused if it has no CRS
   (`in_default_crs()`).
-- Each table carries a `realisation_id` as its first column.
-- The run prints, per realisation:
+- Each table carries `realisation_id` as its first column and `world_id` as
+  its second (`loss_input.WORLD_ID_COLUMN`); neither is a contract column.
+- The run prints, per world and earthquake:
   - land polygons, claims and dwellings, and the liquefaction states present;
   - the landslide union total against the evacuated plus inundated sum, to show
     what the union avoids double counting;
   - walls, culverts and bridges, with the count carrying each flag;
   - the **T-27** overlap: claims carrying both a liquefaction land damage state
-    and a wall damaged by shaking. If the Canterbury land damage rates already
-    include retaining wall damage, each of those is charged for its wall twice.
+    and a wall damaged by shaking, printed for information. Both are priced:
+    the project lead ruled on 2026-10-02 that a retaining wall replaced by shaking on flat land and the liquefaction land damage on the same claim are not a double count.
 - **Nothing is settled.** Caps, excesses, GST and pricing belong to the loss
   module, which this step does not touch.
-- Output is `temp/vul/loss-input-<table>-r<nnn>[-pilot].geoparquet`, one file
-  per table (`land`, `rw`, `culverts`, `bridges`), from `loss_input_path()`.
-- The step has not yet been run on the pilot since the rework, so no counts are
-  recorded here. It needs exposure steps 5, 6 and 7 and every vul step it reads
-  rerun first.
+- Output is `temp/vul/loss-input-<table>-w<NNN>-r<NNN>[-pilot].geoparquet`,
+  one file per table (`land`, `rw`, `culverts`, `bridges`), from
+  `world_loss_input_path(table, world_id, realisation_id, pilot=...)`. The step
+  writes through it and every vul caller and test uses it; `world_id` is
+  positional with no default.
+- `loss_input_path(table, realisation_id, pilot=...)`, the old signature, is
+  kept **deprecated** for the loss module's five callers
+  (`s0_gen_land_cover_cap.py`, `s1_gen_settlement.py`,
+  `gen_calc_walkthrough.py` twice and `gen_viewer_data.py`), which pass no
+  world. It returns `world_loss_input_path(table, 0, realisation_id, ...)`, so
+  the loss module reads world 0 of each earthquake, which is every world this
+  build runs (`WORLD_IDS = [0]`). Nothing in vul calls it, and a test pins that
+  it resolves world 0 and reads the file the step writes for world 0
+  (contract decision 37). It is deleted once the loss owner moves those calls
+  to `world_loss_input_path` with a `WORLD_IDS` setting.
+- The step is exercised end to end on synthetic inputs by
+  `tests/landloss/vul/test_property_damage_step.py`. It has not been run on
+  the pilot since the rework, so no counts are recorded here; it needs
+  exposure steps 5, 6 and 7, landslide steps 1 to 9 and every vul step it
+  reads run first.
 
-Potential future improvements see `s10_property_damage_implementation_plan.md`.
+Potential future improvements: see `s10_property_damage_implementation_plan.md`.

@@ -13,9 +13,11 @@ committed. Nothing here is large enough to belong in a cache.
 | `land-value-extra-stations.csv` | Railway stations missing from the LINZ Topo50 station layer, added to it for the accessibility term | Maintained by hand — see below | `landloss.exposure.land.accessibility.load_extra_stations` |
 | `marc-2016-table-s1.csv` | Marc et al. (2016) Table S1, verbatim: the 40 earthquakes their total landslide area and volume expression was tested on | Converted from the supporting information's `.xls` (`context/lit/landslide/marc_2016/`) — see below | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` |
 | `marc-2016-table-s1-subevents.csv` | The same table parsed to numbers, one row per earthquake or per sub-event of an earthquake sequence | `src/landloss/io/one_offs/gen_marc_2016_table_s1.py` | The landslide calibration (`.agents/plans/building-hancox-landslide-model-and-calibration.md`) |
-| `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke, its soil mantle and fill by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, and from GNS SLIDE reports SR2019/40 and SR2019/51, 1 October 2026 — see below | Not yet read; for landslide model 7 |
+| `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke, its soil mantle and fill by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, and from GNS SLIDE reports SR2019/40 and SR2019/51, 1 October 2026 — see below | `landloss.hazard.landslide.ground_map.strength_from_material` |
 | `wellington-greywacke-depth-to-rock.csv` | Observed depths to weathered greywacke rock, and thicknesses of the colluvium and residual soil mantle, at Wellington-region T+T sites | As above | Not yet read; for landslide model 7 |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
+| `retaining-wall-fragility.csv` | Lognormal fragility (median, dispersion) per retaining wall class, size and initial condition, with the published intensity measure and source | Maintained by hand from `.agents/context/retaining-wall-fragility.md` — see below | `landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility` |
+| `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a fraction of polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
 
 ## `land-value-base-rates.csv`
 
@@ -243,5 +245,117 @@ The same two reports give unconfined compressive and Brazilian strengths of
 Wellington greywacke and cataclasite core by weathering grade, which have no
 column here.
 
+Rows S58–S63 are Pender's (1980) consolidated undrained triaxial results for
+highly and completely weathered greywacke from five central Wellington sites, 193
+specimens grouped by void ratio. They are taken from Table 7 of the NZ
+Geotechnical Society's Unit 7C.2 guidance on Torlesse greywacke (draft for
+feedback, September 2025), checked against the page image on 2 October 2026.
+Pender's own paper is not held. φ′ falls from 35.7° at void ratio 0.25–0.4 to
+27.1° at 0.8–0.9. The lower 95% limit on c′ is zero or below for every class, and
+the guide advises c′ = 0 under high groundwater. These rows give no unit weight,
+so `strength_from_material` does not choose them.
+
+**Which fill row the ground map reads.** `strength_from_material` takes the
+first complete, published, unflagged row of grade `FILL`, which is S48. That is
+φ′ 45.7° with c′ 0, from the first shear stage of one intact core sample at
+Orchy Crescent, and it showed no peak. S52 (22 kN/m³, c′ 2 kPa, φ′ 42°) is the
+value GNS supplied for modelling the same fills. Which one the model should read
+is a choice for the model owner; the table's row order alone currently decides
+it.
+
 In the depth table, `horizon` says what the depth is measured to (Scala
 refusal, base of colluvium, top of CW–HW rock), because the reports differ.
+
+## `retaining-wall-fragility.csv`
+
+One row per `(wall_class, size_class, initial_condition)`, the triple unique.
+`im` says whether `theta`, the published median, is in `pga_g` or `pgv_m_s`;
+`beta` is the published dispersion; `published_height_m` the wall height the
+curve was derived for; `damage_state` the published state read as "replace";
+`source` a `doc/references.bib` key; and `basis` which published curve the row
+took and how the condition shifted it.
+
+The six rows are read out of Koutsoupaki, Sotiriadis, Klimis and Dokas (2023)
+[koutsoupaki_2023], source 6 of `.agents/context/retaining-wall-fragility.md`:
+cantilever walls 3, 6 and 9 m high on cohesionless backfill, dimensioned to a
+static factor of safety of 1.5 dry, with the water table raised behind the wall
+to give Fs = 1.4, 1.3, 1.2 and 1.1, analysed by 2D non-linear time history and
+fitted as lognormals on free-field PGA. Its Tables A1 to A5 (one per Fs) carry
+the parameters; the paper is kept as
+`context/lit/landslide/koutsoupaki_2023/koutsoupaki-2023-retaining-wall-fragility-initial-conditions.html`.
+`wall_class` is `unnamed` on every row until the six classes are
+named, so the triple is in practice `(size_class, initial_condition)`.
+
+The reading, all recorded per row in `basis`:
+
+- **Damage state read as "replace"**: the paper's DS3, *extensive*, on the
+  horizontal displacement of the wall base, `Ux = 10% of H`, the failure
+  criterion of Prakash et al. (1995) [prakash_1995] the paper adopts. The vertical backfill
+  settlement index (`Uy`, 0.40 m) and the envelope `Ux + Uy` give lower
+  medians (1.448 and 1.187 g against 1.113 g for the 3 m wall at Fs = 1.5 in
+  the one case where they do not); they describe the serviceability of a road
+  behind the wall rather than the wall, and are not taken.
+- **Intensity measure**: the paper's PGA rows (`im = pga_g`), not its PGV rows.
+  The paper found PGA the most efficient of its measures, and its PGV medians
+  carry the PGV/PGA ratio of its eight Greek rock-site records (about 50 to
+  80 cm/s per g), which is not Wellington's. The conversion to PGV is made at
+  each polygon with the study's own ratio from the shaking grids
+  (`landloss.hazard.landslide.urban.fragility.pgv_pga_ratio_m_s_per_g`) and
+  recorded on the model file.
+- **Condition**: `modern` is the Fs = 1.5 family (dry, as designed); `poor` is
+  the Fs = 1.1 family, the lowest the paper runs. The paper's variable is the
+  water table behind the wall, not deterioration, so poor condition is read as
+  its end member; the ratio of the two medians (0.60 for the 3 m wall) is the
+  shape of the shift plan section 4.1 asks for.
+- **Size**: `small` (0.5 to 1.0 m) and `medium` (1.0 to 2.5 m) take the 3 m
+  wall, the lowest height published and the nearest to both; `large` (2.5 m and
+  up, unbounded above) takes the 6 m wall, which bounds that class from above
+  where the 3 m wall bounds the other two. A 10% of H criterion makes a taller
+  wall more tolerant in absolute displacement, which is why the two differ.
+  Extrapolating below 3 m would be guesswork and is not done.
+
+These choices are the project lead's to confirm; the table of medians step 8
+writes (`table_urban_slope_model.py`) is where they show.
+
+## `urban-fragility-anchors.csv`
+
+One row per anchor point: a Kingsbury `zone` or a susceptibility rating range
+(`rating_min`, `rating_max`), a `scenario` with its demand on rock
+(`pga_rock_g_min`, `pga_rock_g_max`), the source's failure `class_word`, the
+`fail_fraction` that word is read as, and `set_by` and `basis` recording who
+set the fraction and why. `source` is a `doc/references.bib` key or a GNS
+finding id.
+
+The rows are the anchors of section 6 of
+`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
+Step 8 does not read this file; it is the record the urban validation
+(`src/scripts/landloss/hazard/landslide/validations/urban/`) draws the curves
+against and fits the localised median to.
+
+- `A01` to `A15` are Table 1 of [kingsbury_1995], the five susceptibility
+  zones against the three scenarios, with the scenario PGA on rock from its
+  Table 7 (scenario 1, MM V-VI, 0.02 to 0.06 g; intermediate, MM VII-VIII,
+  0.1 to 0.2 g; scenario 2, MM IX-X, 0.5 to 0.8 g). The rating range of each
+  zone is the zone band of `landloss.hazard.landslide.susceptibility.ZONE_BREAKS`.
+- `A16` to `A21` are the GNS findings the plan cites by id: the Wellington
+  low-demand record (Kaikōura 2016), the Port Hills, and the forecasts for
+  Wellington cuts and fills. Each is given the rating range of the ground it
+  speaks about; `zone` is blank.
+- The 2013 Cook Strait findings (`sr2013-042-F03`, `F04`, `F11`) are not rows,
+  because the plan gives no rock-site demand for them.
+
+**The class-word-to-fraction reading is judgement, not a measurement**, and
+every row says so in `set_by`. The words are Kingsbury's slope failure classes
+read as the fraction of urban failure polygons failing: very minor 0.005,
+minor 0.02, significant 0.08, severe 0.25, very severe 0.5; the GNS findings'
+own words (`none_recorded`, `many`, `widespread`, ...) are read the same way.
+The validation table `report/hazard/landslide/urban-fragility/tab/urban-fragility-anchors.csv`
+lists the words and fractions for the report, and the project lead replaces a
+number by editing this file.
+
+Read as three points on the demand axis per zone, Kingsbury's words rise more
+slowly with demand than a lognormal at the dispersion of 0.6 the model carries
+(`LOCALISED_FRAGILITY_BETA`): the fit in
+`landloss.hazard.landslide.urban.fragility.fit_localised_fragility` therefore
+fits the dispersion as well as the two medians, and the validation figure
+prints all three for the project lead to accept or override.

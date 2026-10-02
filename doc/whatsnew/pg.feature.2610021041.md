@@ -8,5 +8,5 @@ awaiting tuning on feedback from Virginie Lacrosse and John Leeves (T-64, Q-16).
 stays **off** while the packaged Canterbury costs average over all damaged properties,
 non-claimants at $0, which `COSTS_INCLUDE_NON_CLAIMANTS` in
 `landloss.vul.liquefaction.costs` records (Q-17); it comes on when claimant-only costs
-replace them (T-65). Until then every property on the grid claims at the diluted cost, so
+replace them (T-66). Until then every property on the grid claims at the diluted cost, so
 settlements come out somewhat low (L-43).

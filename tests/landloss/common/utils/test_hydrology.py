@@ -5,6 +5,7 @@ from landloss.common.utils.hydrology import (
     d8_receivers,
     flow_accumulation,
     priority_flood,
+    route_grid,
 )
 
 
@@ -54,3 +55,30 @@ def test_a_flat_drains_rather_than_stalling():
     outflow = total.ravel()[drains_to_sea + edge_outlets].sum()
     assert outflow == valid.sum()
     assert total[2, 1] > 1  # the plateau's interior drains west through here
+
+
+def test_route_grid_accumulates_cell_area_to_the_outlets():
+    # The tilted bowl again, in square metres: the area leaving the grid across
+    # every outlet is the grid's whole valid area, and a cell holds at least
+    # its own.
+    y, x = np.indices((6, 6))
+    z = (x + y).astype(float) + 1.0
+    z[0, 0] = np.nan
+    routing = route_grid(z, dx_m=10.0, dy_m=10.0)
+    assert routing.filled.shape == z.shape
+    assert np.isnan(routing.upstream_area_m2[0, 0])
+    assert np.nanmin(routing.upstream_area_m2) == 100.0
+    valid = ~np.isnan(z.ravel())
+    outlets = [
+        i
+        for i in np.flatnonzero(valid)
+        if routing.receiver[i] == OUTLET or not valid[routing.receiver[i]]
+    ]
+    assert routing.upstream_area_m2.ravel()[outlets].sum() == 35 * 100.0
+    # The receiver of every cell comes earlier in the order than the cell.
+    position = np.empty(z.size, dtype=int)
+    position[routing.order] = np.arange(routing.order.size)
+    for idx in routing.order:
+        downstream = routing.receiver[idx]
+        if downstream != OUTLET and not np.isnan(z.ravel()[downstream]):
+            assert position[downstream] < position[idx]

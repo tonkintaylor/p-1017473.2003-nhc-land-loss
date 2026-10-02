@@ -1,0 +1,1 @@
+Make a property boundary or road frontage a candidate retaining wall only where the 1 m DEM steps at least 0.5 m across it, with the step as its face height, instead of every boundary on sloping ground.

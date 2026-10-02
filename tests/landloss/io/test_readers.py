@@ -1,14 +1,19 @@
 """Tests for the vector dataset readers."""
 
+import io
 import os
+import zipfile
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 from shapely.geometry import Point, Polygon
 
 from landloss.domain import constants
-from landloss.io import DEFAULT_KOOPCACHE_DIR, REPO_ROOT, readers
+from landloss.io import DEFAULT_KOOPCACHE_DIR, REPO_ROOT, elevation, readers
 from landloss.io.area_of_interest import SMALL_WLG_PILOT
 from landloss.io.readers import (
     get_gns_slide_morphology,
@@ -1005,3 +1010,346 @@ def test_wellington_urban_geology_applies_the_bbox(fake_wfs):
     assert fake_wfs[0]["params"]["bbox"].startswith(
         ",".join(str(value) for value in BBOX)
     )
+
+
+# --- the surface model --------------------------------------------------------
+#
+# The surface model is mosaicked from tiles found by walking the LINZ STAC
+# catalogue. Here the walk is faked with local tiles written to tmp_path, so
+# the test is of the mosaic -- newest survey first, gaps left NaN, the cache --
+# and not of the catalogue.
+
+DSM_BBOX = (1_748_000.0, 5_425_000.0, 1_748_020.0, 5_425_010.0)
+
+# rasterio builds a transform through affine's ``*`` operator, which affine
+# 3.0.1 has begun warning about; nothing to fix on this side, and the suite
+# turns every warning into a failure.
+ignore_affine_matmul = pytest.mark.filterwarnings(
+    "ignore:Use `@` matmul:PendingDeprecationWarning"
+)
+
+
+def write_tile(
+    path: Path, bounds: tuple[float, float, float, float], value: float
+) -> Path:
+    """Write a 1 m NZTM tile of one value over some bounds."""
+    minx, miny, maxx, maxy = bounds
+    width, height = int(maxx - minx), int(maxy - miny)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=1,
+        dtype="float32",
+        crs=constants.DEFAULT_CRS,
+        transform=from_origin(minx, maxy, 1.0, 1.0),
+        nodata=-9999.0,
+    ) as destination:
+        destination.write(np.full((height, width), value, dtype="float32"), 1)
+    return path
+
+
+@pytest.fixture
+def fake_dsm_tiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Two overlapping surveys over the west of DSM_BBOX, nothing over its east."""
+    newer = write_tile(
+        tmp_path / "newer.tif",
+        (1_748_000.0, 5_425_000.0, 1_748_010.0, 5_425_010.0),
+        10.0,
+    )
+    older = write_tile(
+        tmp_path / "older.tif",
+        (1_748_005.0, 5_425_000.0, 1_748_015.0, 5_425_010.0),
+        20.0,
+    )
+    calls: dict = {"bboxes": []}
+
+    def fake_find_dsm_tiles(bbox_wgs84, *, use_cache):
+        calls["bboxes"].append(bbox_wgs84)
+        return [
+            {
+                "id": "newer",
+                "bbox": (0, 0, 0, 0),
+                "asset": str(newer),
+                "survey": "2025",
+            },
+            {
+                "id": "older",
+                "bbox": (0, 0, 0, 0),
+                "asset": str(older),
+                "survey": "2014",
+            },
+        ]
+
+    monkeypatch.setattr(readers, "find_dsm_tiles", fake_find_dsm_tiles)
+    return calls
+
+
+def read_grid(path: Path) -> np.ndarray:
+    with rasterio.open(path) as source:
+        return source.read(1)
+
+
+@ignore_affine_matmul
+def test_get_dsm_mosaics_newest_survey_first_and_leaves_gaps_nan(
+    fake_dsm_tiles: dict,
+) -> None:
+    path = readers.get_dsm(DSM_BBOX, resolution=1)
+
+    grid = read_grid(path)
+    assert grid.shape == (10, 20)
+    assert grid[:, :10] == pytest.approx(10.0)  # the newer survey wins its overlap
+    assert grid[:, 10:15] == pytest.approx(20.0)  # the older fills what it alone has
+    assert np.isnan(grid[:, 15:]).all()  # no survey reaches the east
+
+
+@ignore_affine_matmul
+def test_get_dsm_asks_the_catalogue_for_the_extent_in_wgs84(
+    fake_dsm_tiles: dict,
+) -> None:
+    readers.get_dsm(DSM_BBOX, resolution=1)
+
+    (bbox_wgs84,) = fake_dsm_tiles["bboxes"]
+    assert 174.0 < bbox_wgs84[0] < bbox_wgs84[2] < 176.0
+    assert -42.0 < bbox_wgs84[1] < bbox_wgs84[3] < -41.0
+
+
+@ignore_affine_matmul
+def test_get_dsm_writes_the_grid_the_extent_asked_for(fake_dsm_tiles: dict) -> None:
+    path = readers.get_dsm(DSM_BBOX, resolution=1)
+
+    with rasterio.open(path) as source:
+        assert source.bounds == pytest.approx(DSM_BBOX)
+        assert source.crs.to_epsg() == 2193
+        assert np.isnan(source.nodata)
+
+
+@ignore_affine_matmul
+def test_get_dsm_reuses_the_cached_file(fake_dsm_tiles: dict) -> None:
+    first = readers.get_dsm(DSM_BBOX, resolution=1)
+    second = readers.get_dsm(DSM_BBOX, resolution=1)
+
+    assert first == second
+    assert len(fake_dsm_tiles["bboxes"]) == 1
+
+
+@ignore_affine_matmul
+def test_get_dsm_can_be_told_to_fetch_again(fake_dsm_tiles: dict) -> None:
+    readers.get_dsm(DSM_BBOX, resolution=1)
+    readers.get_dsm(DSM_BBOX, resolution=1, use_cache=False)
+
+    assert len(fake_dsm_tiles["bboxes"]) == 2
+
+
+def test_the_dsm_cache_is_keyed_apart_from_the_dem_cache() -> None:
+    dem = readers.dem_cache_path(DSM_BBOX, 1, constants.DEFAULT_CRS)
+    dsm = readers.dsm_cache_path(DSM_BBOX, 1, constants.DEFAULT_CRS)
+
+    assert dem != dsm
+    assert dsm.parent.name == "dsm"
+    assert dsm.name.startswith("dsm_1m_")
+
+
+@pytest.fixture
+def fake_dsm_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two DSM surveys over Lower Hutt, a DEM one there, and a DSM over Auckland."""
+    root_url = elevation.ELEVATION_CATALOG_URL
+    base = root_url.rsplit("/", maxsplit=1)[0]
+    hutt = {"spatial": {"bbox": [[174.80, -41.35, 175.03, -41.09]]}}
+    auckland = {"spatial": {"bbox": [[174.40, -37.05, 175.30, -36.10]]}}
+
+    def collection(title, extent, end, items):
+        return {
+            "id": title,
+            "title": title,
+            "extent": {**extent, "temporal": {"interval": [["2000-01-01", end]]}},
+            "links": [{"rel": "item", "href": f"./{item}.json"} for item in items],
+        }
+
+    def item(bbox):
+        return {"bbox": list(bbox), "assets": {"visual": {"href": "./tile.tif"}}}
+
+    documents = {
+        root_url: {
+            "links": [
+                {
+                    "rel": "child",
+                    "href": "./wellington/hutt_2021/dsm_1m/2193/collection.json",
+                },
+                {
+                    "rel": "child",
+                    "href": "./wellington/hutt_2025/dsm_1m/2193/collection.json",
+                },
+                {
+                    "rel": "child",
+                    "href": "./wellington/hutt_2025/dem_1m/2193/collection.json",
+                },
+                {
+                    "rel": "child",
+                    "href": "./auckland/north_2016/dsm_1m/2193/collection.json",
+                },
+            ]
+        },
+        f"{base}/wellington/hutt_2021/dsm_1m/2193/collection.json": collection(
+            "Hutt DSM 2021", hutt, "2021-03-01", ["a"]
+        ),
+        f"{base}/wellington/hutt_2025/dsm_1m/2193/collection.json": collection(
+            "Hutt DSM 2025", hutt, "2025-03-01", ["b", "far"]
+        ),
+        f"{base}/wellington/hutt_2025/dem_1m/2193/collection.json": collection(
+            "Hutt DEM 2025", hutt, "2025-03-01", ["c"]
+        ),
+        f"{base}/auckland/north_2016/dsm_1m/2193/collection.json": collection(
+            "Auckland DSM", auckland, "2016-03-01", ["d"]
+        ),
+        f"{base}/wellington/hutt_2021/dsm_1m/2193/a.json": item(
+            (174.90, -41.25, 174.95, -41.20)
+        ),
+        f"{base}/wellington/hutt_2025/dsm_1m/2193/b.json": item(
+            (174.90, -41.25, 174.95, -41.20)
+        ),
+        f"{base}/wellington/hutt_2025/dsm_1m/2193/far.json": item(
+            (175.00, -41.12, 175.02, -41.10)
+        ),
+    }
+
+    def fake_fetch_json(url, *, use_cache=True):
+        return documents[url]
+
+    monkeypatch.setattr(elevation, "fetch_json", fake_fetch_json)
+
+
+def test_find_dsm_tiles_keeps_only_covering_dsm_surveys_newest_first(
+    fake_dsm_catalogue: None,
+) -> None:
+    tiles = readers.find_dsm_tiles((174.90, -41.25, 174.95, -41.20))
+
+    assert [tile["survey"] for tile in tiles] == ["Hutt DSM 2025", "Hutt DSM 2021"]
+    assert tiles[0]["asset"].endswith("/wellington/hutt_2025/dsm_1m/2193/tile.tif")
+
+
+# --- Koordinates tables ------------------------------------------------------
+
+
+def zipped_csv(text):
+    """Return a Koordinates export zip holding one CSV and its sidecars."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("table.csv", "\ufeff" + text)
+        archive.writestr("table.txt", "licence")
+    return buffer.getvalue()
+
+
+class FakeTableResponse:
+    """Stands in for a requests Response from the Koordinates exports API."""
+
+    def __init__(self, payload=None, content=b""):
+        self.payload = payload
+        self.content = content
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.payload
+
+    def iter_content(self, chunk_size):
+        yield self.content
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FakeTableSession:
+    """Serves one table's details, an export that finishes on the second poll,
+    and the zip it produces, recording every request."""
+
+    def __init__(self, *, final_state="complete", version=7):
+        self.headers = {}
+        self.requests = []
+        self.final_state = final_state
+        self.version = version
+        self.polls = 0
+
+    def get(self, url, **kwargs):
+        self.requests.append(("GET", url))
+        if url.endswith("/tables/51567/"):
+            return FakeTableResponse({"version": {"id": self.version}})
+        if url.endswith("/exports/1/"):
+            self.polls += 1
+            state = "processing" if self.polls < 2 else self.final_state
+            return FakeTableResponse(
+                {"id": 1, "state": state, "download_url": "https://x.test/dl"}
+            )
+        return FakeTableResponse(
+            content=zipped_csv("title_no,code\nWN1/1,060\n123456,007\n")
+        )
+
+    def post(self, url, json, **kwargs):
+        self.requests.append(("POST", url))
+        self.posted = json
+        return FakeTableResponse({"id": 1, "state": "processing"})
+
+
+@pytest.fixture
+def fake_table_session(monkeypatch):
+    """Replace requests.Session in the readers with a FakeTableSession."""
+    sessions = []
+
+    def make(**kwargs):
+        session = FakeTableSession(**kwargs)
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(readers.requests, "Session", make)
+    monkeypatch.setattr(readers.time, "sleep", lambda seconds: None)
+    monkeypatch.setenv("LINZ_API_KEY", "linz-key")
+    return sessions
+
+
+def test_a_table_is_read_with_every_column_as_text(fake_table_session):
+    """A district code of 060 keeps its leading zero."""
+    table = readers.get_koordinates_table(51567)
+
+    assert list(table.columns) == ["title_no", "code"]
+    assert table["code"].tolist() == ["060", "007"]
+
+
+def test_a_table_is_exported_as_csv_with_the_domain_key(fake_table_session):
+    readers.get_koordinates_table(51567)
+
+    session = fake_table_session[0]
+    assert session.headers["Authorization"] == "key linz-key"
+    assert session.posted["formats"] == {"table": "text/csv"}
+    assert session.posted["items"][0]["item"].endswith("/tables/51567/")
+
+
+def test_a_cached_table_is_not_exported_again(fake_table_session):
+    readers.get_koordinates_table(51567)
+    readers.get_koordinates_table(51567)
+
+    second = fake_table_session[1]
+    assert not any(method == "POST" for method, _ in second.requests)
+
+
+def test_the_table_cache_is_keyed_by_version(fake_table_session, tmp_path):
+    readers.get_koordinates_table(51567)
+
+    assert readers.koordinates_table_cache_path(51567, 7).exists()
+    assert not readers.koordinates_table_cache_path(51567, 8).exists()
+
+
+def test_a_failed_table_export_raises(monkeypatch, fake_table_session):
+    monkeypatch.setattr(
+        readers.requests,
+        "Session",
+        lambda: FakeTableSession(final_state="cancelled"),
+    )
+
+    with pytest.raises(ValueError, match="cancelled"):
+        readers.get_koordinates_table(51567, use_cache=False)

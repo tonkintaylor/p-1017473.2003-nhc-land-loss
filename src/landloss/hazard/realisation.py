@@ -24,6 +24,19 @@ The three properties that buys are the ones an ensemble needs:
 
 Use one stream name per hazard, not per script: a hazard's steps belong to the
 same draw.
+
+**Worlds are not earthquakes.** Whether a retaining wall exists is a fact we do
+not know, not something the earthquake decides, so the exposure is drawn
+separately: an **exposure world** ``w`` is one draw of the wall population,
+seeded from :data:`landloss.domain.constants.EXPOSURE_BASE_SEED` with the world
+id as the realisation id and the ``"exposure"`` stream. A hazard draw that reads
+one world's exposure -- the urban slope failures of earthquake ``r`` on the
+walls of world ``w`` -- is seeded on both ids, by passing ``world_id``:
+
+    rng = realisation_seed(BASE_SEED, realisation_id=3, stream="urban", world_id=0)
+
+The world id is appended to the entropy only when it is given, so every stream
+seeded without one draws exactly what it drew before worlds existed.
 """
 
 import hashlib
@@ -60,24 +73,37 @@ def realisation_seed(
     base_seed: int,
     realisation_id: int,
     stream: str,
+    *,
+    world_id: int | None = None,
 ) -> np.random.Generator:
     """Return the generator for one stream of one realisation.
 
     Args:
-        base_seed: The project seed, :data:`landloss.domain.constants.BASE_SEED`.
+        base_seed: The project seed, :data:`landloss.domain.constants.BASE_SEED`,
+            or :data:`landloss.domain.constants.EXPOSURE_BASE_SEED` for an
+            exposure world's own draw.
         realisation_id: Which modelled earthquake this is, counting from zero.
+            For an exposure world's own draw, the world id.
         stream: The name of the stream drawing from it, one per hazard.
+        world_id: The exposure world the draw reads, where the draw depends on
+            one. Appended to the entropy only when given, so every stream seeded
+            without a world draws what it always drew.
 
     Returns:
         A ``numpy`` generator, independent of every other stream.
 
     Raises:
-        ValueError: If the realisation id is negative, or the stream is empty.
+        ValueError: If the realisation id or the world id is negative, or the
+            stream is empty.
     """
     if realisation_id < 0:
         msg = f"realisation_id must be zero or more, got {realisation_id}"
         raise ValueError(msg)
-    sequence = np.random.SeedSequence(
-        [base_seed, realisation_id, stream_entropy(stream)]
-    )
+    entropy = [base_seed, realisation_id, stream_entropy(stream)]
+    if world_id is not None:
+        if world_id < 0:
+            msg = f"world_id must be zero or more, got {world_id}"
+            raise ValueError(msg)
+        entropy.append(world_id)
+    sequence = np.random.SeedSequence(entropy)
     return np.random.default_rng(sequence)

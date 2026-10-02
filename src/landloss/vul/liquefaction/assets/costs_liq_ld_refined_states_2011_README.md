@@ -39,7 +39,7 @@ This file is keyed on **states**. Confirmed by Virginie Lacrosse.
   so they are "watered down" with zeros, as Virginie Lacrosse put it (Q-17).
   The drop-out from damage to claim is therefore already inside them, and
   `COSTS_INCLUDE_NON_CLAIMANTS` in `costs.py` records it. Rates over claimants
-  only are to come from Virginie Lacrosse (T-65).
+  only are to come from Virginie Lacrosse (T-66).
 - The three cost columns are the **15th, 50th and 85th percentiles** of cost for
   a given maximum land damage index value, so the spread within a state is
   carried rather than a single point estimate.
@@ -77,8 +77,11 @@ supply more than one state here:
   costs are not in these figures. Both were substantial in Canterbury, so a
   total built from this file alone understates what was paid.
 - **Whether the costs include damage to retaining walls, culverts and bridges is
-  not known.** Register task **T-27** covers confirming it. Until it closes,
-  treat the figures as land damage of unknown scope rather than as land damage
-  exclusive of those assets.
+  not known.** Register task **T-27** covers confirming it. For retaining
+  walls the project lead ruled on 2026-10-02 that a wall replaced by shaking on
+  flat land and these land damage costs on the same claim are not a double
+  count, so the figures are treated as excluding retaining walls. For culverts
+  and bridges, until T-27 closes, treat the figures as land damage of unknown
+  scope.
 - The join from these states to mapped observations is not implemented. No code
   in the repository reads this file yet.

@@ -13,5 +13,10 @@ pricing is left to the loss module once the schedule lands.
 # landslide hazard and the insured land extent this reads.
 PILOT = True
 
+# Which exposure worlds to measure. The combined realisation is written per
+# world and earthquake, because the urban failures depend on which walls the
+# world drew.
+WORLD_IDS = [0]
+
 # Which modelled earthquakes to measure.
 REALISATION_IDS = [0]

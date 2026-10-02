@@ -1,0 +1,1 @@
+Add the reconciled ground map: `landloss.hazard.landslide.ground_map` maps the SLIDE, 1:50,000 geology, NLM, genesis and earthworks sources onto one vocabulary, unions them into a planar partition attributed by precedence, and reads the greywacke strength set per material; landslide step 4 (`s4_ground_map`) writes `ground-map[-pilot].geoparquet` and draws it.

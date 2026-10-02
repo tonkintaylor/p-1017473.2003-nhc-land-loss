@@ -4,7 +4,7 @@
 applied to an insured land extent buffered off every building on the property,
 driveways included, clipped to the boundary.
 
-**Updated:** 2026-10-01
+**Updated:** 2026-10-02
 
 ## Approach
 
@@ -28,6 +28,9 @@ Everything below exists to produce that layer.
   **premium on land within 2 m of a building** — the land immediately supporting
   the dwelling is worth more than the rest of the section, and it is also the
   land whose loss matters most.
+- [ ] **Switch the land value to QV's rating roll**, the council land value of
+  every rating unit, supplied directly by QV on 2026-10-02 as sensitive data:
+  results derived from it may be published, the roll itself may not.
 - [x] Key on `claim_id`, which is the **property**. The LINZ property boundary
       sets the claim, every building outline inside it sets the insured land
       extent, and the address points inside it count the dwellings. This closed
@@ -113,6 +116,8 @@ polygon now includes the driveway and is cut to the property boundary.
   cut from now describe the same ground. The per-authority
   `median_lot_size_m2` survives only as the reference the size factor is
   relative to and the fallback for an address standing in no property.
+- QV's rating roll is read by `landloss.io.qv_rating_roll.get_qv_rating_roll`;
+  nothing in the land chain reads it yet.
 
 ## Next
 
@@ -136,10 +141,9 @@ polygon now includes the driveway and is cut to the property boundary.
    -- following `.agents/plans/estimating-land-values-wellington.md`
    (**T-49**, owner Perrie Gilbert, agreed 2026-09-25). Sense-check it against a
    few CV land values looked up by hand on homes.co.nz or QV -- the land value,
-   not the capital value -- and not scraped. Council values may yet arrive
-   (2026-09-30); keep progressing until they do. Building on licensed values
-   would put everything derived from them under that licence, so the further
-   the model gets on open data first, the better. Stage 3a of the plan,
+   not the capital value -- and not scraped. QV's rating roll arrived on
+   2026-10-02 and the land value is to switch to it (item 12); keep
+   progressing until then. Stage 3a of the plan,
    straight-line accessibility to the main centres and to railway stations, is
    built (`steps/s2_land_value/s2_build_accessibility.py`), and so is Phase 4:
    sea view, distance to the coast and winter sun
@@ -160,6 +164,10 @@ polygon now includes the driveway and is cut to the property boundary.
     (**T-63**); the building use field is too incomplete, so buildings default
     to residential (**L-42**). The zoo was the example. Low priority unless the
     false positives start to show in the costs.
+12. Switch step 2's land value to the QV rating roll's `land_value`, carried
+    onto the claim properties. Each council's values are at its own
+    revaluation date, September 2024 for Wellington City to September 2025 for
+    Porirua.
 
 ## Validation
 
@@ -191,8 +199,16 @@ polygon now includes the driveway and is cut to the property boundary.
   rural rating unit can swallow a row of houses.
 - The gradient above which a generated driveway route is not a credible
   driveway, and what happens to the building when no route below it exists.
-- The size of the 2 m premium, which is engineering judgement until the District
-  Valuation Roll data lands under **T-20**.
+- The size of the 2 m premium, which is engineering judgement until it is set
+  against the QV rating roll's land values, which arrived on 2026-10-02
+  (**T-20** asked the councils for them).
+
+## Future improvements
+
+- Ask QV for the rating roll's field specification, to identify fields 66 and
+  67: two dollar values a few percent below capital and land value. If they are
+  values indexed to a common date, they put the four councils' land values,
+  revalued between September 2024 and September 2025, on one footing.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

@@ -2,11 +2,17 @@
 
     uv run --frozen python src/scripts/landloss/exposure/gen_exposure.py
 
-The address spine, the land value per address, the insured land extent and the
-dwellings on each claim, then the retaining wall and crossing populations that
-hang off the insured land. The extent and realisations come from ``config.py``
-beside this; anything else a step reads, such as whether to reuse a cached
-download, comes from that step's own ``config.py``.
+The address spine, the terrain and accessibility attributes and the land value
+per address, the insured land extent and the dwellings on each claim, then the
+retaining wall population in three steps -- the candidate wall lines, a
+probability on each, and one draw per exposure world -- and the crossing
+population per realisation. The extent, worlds and realisations come from
+``config.py`` beside this; anything else a step reads, such as whether to reuse
+a cached download, comes from that step's own ``config.py``.
+
+The candidate wall lines read the terrain rasters, ground map and urban slope
+candidates that landslide steps 3, 4 and 6 write, so ``gen_hazard.main`` runs
+before this module; ``gen_all.py`` holds that order.
 """
 
 from scripts.landloss.exposure import config
@@ -21,6 +27,8 @@ from scripts.landloss.exposure.land.steps.s2_land_value import (
 )
 from scripts.landloss.exposure.land.steps.s2_land_value import (
     s1_build_terrain_attributes,
+    s2_build_accessibility,
+    s3_build_amenity,
     s4_estimate_land_value,
 )
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent import (
@@ -33,7 +41,9 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     config as wall_config,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_lines,
     gen_wall_population,
+    gen_wall_probability,
 )
 from scripts.landloss.exposure.steps.s1_address_spine import (
     config as spine_config,
@@ -50,13 +60,15 @@ from scripts.landloss.exposure.steps.s3_dwellings_per_property import (
 from scripts.landloss.pipeline import run_steps
 
 
-def main(*, pilot, realisation_ids):
+def main(*, pilot, realisation_ids, world_ids):
     """Run the exposure steps in order.
 
     Args:
         pilot: Whether to run over the small Wellington pilot box.
-        realisation_ids: Which modelled earthquakes to draw the wall and
-            crossing populations for.
+        realisation_ids: Which modelled earthquakes to draw the crossing
+            population for.
+        world_ids: Which exposure worlds to draw the retaining wall
+            population for.
     """
     run_steps(
         "exposure",
@@ -78,12 +90,32 @@ def main(*, pilot, realisation_ids):
                 ),
             ),
             (
+                "land s2, accessibility",
+                lambda: s2_build_accessibility.main(
+                    pilot=pilot,
+                    fresh=land_value_config.FRESH,
+                    spine=land_value_config.SPINE,
+                    out=land_value_config.ACCESSIBILITY,
+                ),
+            ),
+            (
+                "land s2, amenity",
+                lambda: s3_build_amenity.main(
+                    pilot=pilot,
+                    fresh=land_value_config.FRESH,
+                    spine=land_value_config.SPINE,
+                    out=land_value_config.AMENITY,
+                ),
+            ),
+            (
                 "land s2, land value per address",
                 lambda: s4_estimate_land_value.main(
                     pilot=pilot,
                     fresh=land_value_config.FRESH,
                     spine=land_value_config.SPINE,
                     terrain=land_value_config.TERRAIN,
+                    accessibility=land_value_config.ACCESSIBILITY,
+                    amenity=land_value_config.AMENITY,
                     out=land_value_config.LAND_VALUE_OUT,
                     cohorts=land_value_config.COHORTS_OUT,
                 ),
@@ -102,12 +134,20 @@ def main(*, pilot, realisation_ids):
                 ),
             ),
             (
-                "rw s6, wall population",
-                lambda: gen_wall_population.main(
+                "rw s6, candidate wall lines",
+                lambda: gen_wall_lines.main(
                     pilot=pilot,
-                    realisation_ids=realisation_ids,
-                    use_cached_dem=wall_config.USE_CACHED_DEM,
+                    use_cached_layers=wall_config.USE_CACHED_LAYERS,
+                    road_distance_m=wall_config.ROAD_FRONTAGE_DISTANCE_M,
                 ),
+            ),
+            (
+                "rw s6, wall probability",
+                lambda: gen_wall_probability.main(pilot=pilot),
+            ),
+            (
+                "rw s6, wall population",
+                lambda: gen_wall_population.main(pilot=pilot, world_ids=world_ids),
             ),
             (
                 "culverts and bridges s7, crossing population",
@@ -122,4 +162,8 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(
+        pilot=config.PILOT,
+        realisation_ids=config.REALISATION_IDS,
+        world_ids=config.WORLD_IDS,
+    )

@@ -1,8 +1,10 @@
 # Shaking vulnerability, retaining walls: status
 
-**Status:** A damage state is drawn on every wall. The fragility is a flat 70%.
+**Status:** A damage state is drawn on every flat-land wall from the
+published wall curve on PGV, per exposure world and earthquake. Built and tested
+on synthetic inputs; not yet run on the pilot since the change.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-10-02
 
 ## Approach
 
@@ -19,6 +21,12 @@
   damage state is the outcome.
 - Index the curves on the wall classes the exposure module draws — size class
   and initial condition — so the two modules share one vocabulary.
+- Draw **flat-land walls only**. A wall on sloping land fails with the urban
+  failure polygon on whose edge it stands, drawn by landslide step 9; see
+  `hazard/landslide/status.md`.
+- Evaluate every curve on **PGV**, converting a curve published on PGA at the
+  wall's own PGV/PGA ratio, so walls and urban slopes share one intensity
+  measure.
 - Emit **states, not costs**. A written-off wall is priced from its
   undepreciated value in the loss module, against the $50,000-per-dwelling
   sub-cap.
@@ -32,34 +40,36 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 - [x] Carry `rw_id` through from the exposure module.
 - [x] Carry `claim_id`, `rw_size` (`size_class`) and `rw_length` (`length_m`).
-- [~] Supply `is_damaged_by_shaking`, from `damage_state`. Drawn on a flat 70%.
+- [x] Supply `is_damaged_by_shaking`, from `damage_state` for flat-land walls;
+  sloping walls take it from the urban wall outcome (vul/landslide/rw s11).
 - [x] Carry coordinates. The wall line is written as the geometry.
 - [x] Supply `is_evacuated` and `is_inundated`, from vul/landslide/rw s11.
 
 ## Where it is now
 
-- `steps/s9_wall_damage_state/` reads the wall population and the realisation's
-  PGA field, draws a state per wall, and writes it as GeoParquet with the wall's
-  `rw_id`, `claim_id`, size class, condition, height, length, sampled PGA and
-  line geometry.
-- The fragility is `BETA_FAILURE_PROBABILITY = 0.7` in
-  `landloss.vul.shaking.fragility` — one number for every wall, whatever its
-  size, condition or the acceleration it saw. Over the pilot's 754 walls, 523
-  are written off, which is the 70% reproduced.
+- `steps/s9_wall_damage_state/` reads the world's wall population, keeps the
+  flat-land walls, samples shaking step 5's PGV at each line midpoint, and
+  draws a state per wall on the vulnerability stream with the world appended,
+  to `temp/vul/wall-damage-state-wNNN-rNNN[-pilot].geoparquet` with the curve,
+  the site class and the PGV/PGA ratio recorded on every row.
+- The fragility is the published wall curve for the wall's size class and
+  initial condition in `retaining-wall-fragility.csv` (Koutsoupaki et al.
+  2023, one `unnamed` class), a PGA curve converted at the ratio of shaking
+  step 3's PGV to the TS1170.5 PGA at the midpoint
+  (`landloss.vul.shaking.fragility.wall_failure_probability`). The flat 70%,
+  `BETA_FAILURE_PROBABILITY`, now serves the culverts and bridges only.
 - `draw_damage_states()` takes probabilities rather than computing them, so the
   published curves replace the constant without the step changing.
-- Every wall in the pilot reads the same PGA, 0.962 g. The spatial variation is
-  meant to come from the Vs30 model driving the site class, which the shaking
-  hazard does not do yet.
+- The step is tested end to end on synthetic inputs. The earlier pilot run, on
+  the flat 70% and PGA, is superseded and the step has not been rerun.
 
 ## Next
 
-1. Define the fragility curves and replace the flat probability.
-2. Index them on size class and initial condition, both of which already ride on
-   every row.
-3. Rerun once the Vs30 model varies the site class, so the curves have something
+1. Run the step over the pilot after exposure step 6 and shaking steps 2, 3
+   and 5, and record the counts in the method file.
+2. Rerun once the Vs30 model varies the site class, so the curves have something
    to discriminate on.
-4. Decide whether walls on the same property fail independently. They are drawn
+3. Decide whether walls on the same property fail independently. They are drawn
    that way, and two walls on one slope are not independent.
 
 ## Validation
@@ -73,10 +83,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 - **The wall classes the curves are defined for are still unnamed.** This is the
   same open decision the retaining wall exposure module carries, and it blocks
-  indexing the fragility.
-- **Whether the Canterbury land damage rates already include retaining wall
-  damage** (**T-27**). If they do, pricing walls separately double counts them
-  on flat land.
+  indexing the fragility by wall type; until then every wall takes the one
+  `unnamed` class's curve for its size and condition.
+- ~~**Whether the Canterbury land damage rates already include retaining wall
+  damage** (**T-27**).~~ Settled for walls: the project lead ruled on
+  2026-10-02 that a wall replaced by shaking on flat land and the liquefaction
+  land damage on the same claim are not a double count, so both are priced.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

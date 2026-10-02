@@ -11,7 +11,7 @@ rates step 2 is configured with still match it.
 The fit is run on demand, not as part of the pipeline: it reads step 2's areas,
 and step 2 reads the rates it produces from its own ``config.py``. Refit after
 changing the area ranges, the overlap, or the cost table -- in particular when
-claimant-only Canterbury costs replace the current ones (T-65), at which point
+claimant-only Canterbury costs replace the current ones (T-66), at which point
 the drop-out comes on and the rates change basis with it.
 
 The Canterbury means are estimated from the 50th and 85th percentiles by

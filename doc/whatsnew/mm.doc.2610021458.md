@@ -1,0 +1,1 @@
+Close T-26: the shaking demand is the TS1170.5 2,500-year field as the standard gives it, PGA 1.68 to 1.77 g on site classes II and III over the pilot, recorded in the project scope and the shaking, liquefaction and landslide status files.

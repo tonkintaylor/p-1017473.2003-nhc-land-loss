@@ -1,324 +1,362 @@
+"""Tests for the probability on each candidate wall line and the step writing it."""
+
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pytest
-from shapely.geometry import LineString, Point, box
+from shapely.geometry import LineString
 
-from landloss.exposure.rw.beta_population import (
-    BETA_MAX_PREVALENCE,
-    SIZE_CLASSES,
-    beta_wall_prevalence,
-)
+from landloss.domain import constants
+from landloss.exposure.rw import lines as wl
+from landloss.exposure.rw.beta_population import BETA_POOR_SHARE
 from landloss.exposure.rw.wall_probability import (
+    BETA_FLATLAND_MAX_PROBABILITY,
     BETA_MAPPED_WALL_PROBABILITY,
-    BETA_PLAIN_MAX_PREVALENCE,
-    MAPPED_WALL_TYPE,
+    BETA_POST_1990_POOR_SHARE,
+    BETA_PRE_1990_POOR_SHARE,
+    BETA_ROCK_CUT_FACTOR,
+    BETA_SOURCE_PROBABILITY,
+    BETA_UNCONSENTED_POOR_SHARE,
+    POOR_BASES,
     PROBABILITY_COLUMNS,
-    attach_evidence,
-    draw_walls,
-    engineered_share,
-    landform_at,
-    mapped_wall_length_m,
-    size_class_probabilities,
-    wall_probability,
+    WALL_BASES,
+    apply_count_bounds,
+    line_wall_probability,
+    poor_condition_probability,
     wall_probability_table,
 )
-from landloss.hazard.realisation import realisation_seed
+from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_probability as script,
+)
 
-CRS = "EPSG:2193"
+CRS = constants.DEFAULT_CRS
 X0, Y0 = 1_750_000.0, 5_424_000.0
 
 
-def rng():
-    return realisation_seed(1, 0, "exposure")
-
-
-def section(i=0, size=20.0):
-    return box(X0 + i * 100, Y0, X0 + i * 100 + size, Y0 + size)
-
-
-def properties(n=400, slope=20.0, azimuth=90.0, area=400.0):
-    """Points with the terrain and evidence columns, the table's input."""
+def lines_frame(
+    n=1,
+    *,
+    source="property_boundary",
+    mapped=False,
+    rock_cut=False,
+    flat=False,
+    face_height_m=2.0,
+    claim_id="C-1",
+    age=None,
+):
+    """A candidate wall lines frame with every contract column, n equal rows."""
+    ages = pd.array([pd.NA if age is None else age] * n, dtype="Int64")
     return gpd.GeoDataFrame(
         {
-            "claim_id": [f"A-{i:04d}" for i in range(n)],
-            "slope_deg": np.full(n, slope),
-            "downhill_azimuth_deg": np.full(n, azimuth),
-            "area_m2": np.full(n, area),
-            "mapped_wall_length_m": np.zeros(n),
-            "engineered_share": np.zeros(n),
-            "landform": np.full(n, "Hills, ranges and mountains"),
-            "on_plain": np.zeros(n, dtype=bool),
+            "wall_line_id": [f"WL{i + 1:07d}" for i in range(n)],
+            "source": [source] * n,
+            "is_mapped_wall": [mapped] * n,
+            "claim_id": [claim_id] * n,
+            "face_height_m": np.full(n, face_height_m, dtype=float),
+            "size_class": ["medium"] * n,
+            "wall_position": ["fill"] * n,
+            "is_flatland": [flat] * n,
+            "ground_id": ["GM0000001"] * n,
+            "material": ["greywacke_highly_weathered" if rock_cut else "fill"] * n,
+            "modification": ["cut" if rock_cut else "fill"] * n,
+            "is_rock_cut": [rock_cut] * n,
+            "slope_degrees": np.full(n, 20.0),
+            "aspect_degrees": np.full(n, 180.0),
+            "dwelling_age_decade": ages,
+            "length_m": np.full(n, 10.0),
         },
-        geometry=[Point(X0 + i, Y0) for i in range(n)],
+        geometry=[
+            LineString([(X0 + 20 * i, Y0), (X0 + 20 * i + 10, Y0)]) for i in range(n)
+        ],
         crs=CRS,
     )
 
 
-def lines(*coords, kind=MAPPED_WALL_TYPE):
-    return gpd.GeoDataFrame(
-        {"Type": [kind] * len(coords)},
-        geometry=[LineString(c) for c in coords],
-        crs=CRS,
+def stacked(*frames):
+    return gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=CRS)
+
+
+def probability(**kwargs):
+    p, basis = line_wall_probability(lines_frame(**kwargs))
+    return float(p[0]), str(basis[0])
+
+
+# --- the wall probability -----------------------------------------------------
+
+
+def test_every_source_has_a_prior_and_the_lines_frame_matches_the_contract():
+    assert set(BETA_SOURCE_PROBABILITY) == set(wl.SOURCES)
+    assert BETA_SOURCE_PROBABILITY["gns_mapped_wall"] == BETA_MAPPED_WALL_PROBABILITY
+    assert set(lines_frame().columns) == {"wall_line_id", *wl.COLUMNS}
+
+
+@pytest.mark.parametrize("source", wl.SOURCES)
+def test_without_evidence_the_probability_is_the_source_prior(source):
+    p, basis = probability(source=source)
+    assert p == pytest.approx(BETA_SOURCE_PROBABILITY[source])
+    assert basis == "source_prior"
+
+
+def test_a_rock_cut_lowers_the_prior_by_the_factor():
+    p, basis = probability(source="terrain_break", rock_cut=True)
+    assert p == pytest.approx(
+        BETA_SOURCE_PROBABILITY["terrain_break"] * BETA_ROCK_CUT_FACTOR
     )
+    assert basis == "rock_cut"
 
 
-# --- the evidence ------------------------------------------------------------
+def test_flat_land_caps_the_probability():
+    p, basis = probability(source="slide_cut_fill_line", flat=True)
+    assert p == pytest.approx(BETA_FLATLAND_MAX_PROBABILITY)
+    assert basis == "flatland_cap"
 
 
-def test_a_mapped_wall_on_the_section_is_measured_inside_it():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    wall = lines([(X0 + 5, Y0 + 10), (X0 + 15, Y0 + 10)])
-    assert mapped_wall_length_m(polygons, wall)[0] == pytest.approx(10.0)
-
-
-def test_a_mapped_wall_beside_the_section_counts_within_the_buffer():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    # 1 m outside the east edge, inside the 2 m buffer.
-    wall = lines([(X0 + 21, Y0 + 5), (X0 + 21, Y0 + 15)])
-    assert mapped_wall_length_m(polygons, wall)[0] == pytest.approx(10.0)
-
-
-def test_a_mapped_wall_far_from_the_section_is_not_counted():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    wall = lines([(X0 + 60, Y0), (X0 + 60, Y0 + 10)])
-    assert mapped_wall_length_m(polygons, wall)[0] == 0.0
-
-
-def test_only_retaining_walls_count_as_mapped_walls():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    cliff = lines([(X0 + 5, Y0 + 10), (X0 + 15, Y0 + 10)], kind="Cliff")
-    assert mapped_wall_length_m(polygons, cliff)[0] == 0.0
-
-
-def test_a_wall_is_measured_against_its_own_section_only():
-    polygons = gpd.GeoSeries([section(0), section(1)], crs=CRS)
-    wall = lines([(X0 + 105, Y0 + 10), (X0 + 115, Y0 + 10)])
-    lengths = mapped_wall_length_m(polygons, wall)
-    assert lengths[0] == 0.0
-    assert lengths[1] == pytest.approx(10.0)
-
-
-def test_no_mapped_walls_gives_zero_everywhere():
-    polygons = gpd.GeoSeries([section(0), section(1)], crs=CRS)
-    assert not mapped_wall_length_m(polygons, lines(kind="Cliff")).any()
-
-
-def test_the_engineered_share_is_the_area_on_a_cut_or_fill():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    genesis = gpd.GeoDataFrame(
-        {"Type": ["Cut slope"]},
-        geometry=[box(X0, Y0, X0 + 10, Y0 + 20)],
-        crs=CRS,
+def test_flat_land_does_not_lift_a_prior_already_under_the_cap():
+    rock = lines_frame(source="property_boundary", rock_cut=True, flat=True)
+    p, basis = line_wall_probability(rock)
+    assert p[0] == pytest.approx(
+        BETA_SOURCE_PROBABILITY["property_boundary"] * BETA_ROCK_CUT_FACTOR
     )
-    assert engineered_share(polygons, genesis)[0] == pytest.approx(0.5)
+    assert basis[0] == "rock_cut"
 
 
-def test_other_genesis_types_are_not_earthworks():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    genesis = gpd.GeoDataFrame(
-        {"Type": ["Landslide recent"]}, geometry=[section()], crs=CRS
+def test_a_mapped_wall_lifts_a_boundary_line_to_the_mapped_probability():
+    p, basis = probability(source="property_boundary", mapped=True)
+    assert p == pytest.approx(BETA_MAPPED_WALL_PROBABILITY)
+    assert basis == "mapped"
+
+
+def test_a_mapped_wall_outranks_the_rock_cut_and_the_flat_land():
+    p, basis = probability(
+        source="terrain_break", mapped=True, rock_cut=True, flat=True
     )
-    assert engineered_share(polygons, genesis)[0] == 0.0
+    assert p == pytest.approx(BETA_MAPPED_WALL_PROBABILITY)
+    assert basis == "mapped"
 
 
-def test_overlapping_earthworks_cannot_exceed_the_whole_section():
-    polygons = gpd.GeoSeries([section()], crs=CRS)
-    genesis = gpd.GeoDataFrame(
-        {"Type": ["Cut slope", "Fill body"]},
-        geometry=[section(), section()],
-        crs=CRS,
+def test_a_mapped_wall_source_keeps_the_prior_basis_when_nothing_changes_it():
+    p, basis = probability(source="gns_mapped_wall", mapped=True)
+    assert p == pytest.approx(BETA_MAPPED_WALL_PROBABILITY)
+    assert basis == "source_prior"
+
+
+def test_the_rules_apply_row_by_row():
+    frame = stacked(
+        lines_frame(source="terrain_break"),
+        lines_frame(source="terrain_break", rock_cut=True),
+        lines_frame(source="terrain_break", flat=True),
+        lines_frame(source="terrain_break", mapped=True),
     )
-    assert engineered_share(polygons, genesis)[0] == pytest.approx(1.0)
+    p, basis = line_wall_probability(frame)
+    assert list(basis) == ["source_prior", "rock_cut", "flatland_cap", "mapped"]
+    assert set(basis) <= set(WALL_BASES)
+    assert p[0] > p[1] > p[2]
+    assert p[3] == pytest.approx(BETA_MAPPED_WALL_PROBABILITY)
 
 
-def test_the_landform_is_the_class_of_the_polygon_holding_the_point():
-    points = gpd.GeoSeries([Point(X0 + 5, Y0 + 5), Point(X0 + 500, Y0)], crs=CRS)
-    nlm = gpd.GeoDataFrame(
-        {"l2_geomorphology": ["Coastal lowlands"]},
-        geometry=[box(X0, Y0, X0 + 50, Y0 + 50)],
-        crs=CRS,
-    )
-    assert list(landform_at(points, nlm)) == ["Coastal lowlands", ""]
+def test_every_probability_is_between_zero_and_one():
+    for source in wl.SOURCES:
+        for mapped in (False, True):
+            for rock_cut in (False, True):
+                for flat in (False, True):
+                    p, _ = probability(
+                        source=source, mapped=mapped, rock_cut=rock_cut, flat=flat
+                    )
+                    assert 0.0 <= p <= 1.0
 
 
-def test_attaching_evidence_adds_the_columns_and_flags_plains():
-    props = gpd.GeoDataFrame({"claim_id": ["A"]}, geometry=[section()], crs=CRS)
-    nlm = gpd.GeoDataFrame(
-        {"l2_geomorphology": ["Alluvial plains and river flats"]},
-        geometry=[box(X0 - 10, Y0 - 10, X0 + 50, Y0 + 50)],
-        crs=CRS,
-    )
-    genesis = gpd.GeoDataFrame({"Type": ["Fan"]}, geometry=[section()], crs=CRS)
-    out = attach_evidence(
-        props, morphology=lines(kind="Cliff"), genesis=genesis, geomorphology=nlm
-    )
-    assert bool(out["on_plain"].iloc[0])
-    assert out["mapped_wall_length_m"].iloc[0] == 0.0
-    assert out.geometry.iloc[0].equals(section())
+def test_an_unknown_source_is_refused():
+    with pytest.raises(ValueError, match="driveway_edge"):
+        line_wall_probability(lines_frame(source="driveway_edge"))
 
 
-# --- the probability ---------------------------------------------------------
+def test_a_missing_column_is_refused():
+    with pytest.raises(ValueError, match="is_rock_cut"):
+        line_wall_probability(lines_frame().drop(columns=["is_rock_cut"]))
 
 
-def probability(slope, *, mapped=0.0, engineered=0.0, plain=False):
-    return float(
-        wall_probability(
-            np.array([slope]),
-            mapped_length_m=np.array([mapped]),
-            engineered=np.array([engineered]),
-            on_plain=np.array([plain]),
-        )[0]
-    )
+# --- the condition probability -----------------------------------------------
 
 
-def test_without_evidence_the_probability_is_the_slope_prevalence():
-    assert probability(15.0) == pytest.approx(float(beta_wall_prevalence(15.0)))
+def poor(height_m, age=None):
+    ages = pd.Series(pd.array([age], dtype="Int64"))
+    p, basis = poor_condition_probability(np.array([height_m]), ages)
+    return float(p[0]), str(basis[0])
 
 
-def test_a_mapped_wall_lifts_a_flat_property_to_the_mapped_probability():
-    assert probability(0.0, mapped=12.0) == pytest.approx(BETA_MAPPED_WALL_PROBABILITY)
+def test_a_tall_wall_with_no_age_takes_the_default():
+    assert poor(2.0) == (pytest.approx(BETA_POOR_SHARE), "default")
 
 
-def test_a_mapped_wall_never_lowers_a_steep_property():
-    steep = probability(40.0)
-    assert probability(40.0, mapped=12.0) >= steep
+def test_a_wall_under_the_consent_height_is_more_likely_poor():
+    p, basis = poor(constants.UNCONSENTED_WALL_HEIGHT_M - 0.1)
+    assert p == pytest.approx(BETA_UNCONSENTED_POOR_SHARE)
+    assert basis == "height"
+    assert BETA_UNCONSENTED_POOR_SHARE > BETA_POOR_SHARE
 
 
-def test_a_sliver_of_mapped_wall_is_not_evidence():
-    assert probability(0.0, mapped=0.5) == pytest.approx(0.0)
+def test_the_consent_height_itself_is_not_under_it():
+    assert poor(constants.UNCONSENTED_WALL_HEIGHT_M)[1] == "default"
 
 
-def test_earthworks_lift_a_flat_property_in_proportion_to_their_share():
-    assert probability(0.0, engineered=1.0) > probability(0.0, engineered=0.5) > 0.0
+def test_a_dwelling_age_overrides_the_height_rule():
+    assert poor(0.8, age=1970) == (pytest.approx(BETA_PRE_1990_POOR_SHARE), "age")
+    assert poor(0.8, age=2000) == (pytest.approx(BETA_POST_1990_POOR_SHARE), "age")
+    assert poor(3.0, age=1990) == (pytest.approx(BETA_POST_1990_POOR_SHARE), "age")
+    assert poor(3.0, age=1980) == (pytest.approx(BETA_PRE_1990_POOR_SHARE), "age")
 
 
-def test_a_plain_caps_the_prevalence_unless_a_wall_is_mapped():
-    assert probability(40.0, plain=True) == pytest.approx(BETA_PLAIN_MAX_PREVALENCE)
-    assert probability(40.0, plain=True, mapped=12.0) == pytest.approx(
-        BETA_MAPPED_WALL_PROBABILITY
-    )
+def test_a_nan_height_takes_the_default():
+    assert poor(np.nan) == (pytest.approx(BETA_POOR_SHARE), "default")
 
 
-def test_no_slope_gives_no_probability():
-    assert np.isnan(probability(np.nan, mapped=12.0))
+def test_the_bases_are_the_contract_vocabulary():
+    assert set(POOR_BASES) == {"default", "height", "age"}
+    assert set(WALL_BASES) == {"mapped", "source_prior", "rock_cut", "flatland_cap"}
 
 
-def test_the_probability_is_never_above_one():
-    assert probability(90.0, mapped=50.0, engineered=1.0) <= 1.0
-    assert BETA_MAX_PREVALENCE <= 1.0
+def test_mismatched_condition_inputs_are_refused():
+    with pytest.raises(ValueError, match="must match"):
+        poor_condition_probability(
+            np.array([1.0, 2.0]), pd.Series(pd.array([pd.NA], dtype="Int64"))
+        )
 
 
-# --- the height distribution -------------------------------------------------
+# --- the count bounds hook ----------------------------------------------------
 
 
-def test_the_size_class_probabilities_sum_to_one():
-    shares = size_class_probabilities(np.linspace(0.3, 4.0, 30))
-    assert shares.shape == (30, len(SIZE_CLASSES))
-    assert np.allclose(shares.sum(axis=1), 1.0)
-    assert (shares >= 0).all()
+def bounds(**claims):
+    rows = {
+        claim: {"min_walls": lo, "max_walls": hi} for claim, (lo, hi) in claims.items()
+    }
+    return pd.DataFrame.from_dict(rows, orient="index")
 
 
-def test_a_taller_median_shifts_probability_towards_large():
-    low, high = size_class_probabilities(np.array([0.5, 3.0]))
-    assert high[2] > low[2]
-    assert high[0] < low[0]
+def test_a_claim_under_its_minimum_is_scaled_up_to_it():
+    p = np.array([0.2, 0.2, 0.2])
+    claims = pd.Series(["A", "A", "A"])
+    scaled = apply_count_bounds(p, claims, bounds(A=(1.5, 3)))
+    assert scaled.sum() == pytest.approx(1.5)
+    assert np.allclose(scaled, 0.5)
 
 
-def test_a_median_at_the_boundary_is_split_evenly_across_it():
-    small, _, _ = size_class_probabilities(np.array([1.0]))[0]
-    assert small == pytest.approx(0.5)
+def test_a_claim_over_its_maximum_is_scaled_down_to_it():
+    p = np.array([0.9, 0.9, 0.9])
+    claims = pd.Series(["A", "A", "A"])
+    scaled = apply_count_bounds(p, claims, bounds(A=(0, 1)))
+    assert scaled.sum() == pytest.approx(1.0)
+
+
+def test_a_claim_inside_its_bounds_and_an_unbounded_claim_are_unchanged():
+    p = np.array([0.5, 0.5, 0.3])
+    claims = pd.Series(["A", "A", "B"])
+    scaled = apply_count_bounds(p, claims, bounds(A=(0.5, 2)))
+    assert np.array_equal(scaled, p)
+
+
+def test_no_probability_is_scaled_above_one():
+    p = np.array([0.9, 0.1])
+    claims = pd.Series(["A", "A"])
+    scaled = apply_count_bounds(p, claims, bounds(A=(1.9, 2)))
+    assert scaled.max() <= 1.0
+
+
+def test_lines_at_zero_share_the_minimum_equally():
+    p = np.array([0.0, 0.0])
+    claims = pd.Series(["A", "A"])
+    scaled = apply_count_bounds(p, claims, bounds(A=(1, 2)))
+    assert np.allclose(scaled, 0.5)
+
+
+def test_a_claimless_line_is_never_scaled():
+    p = np.array([0.2])
+    claims = pd.Series([None], dtype=object)
+    assert np.array_equal(apply_count_bounds(p, claims, bounds(A=(1, 2))), p)
+
+
+def test_bad_bounds_are_refused():
+    with pytest.raises(ValueError, match="minimum above"):
+        apply_count_bounds(np.array([0.2]), pd.Series(["A"]), bounds(A=(3, 1)))
+    with pytest.raises(ValueError, match="max_walls"):
+        apply_count_bounds(
+            np.array([0.2]), pd.Series(["A"]), pd.DataFrame({"min_walls": [1]})
+        )
 
 
 # --- the table ---------------------------------------------------------------
 
 
-def test_the_table_carries_every_probability_column():
-    table = wall_probability_table(properties(n=5))
-    for column in PROBABILITY_COLUMNS:
-        assert column in table.columns
+def test_the_table_carries_every_line_column_and_the_probability_columns():
+    lines = stacked(lines_frame(n=3), lines_frame(mapped=True, face_height_m=0.8))
+    table = wall_probability_table(lines)
+    assert table.columns.tolist() == [*lines.columns, *PROBABILITY_COLUMNS]
+    assert len(table) == 4
     assert table.crs == CRS
-    assert len(table) == 5
+    assert table["p_wall"].between(0, 1).all()
+    assert table["p_poor_basis"].tolist() == ["default"] * 3 + ["height"]
+    assert table["p_wall_basis"].iloc[3] == "mapped"
+    assert table.geometry.geom_equals(lines.geometry).all()
 
 
-def test_the_table_keeps_a_property_with_no_slope_as_nan():
-    props = properties(n=3)
-    props.loc[0, "slope_deg"] = np.nan
-    table = wall_probability_table(props)
-    assert np.isnan(table["p_wall"].iloc[0])
-    assert table["p_wall"].iloc[1:].notna().all()
+def test_the_table_reads_the_dwelling_age_where_held():
+    table = wall_probability_table(lines_frame(age=1960))
+    assert table["p_poor_basis"].iloc[0] == "age"
+    assert table["p_poor"].iloc[0] == pytest.approx(BETA_PRE_1990_POOR_SHARE)
 
 
-def test_a_missing_column_is_refused_by_the_table():
-    with pytest.raises(ValueError, match="engineered_share"):
-        wall_probability_table(properties().drop(columns=["engineered_share"]))
+def test_the_table_treats_a_missing_age_column_as_unheld():
+    table = wall_probability_table(lines_frame().drop(columns=["dwelling_age_decade"]))
+    assert table["p_poor_basis"].iloc[0] == "default"
 
 
-# --- the realisation ---------------------------------------------------------
+def test_the_table_refuses_a_missing_input_column():
+    with pytest.raises(ValueError, match="face_height_m"):
+        wall_probability_table(lines_frame().drop(columns=["face_height_m"]))
 
 
-def test_the_share_of_properties_with_a_wall_tracks_the_probability():
-    table = wall_probability_table(properties(n=4000, slope=20.0))
-    walls = draw_walls(table, rng())
-    expected = float(beta_wall_prevalence(20.0))
-    assert walls["claim_id"].nunique() == len(walls)
-    assert abs(len(walls) / len(table) - expected) < 0.03
+# --- the script ---------------------------------------------------------------
 
 
-def test_flat_properties_draw_no_walls_at_all():
-    assert draw_walls(wall_probability_table(properties(slope=0.0)), rng()).empty
+@pytest.fixture
+def redirected_script(tmp_path, monkeypatch):
+    """Point gen_wall_probability.py at a synthetic lines file in tmp_path."""
+    lines = stacked(
+        lines_frame(n=2, source="terrain_break"),
+        lines_frame(source="gns_mapped_wall", mapped=True, face_height_m=0.4),
+        lines_frame(source="road_frontage", flat=True, claim_id=None),
+    )
+    lines_file = tmp_path / "wall-lines-pilot.geoparquet"
+    lines.to_parquet(lines_file)
+    monkeypatch.setattr(script, "WORK_DIR", tmp_path / "exposure")
+    monkeypatch.setattr(script, "wall_lines_path", lambda *, pilot: lines_file)
+    return lines
 
 
-def test_a_property_with_no_slope_sampled_draws_nothing():
-    props = properties(n=200, slope=20.0)
-    props["slope_deg"] = np.nan
-    assert draw_walls(wall_probability_table(props), rng()).empty
+def test_gen_wall_probability_main_writes_one_row_per_line(tmp_path, redirected_script):
+    script.main(pilot=True)
 
-
-def test_a_mapped_property_draws_a_wall_almost_always():
-    props = properties(n=2000, slope=0.0)
-    props["mapped_wall_length_m"] = 12.0
-    walls = draw_walls(wall_probability_table(props), rng())
-    assert abs(len(walls) / len(props) - BETA_MAPPED_WALL_PROBABILITY) < 0.03
-
-
-def test_the_drawn_size_classes_follow_the_class_probabilities():
-    table = wall_probability_table(properties(n=6000, slope=15.0))
-    drawn = draw_walls(table, rng())["size_class"].value_counts(normalize=True)
-    for name in SIZE_CLASSES:
-        expected = table[f"p_{name}"].iloc[0]
-        assert drawn.get(name, 0.0) == pytest.approx(expected, abs=0.04)
-
-
-def test_the_population_carries_the_columns_the_chain_reads():
-    walls = draw_walls(wall_probability_table(properties()), rng())
-    for column in (
-        "claim_id",
-        "size_class",
-        "initial_condition",
-        "height_m",
-        "length_m",
-    ):
-        assert column in walls.columns
-    assert walls.geometry.geom_type.eq("LineString").all()
-    assert walls.crs == CRS
-
-
-def test_the_same_realisation_draws_the_same_population():
-    table = wall_probability_table(properties())
-    first = draw_walls(table, rng())
-    second = draw_walls(table, rng())
-    assert first["claim_id"].tolist() == second["claim_id"].tolist()
-    assert first["height_m"].tolist() == second["height_m"].tolist()
-
-
-def test_different_realisations_draw_different_populations():
-    table = wall_probability_table(properties())
-    first = draw_walls(table, realisation_seed(1, 0, "exposure"))
-    second = draw_walls(table, realisation_seed(1, 1, "exposure"))
-    assert first["claim_id"].tolist() != second["claim_id"].tolist()
-
-
-def test_a_missing_probability_column_is_refused_by_the_draw():
-    table = wall_probability_table(properties()).drop(columns=["p_poor"])
-    with pytest.raises(ValueError, match="p_poor"):
-        draw_walls(table, rng())
+    out_path = script.wall_probability_path(pilot=True)
+    assert out_path == tmp_path / "exposure" / "wall-probability-pilot.geoparquet"
+    written = gpd.read_parquet(out_path)
+    assert len(written) == len(redirected_script)
+    assert written.columns.tolist() == [
+        *redirected_script.columns,
+        *PROBABILITY_COLUMNS,
+    ]
+    assert (
+        written["wall_line_id"].tolist() == redirected_script["wall_line_id"].tolist()
+    )
+    assert written["p_wall_basis"].tolist() == [
+        "source_prior",
+        "source_prior",
+        "source_prior",
+        "flatland_cap",
+    ]
+    assert written["p_poor_basis"].tolist() == [
+        "default",
+        "default",
+        "height",
+        "default",
+    ]
+    assert written["dwelling_age_decade"].isna().all()
+    assert written.crs == CRS

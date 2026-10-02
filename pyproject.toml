@@ -33,6 +33,7 @@ dependencies = [
     "rasterio>=1.4",
     "requests>=2.32",
     "rioxarray>=0.19",
+    "scipy>=1.14",
     "shapely>=2.1.1",
     "ttpy-gis",
     "xarray>=2025.1",

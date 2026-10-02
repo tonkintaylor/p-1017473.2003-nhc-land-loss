@@ -68,7 +68,10 @@ Whether a category 7 genuinely exists is open (**T-28**): the table is titled
 
 Whether they also exclude damage to retaining walls, culverts and bridges is
 being confirmed (**T-27**). The call's expectation was that any retaining wall
-component bundled into them is small.
+component bundled into them is small. For retaining walls the project lead
+ruled on 2026-10-02 that a wall replaced by shaking on flat land and the
+liquefaction land damage on the same claim are not a double count; culverts and
+bridges are still open.
 
 ## How they are used, and the retaining wall problem
 

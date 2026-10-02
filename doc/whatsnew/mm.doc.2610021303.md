@@ -1,0 +1,1 @@
+Record the project lead's ruling that a retaining wall replaced by shaking on flat land and liquefaction land damage on the same claim are not a double count (T-27, retaining walls), in vul step 10's printout and the status, method and context files.

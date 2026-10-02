@@ -9,5 +9,5 @@ are held in `REPAIR_RATES` in the liquefaction land damage step's `config.py`, w
 writes `area_cost_nzd` per claim beside the Canterbury lookup, with a `NO_SVA` flag raising
 the inundated rate by a placeholder 1.5 for clearing without volunteers (Q-18). The rates are
 **provisional**: fitted to costs diluted with non-claimants' $0s, they are not validated
-and are to be refitted against claimant-only costs (T-65). The loss module still settles on
+and are to be refitted against claimant-only costs (T-66). The loss module still settles on
 the lookup.

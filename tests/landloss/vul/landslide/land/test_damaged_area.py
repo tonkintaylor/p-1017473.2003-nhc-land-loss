@@ -2,8 +2,12 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point, box
 
+from landloss.hazard.landslide import land_class as hazard_land_class
+from landloss.vul.landslide.land import damaged_area
 from landloss.vul.landslide.land.damaged_area import (
     EVACUATED,
+    IGNORED_LAND_CLASSES,
+    IMMINENT,
     INUNDATED,
     UNION_AREA_COLUMN,
     check_within_insured_area,
@@ -186,3 +190,25 @@ def test_a_union_smaller_than_either_kind_is_flagged():
     damaged = damaged_area_per_property(land, hazard)
     damaged[UNION_AREA_COLUMN] = 100.0
     assert check_within_insured_area(damaged, land)["claim_id"].tolist() == ["A-001"]
+
+
+def test_the_land_classes_are_the_hazard_modules():
+    assert damaged_area.EVACUATED is hazard_land_class.EVACUATED
+    assert damaged_area.INUNDATED is hazard_land_class.INUNDATED
+    assert damaged_area.IMMINENT is hazard_land_class.IMMINENT
+    assert damaged_area.LAND_CLASS_COLUMN is hazard_land_class.LAND_CLASS_COLUMN
+
+
+def test_imminent_ground_measures_nothing():
+    assert IGNORED_LAND_CLASSES == (IMMINENT,)
+    land = insured(("A-001", (0, 0, 20, 20)))
+    only_imminent = slides((IMMINENT, float("nan"), (0, 0, 20, 20)))
+    assert damaged_area_per_property(land, only_imminent).empty
+
+    with_imminent = slides(
+        (EVACUATED, 1.0, (0, 0, 10, 20)), (IMMINENT, float("nan"), (0, 0, 20, 20))
+    )
+    row = damaged_area_per_property(land, with_imminent).iloc[0]
+    assert row["evacuated_area_m2"] == pytest.approx(200.0)
+    assert row["inundated_area_m2"] == 0.0
+    assert row[UNION_AREA_COLUMN] == pytest.approx(200.0)

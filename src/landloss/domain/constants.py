@@ -131,6 +131,30 @@ GNS_SLIDE_GENESIS_LAYER_ID = 125309
 # the result without it.
 EIL_PROBABILITY_SOURCE_PATH = "EILProb_Wellington/EILProb_PGA2g.tif"
 
+# The NZMM address land attributes extract for the four Wellington councils,
+# below the project's SourceMaterial folder on T:. Read by
+# landloss.io.nzmm_land_attributes.get_nzmm_land_attributes. Sensitive: it sits
+# under SENSITIVE/ and is to be destroyed at the end of the project -- see that
+# module's docstring.
+NZMM_LAND_ATTRIBUTES_SOURCE_PATH = (
+    "SENSITIVE/NZMM_ADDRESS_WellingtonTLAs_LandAttributes"
+    "/NZMM_ADDRESS_WellingtonTLAs_LandAttributes.txt"
+)
+
+# QV's rating roll extract for the four Wellington councils, one file per
+# council keyed by QV's district code, below the project's SourceMaterial
+# folder on T:. Read by landloss.io.qv_rating_roll.get_qv_rating_roll.
+# Sensitive: supplied by QV and to be destroyed at the end of the project --
+# see that module's docstring. The README.md beside the files records how the
+# unlabelled fields were named.
+QV_RATING_ROLL_SOURCE_DIR = "SENSITIVE/_Filedrop_ Natural Hazards Data Sets"
+QV_RATING_ROLL_FILES = {
+    "44": "Property44_20261002.txt",  # Porirua City
+    "45": "Property45_20261002.txt",  # Upper Hutt City
+    "46": "Property46_20261002.txt",  # Hutt City
+    "47": "Property47_20261002.txt",  # Wellington City
+}
+
 # The global datasets the Nowicki Jessee (2018) landslide model is rebuilt
 # from, below the project's SourceMaterial folder on T:. Each is put there by
 # a get_ script in src/scripts/landloss/hazard/landslide/static_data_gen/,
@@ -194,6 +218,20 @@ NZ_RAIL_STATION_POINTS_LAYER_ID = 50318
 # or a cross-lease -- and therefore what says whether the addresses sharing one
 # building outline are separately owned land or a share of the same land.
 NZ_PROPERTY_BOUNDARIES_LAYER_ID = 122657
+
+# https://data.linz.govt.nz/table/51567-nz-property-titles-list/
+# Every live and part-cancelled Record of Title, without geometry or owners: the
+# same titles as the NZ Property Titles layer (50804), plus the survey plan and
+# head title that the layer leaves out. Read for ``issue_date``, which the
+# retaining wall age step takes as a proxy for when the dwelling was built.
+NZ_PROPERTY_TITLES_LIST_TABLE_ID = 51567
+
+# https://data.linz.govt.nz/table/114085-nz-properties-national-district-valuation-roll/
+# The open subset of the District Valuation Roll: only the councils that let
+# LINZ publish theirs, Christchurch among them and none of the study area. Read
+# for ``building_age_indicator``, the decade code the age step is checked
+# against.
+NZ_DISTRICT_VALUATION_ROLL_TABLE_ID = 114085
 
 # The National Liquefaction Model's flatland model, mirrored on the T+T
 # Koordinates instance. This is the flat versus sloping land split the study
@@ -263,6 +301,53 @@ class Cause(StrEnum):
 # pin rather than a seed per step, because a realisation is one modelled
 # earthquake across all three hazards: see landloss.hazard.realisation.
 BASE_SEED = 1017473
+
+# The seed every exposure world's draws derive from; separate from BASE_SEED
+# because whether a wall exists is not something the earthquake decides.
+EXPOSURE_BASE_SEED = 2003
+
+# The urban slope model runs within this distance of a LINZ building outline,
+# off the NLM flatland.
+URBAN_BUILDING_DISTANCE_M = 100.0
+
+# The cell sizes the urban failure candidates are delineated at; nesting across
+# them is kept.
+URBAN_SCALES_M = (1, 3, 10, 30)
+
+# A candidate wall line with a DEM face lower than this is not modelled.
+MIN_WALL_HEIGHT_M = 0.5
+
+# Walls under this height are often built without consent and are more likely
+# in poor condition.
+UNCONSENTED_WALL_HEIGHT_M = 1.5
+
+# Multiplier on every urban fragility median by config.URBAN_RATE. Medium is
+# 1.0 by definition; low and high are placeholders to be set by the anchoring
+# (.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md,
+# section 6). A low failure rate is a higher median, so low > 1.
+URBAN_RATE_FACTORS = {"low": 1.5, "medium": 1.0, "high": 1.0 / 1.5}
+
+# The largest factor a crest, spur or face over 60 degrees divides a fragility
+# median by.
+TOPOGRAPHIC_AMPLIFICATION_MAX = 1.5
+
+# Dispersion of the localised (no wall) fragility until the anchoring sets it.
+LOCALISED_FRAGILITY_BETA = 0.6
+
+# The minted id prefixes, every one in one place. Each id is the prefix and
+# seven digits, minted by location (landloss.common.utils.ids).
+# Candidate wall line ids, WL<7 digits>.
+WALL_LINE_ID_PREFIX = "WL"
+# Urban failure polygon ids, SP<7 digits>.
+SLOPE_ID_PREFIX = "SP"
+# Urban failure candidate ids, UC<7 digits>.
+CANDIDATE_ID_PREFIX = "UC"
+# Ground map polygon ids, GM<7 digits>.
+GROUND_ID_PREFIX = "GM"
+# Slope unit ids, SU<7 digits>.
+UNIT_ID_PREFIX = "SU"
+# Large-model landslide ids, LS<7 digits>, per realisation.
+LARGE_LANDSLIDE_ID_PREFIX = "LS"
 
 
 class NlmRelease(StrEnum):

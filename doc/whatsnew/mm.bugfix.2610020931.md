@@ -1,0 +1,1 @@
+Exposure retaining wall step 6 now also writes every wall each world drew, insured or not, to `drawn-walls-wNNN[-pilot].geoparquet`, and landslide step 8 builds the urban slope model on it, so a council, road-reserve or out-of-coverage wall still holds its slope with `rw_id` null rather than leaving its polygon modelled as having no wall.

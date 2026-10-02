@@ -450,7 +450,7 @@
     },
     {
       "ID": "T-57",
-      "Task": "Set repair rates for inundated and evacuated liquefied land, chosen so the modelled costs roughly reproduce the Canterbury cost table, with a no-SVA flag that raises the inundated rate. Machinery built 2026-10-02 (vul liquefaction land step 3); the fitted rates are provisional until refitted against claimant-only costs (T-65).",
+      "Task": "Set repair rates for inundated and evacuated liquefied land, chosen so the modelled costs roughly reproduce the Canterbury cost table, with a no-SVA flag that raises the inundated rate. Machinery built 2026-10-02 (vul liquefaction land step 3); the fitted rates are provisional until refitted against claimant-only costs (T-66).",
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Land Model Catch Up 2026-09-30",
@@ -514,6 +514,14 @@
     },
     {
       "ID": "T-65",
+      "Task": "Ask the loss module owner to move the five loss_input_path calls, in loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py, loss/steps/s1_settlement/s1_gen_settlement.py, loss/validations/gen_calc_walkthrough.py (two calls) and loss/validations/gen_viewer_data.py, to world_loss_input_path(name, world_id, realisation_id, pilot=pilot) with a WORLD_IDS setting, so the loss module reads every exposure world rather than world 0 only and the deprecated loss_input_path can be deleted.",
+      "Owner": "Unassigned",
+      "Phase": "3",
+      "Source": "Urban slope build 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-66",
       "Task": "Provide the Canterbury land damage costs per land damage state averaged over properties that lodged a claim only, rather than over all damaged properties, with the count of damaged properties and of claimants in each band. The counts give the drop-out rate per state directly and validate the Q-16 placeholders; the claimant-only costs replace costs_liq_ld_refined_states_2011.csv and switch the drop-out back on.",
       "Owner": "Virginie Lacrosse",
       "Phase": "2",
@@ -818,7 +826,7 @@
     },
     {
       "ID": "L-43",
-      "Limitation": "Until claimant-only costs arrive (T-65), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
+      "Limitation": "Until claimant-only costs arrive (T-66), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Open"
@@ -832,7 +840,7 @@
     },
     {
       "ID": "L-45",
-      "Limitation": "The liquefied land repair rates -- $10.39 per m2 inundated, $19.66 per m2 evacuated and $995 per claim, 2010/2011 dollars excluding GST -- are fitted to Canterbury means estimated from the 50th and 85th percentiles through a lognormal, over Wellington section sizes, and to costs diluted with non-claimants' $0s. They reproduce each state's mean only to within 0.83 (Minor) to 1.24 (Moderate), and price a None claim at the fixed cost alone. To be refitted against claimant-only means (T-65).",
+      "Limitation": "The liquefied land repair rates -- $10.39 per m2 inundated, $19.66 per m2 evacuated and $995 per claim, 2010/2011 dollars excluding GST -- are fitted to Canterbury means estimated from the 50th and 85th percentiles through a lognormal, over Wellington section sizes, and to costs diluted with non-claimants' $0s. They reproduce each state's mean only to within 0.83 (Minor) to 1.24 (Moderate), and price a None claim at the fixed cost alone. To be refitted against claimant-only means (T-66).",
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Open"
@@ -1100,7 +1108,7 @@
       "ID": "Q-17",
       "Question": "Are the Canterbury land damage costs per state (Dec 2016 ILVR rates table) averaged over properties that claimed only, or do they include properties in that state that never claimed as $0? If they include them, the drop-out is already inside the rates and applying the Q-16 drop-out rates as well would count it twice; the T-57 repair rate calibration has to take the same basis.",
       "Asked of": "Virginie Lacrosse",
-      "Answer": "They include them. The rates average over all damaged properties, not just those that lodged a claim -- 'watered down' with $0s, as Virginie Lacrosse described them. She is to supply rates over claimants only (T-65). Until then the drop-out is switched off, since these rates already carry it.",
+      "Answer": "They include them. The rates average over all damaged properties, not just those that lodged a claim -- 'watered down' with $0s, as Virginie Lacrosse described them. She is to supply rates over claimants only (T-66). Until then the drop-out is switched off, since these rates already carry it.",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Closed"
     },
