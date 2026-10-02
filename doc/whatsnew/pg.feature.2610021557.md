@@ -1,0 +1,1 @@
+Added the lateral spreading correction to the liquefaction land damage probabilities: P(at least Major) is raised within 100 m of a free face and lowered beyond 200 m, with the National Liquefaction Model's piecewise map, capped at P(at least Moderate). Switched by `LATERAL_SPREADING` in step 2's config; the hazard pipeline now builds the free faces first.

@@ -62,8 +62,28 @@
   function refuses a grid without one.
 - Cells the National Liquefaction Model knows nothing about arrive as NaN, and
   stay NaN through the differencing and the subdivision.
-- No lateral spreading modifier is applied, and no river buffers are used. The
-  beta replaces that work rather than deferring it.
+- **Lateral spreading** (T-47), when `LATERAL_SPREADING` in `config.py` is set,
+  corrects P(at least Major) — states 4 to 6 together — after the match and
+  before the differencing, in `correct_for_lateral_spreading()`. The arithmetic
+  is `landloss.hazard.liquefaction.lateral_spreading`, a port of the NLM's
+  `PiecewiseCorrection` from its `lateral-spread` branch:
+  - the free faces step 1 wrote for the extent are buffered at 100 m and 200 m
+    into near, middle and far zones, and the zones are written to
+    `temp/hazard/liquefaction/ls-zones{-pilot,}.gpkg` for viewing;
+  - near a free face P(at least Major) is tripled up to the knee at 0.075 and
+    lifted by a fixed 0.15 above it; far from one it is divided by three, or
+    lowered by a fixed 0.05. A baseline 20% becomes 35% near and 15% far, as on
+    Ryan's figure. The middle band takes the midpoint of the two, where the NLM
+    blends linearly in distance;
+  - a cell is weighted by its share of each zone, burned at ten sub-cells a
+    side and averaged, because the NLM grid is about 100 m a cell, as wide as
+    the near zone;
+  - P(at least Moderate) is left alone, as the NLM leaves it, and the corrected
+    P(at least Major) is capped at it, so the lift moves probability from the
+    Moderate band into Major and worse rather than breaking the exceedance pair.
+  The run prints the mean P(at least Major) by zone before and after, and the
+  number of cells the cap bound in.
+- With `LATERAL_SPREADING` off, no correction is applied, as in the beta.
 - The reusable arithmetic is covered without the network or the T: drive:
   `tests/landloss/hazard/liquefaction/test_land_damage.py` for the differencing
   and the subdivision, and `tests/landloss/common/utils/test_raster.py` for the

@@ -17,8 +17,11 @@
 
 ## Phase 2 — Buffers
 
-- [ ] Buffer at 100 m and 200 m into lateral spreading zones, and modify the
-      probabilities of land damage states 4 to 6 by zone (T-47).
+- [x] Buffer at 100 m and 200 m into lateral spreading zones, and modify the
+      probabilities of land damage states 4 to 6 by zone (T-47): done in step 2,
+      `landloss.hazard.liquefaction.lateral_spreading`.
+- [x] Read every extent 200 m wider than itself, so a free face just outside it
+      still counts.
 
 ## Phase 3 — Review the layer for Wellington
 

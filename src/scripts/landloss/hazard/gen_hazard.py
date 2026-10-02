@@ -2,8 +2,8 @@
 
     uv run --frozen python src/scripts/landloss/hazard/gen_hazard.py
 
-Shaking (site class, PGV, then PGA realisations), then liquefaction, then
-landslide, for the extent and realisations set
+Shaking (site class, PGV, then PGA realisations), then liquefaction (free
+faces, land damage probabilities, then states), then landslide, for the extent and realisations set
 in ``config.py`` beside this. The hazards read no exposure, so this can run
 before or after the exposure module. Anything else a step reads comes from that
 step's own ``config.py``.
@@ -19,6 +19,12 @@ from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
 )
 from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
     s1_simulate_landslides,
+)
+from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
+    gen_liq_free_faces,
+)
+from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import (
+    config as ld_probabilities_config,
 )
 from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import (
     gen_liq_ld_probabilities,
@@ -66,8 +72,15 @@ def main(*, pilot, realisation_ids):
                 ),
             ),
             (
+                "liquefaction s1, free faces",
+                lambda: gen_liq_free_faces.main(extent="pilot" if pilot else "study"),
+            ),
+            (
                 "liquefaction s2, land damage probabilities",
-                lambda: gen_liq_ld_probabilities.main(pilot=pilot),
+                lambda: gen_liq_ld_probabilities.main(
+                    pilot=pilot,
+                    lateral_spreading=ld_probabilities_config.LATERAL_SPREADING,
+                ),
             ),
             (
                 "liquefaction s3, land damage states",

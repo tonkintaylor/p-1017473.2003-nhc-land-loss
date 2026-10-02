@@ -57,6 +57,8 @@ import xarray as xr
 from rasterio.features import geometry_mask
 from rasterio.transform import Affine
 
+from landloss.common.utils.raster import grid_transform
+
 # The attribute columns this module produces, named here so the step script and
 # the land value model agree on them.
 SEA_VIEW_COLUMN = "sea_view_share"
@@ -89,20 +91,6 @@ EARTH_RADIUS_M = 6_371_000.0
 REFRACTION_COEFFICIENT = 0.13
 
 
-def _grid_transform(dem: xr.DataArray) -> Affine:
-    """Return a north-up grid's affine transform, built from its coordinates.
-
-    Built here rather than asked of rioxarray, which derives it from the
-    coordinates through a deprecated affine operator whenever no transform is
-    stored on the array -- the same reason the Nowicki inputs build their own.
-    """
-    x = dem["x"].to_numpy()
-    y = dem["y"].to_numpy()
-    dx = float(x[1] - x[0])
-    dy = float(y[0] - y[1])
-    return Affine(dx, 0.0, float(x[0]) - dx / 2, 0.0, -dy, float(y[0]) + dy / 2)
-
-
 def sea_mask(
     dem: xr.DataArray, land: gpd.GeoDataFrame, max_sea_elevation_m: float
 ) -> np.ndarray:
@@ -129,7 +117,7 @@ def sea_mask(
     outside_land = geometry_mask(
         land.geometry,
         out_shape=dem.shape,
-        transform=_grid_transform(dem),
+        transform=grid_transform(dem),
         invert=False,
     )
     values = dem.to_numpy()
@@ -208,7 +196,7 @@ def measure_sea(
         msg = f"the points are in {points.crs} and the DEM in {dem.rio.crs}"
         raise ValueError(msg)
 
-    transform = _grid_transform(dem)
+    transform = grid_transform(dem)
     cell_x, cell_y = transform.a, transform.e
     origin_x, origin_y = transform.c, transform.f
     rows_n, cols_n = dem.shape

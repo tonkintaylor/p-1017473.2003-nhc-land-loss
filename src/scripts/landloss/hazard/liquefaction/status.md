@@ -20,17 +20,18 @@ Prototype:
   as free faces, and the rebuild follows it: `steps/s1_free_faces/`. One
   departure: the Waiwhetū Stream is added by ID, provisionally, pending Maxim
   Millen (**Q-19**, under **T-48**).
-- [~] Buffer the waterways at **100 m and 200 m** to obtain the lateral spreading
+- [x] Buffer the waterways at **100 m and 200 m** to obtain the lateral spreading
   (LS) zones (**T-47**), as buffer polygons rather than a distance grid, since
   buffering lines is quick where the NLM's grid route took a day for the lower
   Waikato. Agreed 2026-09-25.
-- [>] Modify the probabilities of LD states **4 to 6** by LS zone, reading the
+- [~] Modify the probabilities of LD states **4 to 6** by LS zone, reading the
   shift off Ryan's figure against the baseline probability: up inside the
   100 m buffer (a baseline 20% becomes about 35%), down outside it (20% becomes
   about 15%). Applied when the state probability layers are built, before the
-  realisation is drawn. Owner Perrie Gilbert (**T-47**).
+  realisation is drawn. Owner Perrie Gilbert (**T-47**). Built, as the NLM's
+  piecewise correction on P(at least Major); not yet run against the NLM grids.
 - [~] Generate realisations of LD from the modified probabilities. Drawn, but
-  from probabilities no lateral spreading modifier has touched yet.
+  not yet from probabilities the lateral spreading correction has touched.
 
 Beyond the prototype:
 
@@ -78,10 +79,10 @@ No river buffers, no LS zone modifier. Output is a raster of `ld_state` values
 
 ## Next
 
-1. Buffer at 100 m and 200 m, and build the lateral spreading probability
-   modifier for states 4 to 6 from Ryan's figure (**T-47**). If buffering the
-   whole study area takes much more than about four hours, fall back to the
-   grid route.
+1. Run step 2 with the lateral spreading correction over the pilot box, then
+   the study area, and check the per-zone shift it prints against Ryan's figure
+   (**T-47**). Step 1 has to be run for the same extent first; `gen_hazard.py`
+   does both.
 2. Run the two beta steps over the four territorial authorities rather than the
    pilot box, once the extent is worth the runtime.
 

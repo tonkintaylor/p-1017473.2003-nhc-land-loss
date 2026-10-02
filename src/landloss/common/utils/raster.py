@@ -8,7 +8,9 @@ here, once, rather than in each reader and each step that goes to a grid nobody
 else has clipped for it.
 """
 
+import xarray as xr
 from pyproj import CRS, Transformer
+from rasterio.transform import Affine
 
 # How many intermediate points each edge of a bounding box is broken into before
 # it is reprojected. See :func:`bbox_in_crs` for why a box needs any at all; 21
@@ -49,3 +51,24 @@ def bbox_in_crs(
         *bbox, densify_pts=BBOX_DENSIFY_POINTS
     )
     return (float(west), float(south), float(east), float(north))
+
+
+def grid_transform(grid: xr.DataArray) -> Affine:
+    """Return a north-up grid's affine transform, built from its coordinates.
+
+    Built here rather than asked of rioxarray, which derives it from the
+    coordinates through a deprecated affine operator whenever no transform is
+    stored on the array: an array built in memory rather than read from a file.
+
+    Args:
+        grid: A raster with ``x`` and ``y`` coordinates at the cell centres,
+            ``y`` decreasing, at least two cells along each.
+
+    Returns:
+        The transform from (column, row) to the cell's corner coordinates.
+    """
+    x = grid["x"].to_numpy()
+    y = grid["y"].to_numpy()
+    dx = float(x[1] - x[0])
+    dy = float(y[0] - y[1])
+    return Affine(dx, 0.0, float(x[0]) - dx / 2, 0.0, -dy, float(y[0]) + dy / 2)

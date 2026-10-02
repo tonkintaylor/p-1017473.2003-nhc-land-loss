@@ -16,3 +16,9 @@ would send it looking for a file that is not there.
 # assembled: the pilot is 2.9 by 1.7 km against 59 by 54 km, and the National
 # Liquefaction Model grids are national, so the clip is the expensive part.
 PILOT = True
+
+# Whether to apply the lateral spreading correction to P(at least Major) before
+# the states are expanded (register task T-47). It reads the free faces step 1
+# wrote for the same extent -- "pilot" or "study" -- so run step 1 with that
+# EXTENT first.
+LATERAL_SPREADING = True
