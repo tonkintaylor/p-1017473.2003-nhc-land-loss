@@ -42,6 +42,22 @@ NZ_RIVER_NAME_LINES_LAYER_ID = 103632
 # rivers wide enough to need a bridge, so the culvert and bridge work reads both.
 NZ_RIVER_NAME_POLYGONS_LAYER_ID = 103631
 
+# The topo50 water layers the National Liquefaction Model's lateral spreading
+# free-face layer is built from, beside the river name lines: the areas of the
+# wider rivers, lakes, lagoons and swamps, and the coastline. The same IDs as
+# ``common.constants`` on the NLM's lateral-spread branch, so both studies read
+# the same features.
+# https://data.linz.govt.nz/layer/50328-nz-river-polygons-topo-150k/
+NZ_RIVER_POLYGONS_TOPO50_LAYER_ID = 50328
+# https://data.linz.govt.nz/layer/50293-nz-lake-polygons-topo-150k/
+NZ_LAKE_POLYGONS_TOPO50_LAYER_ID = 50293
+# https://data.linz.govt.nz/layer/50292-nz-lagoon-polygons-topo-150k/
+NZ_LAGOON_POLYGONS_TOPO50_LAYER_ID = 50292
+# https://data.linz.govt.nz/layer/50359-nz-swamp-polygons-topo-150k/
+NZ_SWAMP_POLYGONS_TOPO50_LAYER_ID = 50359
+# https://data.linz.govt.nz/layer/50258-nz-coastlines-topo-150k/
+NZ_COASTLINES_TOPO50_LAYER_ID = 50258
+
 # https://lris.scinfo.org.nz/layer/123148-lcdb-v60-land-cover-database-version-60-mainland-new-zealand/
 # LCDB v6.0, released October 2025. Polygons carrying a land cover class at each
 # of six time steps from summer 1996/97 to summer 2023/24.

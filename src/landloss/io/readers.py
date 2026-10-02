@@ -525,6 +525,59 @@ def get_nz_river_name_polygons(
     )
 
 
+# The topo50 water layers read by :func:`get_nz_topo50_water`, by the name the
+# caller asks for.
+TOPO50_WATER_LAYERS = {
+    "river": constants.NZ_RIVER_POLYGONS_TOPO50_LAYER_ID,
+    "lake": constants.NZ_LAKE_POLYGONS_TOPO50_LAYER_ID,
+    "lagoon": constants.NZ_LAGOON_POLYGONS_TOPO50_LAYER_ID,
+    "swamp": constants.NZ_SWAMP_POLYGONS_TOPO50_LAYER_ID,
+    "coast": constants.NZ_COASTLINES_TOPO50_LAYER_ID,
+}
+
+
+def get_nz_topo50_water(
+    kind: str,
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load one of the LINZ topo50 water layers for an extent.
+
+    The river, lake, lagoon and swamp polygons and the coastline, at 1:50k. These
+    are what the National Liquefaction Model's lateral spreading free-face layer
+    is built from beside the river name lines, and they are read through one
+    function because they differ only in their layer ID.
+
+    Licence:
+        Creative Commons Attribution 4.0 International (CC BY 4.0),
+        https://data.linz.govt.nz/license/attribution-4-0-international/.
+
+    Args:
+        kind: One of the keys of :data:`TOPO50_WATER_LAYERS`.
+        bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``.
+        crs: The coordinate reference system to return the features in.
+        use_cache: Whether to read and write the clipped extent cache.
+
+    Returns:
+        A GeoDataFrame of the layer's features within the extent.
+
+    Raises:
+        ValueError: If ``kind`` is not a known layer.
+    """
+    if kind not in TOPO50_WATER_LAYERS:
+        msg = f"kind must be one of {sorted(TOPO50_WATER_LAYERS)}, not {kind!r}"
+        raise ValueError(msg)
+    return get_koordinates_layer_extent(
+        layer=TOPO50_WATER_LAYERS[kind],
+        crs=crs,
+        bbox=bbox,
+        domain=constants.LINZ_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
 def get_gwrc_slope_failure(
     bbox: tuple[float, float, float, float] | None = None,
     crs: int | str = constants.DEFAULT_CRS,

@@ -1111,6 +1111,14 @@
       "Answer": "",
       "Source": "Perrie Gilbert 2026-10-02; follows T-57 and L-40",
       "Status": "Open"
+    },
+    {
+      "ID": "Q-19",
+      "Question": "Should the Waiwhetū Stream count as a lateral spreading free face? It is not named a river, so the NLM's rule leaves it out, but it crosses the liquefiable lower Hutt Valley floor to the harbour at Seaview. Perrie Gilbert has included it by ID (river sections 6818507 and 7212609) provisionally, as the NLM did for the watercourses around Bottle Lake (T-48).",
+      "Asked of": "Maxim Millen",
+      "Answer": "",
+      "Source": "Perrie Gilbert, QGIS review of the lower Hutt free faces 2026-10-02",
+      "Status": "Open"
     }
   ]
 }

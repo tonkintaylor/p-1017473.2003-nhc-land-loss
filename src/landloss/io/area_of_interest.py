@@ -85,6 +85,19 @@ WLG_EARTHWORKS_PILOT = AreaOfInterest(
     north=-41.194728870313334,
 )
 
+# A pilot box over the lower Hutt Valley, from the Petone and Seaview foreshore
+# up the Hutt River to Melling, for the lateral spreading work. SMALL_WLG_PILOT
+# holds almost no waterways; this box holds the study's largest river, the
+# Waiwhetu Stream, the harbour edge and the reclaimed ground at Seaview, which
+# is where a free-face buffer has something to do.
+LOWER_HUTT_PILOT = AreaOfInterest(
+    name="Lower Hutt Valley",
+    west=174.86,
+    south=-41.245,
+    east=174.935,
+    north=-41.195,
+)
+
 # The Canterbury earthquake sequence study area, covering Christchurch city and
 # the flat land around it. This is the extent the observed land damage evidence
 # is drawn from -- the only New Zealand dataset holding both settled land claims
