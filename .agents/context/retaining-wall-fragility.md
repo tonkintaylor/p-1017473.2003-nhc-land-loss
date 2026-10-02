@@ -21,6 +21,126 @@ Compiled 17 September 2026. Six representative published fragility function sets
 - **Seismic design coefficient is rarely an explicit variable.** Most sets fix the design k<sub>h</sub> implicitly ("designed to code", "FS = 1.5") and instead vary geometry, backfill slope or groundwater. Source 1 is the closest to fragility conditioned on design level; otherwise a Newmark-type displacement model scaled to the design k<sub>h</sub> is the more defensible route.
 - **HAZUS** treats retaining and quay walls only as generic "waterfront structures" keyed to permanent ground deformation, with no wall-type resolution — too coarse for most design-adjacent work.
 
+## Literature review: the curves against Canterbury (2026-10-02)
+
+Part C of the second review (`temp/handoff-remaining-review.md`) read the wall
+curves against `temp/gns_review/` (finding ids in backticks,
+`out/findings.csv`). The one observed population is Anderson, Wood and Scott
+(2015) [anderson_2015]. It covers 2,991 Christchurch walls, most of them in
+the Port Hills, through the 2010 to 2011 sequence (`anderson2015-F01`). That
+paper was in the second review batch, which had an independent check, and the
+height shares used below were read off its Figure 2 again on 2026-10-02.
+Every proposal is for the lead. Numbers that are ours say so.
+
+### What Canterbury shows
+
+- **The shaking matched the study's demand.** Port Hills stations recorded
+  PGA of 1.0 to 1.7 g on 22 February 2011 and up to 2.0 g on 13 June 2011
+  (Table 1 of the paper, checked against the text).
+- **About one wall in ten failed.** About 10% were Very Poor (collapse,
+  partial collapse, or excessive movement with failure of more than 5 m² of
+  face); 10.6% were Poor, 22.3% Average and 41.6% Good, with 15.5% not
+  assessed (`anderson2015-F08`, `F15`, ours, Figure 2 weighted by Table 3).
+- **Taller walls failed more.** The Very Poor share was 7.1% under 1.5 m,
+  10.2% at 1.5 to 2.5 m, 13.9% at 2.5 to 3.5 m and 22.5% above 3.5 m
+  (`anderson2015-F13`, read off Figure 2).
+- **Type mattered most.** About 18% of stone masonry walls were Very Poor,
+  against 13% of crib, 5.5% of concrete masonry, 5.3% of gabion, 2.8% of
+  timber pole and none of the MSE walls (`anderson2015-F11`). Stone masonry
+  gravity walls failed through inertia, narrow footings and low robustness
+  (`F31`). Most walls designed and built to modern practice performed very
+  well, and many not designed for earthquake actions performed adequately
+  (`F32`).
+- **Three caveats, all pointing the same way.**
+  - The rates are cumulative over the whole sequence, not one event
+    (`F21`), so one event's rate is lower.
+  - The sample leans to council road walls and to walls over 1.5 m (`F02`,
+    `F03`).
+  - Port Hills walls often retained strong loess and acted more as facings
+    (`F30`).
+
+  Each makes the Canterbury rate an upper bound for a single event on
+  Wellington house-lot walls of the same height and type.
+
+### What the curves give
+
+The Koutsoupaki et al. (2023) cantilever curves [koutsoupaki_2023] now in
+`retaining-wall-fragility.csv` give, at 1.0, 1.3 and 1.7 g (ours):
+
+| Class | Median (g) | P(replace) at 1.0 / 1.3 / 1.7 g |
+| --- | --- | --- |
+| small and medium, modern | 1.11 | 0.44 / 0.59 / 0.74 |
+| small and medium, poor | 0.67 | 0.74 / 0.85 / 0.93 |
+| large, modern | 1.43 | 0.30 / 0.45 / 0.60 |
+| large, poor | 0.82 | 0.62 / 0.76 / 0.87 |
+
+The curves have three problems against Canterbury:
+
+1. **They fail four to ten times too many walls**, against about 10%
+   cumulative over the sequence. This is why 88% of sloping walls were
+   replaced in the pilot.
+2. **They have the height trend backwards.** They make the 6 m wall stronger
+   than the 3 m one, where Canterbury's taller walls failed more.
+3. **They describe the wrong walls.** They are numerical cantilever walls
+   designed to a factor of safety, where Wellington's older walls are
+   gravity, crib and timber pole walls.
+
+What they do get right is the effect of condition. Their modern-to-poor
+median ratio is 1.65. At β 0.6, that is the ratio between an 18% and a 4%
+failure share at one PGA, about Anderson's stone masonry against timber pole
+and concrete masonry (ours).
+
+### Proposals for the lead
+
+1. **Anchor the wall curves on Canterbury, and keep Koutsoupaki only for
+   its condition ratio.** Take β = 0.6, the dispersion the curves already
+   carry, and a representative 1.3 g (ours, the middle of the 22 February
+   Port Hills records). The Very Poor share by height then gives these
+   medians (**ours**):
+
+   | Height | Very Poor share | Median at 1.3 g (g) |
+   | --- | --- | --- |
+   | under 1.5 m | 7.1% | 3.1 |
+   | 1.5 to 2.5 m | 10.2% | 2.8 |
+   | 2.5 to 3.5 m | 13.9% | 2.5 |
+   | over 3.5 m | 22.5% | 2.0 |
+
+   - Reading the demand at 1.0 g instead gives medians about a quarter lower,
+     and at 1.7 g about a third higher, which is the spread to carry.
+   - Because the rates are cumulative over a sequence, these medians are a
+     lower bound for one event.
+   - They apply to the average wall in Canterbury. The modern and poor
+     curves sit either side of each by the Koutsoupaki ratio: about 1.3
+     times the median for modern, and the median over 1.3 for poor (ours,
+     splitting the 1.65 ratio).
+   - The PGA-to-PGV conversion at each site's ratio stays.
+2. **Two damage states, with "replace" defined as Very Poor.** Anderson's
+   Very Poor is collapse, partial collapse, or excessive displacement with
+   consequential damage. That matches the model's "replace", and the lead's
+   point that few damaged walls are repaired. The Average and Poor classes
+   (about a third of walls, `anderson2015-F09`), with 100 to over 200 mm of
+   outward movement, are "none" in the base case. "Replace" at Poor plus
+   Very Poor is the high case: 17.5%, 21.1% and 28.3% by the three costing
+   size classes, against 7.1%, 10.2% and 17.6% for Very Poor alone
+   (`anderson2015-F16`). EQC treats reinstating a failed wall as land
+   reinstatement (`sr2018-027-F03`). The thresholds are typical values, not
+   strict ones (`anderson2015-F36`).
+3. **Name the six wall classes after Anderson's types**, the one observed
+   split: stone and mass-concrete masonry gravity, concrete block masonry,
+   timber pole, crib, gabion, and MSE or engineered reinforced concrete.
+   Their relative failure rates are 18, 5.5, 2.8, 13, 5.3 and 0%
+   (`anderson2015-F11`); the 0% for MSE is on 18 walls, so read it as "very
+   low". Wellington's mix of types is unknown until the claim report
+   extraction (**T-50**). Until then, use the type in condition: the
+   pre-1970 bin is the gravity masonry era (`anderson2015-F07`; bin note).
+   Type and height are confounded in the data, because timber pole walls are
+   mostly lower (`F28`). So the height medians above already carry part of
+   the type effect; do not apply both in full.
+4. **One curve set for sloping and flat walls.** The Canterbury walls are
+   Port Hills hillside walls, so the same anchor serves landslide step 8
+   (walls on slopes) and vul shaking rw step 9 (flat-land walls). Flat-land
+   walls are mostly under 1.5 m and read the lowest band.
+
 ## Other sources reviewed
 
 - **Rahimi, Firoozfar & Alielahi (2024)** — back-to-back mechanically stabilised earth (MSE) walls with metal strip reinforcement; **overlap length 0.65–0.85H** as the characterisation parameter; scalar and vector fragility on **PGA and PGV**; FLAC2D, far-field vs near-field records. Increasing overlap from 0.65H to 0.85H reduced damage probability by up to 35 % (far-field) and 50 % (near-field).

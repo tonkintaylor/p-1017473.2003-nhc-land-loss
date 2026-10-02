@@ -9,8 +9,9 @@ of that rebuild, steps 3 to 5 and the faces plan up to the wall candidates, was
 reviewed against the GNS literature review (`temp/gns_review/`) on 2026-10-02
 and is ready to build once the lead settles the step test (Next, 1). The
 second part, the failure polygons, steps 8 and 9 and the anchoring skeleton,
-was reviewed the same day; its proposals wait on the lead (Next, 3). The
-portfolio of large models is proposed, not agreed.
+was reviewed the same day, and so were the large failures; their proposals
+wait on the lead (Next, 3 and 10). The portfolio of large models is proposed,
+not agreed.
 
 **Updated:** 2026-10-02
 
@@ -32,8 +33,15 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   build a new model, or a portfolio of Nowicki Jessee (2018)
   [nowicki_jessee_2018], Kritikos et al. (2015) [kritikos_2015], Hancox et al.
   (1997) [hancox_1997], a strength-based model after Godt et al. (2008)
-  [godt_2008] and a bespoke refit, each calibrated to the total area of Marc et
-  al. (2016) [marc_2016] and the extent of Hancox. Options:
+  [godt_2008] and a bespoke refit. **Each keeps its own published
+  calibration** (the lead, 2026-10-02): scaling every model to one Kaikōura
+  or Marc total would make them agree whatever their structure, and the
+  portfolio would then measure no model uncertainty. Kaikōura, Marc et al.
+  (2016) [marc_2016] and the Hancox extent are tests reported beside each
+  model. A model is calibrated only where its method leaves a gap, from its
+  own source: Kritikos's relative hazard is turned to coverage on its own
+  training events (Northridge, Wenchuan), and Hancox takes its amount from
+  Marc. The table is in the rebuild note, "How they combine". Options:
   `potential-landslide-rebuild.md`; build plans:
   `.agents/plans/building-kritikos-2015-landslide-model.md`,
   `.agents/plans/building-hancox-landslide-model-and-calibration.md`.
@@ -57,13 +65,16 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
   (step 4) and the slope units (step 5).
 - [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
   superseded, because no published method supports it.
-- [>] Find faces, crest to toe, once from the 1 m LiDAR DEM as a static
-  layer, by geomorphons [jasiewicz_stepinski_2013], each with its height and
-  overall angle. A face is a step, and a wall candidate, where it is steeper
+- [>] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
+  static layer, grown from seeds strongest first (revised 2026-10-02 in place
+  of geomorphons), each with its height and overall angle. An element is a
+  free-face, and a wall candidate, where it is steeper
   than its ground stands unsupported at that height, from one lookup of eight
   fixed height bands by three ground groups: NZGS Unit 7C.2 Figure 35 for
-  rock, 35° for soil and fill [nzgs_2025_torlesse]. Build one failure polygon per face: the wedge behind
-  the crest [nzgs_mbie_2017], the runout below the toe [de_vilder_2022;
+  rock, 35° for soil and fill [nzgs_2025_torlesse]; a bank otherwise. Build
+  one polygon per element: a trial wedge on the real profile behind the
+  crest [nzgs_mbie_2017], running to the top of the slope above an excavated
+  toe [kingsbury_1995], the runout below the toe [de_vilder_2022;
   hunter_fell_2003], the Kingsbury rating [kingsbury_1995], checked against
   the SLIDE breaks in slope [townsend_2020] and the Wellington slope profiles
   [hancox_2013_slope_types]
@@ -107,7 +118,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   (exposure rw status). The ground map's two fill changes are built: SLIDE's
   mixed fill classes read their natural material with fill as the
   modification, and fill reads the GNS modelling set S52 (step 4 plan,
-  phase 2); step 4 needs a rerun to see the fill share fall from 71%.
+  phase 2); step 4 needs a rerun to see the fill share fall from 71%. One
+  consequence is left for the rebuild: `evacuated_depth_m` in
+  `landloss.hazard.landslide.urban.geometry` reads the fill thickness only
+  where the material is a fill material, so a mixed fill piece, now rock,
+  colluvium or alluvium with fill as its modification, takes the colluvium
+  depth there. That code belongs to steps 6 to 9, which phase 3 of the faces
+  plan replaces, and a test pins the behaviour, so it was not changed; the
+  face polygons should read the modification, not the material.
 - **Literature models:** Nowicki Jessee (2018) is rebuilt and reproduces the
   USGS at Loma Prieta (`validations/nowicki_2018/`); Marc et al. (2016)
   reproduces the paper's fit (`validations/calibration/`); the Hancox
@@ -166,16 +184,56 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     [dellow_hancox_2006], with one factor set for fill and one for the rest;
     significant landsliding starts at MM8, not MM7 [dowrick_2008].
 
-  A-07, the circular footprint, is retired for the urban population. The
-  large failures (part B) and the walls (part C) are not yet reviewed.
+  A-07, the circular footprint, is retired for the urban population.
+- **Literature review of the large failures, 2026-10-02** (part B of the
+  handoff). Read: step 1 and its placeholders, the rebuild note's portfolio,
+  the Kritikos and Hancox plans, and A-01, A-02, A-04, A-05, A-06, A-09, A-11
+  and A-12. Edited in place: the step 1 plan ("Literature review of the
+  placeholders"), the rebuild note ("What the literature review says about
+  the route"), and the risks of the Kritikos and Hancox plans. Proposals, all
+  for the lead:
+  - **size exponent 1.88**, the reviewed Kaikōura fit above 500 m²
+    [massey_2018]; the 2.1 built is cited to Massey et al. (2020), which is
+    not held, so it cannot be checked;
+  - **the cap is raised from 3,000 m² to 35,000 m²**, about the source area
+    of Gold's 1855 slide on the Hutt Road [brabhaharan_2018] (decided by the
+    lead on 2026-10-02 and built);
+  - **define the urban population by ground, not size**: keep the large
+    model's lower bound where Kaikōura is complete, let urban face failures
+    run past the split, and set `URBAN_AREA_SHARE` to about 0.05, the share of
+    Kaikōura area below 500 m² (3 to 5%, our digitising), not 0.25;
+  - **`BETA_SOURCE_AREA_FRACTION` of about 0.4 to 1.0, not 0.252**, if the
+    ESNZ grid keeps the Kaikōura model's definition (a cell fails where its
+    centroid lies in a source), which makes its mean probability the
+    coverage. The loss from step 1 would rise by up to four times;
+  - **ESNZ as one member, not the base**: GNS's own assessment is that its
+    EIL model under-estimates Wellington [lin_2025];
+  - **Kaikōura is a low case for the amount**, so it is reported as a test
+    with Murchison and Inangahua beside it, season stated
+    [dellow_hancox_2006], and no model is scaled to it (the lead's decision
+    above);
+  - **fault-distance clustering and Kritikos's fault term apply only to a
+    crustal rupture**, not the Hikurangi interface scenario [massey_2018].
+
+  Two documents would settle the biggest of these, the EIL tool reports
+  SR2018/08 and SR2023/04, added to the most-wanted list with Massey et al.
+  (2020).
+- **Literature review of the walls, 2026-10-02** (part C). The Koutsoupaki
+  wall curves fail 30 to 93% of walls at the study's shaking, against about
+  10% in Canterbury at the same PGA, and they have the height trend
+  backwards. This is part of why 88% of sloping walls were replaced in the
+  pilot. The proposal is to anchor the wall medians on Anderson et al. (2015)
+  [anderson_2015]; the detail is in the exposure rw status and
+  `.agents/context/retaining-wall-fragility.md`.
 - The anchoring skeleton and the per-territorial-authority plan are written
   and not reviewed.
 
 ## Next
 
-1. **The lead settles the step test** (faces plan, phase 1): the eight height
-   bands and the angle lookup, the soil-like 35° in particular. The three
-   ground map changes (step 4 plan, phase 2) were accepted on 2026-10-02.
+1. **Settled 2026-10-02:** the lead confirmed the step test as written (faces
+   plan, phase 1: the eight height bands and the 24-entry angle lookup, the
+   soil-like 35° included) and accepted the three ground map changes (step 4
+   plan, phase 2).
 2. **Rebuild the first part**, in this order, each on the pilot:
    1. one extent for every step and the vectorised zonal statistics (faces
       plan, phase 0);
@@ -186,8 +244,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       2026-10-02; the Wellington Fault sheared zone not yet), then rerun
       step 4 over the common extent and review its area shares and strength
       picks;
-   4. the faces layer (faces plan, phase 1) and its figures, for the lead's
-      review;
+   4. the slope elements layer (faces plan, phase 1), proven on toy terrain
+      and then on pilot examples with figures for the report (the plan's
+      development stages D1 and D2), each for the lead's review;
    5. the wall candidates and their probability on the faces (faces plan,
       phase 2; exposure rw step 6, phase 2e), and the phase 4 checks that need
       only the walls: GNS mapped wall recall and the height shape against
@@ -204,15 +263,20 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    edited to match.
 5. Run per territorial authority (per-TA plan).
 6. Ask the supplier what an ESNZ cell's probability is a probability of, and
-   what shaking it is conditioned on.
-7. Choose the large-model route, and run Nowicki Jessee over Wellington and the
-   calibration on Kaikōura.
+   what shaking it is conditioned on, and in particular whether it keeps the
+   Kaikōura model's centroid definition (step 1 plan, "Literature review of
+   the placeholders"). Download GNS SR2018/08 and SR2023/04, the forecast
+   tool reports, which may answer it first.
+7. Choose the large-model route. Run Nowicki Jessee over Wellington as the
+   USGS runs it, with its Kaikōura test reported, and build model 3 with
+   Marc's scenario total as its amount (Hancox plan, phase 6).
 8. Replace the large-model runout rule with the de Vilder et al. (2022) reach
    angles; the urban rule is in the faces plan, phase 3.
 9. Add imminent-risk land to each large landslide (**T-45**), with the same
    repose-line rule proposed for the urban faces.
 10. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
-    phase 3).
+    phase 3), after the lead decides the review's proposals for the exponent,
+    the cap, the urban share and the source fraction.
 
 ## Validation
 
@@ -242,8 +306,11 @@ otherwise.
   the extend route is chosen.
 - **The large-model route**: extend ESNZ, build new, or the portfolio.
 - **The large/small split**: 500 m² agreed as the working threshold, 700 m² as
-  built (`LARGE_MIN_SOURCE_AREA_M2`).
-- **The largest credible single failure**, the 3,000 m² cap.
+  built (`LARGE_MIN_SOURCE_AREA_M2`). The review proposes keeping it as the
+  large model's lower bound only, with the urban population defined by
+  ground and free to run past it (step 1 plan).
+- **The largest credible single failure**: the cap was raised to 35,000 m²
+  (the lead, 2026-10-02), about Gold's slide.
 - **How much spatial correlation** to add.
 - **Which runout relation** replaces the translation. For the urban faces the
   review proposes the de Vilder et al. reach angles from the crest, dry for

@@ -61,9 +61,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   walls on flat land fail by shaking in `vul/shaking/rw`.
 - [~] **Set condition from the age of the dwelling** (step 8, below); not yet
   read onto the lines.
-- [ ] **Constrain the wall count per property with the claim report
-  extraction** (**T-50**), arriving later as a minimum and maximum per
-  property; `apply_count_bounds` is written and not called. The SME suburb
+- [ ] **Raise the wall probabilities on a claimed property from the walls
+  its claim report lists** (**T-50**), holding a share of claims out for the
+  cross-validation (Wall datasets, below; the lead, 2026-10-02). This replaces
+  `apply_count_bounds`, which is written and not called. The SME suburb
   estimate, the manual mapping, the remote sensing pilot and the ICNZ database
   will not be obtained (decided 2026-10-01).
 - [ ] **Settle a replaced wall against the $50,000 per dwelling sub-cap**, plus
@@ -132,6 +133,66 @@ yet.
   now (the lead, 2026-10-02). Failing a property-level age, an SA2 proxy from
   Stats NZ consents; detail in `rw-notes.md`.
 
+## Wall datasets: access and use
+
+Three datasets record walls. All three are incomplete, each in its own way.
+They are compared property by property in
+`validations/rw_dataset_comparison.md` (2026-10-02). They agree no better than
+chance (kappa 0.03 between GNS and NZMM), so none of them can be the truth.
+
+| Dataset | Access | What it locates | Covers | What it misses |
+|---|---|---|---|---|
+| GNS SLIDE mapped walls [townsend_2020] | `get_gns_slide_morphology`, `Type == MAPPED_WALL_TYPE`; Koordinates 125308 (T+T instance), CC BY 4.0 | A line: 11,288 segments, 280 km | Urban Wellington City | Walls not visible from above; flags 21% of properties |
+| NHC NZMM land attributes | `get_nzmm_land_attributes`, `has_retaining_wall`; on T: under `SENSITIVE/`, put on LINZ polygons via `qv_rating_roll.linz_valuation_reference`; sensitive, aggregates only | A property, Y/N | Four councils | Flags 3% of properties; how it is filled is not documented |
+| Claim reports | `extract_claim_reports.py` output (`reports.csv`, `walls.csv` per claims list), held on U: (`validations/config.py`); private, aggregates only | A property: count, construction, length and height per wall; no position | 1,551 claimed properties, mostly hill land | Walls that do not matter to the claim |
+
+How each can be used:
+
+- [x] **GNS is the only one that locates a wall**, so it is the only one that
+  is evidence on a candidate line. It is already used as a floor on `p_wall`.
+- [ ] **NZMM and the claims locate a property, not a wall.** At most they can
+  say how many walls a property has. They cannot say which candidate line
+  is the wall.
+- [ ] **Do not fit `p_wall` to any of them.** Each is a lower bound, biased
+  in its own way: GNS to walls visible from above, the claims to walls that
+  mattered to a claim on hill land, and NZMM to something not yet known (it
+  sits on claimed properties four to six times as often as on others). Fit
+  to any of them and the model inherits its gaps. Even taken together they
+  find a wall on only 51% of the claimed properties where an engineer listed
+  one.
+- [ ] **Hold them out and cross-validate at the end**, once the face-based
+  candidates and `p_wall` are settled (Validation, below). The checks are
+  one-sided, because a dataset with no wall is not evidence of no wall:
+  - **Claims, per property:** the modelled expected walls (the sum of
+    `p_wall` on the property's lines) against the walls the report lists. The
+    model should reach the listed count on most claimed properties. Score
+    P(at least one wall) on the properties whose report lists a wall. Also
+    score lists-a-wall against lists-none, as a weak contrast only.
+  - **GNS, per line:** the share of mapped walls that a candidate line finds
+    (the recall already planned in the faces plan, phase 4).
+  - **All three, per stratum** (NZMM slope class, council, age bin): the
+    modelled share of properties with a wall should not fall below the share
+    any dataset, or their union, records. A stratum where it does is one where
+    the model has too few walls.
+  - **NZMM:** only after NHC says how the flag is filled.
+- [ ] **Let a claim report raise each wall's probability, not set a
+  minimum count** (the lead, 2026-10-02). On a claimed property whose report
+  lists n walls, each candidate line's `p_wall` is updated on the evidence
+  that at least n of the property's lines are walls:
+  P(line is a wall | at least n walls) = p × P(at least n − 1 of the other
+  lines) / P(at least n of all lines), each from the Poisson-binomial of
+  the lines' priors. Every line rises or stays, never falls, and the
+  expected count rises towards n without being forced to it. A report listing
+  no walls changes nothing, because it is not evidence of no wall. This is
+  proposed; how to meet it is not settled.
+  - It replaces `apply_count_bounds`, whose maximum lowers probabilities and
+    whose scaling ignores the priors' shape. Remove it with the change.
+  - A random, seeded share of claims (say 30%) is held out and never
+    updated, so the cross-validation scores the model on claims it did not
+    see.
+  - If a property has fewer candidate lines than listed walls, every line goes
+    to 1 and the shortfall is reported as candidates missing, not hidden.
+
 ## Loss contract
 
 What this module owes the retaining wall table `loss` reads
@@ -179,7 +240,27 @@ What this module owes the retaining wall table `loss` reads
     twice as far as a cut wall's [de_vilder_2022];
   - about a third of Canterbury walls fell in the Average or Poor performance
     classes, which the two damage states cannot hold (`anderson2015-F09`);
-    this is for part C, the wall fragility review.
+    part C below proposes reading them as "none".
+- **Literature review of wall performance and condition, 2026-10-02** (part C
+  of the handoff). The detail is in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury" and in
+  the "Literature review" section of `assets/choice-of-rwt-bin-ages.md`.
+  Proposals, all for the lead:
+  - **the wall curves**: the Koutsoupaki curves fail 30 to 93% of walls at
+    the study's 1.0 to 1.7 g. Over the whole Canterbury sequence, at the same
+    PGA, about 10% of Port Hills walls were Very Poor [anderson_2015]. Anchor
+    the medians on Canterbury by height (about 3.1 to 2.0 g, ours) and keep
+    only Koutsoupaki's condition ratio;
+  - **the six classes**, named after Anderson's wall types, with
+    Wellington's mix of types to come from the claim reports (**T-50**);
+  - **"replace" is Very Poor**, with Poor as the high case;
+  - **condition from age**: keep the four bins, with `pre_1970` as the
+    gravity masonry era that Anderson found performed worst. Read 1960 and
+    the mid-1970s into the fill's engineered or uncontrolled class, not into
+    `p_poor`. The oldest Wellington fills performed well, so a fill's age
+    alone should not raise its failure rate (`sr2013-058-F26`);
+  - **one naming fix**: `wall_probability` splits `p_poor` at 1990, where
+    the bins and the Building Act split at 1992, so the constants should be
+    renamed to follow the bins.
 
 ## Next
 
@@ -198,8 +279,10 @@ What this module owes the retaining wall table `loss` reads
    it.
 5. Bring slope, height, position and subdivision age into `p_wall`, and wall
    type into `p_poor`.
-6. Read the claim report extraction (**T-50**) when it lands, and constrain the
-   count per property.
+6. Once `p_wall` is settled, raise it on the claimed properties that are not
+   held out, using the walls their reports list, in place of
+   `apply_count_bounds`. Then cross-validate on the held-out claims, GNS and
+   the strata (Wall datasets, above; `validations/`).
 7. Record where the collected input datasets are held, so the inputs are
    reproducible.
 8. Delete the two height-range constants once the loss owner has moved the
@@ -208,20 +291,29 @@ What this module owes the retaining wall table `loss` reads
 ## Validation
 
 - Wall count and length per property against the claim report extraction
-  (**T-50**), once it lands; the only independent measure of prevalence.
+  (**T-50**), the only on-site record; one-sided, as a lower bound (Wall
+  datasets, above).
 - The share of the GNS mapped walls with a detected step under them, which
   replaces the fixed 0.9 detection figure (faces plan, phase 4).
 - Drawn wall heights against Anderson et al.'s Canterbury shares, 54% under
   1.5 m, 26% 1.5 to 2.5 m, 20% over 2.5 m [anderson_2015], as a shape check:
   their sample leans to road walls and walls over 1.5 m.
-- The NZMM retaining wall flag per address (`landloss.io.nzmm_land_attributes`)
-  against the addresses with a stepped candidate.
+- The modelled share of properties with a wall, per NZMM slope class,
+  council and age bin, against the share each dataset and their union records
+  (`validations/rw_dataset_comparison.md`). The NZMM flag only once NHC says
+  how it is filled.
 - The step 8 age rules against Christchurch's open valuation roll
   (`validations/table_rwt_age_christchurch.py`).
 
 ## Open decisions
 
-- The six wall classes, which the fragility table waits on.
+- The share of claims held out from the claim report update, and whether the
+  held-out claims get the update in the loss run once the check is done.
+- Ask NHC how the NZMM `RetainingWallInd` is filled. It flags 3% of
+  properties, and claimed properties far more often than others.
+
+- The six wall classes, which the fragility table waits on; the review
+  proposes Anderson's types.
 - Whether repair cost scales with wall length or height, and the fixed costs per
   job (**T-32**).
 - What separates modern from poor, and the age that divides them. The step 8

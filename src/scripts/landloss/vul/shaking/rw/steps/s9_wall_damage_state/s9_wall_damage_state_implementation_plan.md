@@ -58,6 +58,25 @@ Contract sections 3.11 and 7.12 of `.agents/plans/urban-slope-build-contract.md`
 - [ ] Rerun the pilot once exposure rw step 6 writes the world-keyed population
       carrying `is_flatland`, and shaking step 5 the PGV realisations.
 
+## Literature review (2026-10-02)
+
+Part C of the second review read the wall curves against the Canterbury wall
+population [anderson_2015]. The detail is in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury".
+Proposals for the lead:
+
+- [ ] Replace the Koutsoupaki medians in `retaining-wall-fragility.csv` with
+      medians anchored on the Canterbury Very Poor share by height: about
+      3.1 g under 1.5 m to 2.0 g over 3.5 m, at β 0.6 (ours). Keep the
+      Koutsoupaki modern-to-poor ratio for condition. At 1.0 to 1.7 g the
+      current curves fail 30 to 93% of walls, against about 10% observed.
+      Flat-land walls are mostly in the lowest band.
+- [ ] Keep two states. "Replace" is Anderson's Very Poor, with the Poor class
+      added as the high case.
+- [ ] Name the six classes after Anderson's wall types: gravity masonry,
+      concrete block, timber pole, crib, gabion, and MSE or engineered
+      concrete. Index the curves on them once the claim report extraction
+      (**T-50**) gives Wellington's mix of types.
+
 ## Phase 3 — Once the shaking field varies within a site class
 
 - [ ] Rerun when a ground motion model, rather than one factor per

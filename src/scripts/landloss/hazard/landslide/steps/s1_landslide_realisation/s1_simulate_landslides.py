@@ -151,7 +151,15 @@ LANDSLIDE_ID_COLUMN = "landslide_id"
 # controlling total area; neither holds now. The exponent sets the shape of the
 # sizes and nothing else: the count per unit is drawn to deliver an expected
 # area, so the total area does not move with it.
-MAX_SOURCE_AREA_M2 = 3000.0
+#
+# The upper bound is at least the largest Wellington earthquake landslide on
+# record: Gold's slide on the Hutt Road in 1855, about 300,000 m³
+# [brabhaharan_2018] (the project lead, 2026-10-02, raised from 3,000 m²). It
+# is set at 35,000 m² of source, about what the volume-area law gives for
+# 300,000 m³ (34,000 m²). The mean source area on these settings is about
+# 2,500 m², and about 60% of the large-failure area is in failures above
+# 3,000 m².
+MAX_SOURCE_AREA_M2 = 35_000.0
 SIZE_EXPONENT = 2.1
 
 # The share of a failing cell's area that becomes source. The supplied grid

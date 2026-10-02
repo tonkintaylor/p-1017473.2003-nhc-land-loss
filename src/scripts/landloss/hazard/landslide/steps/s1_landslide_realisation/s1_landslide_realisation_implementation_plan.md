@@ -100,7 +100,9 @@ The numbers the contract asks this plan to record:
   0.252) is 0.74% = 0.99% × (1 − 0.25). A beta placeholder until phase 3
   calibrates it.
 - The mean of the truncated law on [700, 3000] m² at 2.1 is **1,306 m²**, so a
-  unit expecting 1,306 m² of large failure draws one failure on average.
+  unit expecting 1,306 m² of large failure draws one failure on average. The cap
+  was raised to 35,000 m² on 2026-10-02, which puts the mean at about
+  2,500 m² and roughly halves the count per unit for the same expected area.
 
 - [x] Mask the probability to off-flatland ground before the expected area
       and the seeding read it, so no large landslide starts on NLM flatland
@@ -181,15 +183,155 @@ The numbers the contract asks this plan to record:
 - [ ] Judge the model on the full extent, not the pilot: the pilot is largely
       flat suburb and exercises the code, not the model.
 
+## Literature review of the placeholders (2026-10-02)
+
+Part B of the second review (`temp/handoff-remaining-review.md`) read this
+step against `temp/gns_review/` (finding ids in backticks,
+`out/findings.csv`). Every item below is a **proposal for the lead**. Numbers
+that are ours (a conversion, a reading, a judgement) say so. Each first-batch
+finding used here was checked against its page on 2026-10-02.
+
+- [ ] **The size exponent: 1.88, not 2.1.** The Kaikōura source areas follow a
+      power law with exponent 1.88 above x_min = 500 m², fitted by the Clauset
+      et al. method, and roll over at 50 to 100 m² [massey_2018]
+      (`massey2018-F10`, checked against the text). The 2.1 in
+      `SIZE_EXPONENT` is cited to Massey et al. (2020) [massey_2020], which is
+      neither held in `context/lit/` nor in the review set, so it cannot be
+      checked here. Use 1.88 unless the 2020 paper is obtained and shows 2.1
+      for a greywacke subset. Murchison and Inangahua fit 2.62 and 2.71, but
+      above 10,000 m² (`massey2018-F11`). They are the evidence for a
+      steeper tail, not for the range drawn here. An exponent below 2 puts
+      most of the area in the largest failures, so the cap (next item)
+      matters more than it does at 2.1.
+- [x] **The cap: raised from 3,000 m² to 35,000 m²** (the lead, 2026-10-02:
+      about Gold's slide; built as `MAX_SOURCE_AREA_M2`). The review had
+      proposed about 30,000 m². The record is far above 3,000 m²:
+  - Kaikōura sources reach about 550,000 m² (`massey2018-F09`);
+  - in 1855 the one sizeable slip on the Wellington-Petone road was about
+    1.2 ha [grapes_downes_1997] (`grapes1997-F01`), and Gold's slide on the
+    Hutt Road was about 300,000 m³ [brabhaharan_2018] (`brabhaharan2018-F10`);
+  - the largest Wellington landslide of the last 140 years is about
+    250,000 m³ on the Wellington Fault scarp at Te Marua, from rain
+    [hancox_2013_slope_types] (`sr2013-058-F23`, checked against the page);
+  - coseismic cut failures in New Zealand run to 10⁵ m³ and occasionally
+    10⁶ m³ (`brabhaharan2018-F01`).
+
+  Gold's 300,000 m³ is about 34,000 m² by inverting the volume-area relation
+  (**ours**, A-06). The proposed cap, 30,000 m², is a judgement at that order
+  for hillsides near houses. The 1855 Rimutaka slips, median about 3.6 ha
+  (`grapes1997-F19`, our digitising), belong to the ranges rather than the
+  suburbs. **A check that the pair works:** with 1.88 between 700 and
+  30,000 m², the mean source area is about 3,000 m² (ours), inside the 2,100
+  to 3,700 m² digitised from Kaikōura (`massey2018-F14`). The law as built
+  gives about 1,300 m². At a fixed expected area the count falls by about
+  half, and about two thirds of the large-failure area moves into failures
+  above 3,000 m² (ours).
+- [ ] **The split and the urban share.** The lead thinks 500 m² may be too low
+      (A-01, 1 October), and the evidence agrees that modified-slope failures
+      cross it. New Zealand coseismic cut failures are generally 10³ to
+      10⁵ m³ (`brabhaharan2018-F01`, `sr2015-016-F06`), about 680 to
+      16,000 m² (ours). Hunter and Fell's cut failures run to 52,000 m³ and
+      their fills to 10,500 m³ [hunter_fell_2003] (`hunter2003-F39`). The
+      proposal is to stop treating the split as a size at all on the urban
+      side:
+  - the large population starts at `LARGE_MIN_SOURCE_AREA_M2`, kept at
+    500 to 700 m², because that is where the Kaikōura inventory is complete
+    and fitted (`massey2018-F10`);
+  - the urban population is defined by ground, a face (faces plan, phase 3),
+    and its segments run to their own volumes, so an urban failure can exceed
+    the split;
+  - where the two overlap, step 9's supersession already decides.
+
+  On that reading `URBAN_AREA_SHARE` is the share of a green-field
+  inventory's area below the split. At Kaikōura, sources under 500 m² are
+  about 53 to 66% of the count but only 3 to 5% of the area
+  (`massey2018-F13`, our digitising of Figure 2a). **The placeholder 0.25 is
+  five times the published shape. Proposal: 0.05, until the research script
+  measures it below 700 m² from `landloss.io.kaikoura`.**
+- [ ] **`BETA_SOURCE_AREA_FRACTION`: what the grid's probability is.** The
+      Kaikōura model GNS published counts a 32 m cell as a landslide where its
+      **centroid** falls inside a source area, debris trails excluded and
+      sources under 50 m² removed (`massey2018-F29`, checked against the
+      text). Under that definition a cell's probability is the chance that a
+      point at its centre is in a source, whose expectation over many cells is
+      the source-area fraction. So the fraction is about 1, and the coverage
+      is the mean probability. The open question below rejects the
+      whole-cell reading because it gives 3.9% coverage on the pilot. The
+      review does not support rejecting it on that ground:
+  - the "order of 1%" target comes from Kaikōura, where most landslides lay
+    at 0.4 to 1.0 g (`massey2018-F05`), and the grid is read at the file
+    name's 2 g;
+  - GNS's own assessment is that its EIL model under-estimates landslide
+    hazard in the Wellington region (`sr2025-001-F05`, checked against the
+    page);
+  - its 2,475-year map is mostly Very low or Low over the four councils' hills
+    (`sr2025-001-F08`, checked against the map).
+
+  Two things still argue for something below 1. First, the paper's
+  cell-based coverage (1.4%, `massey2018-F04`) is about 2.5 times its
+  polygon-based coverage (0.56%, `F03`), unreconciled. Second, few
+  high-probability cells held landslides: 26 of the 228 cells above 50%
+  (`F30`). **Proposal: a range of about 0.4 to 1.0 in place of 0.252, with
+  the supplier asked whether the ESNZ grid (Massey, Lukovic and Dellow 2022,
+  `sr2025-001-F20`) keeps the 2018 centroid definition.** If it does, the
+  loss from this step rises by up to four times.
+- [ ] **Coverage cross-check (A-05):** the order of 1% stands as a check, not a
+      target, with the observed range written beside it:
+  - Kaikōura, 0.56% of the 3,600 km² main area by polygons and 1.4% by cells;
+    greywacke 0.6% (`massey2018-F02`, `F03`, `F04`);
+  - Inangahua, at least about 0.6% of the main area (`sr2015-016-F12`,
+    ours);
+  - the worst-hit southern Rimutaka Range in 1855, about 5 to 7% of the land
+    (`grapes1997-F19`, our digitising), the extreme near a rupture.
+
+  Wet ground raises both density and extent: winter earthquakes affect 2 to
+  2.5 times the area of summer ones [dellow_hancox_2006] (`dellow2006-F05`,
+  our digitising).
+- [ ] **Shape:** keep `SOURCE_ASPECT_RATIO` 2.0 until it is measured. The one
+      direct observation is two to one: 1855 slips at Green's Stream were about
+      20 m long and 10 m wide (`grapes1997-F20`). Flows are elongate
+      [nzgs_2025_recognition] (`nzgs2025-u2-F05`).
+- [ ] **Volume from area (A-06):** the relation holds for shallow disrupted
+      failures. Most Northridge failures were 1 to 5 m thick
+      (`brabhaharan2018-F30`), which it matches (1.3 m at 500 m², 3.7 m at
+      5,000 m², ours). It under-reads deep-seated ones: the Cook Strait
+      rotational slump was about 100,000 m³ against about 30,000 m³ from its
+      plan area (`sr2013-042-F18`, ours, dimensions read as width, depth and
+      length). It also under-reads fills up to 18 m thick (`brown2005-F05`).
+      Keep it for the large population, and note that it under-reads where a
+      failure reactivates a deep slide.
+- [ ] **Runout (A-08):** replace the slope ramp with the dry debris avalanche
+      reach angle from the crest [de_vilder_2022] (`sr2019-038-F03`, checked
+      against Figure 2.3), below 100,000 m³, and the rock avalanche line above
+      it (`F06`). This is the same construction as the urban faces (faces plan,
+      phase 3), so one function serves both. Phase 4's "check reach angles
+      against the inventory" stays.
+- [ ] **Clustering (A-09):** Kaikōura landslide density within 200 m of a
+      ruptured fault is up to three times the background, decaying over 2.5 to
+      3 km (`massey2018-F21`), and seven of the eight largest landslides were
+      crossed by rupture (`F18`). Small and large failures cluster in
+      different places (`F23`). This is a property of a crustal rupture: under
+      the Hikurangi interface scenario no fault ruptures at the surface in the
+      study area, so it does not apply. **Proposal:** correlate through the
+      shaking realisation in the interface scenario, and add a rupture
+      distance term only if a Wellington Fault scenario is run.
+      Preconditioning by an earlier earthquake also clusters failures
+      (`F24`).
+
 ## Open questions
 
 - **What the supplied probability means.** The *rate* is now read as the
   expected failed area per unit, and the phase 1 calibration — 258 m² of
   source per failing 1,024 m² cell — is the only thing tying it to an areal
-  coverage. The reading that a failing 32 m cell fails whole is rejected: it
-  would put coverage at 3.9%, four times the literature. If the supplier
-  confirms the whole-cell reading anyway, `BETA_SOURCE_AREA_FRACTION` becomes
-  1.0 and the loss rises by about four times.
+  coverage. The reading that a failing 32 m cell fails whole was rejected
+  because it would put coverage at 3.9%, four times the literature. The
+  2026-10-02 review questions that rejection: GNS's published Kaikōura model
+  defines its probability by a cell's centroid falling in a source, which
+  makes the mean probability the coverage, and the 1% target was observed at
+  lower shaking than the grid is read at (see "Literature review of the
+  placeholders", `BETA_SOURCE_AREA_FRACTION`). If the supplier confirms that
+  definition, the fraction is about 0.4 to 1.0 and the loss rises by up to
+  about four times.
 - **What shaking level the grid is conditioned on.** Taken from the file name
   (`EILProb_PGA2g.tif`) and unconfirmed. The step runs either way; the report
   cannot describe the result without it.

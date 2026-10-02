@@ -63,11 +63,13 @@
   contributes nothing, so a unit off the grid is never seeded.
 - **The count per unit** is a Poisson draw, `draw_counts()`, with mean the
   unit's expected area over the mean of the size law,
-  `truncated_power_law_mean_m2()` — 1,306 m² on the committed settings. The
+  `truncated_power_law_mean_m2()` — about 2,500 m² on the committed settings. The
   unit decides where a failure starts, not how large it can be.
 - **Size** is drawn per failure by `sample_areas()` from a bounded power law
   between `LARGE_MIN_SOURCE_AREA_M2` (700 m², the top of the urban range) and
-  `MAX_SOURCE_AREA_M2` (3000 m²), with exponent `SIZE_EXPONENT` of 2.1, the
+  `MAX_SOURCE_AREA_M2` (35,000 m², about the source area of Gold's 1855 slide
+  on the Hutt Road, about 300,000 m³ [brabhaharan_2018], by the volume-area
+  law; the project lead's choice on 2026-10-02), with exponent `SIZE_EXPONENT` of 2.1, the
   Kaikōura greywacke fit of [massey_2020], which holds above a cutoff near
   500 m² and so over the whole range drawn. The exponent sets the shape of the
   sizes and, through the mean, the count; the total area is the expected area
