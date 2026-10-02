@@ -1,11 +1,16 @@
 # Landslide hazard: status
 
-**Status:** A first cut of the extend-ESNZ route is running, and the Nowicki
+**Status:** A first cut of the extend-ESNZ route ran over the pilot and the
+full extent and is now reworked onto slope units, not yet rerun; the Nowicki
 Jessee (2018) model is rebuilt and checked; the portfolio of models is proposed
 but not agreed, apart from the large/small split and the urban model's coupling
-to the retaining walls.
+to the retaining walls. Phases 1 to 4 of the urban build (terrain derivatives,
+ground map, slope units, candidates, failure polygons, fragility, the large and
+urban draws) are built and tested on synthetic inputs; of it only the step 3
+DEM, slope and aspect have been run over the pilot, and the fragility anchoring
+has not been run.
 
-**Updated:** 2026-10-01
+**Updated:** 2026-10-02
 
 ## Approach
 
@@ -55,7 +60,11 @@ on modified slopes: one urban model. A strength-based model after Godt et al.
 area. Set out in `potential-landslide-rebuild.md`; not yet agreed, apart from the large/small split, which is agreed (500 m² of
 source area as the working threshold). The project lead now thinks 500 m² may be
 too low (2026-10-01): three GNS reports put cut and fill failures at
-10²–10⁵ m³, which spans it. Extend-ESNZ becomes the GNS member of it.
+10²–10⁵ m³, which spans it. The build places the boundary at 700 m² instead
+(`LARGE_MIN_SOURCE_AREA_M2`, the top of the urban size range, decided in
+section 3.9 of `.agents/plans/urban-slope-build-contract.md`), against the
+agreed working 500 m²; that move is for the lead to confirm, under
+`## Open decisions`. Extend-ESNZ becomes the GNS member of it.
 Build plans for models 2 and 3, and for the calibration of every large model,
 are in `.agents/plans/building-kritikos-2015-landslide-model.md` and
 `.agents/plans/building-hancox-landslide-model-and-calibration.md`.
@@ -76,7 +85,40 @@ alone and fail by shaking in `vul/shaking/rw`. An urban failure rate setting,
 low, medium or high, scales the fragilities and is reported with every result.
 Topographic amplification is folded into each polygon's fragility. The geometry
 rules and the rate anchoring are still open; see `## Open decisions`. The build
-plan is `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
+plan is `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`
+and the interface contract every step is built against is
+`.agents/plans/urban-slope-build-contract.md`.
+
+Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
+
+- [x] Extend step 3 to 1 m, write the aspect per scale, and derive face height,
+  cut-and-fill residual, profile curvature, topographic position and
+  vegetation height (`s3_multiscale_slope`).
+- [x] Build the ground map, one planar partition carrying material,
+  modification, prior failure, groundwater and a strength set per piece
+  (`s4_ground_map`); QMAP and the NZGD boreholes are not read.
+- [x] Cut slope units on the 10 m grid for the large models, after
+  `r.slopeunits`, on the repository's own flow routing (`s5_slope_units`).
+- [x] Delineate the urban failure candidates at 1, 3, 10 and 30 m by banded
+  connected components within 100 m of a building (`s6_urban_slope_candidates`).
+- [x] Reconcile the candidates to the wall lines and fix each polygon's
+  evacuated, inundated and imminent geometry per wall state
+  (`s7_urban_slope_polygons`); two rules await the lead, under
+  `## Open decisions`.
+- [~] Run steps 3 to 7 over the pilot in order, with the exposure wall lines
+  between 6 and 7, and check the figures by eye; the step 3 DEM, slope and
+  aspect are run, the rest is not.
+- [~] Attach a fragility per polygon and wall state, anchored to the rate
+  setting (`s8_urban_slope_fragility`, phase 3); the step and the anchoring
+  validation (`validations/urban/`) are built, the anchoring is not run, so the
+  localised medians and dispersion and the low and high rate factors are
+  placeholders.
+- [x] Rework step 1 onto the slope units with ellipse sources and draw the
+  urban failures per world and earthquake (`s9_urban_slope_realisation`,
+  phase 4).
+- [ ] Run steps 8, 1 and 9 over the pilot after the exposure wall population,
+  with the lead's review of the step 8 model file before any earthquake is
+  drawn.
 
 **Forward-use scenario, for the report.** Where a landslide model or its
 calibration needs a magnitude or a source distance, every site in the study
@@ -185,28 +227,39 @@ summed.
 
 ## Where it is now
 
-`steps/s1_landslide_realisation/` holds a runnable first cut of the extend-ESNZ
-route. It reads the supplied 32 m probability grid, samples every cell
-independently, gives each failure a size from a bounded power law and a circular
-footprint, drops the smaller of any overlapping pair, and moves each one downhill
-by a distance that grows with the slope — emitting the source polygon as
-`evacuated land` and the displaced polygon as `inundated land`. The slope and
+`steps/s1_landslide_realisation/` holds the large model of the extend-ESNZ
+route, reworked onto the slope units in phase 4 of the urban build. It
+resamples the supplied 32 m probability grid onto step 3's 10 m DEM grid, sums
+the expected failed area per step 5 slope unit net of a 25% urban share, draws
+a Poisson count per unit and a size per failure from the Kaikōura power law
+(exponent 2.1) truncated to 700–3,000 m², seeds each at a crest-weighted
+high-probability cell, places an ellipse along the downhill azimuth that
+crosses unit boundaries when larger than its unit, drops the smaller of any
+overlapping pair, and moves each one downhill by a distance that grows with the
+slope — emitting the source polygon as `evacuated land` and the displaced
+polygon as `inundated land`, with `population` `large`, its `unit_id` and an
+`LS` id. No large landslide starts on NLM flatland: the probability is masked
+there from the step 4 ground map (the lead, 2026-10-02), not yet rerun. The slope and
 downhill direction it uses are in `landloss.common.utils.terrain`, and the reader
 for the grid is `landloss.io.source_material`; both are library code with tests,
 because they will outlive whatever the model turns into. Its method and its
 phased plan are in the step folder.
 
-It has been run against the real grid over both the pilot box and the full
-study area. The pattern is right -- the hills either side of the Hutt Valley and
-around Porirua are dense and the valley floors are clear -- and the figure under
-`report/hazard/landslide/landslide-realisation/fig/` is how that was checked.
-The current run figures, and the calibration of the size distribution behind
-them, are in `steps/s1_landslide_realisation/s1_landslide_realisation_method.md`;
-the questions they raise are under `## Open decisions`.
+The version before the rework, sampling every 32 m cell independently with
+circular footprints, was run against the real grid over both the pilot box and
+the full study area. The pattern was right -- the hills either side of the Hutt
+Valley and around Porirua are dense and the valley floors are clear -- and the
+figure under `report/hazard/landslide/landslide-realisation/fig/` is how that
+was checked. Its areal coverage calibration is restated in the rework as the
+placeholder `BETA_SOURCE_AREA_FRACTION` (0.252), recorded with the size law in
+`steps/s1_landslide_realisation/s1_landslide_realisation_implementation_plan.md`.
+The reworked step is tested end to end on a synthetic three-unit plane and has
+not been run; the questions it raises are under `## Open decisions`.
 
 Two of the three gaps are closed only nominally. There are small failures now,
-but their size distribution is fitted to nothing; there is runout, but it is a
-rigid translation along one bearing. Spatial correlation is not addressed at all.
+drawn by the urban model, but on placeholder fragilities; there is runout, but
+it is a rigid translation along one bearing. Spatial correlation exists only
+within a slope unit.
 
 The folder also holds `validations/fig_landslide_vulnerability_model_gwrc.py`,
 which draws the Greater Wellington zonation the result gets checked against.
@@ -215,6 +268,73 @@ The Nowicki Jessee (2018) model is rebuilt as library code in
 `landloss.hazard.landslide.models.nowicki_2018`, with its source datasets
 fetched to T: by `static_data_gen/` and checked against the USGS in
 `validations/nowicki_2018/`. It has not yet been run over Wellington.
+
+**Phases 1 to 4 of the urban build** are in the repository, each step with its
+method and plan under `steps/`, every library function tested on synthetic
+inputs, and only the step 3 DEM, slope and aspect run over the pilot:
+
+- `steps/s3_multiscale_slope/` builds the DEM, slope and aspect at 1, 3, 10,
+  30, 50 and 100 m from one 1 m LINZ fetch, and `gen_terrain_derivatives.py`
+  writes face height, cut-and-fill residual, profile curvature, topographic
+  position and vegetation height (from a new LINZ 1 m surface model reader,
+  `landloss.io.readers.get_dsm`). `gen_multiscale_slope.py` is run over the
+  pilot (the DEM, slope and aspect at all six cell sizes are in
+  `temp/hazard/landslide/`); `gen_terrain_derivatives.py` and the two figure
+  scripts are not yet run over the pilot.
+- `steps/s4_ground_map/` writes `ground-map[-pilot].geoparquet` from the SLIDE
+  materials, the 1:50,000 geology, the NLM `l3_yp`, the SLIDE genesis, the WCC
+  earthworks, the thresholded residual and the NLM groundwater over the flat
+  land, by precedence in `landloss.hazard.landslide.ground_map`; the strength
+  set per material is one row of `wellington-greywacke-strength.csv` per
+  grade, chosen by a rule the tests pin. Material is `unknown` outside the
+  three material sources because QMAP has no reader.
+- `steps/s5_slope_units/` writes `slope-units[-pilot].geoparquet`, half-basins
+  of each channel link merged by aspect and split over 50 ha
+  (`landloss.hazard.landslide.slope_units`, on `hydrology.route_grid`; pysheds
+  is not used), with the unit count's sensitivity to the channel threshold
+  printed.
+- `steps/s6_urban_slope_candidates/` writes
+  `urban-slope-candidates[-pilot].geoparquet`, the banded connected components
+  at each scale with the terrain, distance and ground map attributes on each
+  (`landloss.hazard.landslide.urban.delineation`).
+- `steps/s7_urban_slope_polygons/` writes
+  `urban-slope-polygons[-pilot].geoparquet`: candidates snapped and split to
+  the exposure wall lines, `slope_id`, the wall on each edge, the nesting
+  parent, the Kingsbury rating and zone, the amplification factor and the
+  fixed state geometries and depths (`landloss.hazard.landslide.urban.geometry`,
+  one named function per rule with its source cited).
+- `steps/s8_urban_slope_fragility/` writes
+  `urban-slope-model-wNNN[-pilot].geoparquet` per exposure world, a lognormal
+  on PGV per polygon: the Koutsoupaki et al. (2023) wall curve by size and
+  condition, converted from PGA at the polygon's own PGV/PGA ratio, where a
+  wall was drawn on its edge, insured or not (it reads every wall the world
+  drew, flat-land walls left out), and the localised median from the continuous
+  Kingsbury rating where none was, divided by the amplification factor and
+  multiplied by the rate factor (`landloss.hazard.landslide.urban.fragility`),
+  with a medians table by zone and wall state and a map for the lead's review.
+- `validations/urban/` draws the low, medium and high curves per zone against
+  `urban-fragility-anchors.csv` and fits the localised constants and a
+  dispersion; it reads the TS1170.5 grids and has not been run.
+- `steps/s9_urban_slope_realisation/` draws each polygon per world and
+  earthquake on the urban stream, one uniform per wall line, and if any
+  polygon on a wall fails the wall has failed and every polygon on it fails
+  (the lead's rule, 2026-10-02); it prints the rate setting, supersedes the
+  failed polygons that share ground with a large-model evacuated polygon, then
+  absorbs nested failures among the rest largest first, and writes the
+  survivors' evacuated, inundated and imminent land beside the large rows as
+  `landslide-realisation-wNNN-rNNN[-pilot].geoparquet`, with
+  `urban-wall-outcome-wNNN-rNNN[-pilot].parquet` naming each sloping-land
+  wall's outcome (`landloss.hazard.landslide.urban.realisation`).
+- `gen_hazard.py` runs in two passes: `main()` for shaking, liquefaction and
+  landslide steps 3 to 6 then 1, and `main_urban()` for steps 7 to 9 after the
+  exposure module.
+
+Steps 3 to 6 hold whole grids in memory, so the full extent at 1 m needs
+tiling before they can run, and each of their plans names that as its phase 2.
+The likely route is to run per territorial authority (lead, 2026-10-02);
+step 7's phase 2 decides whether its polygon count fits in memory. Step 1's
+full-extent run is its phase 6. Steps 8 and 9 work on the model's vector rows,
+hold no grid and have no tiling phase.
 
 ## Next
 
@@ -229,8 +349,9 @@ fetched to T: by `static_data_gen/` and checked against the USGS in
    with a Newmark displacement. Both are placeholders and both move the answer.
 4. Add spatial correlation, which is the largest remaining error and the one that
    most affects the shape of the loss distribution rather than its average.
-5. Intersect the result with insured land per claim, keeping loss of support and
-   runout separate because `vul` needs them per cause.
+5. Run the vul land damage step on the combined realisation over the pilot.
+   The intersection with insured land per claim, keeping loss of support and
+   runout separate, is built in `vul/landslide/land` step 3.
 
 The phased build for the new-model route is in
 `.agents/plans/estimating-eq-landslide-extent-wellington.md`, not here.
@@ -256,6 +377,21 @@ The phased build for the new-model route is in
    with exceedance lines. There, dry earthquake failures stop short (median H/L
    about 0.86 at 1,000 m³), while fill and wet flow slides travel about twice as
    far.
+10. Run the urban chain over the pilot: landslide steps 3, 4, 5 and 6, the
+    exposure wall lines, then step 7, the exposure wall probability and
+    population, then steps 8, 1 and 9, in that order, and check each figure by
+    eye; record the counts each run prints in its method file.
+11. Run the anchoring (`validations/urban/fig_urban_fragility_anchors.py`) on
+    the TS1170.5 site class I grids, set the localised constants, the
+    localised dispersion and the low and high rate factors from it, and write
+    its findings file; then the lead reviews the step 8 model file.
+12. Measure `URBAN_AREA_SHARE`, `SOURCE_ASPECT_RATIO` and
+    `BETA_SOURCE_AREA_FRACTION` from the Kaikōura inventory (step 1's plan,
+    phase 3).
+13. The plan's checks over the pilot: the share of urban failures confined to
+    one property, against the expectation under "Local failures versus global failures" in
+    `.agents/context/land-damage-mechanisms.md`, and the failed polygon sizes
+    against the Wellington cut-failure record.
 
 ## Validation
 
@@ -378,31 +514,28 @@ cannot be signed off while they are open.
 
 ### About the landslides the model draws
 
-- **The footprint is a circle, and it should not be.** A real source area is
-  elongated down the slope; the model places a circle of the right area at the
-  cell centre. Area is right, shape is wrong, and the error shows up wherever the
-  answer depends on how a failure is oriented against a property boundary rather
-  than on how much ground it covers — which is most of the per-property work.
-  The decision is what replaces it: an ellipse oriented downslope is cheap and
-  closes most of the gap; growing the source across the slope facet is the fuller
-  answer and needs the terrain work that phase 4 carries.
-- **The size-frequency distribution is calibrated to area, not fitted to an
-  inventory.** This is a separate thing from the footprint. The exponent controls
-  how many small failures there are against large ones, and it has been solved
-  backwards to make the total area match the literature, giving 1.19 — far
-  shallower than the 2.1 to 2.5 that published inventories report. Those fits
-  hold only above about 500 m² and real inventories roll over below that, so one
-  power law stretched from 3 m² cannot carry both a published slope and the right
-  total area. The decision is whether to accept a distribution that gets the area
-  right and the proportions wrong, or to move to two populations — small
-  modified-slope failures and natural-slope landslides fitted separately.
-- **The 3,000 m² upper bound is now a calibration parameter.** With a shallow
-  exponent most of the area sits in the largest failures, so the cap decides the
-  answer: holding the exponent, a 1,000 m² cap gives 0.44% areal coverage, 3,000
-  gives 0.98% and 10,000 gives 2.42%. Both bounds were given as a range to model
-  rather than derived from anything. The decision is what the largest credible
-  single failure in Wellington actually is.
-- **Failures are sampled independently, so the model has no clustering.** Real
+- **The footprint is an ellipse, not a grown source.** A real source area is
+  elongated down the slope; the reworked step 1 places an ellipse of the
+  sampled area along the downhill azimuth, at an aspect ratio of 2 that is a
+  placeholder for the Kaikōura ratio. It does not follow a gully or stop at a
+  ridge. The decision is whether that is close enough, or whether to grow the
+  source across the slope facet, the fuller answer that phase 4 of the step's
+  plan carries.
+- **The total area is set by a placeholder, not by the size law.** The rework
+  moved to two populations: above 700 m² step 1 draws the published Kaikōura
+  exponent of 2.1 [massey_2020], and below it the urban model draws. Because the
+  count is Poisson on the expected area, the exponent no longer moves the total;
+  `BETA_SOURCE_AREA_FRACTION` (0.252) does, restating the earlier calibration
+  that needed an exponent of 1.19 from 3 m². The decision is what sets that
+  fraction: the supplier's reading of a cell's probability, or a fit to the
+  Kaikōura inventory.
+- **The 3,000 m² upper bound.** With the count drawn on the expected area the
+  cap no longer moves the total, but it still sets the largest single failure
+  and so how many properties one landslide can reach. Both bounds were given as
+  a range to model rather than derived from anything. The decision is what the
+  largest credible single failure in Wellington actually is.
+- **Failures are sampled independently between slope units, so the model has
+  little clustering.** Real
   failures share a hillside, a geology and a shaking level. Independent sampling
   gets the average right and the spread wrong — too few very bad events and too
   few very quiet ones — and the portfolio question NHC is asking is a question
@@ -449,6 +582,12 @@ cannot be signed off while they are open.
 
 ### About the urban model
 
+- **Where the large/small split sits.** The agreed working threshold is 500 m²
+  of source area; the build places it at 700 m² (`LARGE_MIN_SOURCE_AREA_M2`,
+  the top of the urban size range, contract section 3.9), so step 1 draws
+  sources from 700 m² up and the urban model covers everything below. The
+  lead already thinks 500 m² may be too low. The decision is whether 700 m²
+  stands, or the split moves to 500 m² or elsewhere.
 - **The fixed geometry rules.** Each polygon carries fixed evacuated, inundated
   and imminent-risk polygons keyed by its wall state, so a realisation only
   decides whether it fails. The headscarp band (**T-44**), the fill wedge
@@ -457,12 +596,34 @@ cannot be signed off while they are open.
 - **Anchoring the rate setting.** What fixes the low, medium and high
   fragilities: Kingsbury's slope failure opportunity table, the Hancox (1997)
   intensity thresholds and the Port Hills 2011 cut, fill and wall failures are
-  the candidates.
+  the candidates. They are in `urban-fragility-anchors.csv`, each class word
+  read as a fraction failing by implementer judgement for the lead to review.
+  The anchoring has not been run, so whether they agree with the 0.6
+  dispersion placed is not yet known; its run sets that and its findings file
+  records it.
 - **The intensity measure per fragility.** PGV for the ground, as the landslide
   literature uses, against PGA for the published wall curves; each row names
-  its own.
-- **Slope unit delineation** for the large models, and whether a failure drawn
-  larger than its unit grows across the neighbouring units.
+  its own. As built every curve is evaluated on PGV, a PGA wall curve converted
+  at the site's ratio of the step 3 PGV to the TS1170.5 PGA, for the lead to
+  confirm.
+- **Whether a failure drawn larger than its slope unit grows across the
+  neighbouring units.** The units themselves are built (step 5); step 1 now
+  places an ellipse that crosses unit boundaries, with region growing along
+  the facet as a later phase of step 1.
+- **Two step 9 rules the build chose where the contract was silent**
+  (`s9_urban_slope_realisation_implementation_plan.md`): a wall on polygons at
+  several scales takes one outcome by rank (superseded, failed, absorbed,
+  standing), and where several large-model polygons reach an urban one the one
+  sharing the most ground takes it. Both for the project lead to confirm. That
+  a wall fails with any of its polygons is decided (lead, 2026-10-02).
+- **Two step 7 rules the build chose where the contract's gave no usable
+  answer** (`s7_urban_slope_polygons_implementation_plan.md`, phase 2): the
+  crest and toe are the boundary segments facing uphill and downhill rather
+  than the vertices above and below the centroid, and the inundated strip is
+  at least long enough to spread the evacuated ground at its own depth, with a
+  1 m floor, because the reach-angle rule measured from the crest gives no run
+  past the toe on faces gentler than about 40 degrees. Both for the project
+  lead to confirm.
 
 ### About the strength-based model
 

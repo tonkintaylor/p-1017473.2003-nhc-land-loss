@@ -1,85 +1,184 @@
 # Step 6 — Retaining wall population: method
 
-- The step is two scripts. `gen_wall_probability.py` writes a **probability of a
-  wall per insured property** and `gen_wall_population.py` draws a **realisation**
-  from it, one line per wall. The probabilities are partly a **stand-in**: the
-  slope-driven part is in `landloss.exposure.rw.beta_population`, which carries
-  the `beta` prefix because it is deleted when the real inference arrives, and the
-  combining numbers are in `landloss.exposure.rw.wall_probability`.
-- Properties come from `temp/exposure/insured-land[-pilot].geoparquet`, the
-  layer step 5 writes, read through its own `insured_land_path()`.
-- Slope and downhill azimuth are derived from the LINZ elevation model over the
-  properties' extent by `landloss.common.utils.terrain.slope_degrees` and
-  `downhill_azimuth_degrees`, written to `temp/exposure/` and sampled at each
-  property's representative point with `sample_at_points`, in `sample_terrain()`.
-  A property outside the elevation model comes back NaN and has no probability.
-- Three sources of evidence are attached by `attach_gns_evidence()` through
-  `landloss.exposure.rw.wall_probability.attach_evidence`: GNS SLIDE mapped
-  retaining walls (`get_gns_slide_morphology`, metres inside the property buffered
-  by `RW_COVERAGE_BUFFER_M`), GNS SLIDE cut slopes and fill bodies
-  (`get_slide_genesis`, share of the property's area) and the NLM landform class
-  at the property's representative point (`get_nlm_geomorphology`). The run prints
-  how many properties each source reaches in `describe_evidence`.
-- **The evidence is one-sided.** GNS mapped only the walls visible from above and
-  only in Wellington City, so a property with no mapped wall is not evidence of
-  none. `wall_probability` applies the slope-driven prevalence, lifts it by the
-  earthworks share, caps it on a plain landform, and sets it to at least
-  `BETA_MAPPED_WALL_PROBABILITY` where a wall of `MIN_MAPPED_WALL_LENGTH_M` or
-  more is mapped. Nothing lowers a probability because a wall is absent from the
-  mapping.
-- Retained height is a lognormal about a slope-driven median with log standard
-  deviation `BETA_HEIGHT_LOG_SD`, cut at `BETA_DRAWN_HEIGHT_BOUNDS_M` when drawn.
-  `size_class_probabilities` turns it into the probability of each size class
-  given a wall, on the boundaries below, and `wall_probability_table` writes those
-  beside `p_wall`, `p_poor` and `length_m` to
+The step is three scripts run in order: `gen_wall_lines.py` writes the
+candidate wall lines, `gen_wall_probability.py` puts a probability on each,
+and `gen_wall_population.py` draws one population per exposure world.
+
+## The candidate lines (`gen_wall_lines.py`)
+
+- `gen_wall_lines.py` writes the **candidate wall lines**, one row per place a
+  wall could stand and no probability, to `temp/exposure/wall-lines[-pilot].geoparquet`
+  from `wall_lines_path()`. The rules are in `landloss.exposure.rw.lines` and
+  run in `build_wall_lines()`; the ids are minted in `mint_wall_line_ids()` by
+  location (`sort_by_point`, `mint_ids`, prefix `WALL_LINE_ID_PREFIX`), so a
+  rerun over the same extent reproduces them and a changed extent renumbers.
+- The sources, in the precedence order of `lines.SOURCES`: the GNS SLIDE
+  mapped retaining walls (`mapped_wall_lines`, `Type` `MAPPED_WALL_TYPE`), the
+  SLIDE cut/fill lines (`slide_cut_fill_lines`, `CUT_FILL_LINE_TYPE`), the
+  edges of the SLIDE genesis cut slopes and fill bodies (`genesis_edge_lines`),
+  terrain breaks (`terrain_break_lines`: the downhill shared edge between a
+  finest-scale urban slope candidate in a band at or above
+  `TERRAIN_BREAK_STEEP_DEG` with `face_height_5m` of at least
+  `MIN_WALL_HEIGHT_M` and a neighbour in a band at or below
+  `TERRAIN_BREAK_GENTLE_DEG`), and the claim property boundaries
+  (`boundary_lines`, noded and merged so a shared boundary is one line) split
+  into road frontages within `config.ROAD_FRONTAGE_DISTANCE_M` of a road
+  centreline and the rest, kept only where the 10 m slope at the midpoint is at
+  least `MIN_SLOPING_GROUND_DEG` and within `URBAN_BUILDING_DISTANCE_M` of a
+  building outline. Driveway edges are not a source.
+- The GNS SLIDE and LINZ layers are read in `read_layers()` over the extent
+  from `gen_multiscale_slope.resolve_extent` grown by `LAYER_MARGIN_M` on every
+  side, so a property or wall across the edge of the extent is split at its
+  real boundary rather than at the box. After `build_wall_lines()` returns,
+  `drop_off_extent()` drops every line whose midpoint lies outside that extent,
+  where landslide steps 3, 4 and 6 wrote nothing, and the run prints how many
+  went.
+- The mapped walls are snapped vertex by vertex onto the nearest candidate
+  polygon edge within `delineation.SNAP_TOLERANCE_M` (`snap_to_candidate_edges`);
+  the run prints how many moved. Lines from several sources within that
+  tolerance of one another over more than half their length collapse into the
+  one of highest precedence, which is marked `is_mapped_wall` where any member
+  was a mapped wall (`collapse_coincident`). Every line is then split where it
+  crosses a claim property boundary (`split_at_boundaries`); a line running
+  along a boundary is not cut by it.
+- `face_height_m` is the median of the `face-height-5m` terrain derivative read
+  every `FACE_SAMPLE_SPACING_M` along the line (`face_height_m()`), and
+  `size_class` follows from it by `classify_wall_size` on the boundaries in
+  `landloss.exposure.rw.beta_population` (small below `SMALL_MAX_HEIGHT_M`,
+  medium below `MEDIUM_MAX_HEIGHT_M`, large above). `slope_degrees` and
+  `aspect_degrees` are the 3 m slope and downhill azimuth at the midpoint.
+- `wall_position` is `fill` where the `cut-fill-residual-30m` derivative read
+  `POSITION_PROBE_DISTANCE_M` uphill of the midpoint is at or above zero and
+  `cut` otherwise (`wall_position()`).
+- `claim_id` is the claim property (`build_claim_properties` on the LINZ
+  property boundaries, read in `read_layers()`) containing the midpoint. A line
+  lying along a boundary takes the property on its uphill side for a fill wall
+  and its downhill side for a cut wall, read twice the snap tolerance from the
+  midpoint along the azimuth (`assign_claim`). It is null on road reserve and
+  outside every claim property; `gen_wall_population.py` is what drops those.
+- `ground_id`, `material`, `modification` and `is_flatland` are the ground map
+  polygon at the midpoint; `is_rock_cut` is a `lines.ROCK_MATERIALS` material
+  with `modification` `cut`. Off the ground map the material and modification
+  are `unknown` and the line is not on flat land.
+- Lines whose face is under `MIN_WALL_HEIGHT_M` are dropped, except where a
+  GNS mapped wall lies along them, which are kept and classed `small`: the 1 m
+  grid cannot resolve a sub-metre wall and the mapping is evidence one exists.
+  `dwelling_age_decade` is null on every line, because no age source is held.
+- The run prints the line count and length by source, size class and wall
+  position, the share with a claim and the share on flat land, and
+  `fig_wall_lines.py` draws the lines by source with the length per source by
+  size class, to `report/exposure/rw/wall-lines/fig/`.
+
+## The probability on each line (`gen_wall_probability.py`)
+
+- `gen_wall_probability.py` reads the lines from `wall_lines_path()` and
+  nothing else: no elevation model, no GNS layer, no dwelling age parquet (none
+  is held) and no count bounds (**T-50**, not yet held). It writes every line
+  column plus `p_wall`, `p_wall_basis`, `p_poor` and `p_poor_basis`
+  (`wall_probability.PROBABILITY_COLUMNS`) to
   `temp/exposure/wall-probability[-pilot].geoparquet` from
-  `wall_probability_path()`, on the property's representative point.
-- `gen_wall_population.py` reads that file and calls `draw_walls`, which draws
-  whether each property has a wall, its height from the lognormal and its
-  condition, and places a line for each. It reads no elevation model and no GNS
-  layer, so realisations are cheap.
-- **Slope is the base of the probability.** Prevalence ramps from zero below
-  `BETA_MIN_SLOPE_DEG` to `BETA_MAX_PREVALENCE` above `BETA_MAX_SLOPE_DEG`, and
-  median retained height ramps over the same range. Nothing here reads the
-  Wellington City Council cut-and-fill models, road batters, section shape or the
-  age of the subdivision, all of which the real model uses.
-- **Initial condition is drawn, not derived.** The real model reads it off the
-  age of the dwelling; no dwelling age is held, so `p_poor` is `BETA_POOR_SHARE`
-  for every property, splitting the population evenly between modern and poor.
-- Size classes are **small below 1 m, medium 1 to 2.5 m, large above 2.5 m** of
-  retained height, by `classify_wall_size`. The boundaries are set by what the
-  costing can tell apart: above the sub-cap the settlement stops depending on
-  height.
-- A wall is drawn as a straight line **along the contour**, perpendicular to the
-  downhill azimuth and centred on the property's representative point, by
-  `wall_lines`, on the representative point of the property and not on a mapped
-  line. Its length is `BETA_LENGTH_SHARE` of the width of a square of
-  the property's insured area. The orientation is right and the position is not,
-  because nothing here knows where on a section a wall sits.
-- The draw is seeded by `realisation_seed(BASE_SEED, realisation_id,
-  "exposure")`, so the walls of realisation 3 belong to the same modelled
-  earthquake as its hazards, and a rerun reproduces.
-- **Only walls on insured land are passed on.** After the draw,
-  `landloss.exposure.coverage.keep_walls_on_insured_land` keeps a wall only if
-  its line intersects its own claim's insured land polygon buffered by
-  `RW_COVERAGE_BUFFER_M` (2 m), because a wall can support the insured land from
-  just outside it. The test is against the step 5 polygons, not the
-  representative points the slope was sampled at, and lying on another claim's
-  land does not count. It runs after the draw, so the random stream is unchanged.
-  `describe_coverage` prints the walls drawn, kept and dropped; under the beta
-  each wall is centred inside its own polygon, so nearly all are kept.
+  `wall_probability_path()`, one row per `wall_line_id`, through
+  `landloss.exposure.rw.wall_probability.wall_probability_table`.
+- `p_wall` is set by `line_wall_probability` in this order: the prior of the
+  line's source, `BETA_SOURCE_PROBABILITY`, highest for a mapped wall and
+  lowest for a property boundary; multiplied by `BETA_ROCK_CUT_FACTOR` where
+  `is_rock_cut`, because a rock cut stands unsupported and is claimed for
+  spalling or slides rather than wall failure; capped at
+  `BETA_FLATLAND_MAX_PROBABILITY` where `is_flatland`; and raised to at least
+  `BETA_MAPPED_WALL_PROBABILITY` where `is_mapped_wall`. `p_wall_basis` is the
+  last rule that changed the value: `source_prior`, `rock_cut`,
+  `flatland_cap` or `mapped`.
+- **The mapping is one-sided.** GNS mapped only the walls visible from above
+  and only in Wellington City [townsend_2020], so a mapped wall raises a line's
+  probability and the absence of one changes nothing. Slope, height, wall
+  position and subdivision age do not enter `p_wall` in this build.
+- `p_poor` is set by `poor_condition_probability`: `BETA_POOR_SHARE` by
+  default (`p_poor_basis` `default`); `BETA_UNCONSENTED_POOR_SHARE` where
+  `face_height_m` is under `UNCONSENTED_WALL_HEIGHT_M`, because such walls
+  are often built without consent (`height`); and where `dwelling_age_decade`
+  is held it overrides both, `BETA_PRE_1990_POOR_SHARE` for a decade before
+  `BUILDING_ACT_DECADE` and `BETA_POST_1990_POOR_SHARE` from it on (`age`).
+  No age is held in this build, so every line's basis is `default` or
+  `height`. Wall type is not known on a line and does not enter.
+- The count bounds hook is `apply_count_bounds`: given a minimum and maximum
+  number of walls per claim, it scales the probabilities inside each claim by
+  one factor so the expected count sits within the bounds, never above 1 per
+  line, with lines at zero sharing the minimum equally. No bounds file is read,
+  so the script does not call it.
+- Every number in `wall_probability.py` carries a `BETA_` prefix because it is
+  judgement standing in for the claim report extraction. The run prints the
+  expected number of walls, `p_wall` quantiles, and the line count and
+  expected walls by source, by `p_wall_basis`, by size class and by
+  `p_poor_basis`, and ends by saying plainly that the result is not evidence
+  about Wellington.
+
+## The draw per exposure world (`gen_wall_population.py`)
+
+- `gen_wall_population.py` reads the probabilities from
+  `wall_probability_path()` and the insured land from step 5's
+  `insured_land_path()`, and writes one file per world,
+  `temp/exposure/wall-population-wNNN[-pilot].geoparquet` from
+  `wall_population_path(world_id, pilot=...)`. The worlds come from
+  `config.WORLD_IDS`.
+- Each world is seeded by `realisation_seed(EXPOSURE_BASE_SEED, world_id,
+  "exposure")`: on the exposure seed and the world id, not on any earthquake,
+  because whether a wall exists is not something the earthquake decides, so
+  one world pairs with every hazard realisation
+  (`landloss.hazard.realisation`).
+- `landloss.exposure.rw.population.draw_wall_population` draws two uniforms
+  per line in line order, the first against `p_wall` and the second against
+  `p_poor`: a wall exists where the first is below `p_wall` and is `poor`
+  where the second is below `p_poor`, else `modern`. A wall is the line that
+  drew it: `height_m` is the line's `face_height_m`, and `size_class`,
+  `length_m`, `wall_position`, `is_flatland`, `source`, `material` and the
+  geometry are copied from the line (`population.POPULATION_COLUMNS`).
+  Nothing is placed or sized in the draw.
+- After the draw, so the random stream is the same whatever is kept: lines
+  with no `claim_id` are dropped, because council and road-reserve walls are
+  out of scope (**I-05**); then
+  `landloss.exposure.coverage.keep_walls_on_insured_land` keeps a wall only
+  if its line intersects its own claim's insured land polygon buffered by
+  `RW_COVERAGE_BUFFER_M` (2 m). Lying on another claim's land does not count.
 - **Each kept wall gets an `rw_id`** of the form `<claim_id>-RW<nn>`, numbered
-  from 01 within its claim, by `landloss.exposure.asset_ids.mint_asset_ids` with
-  `RW_ID_SUFFIX`. It is minted after the coverage filter, on walls ordered by
-  `sort_by_location` (claim, then the x and y of the line's representative
-  point), so it is stable within a realisation and does not depend on row order.
-- The output is `temp/exposure/beta-wall-population-rNNN[-pilot].geoparquet`
-  from `wall_population_path()`, carrying `rw_id`, `claim_id`, `size_class`,
-  `initial_condition`, `height_m`, `length_m` and the line.
-- `gen_wall_probability.py` prints the expected number of walls, by size class,
-  and `gen_wall_population.py` prints the walls drawn against the expected number
-  and the counts by size class and initial condition, so a draw can be checked
-  against the probabilities it came from. Both end by saying plainly that the
-  result is not evidence about Wellington.
+  from 01 within its claim, by `landloss.exposure.asset_ids.mint_asset_ids`
+  with `RW_ID_SUFFIX`, on walls ordered by `sort_by_location` (claim, then the
+  x and y of the line's representative point), so it is stable within a world
+  and does not depend on row order. `world_id` is written beside
+  `wall_line_id`, which the wall carries so the urban slope polygons of
+  landslide step 7 can find the wall on their edge.
+- The output columns are `rw_id`, `claim_id`, `wall_line_id`, `world_id`,
+  `size_class`, `initial_condition`, `height_m`, `length_m`, `wall_position`,
+  `is_flatland`, `source`, `material` and the line geometry. `height_m` is the
+  DEM face height from `MIN_WALL_HEIGHT_M` upward and unbounded above, so the
+  size ranges are 0.5–1.0, 1.0–2.5 and 2.5+ m; the set heights the loss
+  module prices at stand until the loss owner re-confirms them (**I-14**), and
+  `height_m` is not handed to `loss` in this build.
+- **Every drawn wall is written too.** The claim and coverage filters decide
+  what is insured, not whether a wall stands: a council or road-reserve wall
+  above or below a property, or a wall at the back of a section more than
+  `RW_COVERAGE_BUFFER_M` from the insured land, still holds its slope in the
+  world. So in the same world loop, after `rw_id` is minted,
+  `landloss.exposure.rw.population.attach_rw_ids` joins the minted `rw_id`
+  back onto every wall `draw_wall_population` returned, by `wall_line_id`,
+  and the run writes the result to
+  `temp/exposure/drawn-walls-wNNN[-pilot].geoparquet` from
+  `drawn_walls_path(world_id, pilot=...)`: one row per line that drew a wall,
+  in line order, `wall_line_id` unique, with the population file's columns in
+  the same order and `rw_id` and `claim_id` nullable. `rw_id` is null for a
+  claimless wall and for one off its claim's insured land. The draw and the
+  stream are unchanged, and `wall_population_path()` stays the insured subset
+  that vul and loss read; landslide step 8 reads the drawn walls and nothing
+  else does (decision 36 of the build contract).
+- The run prints the world id and stream, the walls drawn over the lines
+  offered against the expected count, the claim and coverage counts kept and
+  dropped, `describe_population()` by size class and condition, the share on
+  flat land, the count by wall position and the height deciles by size class,
+  the count of drawn walls and how many carry an `rw_id`
+  (`describe_drawn_walls()`), and ends by saying plainly that the result is
+  not evidence about Wellington.
+- `gen_exposure.py` runs the three scripts in this order after the insured
+  land and dwellings steps, over `exposure/config.py`'s `PILOT` and
+  `WORLD_IDS`; the lines read landslide steps 3, 4 and 6, so the hazard module
+  runs first.
 
 Potential future improvements: see `s6_wall_population_implementation_plan.md`.

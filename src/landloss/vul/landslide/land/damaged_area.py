@@ -27,6 +27,12 @@ same square metre.
 The two kinds are also measured together, on their union, because the loss
 contract's ``land_slide_total_insured_land_area`` is the ground taken by either
 kind: ground that is both evacuated and inundated counts once there too.
+
+The land classes themselves are the hazard module's,
+:mod:`landloss.hazard.landslide.land_class`, so that the polygons are read here
+under the names they were written with. The urban model writes a third class,
+**imminent** ground left standing behind a headscarp; this module ignores it
+until the register decides how it is settled (**T-45**).
 """
 
 import geopandas as gpd
@@ -34,12 +40,19 @@ import numpy as np
 import pandas as pd
 
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN
+from landloss.hazard.landslide.land_class import (
+    EVACUATED,
+    IMMINENT,
+    INUNDATED,
+    LAND_CLASS_COLUMN,
+)
 
-LAND_CLASS_COLUMN = "land_class"
 DEPTH_COLUMN = "depth_m"
 
-EVACUATED = "evacuated land"
-INUNDATED = "inundated land"
+# The land classes this module measures nothing for. Imminent ground is left out
+# of AREA_COLUMNS below, so every filter on it drops those rows, until T-45
+# decides whether and how it is settled.
+IGNORED_LAND_CLASSES = (IMMINENT,)
 
 # What the output calls each kind of damaged ground, matching the causes the
 # vulnerability rows are keyed on.

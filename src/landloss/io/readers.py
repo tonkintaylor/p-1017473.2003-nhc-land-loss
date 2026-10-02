@@ -17,18 +17,28 @@ already cached.
 """
 
 import hashlib
+import math
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urljoin
+from zipfile import ZipFile
 
 import dotenv
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import rasterio
 import requests
+from rasterio.enums import Resampling
+from rasterio.transform import Affine, from_origin
+from rasterio.warp import reproject, transform_bounds
 from shapely import box, make_valid
 from ttpy.gis.koop import KoordinatesConnection, get_latest_layer
 
 from landloss.domain import constants
-from landloss.io import KOOPCACHE_DIR_ENV_VAR, koopcache_dir
+from landloss.io import KOOPCACHE_DIR_ENV_VAR, elevation, koopcache_dir
 
 dotenv.load_dotenv()
 
@@ -39,6 +49,26 @@ ARCGIS_TIMEOUT_SECONDS = 120
 # How long to wait on a WFS request, in seconds. A WFS read is one request for the
 # whole extent, so this is longer than one ArcGIS page.
 WFS_TIMEOUT_SECONDS = 300
+
+# A Koordinates table is exported rather than downloaded: one request starts the
+# export, then the export is polled until it completes. These bound one request,
+# the gap between polls and the whole wait, in seconds. A national table of a few
+# million rows takes minutes to export.
+EXPORT_REQUEST_SECONDS = 300
+EXPORT_POLL_SECONDS = 2
+EXPORT_TIMEOUT_SECONDS = 1800
+
+# The path segment that marks a surface model collection in the LINZ elevation
+# STAC catalogue, the counterpart of ``landloss.io.elevation.DEM_PATH_MARKER``.
+# Every survey publishes the two side by side, differing only in this segment.
+DSM_PATH_MARKER = "/dsm_1m/"
+
+# GDAL reads the surface model tiles over HTTPS by range request. Without these
+# it lists the whole bucket prefix on every open, which dominates the run time.
+COG_GDAL_OPTIONS = {
+    "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.tiff",
+}
 
 
 def resolve_api_key(domain: str) -> str:
@@ -351,6 +381,174 @@ def get_nz_property_boundaries(
     )
 
 
+def koordinates_table_cache_path(table: int, version: int) -> Path:
+    """Return the file one version of a Koordinates table is cached at."""
+    return koopcache_dir("tables") / f"{table}_{version}.parquet"
+
+
+def get_koordinates_table(
+    table: int, domain: str = constants.LINZ_DOMAIN, *, use_cache: bool = True
+) -> pd.DataFrame:
+    """Load a Koordinates table, a dataset with no geometry, in full.
+
+    ttpy downloads layers only: a table has no coordinate system, which its
+    layer details refuse. So a table is exported here through the Koordinates
+    exports API as CSV, and cached as parquet keyed by table ID and version, so
+    a new release is downloaded once and an old one is never served after it.
+
+    Every column is read as text, so that codes with leading zeros (a district
+    code of ``060``) and title references survive; the caller converts what it
+    needs.
+
+    Args:
+        table: The Koordinates ID of the table.
+        domain: The Koordinates domain to export from; the matching API key is
+            chosen from it.
+        use_cache: Whether to read and write the cached copy.
+
+    Returns:
+        The whole table, every column as text.
+
+    Raises:
+        ValueError: If no API key is set for ``domain``, or the export ends in
+            any state but complete.
+        TimeoutError: If the export has not finished within
+            :data:`EXPORT_TIMEOUT_SECONDS`.
+    """
+    session = requests.Session()
+    session.headers["Authorization"] = f"key {resolve_api_key(domain)}"
+    api = f"https://{domain}/services/api/v1.x"
+
+    details = session.get(f"{api}/tables/{table}/", timeout=EXPORT_REQUEST_SECONDS)
+    details.raise_for_status()
+    cache_path = koordinates_table_cache_path(table, details.json()["version"]["id"])
+    if use_cache and cache_path.exists():
+        return pd.read_parquet(cache_path)
+
+    request = {
+        "items": [{"item": f"{api}/tables/{table}/"}],
+        "formats": {"table": "text/csv"},
+    }
+    response = session.post(
+        f"{api}/exports/", json=request, timeout=EXPORT_REQUEST_SECONDS
+    )
+    response.raise_for_status()
+    export = response.json()
+
+    deadline = time.monotonic() + EXPORT_TIMEOUT_SECONDS
+    while export["state"] == "processing":
+        if time.monotonic() > deadline:
+            msg = f"the export of table {table} from {domain} has not finished"
+            raise TimeoutError(msg)
+        time.sleep(EXPORT_POLL_SECONDS)
+        polled = session.get(
+            f"{api}/exports/{export['id']}/", timeout=EXPORT_REQUEST_SECONDS
+        )
+        polled.raise_for_status()
+        export = polled.json()
+    if export["state"] != "complete":
+        msg = f"the export of table {table} from {domain} ended {export['state']}"
+        raise ValueError(msg)
+
+    zip_path = cache_path.with_suffix(".zip")
+    with session.get(
+        export["download_url"], stream=True, timeout=EXPORT_REQUEST_SECONDS
+    ) as download:
+        download.raise_for_status()
+        with zip_path.open("wb") as file:
+            for chunk in download.iter_content(chunk_size=1 << 20):
+                file.write(chunk)
+    with ZipFile(zip_path) as archive:
+        (member,) = [name for name in archive.namelist() if name.endswith(".csv")]
+        with archive.open(member) as csv:
+            frame = pd.read_csv(csv, dtype=str, encoding="utf-8-sig")
+    zip_path.unlink()
+
+    if use_cache:
+        frame.to_parquet(cache_path, index=False)
+    return frame
+
+
+def get_nz_property_titles_list(*, use_cache: bool = True) -> pd.DataFrame:
+    """Load the LINZ NZ Property Titles List table, every live title in the country.
+
+    The table at https://data.linz.govt.nz/table/51567-nz-property-titles-list/
+    holds every live and part-cancelled Record of Title, one row each, without
+    geometry or owners. It is the same set of titles as the NZ Property Titles
+    layer (50804), read as the table because it is a fraction of the download
+    and carries the survey plan (``survey_reference``), the register type and
+    the head title of a unit title, which the layer does not.
+
+    The field this study reads it for is ``issue_date``, the date the title was
+    issued, which the retaining wall age step takes as a proxy for when the
+    dwelling on the land was built. Titles join to properties on ``title_no``,
+    which the NZ Property Boundaries layer carries as a comma-separated list.
+
+    Licence:
+        Creative Commons Attribution 4.0 International (CC BY 4.0),
+        https://data.linz.govt.nz/license/attribution-4-0-international/. The
+        data may be shared and adapted, including commercially, provided Land
+        Information New Zealand is credited as the source, a link to the licence
+        is given, and any changes made are indicated. So any figure or table
+        published from these titles has to carry that attribution.
+
+    Source:
+        Land Information New Zealand. No DOI is published for the table, which
+        is updated weekly, so a result taken from it should record the date it
+        was read.
+
+    Args:
+        use_cache: Whether to read and write the cached copy.
+
+    Returns:
+        The titles, every column as text, about 2.5 million rows.
+    """
+    return get_koordinates_table(
+        constants.NZ_PROPERTY_TITLES_LIST_TABLE_ID,
+        constants.LINZ_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
+def get_nz_district_valuation_roll(*, use_cache: bool = True) -> pd.DataFrame:
+    """Load the open subset of the LINZ District Valuation Roll.
+
+    The table at
+    https://data.linz.govt.nz/table/114085-nz-properties-national-district-valuation-roll/
+    holds the rating valuation of every rating unit in the councils that have
+    allowed LINZ to publish their roll: Christchurch and a handful of others,
+    none of them in the study area. Rows join to properties on
+    ``unit_of_property_id``, which the NZ Property Boundaries layer carries.
+
+    The field this study reads it for is ``building_age_indicator``, the decade
+    the main building was built in, coded under the Rating Valuations Rules
+    2008. The retaining wall age step is checked against it over Christchurch,
+    the one city with both an open roll and enough housing of every era.
+
+    Licence:
+        Creative Commons Attribution 4.0 International (CC BY 4.0),
+        https://data.linz.govt.nz/license/attribution-4-0-international/. The
+        data may be shared and adapted, including commercially, provided Land
+        Information New Zealand is credited as the source, a link to the licence
+        is given, and any changes made are indicated.
+
+    Source:
+        Land Information New Zealand, from the property audit files the
+        territorial authorities supply. No DOI is published for the table.
+
+    Args:
+        use_cache: Whether to read and write the cached copy.
+
+    Returns:
+        The valuation roll, every column as text, one row per rating unit.
+    """
+    return get_koordinates_table(
+        constants.NZ_DISTRICT_VALUATION_ROLL_TABLE_ID,
+        constants.LINZ_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
 def get_nz_address_roads(
     bbox: tuple[float, float, float, float] | None = None,
     crs: int | str = constants.DEFAULT_CRS,
@@ -568,6 +766,10 @@ def get_gwrc_slope_failure(
     ``5 High`` — so a ``severity_rank`` integer is added for sorting and
     colouring. A minority of the polygons are invalid, which breaks clipping and
     overlays, so geometries are repaired on the way through.
+
+    ``LSKEY`` runs the opposite way to ``SEVERITY``: it is 1 on every ``5 High``
+    polygon and 5 on every ``1 Low`` one. Sort and colour by ``severity_rank``,
+    never by ``LSKEY``.
 
     Args:
         bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``. Omitting
@@ -1518,4 +1720,246 @@ def get_dem(
         output_path=cache_path,
         overwrite=True,
     )
+    return cache_path
+
+
+def dsm_cache_path(
+    bbox: tuple[float, float, float, float], resolution: int, crs: int | str
+) -> Path:
+    """Return the file one fetched surface model extent is cached at.
+
+    Args:
+        bbox: The extent the surface model covers (minx, miny, maxx, maxy) in
+            ``crs``.
+        resolution: The cell size in metres.
+        crs: The coordinate reference system the surface model is in.
+
+    Returns:
+        The path the surface model is cached at, beside the DEM cache so that
+        everything downloaded for this study sits under one root.
+    """
+    key = f"{bbox}|{resolution}|{crs}"
+    digest = hashlib.sha256(key.encode()).hexdigest()[:16]
+    return koopcache_dir("dsm") / f"dsm_{resolution}m_{digest}.tif"
+
+
+def _boxes_overlap(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    """Return whether two (minx, miny, maxx, maxy) boxes share any area."""
+    return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+
+def _survey_end(collection: dict) -> str:
+    """Return the end of a collection's temporal extent, for ordering by recency.
+
+    The STAC collection declares when its survey was flown under
+    ``extent.temporal.interval``, which orders surveys without parsing the
+    year out of a title. A collection that declares none sorts as oldest.
+    """
+    intervals = (collection.get("extent", {}).get("temporal", {}) or {}).get(
+        "interval", []
+    )
+    if not intervals or len(intervals[0]) < 2 or intervals[0][1] is None:
+        return ""
+    return str(intervals[0][1])
+
+
+def find_dsm_tiles(
+    bbox_wgs84: tuple[float, float, float, float], *, use_cache: bool = True
+) -> list[dict]:
+    """Find the 1 m surface model tiles covering an extent, newest survey first.
+
+    Walks the same static STAC catalogue :mod:`landloss.io.elevation` walks
+    for the bare-earth DEM, keeping the ``/dsm_1m/`` collections instead of
+    the ``/dem_1m/`` ones. Surveys overlap, so the tiles come back ordered by
+    the end of each survey's flying season, most recent first, for the mosaic
+    to take each cell from the newest survey that has it.
+
+    Args:
+        bbox_wgs84: The extent of interest (minx, miny, maxx, maxy) in WGS84.
+        use_cache: Whether to read and write the catalogue cache.
+
+    Returns:
+        One dict per intersecting tile, as :func:`landloss.io.elevation.find_tiles`
+        returns them (``id``, ``bbox``, ``asset``), plus ``survey``, the title
+        of the collection it came from.
+    """
+    root = elevation.fetch_json(elevation.ELEVATION_CATALOG_URL, use_cache=use_cache)
+    candidates = [
+        link
+        for link in root.get("links", [])
+        if link.get("rel") == "child" and DSM_PATH_MARKER in (link.get("href") or "")
+    ]
+
+    def load(link: dict) -> dict | None:
+        url = urljoin(elevation.ELEVATION_CATALOG_URL, link["href"])
+        document = elevation.fetch_json(url, use_cache=use_cache)
+        boxes = (document.get("extent", {}).get("spatial", {}) or {}).get("bbox", [])
+        if not boxes or not _boxes_overlap(tuple(boxes[0]), bbox_wgs84):
+            return None
+        return {
+            "id": document.get("id"),
+            "title": document.get("title", ""),
+            "url": url,
+            "document": document,
+        }
+
+    with ThreadPoolExecutor(max_workers=elevation.MAX_WORKERS) as pool:
+        collections = [c for c in pool.map(load, candidates) if c is not None]
+
+    collections.sort(key=lambda c: _survey_end(c["document"]), reverse=True)
+
+    tiles = []
+    for collection in collections:
+        for tile in elevation.find_tiles(collection, bbox_wgs84, use_cache=use_cache):
+            tiles.append({**tile, "survey": collection["title"]})
+    return tiles
+
+
+def _mosaic_tiles(
+    tiles: list[dict],
+    bbox: tuple[float, float, float, float],
+    resolution: int,
+    crs: int | str,
+    path: Path,
+) -> None:
+    """Resample tiles onto one grid over an extent and write it as a GeoTIFF.
+
+    The grid is anchored on the extent's top-left corner at the cell size
+    asked for. Tiles are visited in the order given and a cell takes its
+    value from the first tile that has one, so passing them newest first
+    gives the most recent survey precedence. Cells no tile reaches stay NaN.
+
+    Args:
+        tiles: The tiles to read, each carrying ``asset`` (a path or URL
+            rasterio can open) and ``bbox`` in WGS84.
+        bbox: The extent to build (minx, miny, maxx, maxy), in ``crs``.
+        resolution: The cell size, in the units of ``crs``.
+        crs: The coordinate reference system of the grid.
+        path: The GeoTIFF to write.
+    """
+    minx, miny, maxx, maxy = bbox
+    width = math.ceil((maxx - minx) / resolution)
+    height = math.ceil((maxy - miny) / resolution)
+    transform = from_origin(minx, maxy, resolution, resolution)
+    target = np.full((height, width), np.nan, dtype="float32")
+
+    with rasterio.Env(**COG_GDAL_OPTIONS):
+        for tile in tiles:
+            with rasterio.open(tile["asset"]) as source:
+                left, bottom, right, top = transform_bounds(
+                    source.crs, crs, *source.bounds
+                )
+                # The part of the target the tile can reach, in whole cells,
+                # so only that much is reprojected rather than the whole grid
+                # per tile.
+                col_start = max(0, math.floor((left - minx) / resolution))
+                col_stop = min(width, math.ceil((right - minx) / resolution))
+                row_start = max(0, math.floor((maxy - top) / resolution))
+                row_stop = min(height, math.ceil((maxy - bottom) / resolution))
+                if col_stop <= col_start or row_stop <= row_start:
+                    continue
+
+                piece = np.full(
+                    (row_stop - row_start, col_stop - col_start),
+                    np.nan,
+                    dtype="float32",
+                )
+                reproject(
+                    source=rasterio.band(source, 1),
+                    destination=piece,
+                    src_nodata=source.nodata,
+                    dst_transform=transform @ Affine.translation(col_start, row_start),
+                    dst_crs=crs,
+                    dst_nodata=np.nan,
+                    resampling=Resampling.bilinear,
+                )
+
+                region = target[row_start:row_stop, col_start:col_stop]
+                wanted = np.isnan(region) & np.isfinite(piece)
+                region[wanted] = piece[wanted]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=1,
+        dtype="float32",
+        crs=crs,
+        transform=transform,
+        nodata=np.nan,
+        compress="deflate",
+        tiled=True,
+    ) as destination:
+        destination.write(target, 1)
+
+
+def get_dsm(
+    bbox: tuple[float, float, float, float],
+    resolution: int = 1,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> Path:
+    """Fetch the LINZ surface model for an extent and return the file it is in.
+
+    The digital surface model is the LiDAR first return -- tree canopy and
+    rooftops as well as ground -- published by LINZ beside the bare-earth DEM
+    for every survey. Its difference from the DEM is the vegetation height the
+    landslide work reads. It mirrors :func:`get_dem` in signature and in
+    caching, but not in route: ``linz_stac_utils`` offers no surface model
+    product, so the tiles are found by walking the static STAC catalogue the
+    way :mod:`landloss.io.elevation` does, through the ``/dsm_1m/``
+    collections that catalogue carries beside the ``/dem_1m/`` ones, and
+    mosaicked onto one grid with the most recent survey winning.
+
+    There is no contour-derived fallback for a surface model, so where no
+    LiDAR survey has been flown the file holds NaN. Anything derived from it
+    has to say so.
+
+    Licence:
+        Each surface model collection declares Creative Commons Attribution
+        4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/,
+        the same licence as the bare-earth DEM. Anything derived from it and
+        published -- a vegetation height map, a figure, a table that quotes
+        one -- must credit Toitū Te Whenua Land Information New Zealand and
+        the survey the tiles came from (``find_dsm_tiles`` returns the survey
+        title with each tile), link the licence, and say if the data was
+        changed.
+
+    Source:
+        Toitū Te Whenua Land Information New Zealand, https://data.linz.govt.nz/,
+        served as a static STAC catalogue from the open ``nz-elevation`` S3
+        bucket; no API key is needed. Each collection names its producer and
+        licensor -- for the Wellington 2013-2014 survey, Aerial Surveys and
+        Greater Wellington Regional Council. No DOI is declared.
+
+    Args:
+        bbox: The extent to fetch (minx, miny, maxx, maxy), in ``crs``.
+        resolution: The cell size in metres. The surveys are flown at 1 m,
+            which is the cell size every consumer of the surface model wants.
+        crs: The coordinate reference system to return the surface model in.
+        use_cache: Whether to reuse an already-fetched surface model for the
+            same extent, resolution and CRS, and the cached catalogue walk.
+            Pass False to re-fetch both.
+
+    Returns:
+        The path to the surface model, as a GeoTIFF with NaN nodata.
+    """
+    cache_path = dsm_cache_path(bbox, resolution, crs)
+    if use_cache and cache_path.exists():
+        return cache_path
+
+    minx, miny, maxx, maxy = bbox
+    wgs84_bounds = (
+        gpd.GeoSeries([box(minx, miny, maxx, maxy)], crs=crs)
+        .to_crs("EPSG:4326")
+        .total_bounds
+    )
+    tiles = find_dsm_tiles(
+        tuple(float(value) for value in wgs84_bounds), use_cache=use_cache
+    )
+    _mosaic_tiles(tiles, bbox, resolution, crs, cache_path)
     return cache_path

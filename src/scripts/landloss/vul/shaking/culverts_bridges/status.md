@@ -3,7 +3,7 @@
 **Status:** A damage state is drawn on every structure, but the pilot holds
 none, so nothing has run against real rows.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-10-02
 
 ## Approach
 
@@ -42,8 +42,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   realisation's PGA field, draws a state per structure and writes it with the
   `crossing_id`, `claim_id`, structure kind, geometry and PGA sampled at the
   structure's representative point.
-- The fragility is the same `BETA_FAILURE_PROBABILITY = 0.7` the walls use, and
-  it does not yet distinguish a culvert from a bridge.
+- The fragility is a flat `BETA_FAILURE_PROBABILITY = 0.7`, which now serves
+  culverts and bridges only, because retaining walls moved to the published
+  wall curve on PGV; it does not yet distinguish a culvert from a bridge.
 - **The Wellington pilot produces no rows.** The crossing population follows
   named watercourses, and the nearest is some kilometres from the pilot box. The
   step reports that in words rather than as an empty table, but it means the

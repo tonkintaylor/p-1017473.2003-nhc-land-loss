@@ -1,40 +1,18 @@
-import geopandas as gpd
+"""Tests for the size classes and initial conditions a wall is carried in."""
+
 import numpy as np
+import pandas as pd
 import pytest
-from shapely.geometry import Point
 
 from landloss.exposure.rw.beta_population import (
-    BETA_MAX_PREVALENCE,
-    BETA_MIN_SLOPE_DEG,
+    BETA_POOR_SHARE,
+    INITIAL_CONDITIONS,
     MEDIUM_MAX_HEIGHT_M,
     SIZE_CLASSES,
     SMALL_MAX_HEIGHT_M,
-    beta_wall_height_m,
-    beta_wall_prevalence,
     classify_wall_size,
-    wall_lines,
+    describe_population,
 )
-
-# --- prevalence and height ---------------------------------------------------
-
-
-def test_flat_ground_carries_no_walls():
-    assert beta_wall_prevalence(0.0) == pytest.approx(0.0)
-    assert beta_wall_prevalence(BETA_MIN_SLOPE_DEG) == pytest.approx(0.0)
-
-
-def test_prevalence_rises_with_slope_and_is_capped():
-    assert beta_wall_prevalence(10.0) > beta_wall_prevalence(5.0)
-    assert beta_wall_prevalence(80.0) == pytest.approx(BETA_MAX_PREVALENCE)
-
-
-def test_a_steeper_property_gets_a_taller_wall():
-    assert beta_wall_height_m(20.0) > beta_wall_height_m(5.0)
-
-
-def test_height_is_bounded_however_steep_the_ground():
-    assert beta_wall_height_m(89.0) == pytest.approx(beta_wall_height_m(25.0))
-
 
 # --- size classes ------------------------------------------------------------
 
@@ -51,32 +29,45 @@ def test_every_class_is_one_of_the_three():
     assert set(classes) <= set(SIZE_CLASSES)
 
 
-# --- geometry ----------------------------------------------------------------
+def test_a_scalar_height_classes_too():
+    assert str(classify_wall_size(15.0)) == "large"
 
 
-def test_a_wall_lies_across_the_slope_not_down_it():
-    # Downhill due east, so the wall runs north-south.
-    points = gpd.GeoSeries([Point(0.0, 0.0)], crs="EPSG:2193")
-    line = wall_lines(points, np.array([90.0]), np.array([10.0])).iloc[0]
-    (x0, y0), (x1, y1) = line.coords
-    assert x1 - x0 == pytest.approx(0.0, abs=1e-9)
-    assert abs(y1 - y0) == pytest.approx(10.0)
+# --- conditions --------------------------------------------------------------
 
 
-def test_a_wall_is_the_length_it_was_given():
-    points = gpd.GeoSeries([Point(0.0, 0.0)], crs="EPSG:2193")
-    line = wall_lines(points, np.array([37.0]), np.array([14.0])).iloc[0]
-    assert line.length == pytest.approx(14.0)
+def test_the_conditions_are_modern_and_poor_with_a_default_share():
+    assert INITIAL_CONDITIONS == ("modern", "poor")
+    assert 0.0 <= BETA_POOR_SHARE <= 1.0
 
 
-def test_a_wall_is_centred_on_its_property():
-    points = gpd.GeoSeries([Point(5.0, 7.0)], crs="EPSG:2193")
-    line = wall_lines(points, np.array([0.0]), np.array([8.0])).iloc[0]
-    assert line.centroid.x == pytest.approx(5.0)
-    assert line.centroid.y == pytest.approx(7.0)
+# --- the summary -------------------------------------------------------------
 
 
-def test_mismatched_inputs_are_refused():
-    points = gpd.GeoSeries([Point(0.0, 0.0)], crs="EPSG:2193")
-    with pytest.raises(ValueError, match="must match"):
-        wall_lines(points, np.array([0.0, 90.0]), np.array([8.0]))
+def test_describe_population_counts_every_class_and_condition():
+    walls = pd.DataFrame(
+        {
+            "size_class": ["small", "small", "large"],
+            "initial_condition": ["poor", "modern", "poor"],
+            "height_m": [0.6, 0.7, 3.0],
+        }
+    )
+    counts = describe_population(walls)
+    assert counts.index.tolist() == list(SIZE_CLASSES)
+    assert counts.loc["small", "poor"] == 1
+    assert counts.loc["small", "modern"] == 1
+    assert counts.loc["medium"].sum() == 0
+    assert counts.loc["large", "poor"] == 1
+
+
+def test_describe_population_on_no_walls_keeps_the_shape():
+    counts = describe_population(pd.DataFrame(columns=["size_class", "height_m"]))
+    assert counts.index.tolist() == list(SIZE_CLASSES)
+    assert counts.columns.tolist() == list(INITIAL_CONDITIONS)
+    assert counts.isna().all().all() or (counts.fillna(0) == 0).all().all()
+
+
+@pytest.mark.parametrize("height", [0.5, 1.0, 2.5])
+def test_the_boundaries_are_inclusive_above(height):
+    expected = {0.5: "small", 1.0: "medium", 2.5: "large"}[height]
+    assert str(classify_wall_size(height)) == expected

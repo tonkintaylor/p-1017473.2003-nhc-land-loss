@@ -1,444 +1,324 @@
-"""The probability of a retaining wall on each insured property, and a draw from it.
+"""The probability that each candidate wall line is a wall, and its condition.
 
-A retaining wall inventory does not exist for the study area (**L-04**), so what
-this module can say about a property is a probability, not a fact. The output is
-therefore a table with one row per property carrying:
+A retaining wall inventory does not exist for the study area (**L-04**), so a
+candidate line (:mod:`landloss.exposure.rw.lines`) carries a probability, not a
+fact. This module puts two on each line:
 
-- ``p_wall``: the probability that the property carries a wall;
-- the distribution of that wall's retained height -- a lognormal with a median
-  and a log standard deviation -- and from it the probability of each size class
-  given that a wall exists;
-- ``p_poor``: the probability that a wall is in the poor initial condition.
+- ``p_wall``: the probability that the line is a wall, from the source the line
+  came from, lowered where the face is a cut in rock, capped on the flat land,
+  and lifted where GNS Science mapped a wall along it;
+- ``p_poor``: the probability that the wall, if it exists, is in the poor
+  initial condition, from the dwelling age where held and otherwise from the
+  height, because a wall under
+  :data:`~landloss.domain.constants.UNCONSENTED_WALL_HEIGHT_M` is often built
+  without consent.
 
-:func:`draw_walls` then turns one such table into one realisation: a line per
-wall, keyed to its claim. Keeping the two apart means the evidence is read and
-the probabilities computed once, and any number of realisations are drawn from
-them cheaply.
+Each probability carries a *basis*, the last rule that set it, so a map of
+``p_wall_basis`` shows where the mapping reaches and where the prior is all
+there is. :mod:`landloss.exposure.rw.population` draws a world from the table
+this module writes; keeping the two apart means the evidence is read once and
+any number of worlds are drawn from it cheaply.
 
-**The evidence is one-sided.** Three sources raise or cap the slope-driven
-prevalence of :mod:`landloss.exposure.rw.beta_population`:
-
-- Retaining walls mapped by GNS Science's SLIDE programme
-  (:func:`landloss.io.readers.get_gns_slide_morphology`) are direct evidence of
-  a wall. GNS mapped only the walls visible from above, in Wellington City
-  only, so a property with no mapped wall is not evidence of none and the
-  absence changes nothing.
-- Cut slopes and fill bodies mapped by the SLIDE genesis layer
-  (:func:`landloss.io.readers.get_slide_genesis`) mark ground that was shaped by
-  people, which is where walls are built and which slope alone can miss once the
-  cut has been made good.
-- The National Liquefaction Model's landform class
-  (:func:`landloss.io.readers.get_nlm_geomorphology`) caps the prevalence on
-  plains and coastal lowlands, where a wall is a garden edge at most.
-
-Every number that combines the evidence carries a ``beta`` name because it is
-engineering judgement with no fit behind it; the real model is calibrated
-against the SME suburb-by-suburb estimate (**T-19**) and replaces them.
+**The mapping is one-sided.** The GNS SLIDE retaining walls are visible from
+above and Wellington City only [townsend_2020], so a mapped wall raises a
+line's probability to at least :data:`BETA_MAPPED_WALL_PROBABILITY` and the
+absence of one changes nothing. Every number that combines the evidence
+carries a ``beta`` name because it is engineering judgement with no fit behind
+it; the claim report extraction (**T-50**) is the calibration source, and
+:func:`apply_count_bounds` is where its minimum and maximum walls per property
+enter once it is held.
 """
-
-import math
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from landloss.exposure.coverage import RW_COVERAGE_BUFFER_M
-from landloss.exposure.rw.beta_population import (
-    AREA_COLUMN,
-    BETA_LENGTH_SHARE,
-    BETA_POOR_SHARE,
-    COLUMNS,
-    ID_COLUMN,
-    INITIAL_CONDITIONS,
-    MEDIUM_MAX_HEIGHT_M,
-    SIZE_CLASSES,
-    SMALL_MAX_HEIGHT_M,
-    beta_wall_height_m,
-    beta_wall_prevalence,
-    classify_wall_size,
-    wall_lines,
-)
+from landloss.domain import constants
+from landloss.exposure.rw.beta_population import BETA_POOR_SHARE
 
-# The GNS SLIDE morphology ``Type`` that is a retaining wall.
-MAPPED_WALL_TYPE = "Retaining wall (man-made feature)"
-
-# The SLIDE genesis ``Type`` values that are ground shaped by earthworks.
-ENGINEERED_GROUND_TYPES = ("Cut slope", "Fill body")
-
-# The NLM ``l2_geomorphology`` classes that are flat depositional ground.
-PLAIN_LANDFORMS = ("Alluvial plains and river flats", "Coastal lowlands")
-
-# A mapped wall shorter than this inside the buffered property is a sliver where
-# a line grazes the boundary, not a wall on the section.
-MIN_MAPPED_WALL_LENGTH_M = 2.0
-
-# The probability of a wall on a property with one mapped on or beside it. Not
-# 1, because the mapping is from imagery and a line beside the boundary can be
-# the neighbour's wall or a road batter.
+# The probability of a wall along a line with one mapped on it. Not 1, because
+# the mapping is from imagery and a line can be a road batter or the
+# neighbour's wall. The one place the mapped-wall floor is typed. Replaced by
+# the share of real walls the GNS mapping captures, from the claims with walls
+# at addresses inside the SLIDE footprint.
 BETA_MAPPED_WALL_PROBABILITY = 0.9
 
-# The prevalence that a property wholly on a cut slope or fill body reaches, in
-# proportion to the share of it that is. Below the slope-driven prevalence on
-# steep ground it changes nothing.
-BETA_ENGINEERED_PREVALENCE = 0.4
+# The prior probability that a line is a wall, by the source it came from, in
+# the precedence order of landloss.exposure.rw.lines.SOURCES. A mapped wall is
+# the floor above; a cut/fill line marks an earthwork edge that is usually
+# retained; a genesis edge is coarser; a terrain break is a face the DEM sees,
+# which may be a bank or a cutting; a boundary is a place a wall often is and
+# usually is not. Judgement until the count bounds (T-50) replace them.
+BETA_SOURCE_PROBABILITY = {
+    "gns_mapped_wall": BETA_MAPPED_WALL_PROBABILITY,
+    "slide_cut_fill_line": 0.6,
+    "slide_cut_edge": 0.5,
+    "slide_fill_edge": 0.5,
+    "terrain_break": 0.4,
+    "road_frontage": 0.25,
+    "property_boundary": 0.15,
+}
 
-# The most a property on a plain can carry when nothing has been mapped on it.
-BETA_PLAIN_MAX_PREVALENCE = 0.1
+# What a cut face in rock keeps of its prior: a rock cut stands unsupported and
+# is claimed for spalling or slides rather than wall failure (Oriental Bay and
+# Evans Bay are the worked examples). Set against the wall counts in the claim
+# report extraction (T-50) once it is held.
+BETA_ROCK_CUT_FACTOR = 0.3
 
-# The scatter of retained height about its slope-driven median, as a log
-# standard deviation. A factor of about 1.5 either way at one sigma.
-BETA_HEIGHT_LOG_SD = 0.4
+# The most a line on the NLM flat land can carry: a wall there is a garden edge
+# at most. Set against the wall counts in the claim report extraction (T-50)
+# once it is held.
+BETA_FLATLAND_MAX_PROBABILITY = 0.1
 
-# The tails of the lognormal are cut here, so a draw cannot produce a 9 m garden
-# wall or a 10 cm one. Both bounds sit inside the end size classes, so the class
-# probabilities are unaffected.
-BETA_DRAWN_HEIGHT_BOUNDS_M = (0.2, 6.0)
+# The probability of poor condition for a wall under UNCONSENTED_WALL_HEIGHT_M,
+# which is often built without consent and to no standard. Set with the age
+# shares below once the building construction age source is held.
+BETA_UNCONSENTED_POOR_SHARE = 0.7
 
-EVIDENCE_COLUMNS = (
-    "mapped_wall_length_m",
-    "engineered_share",
-    "landform",
-    "on_plain",
-)
-PROBABILITY_COLUMNS = (
-    "p_wall",
-    "height_median_m",
-    "height_log_sd",
-    "p_small",
-    "p_medium",
-    "p_large",
-    "p_poor",
-    "length_m",
-)
+# The probability of poor condition by the dwelling's construction decade,
+# either side of the 1991 Building Act: pre-1990 walls are often cast in situ
+# concrete gravity walls of the 1970s and 80s, post-1991 ones more often
+# anchored timber. Applied only where a dwelling age is held. Set from the
+# building construction age source (the District Valuation Roll building age)
+# once it is held.
+BETA_PRE_1990_POOR_SHARE = 0.7
+BETA_POST_1990_POOR_SHARE = 0.3
+BUILDING_ACT_DECADE = 1990
+
+# The basis strings: the last rule that set each probability.
+WALL_BASES = ("source_prior", "rock_cut", "flatland_cap", "mapped")
+SOURCE_PRIOR, ROCK_CUT, FLATLAND_CAP, MAPPED = WALL_BASES
+POOR_BASES = ("default", "height", "age")
+DEFAULT, HEIGHT, AGE = POOR_BASES
+
+PROBABILITY_COLUMNS = ("p_wall", "p_wall_basis", "p_poor", "p_poor_basis")
+
+# The line columns the two probabilities read. dwelling_age_decade is read
+# where present and treated as unheld where the column is absent.
+WALL_INPUT_COLUMNS = ("source", "is_mapped_wall", "is_rock_cut", "is_flatland")
+HEIGHT_COLUMN = "face_height_m"
+AGE_COLUMN = "dwelling_age_decade"
+
+# The count bounds table (T-50): one row per claim, the fewest and most walls
+# the claim report says the property has.
+BOUNDS_COLUMNS = ("min_walls", "max_walls")
 
 
-def mapped_wall_length_m(
-    polygons: gpd.GeoSeries,
-    morphology: gpd.GeoDataFrame,
-    *,
-    buffer_m: float = RW_COVERAGE_BUFFER_M,
+def _require(frame: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:
+    """Refuse a frame missing any of the columns.
+
+    Args:
+        frame: The frame to check.
+        columns: The columns it has to carry.
+        name: What to call the frame in the message.
+
+    Raises:
+        ValueError: If a column is missing.
+    """
+    missing = [column for column in columns if column not in frame.columns]
+    if missing:
+        msg = f"{name} is missing {missing}"
+        raise ValueError(msg)
+
+
+def line_wall_probability(lines: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Return the probability that each line is a wall, and what set it.
+
+    Applied in this order: the prior of the line's source
+    (:data:`BETA_SOURCE_PROBABILITY`); multiplied by :data:`BETA_ROCK_CUT_FACTOR`
+    where ``is_rock_cut``; capped at :data:`BETA_FLATLAND_MAX_PROBABILITY` where
+    ``is_flatland``; raised to at least :data:`BETA_MAPPED_WALL_PROBABILITY`
+    where ``is_mapped_wall``, because a wall seen from above outranks a prior
+    guessed from the source. The basis is the last rule that changed the value,
+    so a mapped wall whose prior already sat at the floor keeps the basis of
+    the rule that put it there.
+
+    Args:
+        lines: One row per candidate line carrying :data:`WALL_INPUT_COLUMNS`.
+
+    Returns:
+        The probability per line, and the basis per line, one of
+        :data:`WALL_BASES`, both aligned to ``lines``.
+
+    Raises:
+        ValueError: If a column is missing, or a source is not one of
+            :data:`BETA_SOURCE_PROBABILITY`.
+    """
+    _require(lines, WALL_INPUT_COLUMNS, "lines")
+    source = lines["source"].to_numpy()
+    unknown = sorted(set(source) - set(BETA_SOURCE_PROBABILITY))
+    if unknown:
+        msg = f"lines carry sources with no prior: {unknown}"
+        raise ValueError(msg)
+
+    probability = np.array(
+        [BETA_SOURCE_PROBABILITY[name] for name in source], dtype=float
+    )
+    basis = np.full(len(lines), SOURCE_PRIOR, dtype=object)
+
+    rock_cut = lines["is_rock_cut"].to_numpy(dtype=bool)
+    lowered = probability * BETA_ROCK_CUT_FACTOR
+    changed = rock_cut & (lowered != probability)
+    probability = np.where(rock_cut, lowered, probability)
+    basis[changed] = ROCK_CUT
+
+    flat = lines["is_flatland"].to_numpy(dtype=bool)
+    capped = np.minimum(probability, BETA_FLATLAND_MAX_PROBABILITY)
+    changed = flat & (capped != probability)
+    probability = np.where(flat, capped, probability)
+    basis[changed] = FLATLAND_CAP
+
+    mapped = lines["is_mapped_wall"].to_numpy(dtype=bool)
+    lifted = np.maximum(probability, BETA_MAPPED_WALL_PROBABILITY)
+    changed = mapped & (lifted != probability)
+    probability = np.where(mapped, lifted, probability)
+    basis[changed] = MAPPED
+
+    return probability, basis
+
+
+def poor_condition_probability(
+    height_m: np.ndarray, dwelling_age_decade: pd.Series
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the probability that each wall is in poor condition, and why.
+
+    :data:`~landloss.exposure.rw.beta_population.BETA_POOR_SHARE` by default;
+    :data:`BETA_UNCONSENTED_POOR_SHARE` where the height is under
+    :data:`~landloss.domain.constants.UNCONSENTED_WALL_HEIGHT_M`; and where a
+    dwelling age is held it overrides both, :data:`BETA_PRE_1990_POOR_SHARE`
+    for a decade before :data:`BUILDING_ACT_DECADE` and
+    :data:`BETA_POST_1990_POOR_SHARE` from it on. A NaN height takes the
+    default.
+
+    Args:
+        height_m: The face height of each wall, in metres.
+        dwelling_age_decade: The construction decade of the dwelling on each
+            line's property, nullable; null where no age is held.
+
+    Returns:
+        The probability per wall, and the basis per wall, one of
+        :data:`POOR_BASES`, both aligned to ``height_m``.
+
+    Raises:
+        ValueError: If the two inputs differ in length.
+    """
+    heights = np.asarray(height_m, dtype=float)
+    if len(heights) != len(dwelling_age_decade):
+        msg = (
+            f"height_m and dwelling_age_decade must match: got {len(heights)} "
+            f"and {len(dwelling_age_decade)}"
+        )
+        raise ValueError(msg)
+
+    probability = np.full(len(heights), BETA_POOR_SHARE, dtype=float)
+    basis = np.full(len(heights), DEFAULT, dtype=object)
+
+    unconsented = heights < constants.UNCONSENTED_WALL_HEIGHT_M
+    probability[unconsented] = BETA_UNCONSENTED_POOR_SHARE
+    basis[unconsented] = HEIGHT
+
+    held = dwelling_age_decade.notna().to_numpy(dtype=bool)
+    decade = dwelling_age_decade.to_numpy(dtype=float, na_value=np.nan)
+    pre_act = held & (decade < BUILDING_ACT_DECADE)
+    probability[pre_act] = BETA_PRE_1990_POOR_SHARE
+    probability[held & ~pre_act] = BETA_POST_1990_POOR_SHARE
+    basis[held] = AGE
+
+    return probability, basis
+
+
+def apply_count_bounds(
+    p_wall: np.ndarray, claim_ids: pd.Series, bounds: pd.DataFrame
 ) -> np.ndarray:
-    """Return the length of GNS-mapped retaining wall on each property.
+    """Return the probabilities scaled into each claim's count bounds.
 
-    The length is what lies inside the property buffered by ``buffer_m``, the
-    same buffer the coverage rule applies to a wall, so a mapped wall counts
-    where a wall of the property's would be kept.
+    The claim report extraction (**T-50**) gives a minimum and a maximum number
+    of walls per property. Inside each claim the probabilities are scaled by
+    one factor so that their sum, the expected number of walls, is at least the
+    minimum and at most the maximum; a claim already inside its bounds, or
+    with no bounds, is unchanged. A claim whose lines all carry zero cannot be
+    scaled up, so each of its lines takes an equal share of the minimum. No
+    probability is scaled above 1, so a minimum above the number of lines is
+    met as nearly as the lines allow.
 
     Args:
-        polygons: One insured land polygon per property, in a projected CRS.
-        morphology: The GNS SLIDE morphology lines, with a ``Type`` column, in
-            the same CRS.
-        buffer_m: How far outside the polygon a mapped wall still counts.
+        p_wall: The probability per line, from :func:`line_wall_probability`.
+        claim_ids: The claim of each line, aligned to ``p_wall``; null where
+            the line belongs to no claim, which no bound reaches.
+        bounds: One row per claim, indexed by claim id, carrying
+            :data:`BOUNDS_COLUMNS`.
 
     Returns:
-        Metres of mapped wall per property, aligned to ``polygons``. Zero where
-        none is mapped, including everywhere outside the SLIDE study area.
+        The scaled probability per line.
+
+    Raises:
+        ValueError: If the inputs differ in length, a bound column is
+            missing, or a minimum is above its maximum.
     """
-    lengths = np.zeros(len(polygons))
-    walls = morphology[morphology["Type"] == MAPPED_WALL_TYPE]
-    if walls.empty or polygons.empty:
-        return lengths
+    probability = np.asarray(p_wall, dtype=float).copy()
+    if len(probability) != len(claim_ids):
+        msg = (
+            f"p_wall and claim_ids must match: got {len(probability)} and "
+            f"{len(claim_ids)}"
+        )
+        raise ValueError(msg)
+    _require(bounds, BOUNDS_COLUMNS, "bounds")
+    if (bounds["min_walls"] > bounds["max_walls"]).any():
+        msg = "bounds carry a minimum above its maximum"
+        raise ValueError(msg)
 
-    buffered = gpd.GeoDataFrame(
-        {"position": np.arange(len(polygons))},
-        geometry=polygons.buffer(buffer_m).to_numpy(),
-        crs=polygons.crs,
-    )
-    pairs = gpd.sjoin(
-        buffered, walls[["geometry"]], how="inner", predicate="intersects"
-    )
-    if pairs.empty:
-        return lengths
-
-    inside = walls.geometry.loc[pairs["index_right"]].intersection(
-        pairs.geometry, align=False
-    )
-    summed = (
-        pd.Series(inside.length.to_numpy()).groupby(pairs["position"].to_numpy()).sum()
-    )
-    lengths[summed.index.to_numpy()] = summed.to_numpy()
-    return lengths
-
-
-def engineered_share(polygons: gpd.GeoSeries, genesis: gpd.GeoDataFrame) -> np.ndarray:
-    """Return the share of each property that lies on a cut slope or fill body.
-
-    Args:
-        polygons: One insured land polygon per property, in a projected CRS.
-        genesis: The GNS SLIDE genesis polygons, with a ``Type`` column, in the
-            same CRS.
-
-    Returns:
-        A share between 0 and 1 per property, aligned to ``polygons``. Zero
-        outside the SLIDE study area. Overlapping genesis polygons are not
-        merged, so the share is capped at 1.
-    """
-    shares = np.zeros(len(polygons))
-    earthworks = genesis[genesis["Type"].isin(ENGINEERED_GROUND_TYPES)]
-    if earthworks.empty or polygons.empty:
-        return shares
-
-    frame = gpd.GeoDataFrame(
-        {"position": np.arange(len(polygons))},
-        geometry=polygons.to_numpy(),
-        crs=polygons.crs,
-    )
-    pairs = gpd.sjoin(
-        frame, earthworks[["geometry"]], how="inner", predicate="intersects"
-    )
-    if pairs.empty:
-        return shares
-
-    covered = (
-        earthworks.geometry.loc[pairs["index_right"]]
-        .intersection(pairs.geometry, align=False)
-        .area.to_numpy()
-    )
-    summed = pd.Series(covered).groupby(pairs["position"].to_numpy()).sum()
-    areas = polygons.area.to_numpy()[summed.index.to_numpy()]
-    shares[summed.index.to_numpy()] = np.clip(summed.to_numpy() / areas, 0.0, 1.0)
-    return shares
+    claims = claim_ids.to_numpy(dtype=object)
+    for claim, row in bounds.iterrows():
+        inside = claims == claim
+        if not inside.any():
+            continue
+        expected = probability[inside].sum()
+        count = int(inside.sum())
+        low, high = float(row["min_walls"]), float(row["max_walls"])
+        if expected < low:
+            scaled = (
+                np.full(count, low / count)
+                if expected == 0.0
+                else probability[inside] * (low / expected)
+            )
+        elif expected > high:
+            scaled = probability[inside] * (high / expected)
+        else:
+            continue
+        probability[inside] = np.minimum(scaled, 1.0)
+    return probability
 
 
-def landform_at(points: gpd.GeoSeries, geomorphology: gpd.GeoDataFrame) -> np.ndarray:
-    """Return the NLM landform class at each point.
+def wall_probability_table(lines: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Return the candidate lines with the two probabilities and their bases.
 
     Args:
-        points: One point per property, in a projected CRS.
-        geomorphology: The NLM geomorphology polygons, with an
-            ``l2_geomorphology`` column, in the same CRS.
+        lines: The candidate wall lines ``gen_wall_lines.py`` wrote, carrying
+            :data:`WALL_INPUT_COLUMNS` and ``face_height_m``;
+            ``dwelling_age_decade`` is read where present and treated as unheld
+            where absent.
 
     Returns:
-        The landform class per point, aligned to ``points``, or an empty string
-        where no polygon covers it.
-    """
-    frame = gpd.GeoDataFrame(
-        {"position": np.arange(len(points))},
-        geometry=points.to_numpy(),
-        crs=points.crs,
-    )
-    joined = gpd.sjoin(
-        frame,
-        geomorphology[["l2_geomorphology", "geometry"]],
-        how="left",
-        predicate="within",
-    )
-    # A point on a shared edge lands in two polygons; either is as good as the
-    # other at this resolution.
-    first = joined.drop_duplicates("position").set_index("position")
-    return (
-        first["l2_geomorphology"].fillna("").reindex(np.arange(len(points))).to_numpy()
-    )
-
-
-def attach_evidence(
-    properties: gpd.GeoDataFrame,
-    *,
-    morphology: gpd.GeoDataFrame,
-    genesis: gpd.GeoDataFrame,
-    geomorphology: gpd.GeoDataFrame,
-) -> gpd.GeoDataFrame:
-    """Return the properties with the three evidence columns attached.
-
-    Args:
-        properties: One row per property, with polygon geometry.
-        morphology: The GNS SLIDE morphology lines.
-        genesis: The GNS SLIDE genesis polygons.
-        geomorphology: The NLM geomorphology polygons.
-
-    Returns:
-        A copy carrying :data:`EVIDENCE_COLUMNS`. The geometry is unchanged.
-    """
-    attached = properties.copy()
-    polygons = properties.geometry
-    attached["mapped_wall_length_m"] = mapped_wall_length_m(polygons, morphology)
-    attached["engineered_share"] = engineered_share(polygons, genesis)
-    landform = landform_at(polygons.representative_point(), geomorphology)
-    attached["landform"] = landform
-    attached["on_plain"] = np.isin(landform, PLAIN_LANDFORMS)
-    return attached
-
-
-def wall_probability(
-    slope_deg: np.ndarray,
-    *,
-    mapped_length_m: np.ndarray,
-    engineered: np.ndarray,
-    on_plain: np.ndarray,
-) -> np.ndarray:
-    """Return the probability that each property carries a wall.
-
-    Applied in this order: the slope-driven prevalence, lifted by the share of
-    the property on earthworks; capped on a plain; then set to
-    :data:`BETA_MAPPED_WALL_PROBABILITY` where a wall is mapped, because a wall
-    seen from above outranks a prevalence guessed from the slope.
-
-    Args:
-        slope_deg: Ground slope at each property, in degrees. NaN where it could
-            not be sampled, which gives NaN.
-        mapped_length_m: Metres of GNS-mapped wall on each property.
-        engineered: The share of each property on a cut slope or fill body.
-        on_plain: Whether each property is on a plain landform.
-
-    Returns:
-        A probability per property.
-    """
-    slope_driven = beta_wall_prevalence(slope_deg)
-    lifted = np.maximum(slope_driven, engineered * BETA_ENGINEERED_PREVALENCE)
-    capped = np.where(on_plain, np.minimum(lifted, BETA_PLAIN_MAX_PREVALENCE), lifted)
-    mapped = np.asarray(mapped_length_m) >= MIN_MAPPED_WALL_LENGTH_M
-    probability = np.where(
-        mapped, np.maximum(capped, BETA_MAPPED_WALL_PROBABILITY), capped
-    )
-    return np.where(
-        np.isfinite(np.asarray(slope_deg, dtype=float)), probability, np.nan
-    )
-
-
-def _normal_cdf(z: np.ndarray) -> np.ndarray:
-    """Return the standard normal cumulative probability of each value."""
-    return 0.5 * (
-        1.0
-        + np.array([math.erf(v / math.sqrt(2.0)) for v in z.ravel()]).reshape(z.shape)
-    )
-
-
-def size_class_probabilities(
-    median_m: np.ndarray, log_sd: float = BETA_HEIGHT_LOG_SD
-) -> np.ndarray:
-    """Return the probability of each size class, given that a wall exists.
-
-    Args:
-        median_m: The median retained height of each wall, in metres.
-        log_sd: The log standard deviation of the height.
-
-    Returns:
-        An array of shape ``(len(median_m), 3)`` in the order of
-        :data:`~landloss.exposure.rw.beta_population.SIZE_CLASSES`, each row
-        summing to 1.
-    """
-    log_median = np.log(np.asarray(median_m, dtype=float))
-    below_small = _normal_cdf((np.log(SMALL_MAX_HEIGHT_M) - log_median) / log_sd)
-    below_medium = _normal_cdf((np.log(MEDIUM_MAX_HEIGHT_M) - log_median) / log_sd)
-    return np.column_stack(
-        [below_small, below_medium - below_small, 1.0 - below_medium]
-    )
-
-
-def wall_probability_table(properties: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Return the probabilistic retaining wall output, one row per property.
-
-    Args:
-        properties: One row per property with point geometry, carrying the
-            claim id, ``area_m2``, ``slope_deg``, ``downhill_azimuth_deg`` and
-            the :data:`EVIDENCE_COLUMNS`.
-
-    Returns:
-        A GeoDataFrame on the same rows and geometry, carrying the inputs and
+        A copy on the same rows and geometry carrying the inputs and
         :data:`PROBABILITY_COLUMNS`.
 
     Raises:
         ValueError: If a required column is missing.
     """
-    required = (
-        ID_COLUMN,
-        AREA_COLUMN,
-        "slope_deg",
-        "downhill_azimuth_deg",
-        *EVIDENCE_COLUMNS,
-    )
-    missing = [column for column in required if column not in properties.columns]
-    if missing:
-        msg = f"properties is missing {missing}"
-        raise ValueError(msg)
-
-    table = properties.copy()
-    slope = table["slope_deg"].to_numpy(dtype=float)
-    table["p_wall"] = wall_probability(
-        slope,
-        mapped_length_m=table["mapped_wall_length_m"].to_numpy(dtype=float),
-        engineered=table["engineered_share"].to_numpy(dtype=float),
-        on_plain=table["on_plain"].to_numpy(dtype=bool),
-    )
-    median = beta_wall_height_m(slope)
-    table["height_median_m"] = median
-    table["height_log_sd"] = BETA_HEIGHT_LOG_SD
-    classes = size_class_probabilities(median)
-    for name, share in zip(SIZE_CLASSES, classes.T, strict=True):
-        table[f"p_{name}"] = share
-    table["p_poor"] = BETA_POOR_SHARE
-    table["length_m"] = np.sqrt(table[AREA_COLUMN].to_numpy(dtype=float)) * (
-        BETA_LENGTH_SHARE
-    )
-    return table
-
-
-def draw_walls(
-    probabilities: gpd.GeoDataFrame, rng: np.random.Generator
-) -> gpd.GeoDataFrame:
-    """Draw one realisation of the retaining wall population.
-
-    A wall exists on a property with probability ``p_wall``. Its retained
-    height is drawn from the lognormal in ``height_median_m`` and
-    ``height_log_sd``, its size class follows from the height, and it is poor
-    with probability ``p_poor``. It is drawn as a line along the contour.
-
-    Args:
-        probabilities: The output of :func:`wall_probability_table`.
-        rng: The random generator, so a realisation reproduces exactly.
-
-    Returns:
-        A GeoDataFrame of one line per wall carrying
-        :data:`~landloss.exposure.rw.beta_population.COLUMNS`. A property that
-        drew no wall has no row; a property whose probability is NaN, because no
-        slope was sampled, draws none either.
-
-    Raises:
-        ValueError: If a probability column is missing.
-    """
-    required = (ID_COLUMN, "downhill_azimuth_deg", *PROBABILITY_COLUMNS)
-    missing = [column for column in required if column not in probabilities.columns]
-    if missing:
-        msg = f"probabilities is missing {missing}"
-        raise ValueError(msg)
-
-    p_wall = probabilities["p_wall"].to_numpy(dtype=float)
-    azimuth = probabilities["downhill_azimuth_deg"].to_numpy(dtype=float)
-    # NaN compares False, so an unplaceable property draws nothing.
-    has_wall = np.isfinite(azimuth) & (rng.random(len(probabilities)) < p_wall)
-    walls = probabilities.loc[has_wall]
-    if walls.empty:
-        return gpd.GeoDataFrame(
-            {column: [] for column in COLUMNS},
-            geometry=gpd.GeoSeries([], crs=probabilities.crs),
-            crs=probabilities.crs,
+    _require(lines, (*WALL_INPUT_COLUMNS, HEIGHT_COLUMN), "lines")
+    table = lines.copy()
+    p_wall, wall_basis = line_wall_probability(table)
+    if AGE_COLUMN in table.columns:
+        age = table[AGE_COLUMN]
+    else:
+        age = pd.Series(
+            pd.array([pd.NA] * len(table), dtype="Int64"), index=table.index
         )
-
-    height = np.clip(
-        walls["height_median_m"].to_numpy(dtype=float)
-        * np.exp(
-            walls["height_log_sd"].to_numpy(dtype=float)
-            * rng.standard_normal(len(walls))
-        ),
-        *BETA_DRAWN_HEIGHT_BOUNDS_M,
+    p_poor, poor_basis = poor_condition_probability(
+        table[HEIGHT_COLUMN].to_numpy(dtype=float), age
     )
-    condition = np.where(
-        rng.random(len(walls)) < walls["p_poor"].to_numpy(dtype=float),
-        INITIAL_CONDITIONS[1],
-        INITIAL_CONDITIONS[0],
-    )
-    length = walls["length_m"].to_numpy(dtype=float)
-
-    return gpd.GeoDataFrame(
-        {
-            ID_COLUMN: walls[ID_COLUMN].to_numpy(),
-            "size_class": classify_wall_size(height),
-            "initial_condition": condition,
-            "height_m": height,
-            "length_m": length,
-        },
-        geometry=wall_lines(
-            walls.geometry, walls["downhill_azimuth_deg"].to_numpy(dtype=float), length
-        ).to_numpy(),
-        crs=probabilities.crs,
-    )
+    table["p_wall"] = p_wall
+    table["p_wall_basis"] = wall_basis
+    table["p_poor"] = p_poor
+    table["p_poor_basis"] = poor_basis
+    return table

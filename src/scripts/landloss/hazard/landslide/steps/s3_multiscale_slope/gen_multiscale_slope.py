@@ -1,31 +1,35 @@
-"""Build a DEM and a slope raster at each of several cell sizes.
+"""Build a DEM, a slope and an aspect raster at each of several cell sizes.
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s3_multiscale_slope/gen_multiscale_slope.py
 
-The run settings -- the pilot box or the full study area, the cell sizes, and
-whether to reuse the cached DEM -- come from config.py beside this script rather
-than from the command line.
+Needs ``LINZ_API_KEY`` in ``.env`` for the elevation fetch. The run settings --
+the pilot box or the full study area, the cell sizes, and whether to reuse the
+cached DEM -- come from config.py beside this script rather than from the
+command line.
 
 Slope is a property of the length it is measured over, and the models this
 study leans on were calibrated at different ones: Kingsbury's slope classes
 against a 20 m contour model, the global earthquake-induced landslide models
-against 30 m and coarser grids. So the slope is built at each cell size in
-config.py rather than at one and reused.
+against 30 m and coarser grids, and the urban failure candidates are delineated
+at 1, 3, 10 and 30 m. So the slope is built at each cell size in config.py
+rather than at one and reused.
 
-Only the finest DEM is fetched from LINZ. Every coarser one is the block mean of
-it, from :func:`landloss.common.utils.terrain.block_mean`, because LINZ's loader
-resamples bilinearly and, asked for 100 m straight from the 1 m LiDAR, reads a
-handful of points per cell rather than the ground the cell covers. Averaging
-also makes every grid nest inside the finest, so a 100 m cell is exactly the
-hundred 10 m cells under it.
+Only the finest DEM, 1 m, is fetched from LINZ. Every coarser one is the block
+mean of it, from :func:`landloss.common.utils.terrain.block_mean`, because
+LINZ's loader resamples bilinearly and, asked for 100 m straight from the 1 m
+LiDAR, reads a handful of points per cell rather than the ground the cell
+covers. Averaging also makes every grid nest inside the finest, so a 100 m cell
+is exactly the ten thousand 1 m cells under it.
 
 Slope at each size is Horn's method, from
 :func:`landloss.common.utils.terrain.slope_degrees`, the same as every other
-slope in this study. The extent is snapped outward to a whole number of the
-least common multiple of the cell sizes -- 300 m for 10, 30 and 100 -- so that
-every grid tiles it exactly, and fetched with that much margin on every side, so
-the one cell border Horn's kernel loses falls in the margin and is trimmed off,
-rather than showing up as NaN along the edges.
+slope in this study, and the aspect is the downhill bearing of the same
+gradient, from :func:`landloss.common.utils.terrain.downhill_azimuth_degrees`.
+The extent is snapped outward to a whole number of the least common multiple of
+the cell sizes -- 300 m for 1, 3, 10, 30, 50 and 100 -- so that every grid
+tiles it exactly, and fetched with that much margin on every side, so the one
+cell border Horn's kernel loses falls in the margin and is trimmed off, rather
+than showing up as NaN along the edges.
 
 The fetched DEM is cut back to the padded extent before anything is averaged.
 LINZ's loader comes back larger than asked, because the extent goes to it in
@@ -33,8 +37,9 @@ WGS84 and the rectangle grows on the round trip, so without the cut the blocks
 would be counted from wherever the loader's corner happened to land rather than
 from a round coordinate.
 
-Writes, per cell size, ``dem-<n>m.tif`` and ``slope-<n>m.tif`` under
-temp/hazard/landslide/, with a ``-pilot`` suffix for a pilot run.
+Writes, per cell size, ``dem-<n>m.tif``, ``slope-<n>m.tif`` and
+``aspect-<n>m.tif`` under temp/hazard/landslide/, with a ``-pilot`` suffix for
+a pilot run.
 """
 
 import itertools
@@ -48,6 +53,7 @@ import rioxarray
 from landloss.common.utils.terrain import (
     block_mean,
     cell_size,
+    downhill_azimuth_degrees,
     slope_degrees,
     write_raster,
 )
@@ -71,6 +77,10 @@ WORK_DIR = TEMP_DIR / "hazard" / "landslide"
 # susceptibility step scores is visible straight off the run.
 SLOPE_CLASS_EDGES = (0, 15, 20, 25, 30, 35, 45, 90)
 
+# The eight compass octants the run reports the aspect share in, each 45 degrees
+# wide and centred on its cardinal or intercardinal bearing.
+OCTANT_NAMES = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
 DECILES = (0.1, 0.5, 0.9, 0.99)
 
 RULE = "-" * 72
@@ -80,6 +90,34 @@ def output_path(kind, resolution_m, *, pilot):
     """Return the file one layer at one cell size is written to."""
     suffix = "-pilot" if pilot else ""
     return WORK_DIR / f"{kind}-{resolution_m:g}m{suffix}.tif"
+
+
+def dem_path(resolution_m, *, pilot):
+    """Return the file the DEM at one cell size is written to."""
+    return output_path("dem", resolution_m, pilot=pilot)
+
+
+def slope_path(resolution_m, *, pilot):
+    """Return the file the slope at one cell size is written to."""
+    return output_path("slope", resolution_m, pilot=pilot)
+
+
+def aspect_path(resolution_m, *, pilot):
+    """Return the file the aspect (downhill azimuth) at one cell size is written to."""
+    return output_path("aspect", resolution_m, pilot=pilot)
+
+
+def read_layer(path):
+    """Read one raster this step wrote, or fetched, with nodata as NaN.
+
+    A masked read leaves the file's fill value in the encoding as well as
+    declaring NaN on the attributes, and writing a grid that carries both
+    fails. NaN on the attributes is the one that describes the array now.
+    """
+    with rioxarray.open_rasterio(path, masked=True) as opened:
+        layer = opened.squeeze("band", drop=True).load()
+    layer.encoding.pop("_FillValue", None)
+    return layer.rio.write_nodata(np.nan)
 
 
 def check_resolutions(resolutions_m):
@@ -128,23 +166,15 @@ def fetch_dem(bbox, resolution_m, *, use_cache):
     """Fetch the finest DEM over an extent, with nodata as NaN."""
     print(
         f"\nFetching the LINZ elevation model at {resolution_m:g} m ...\n"
-        "  The pilot takes a minute or two; the full study area is a long\n"
-        "  background job. It caches, so a repeat is instant.",
+        "  The pilot takes a few minutes; the full study area does not fit\n"
+        "  in memory at 1 m. It caches, so a repeat is instant.",
         flush=True,
     )
     started = time.perf_counter()
     dem_path = get_dem(bbox, resolution=resolution_m, use_cache=use_cache)
     print(f"  {dem_path}")
     print(f"  Took    : {time.perf_counter() - started:,.1f} s")
-
-    with rioxarray.open_rasterio(dem_path, masked=True) as opened:
-        dem = opened.squeeze(drop=True).load()
-
-    # A masked read leaves the file's fill value in the encoding as well as
-    # declaring NaN on the attributes, and writing a grid that carries both
-    # fails. NaN on the attributes is the one that describes the array now.
-    dem.encoding.pop("_FillValue", None)
-    return dem.rio.write_nodata(np.nan)
+    return read_layer(dem_path)
 
 
 def trim_to_extent(grid, bbox):
@@ -210,8 +240,32 @@ def describe_slope(slope, dem, resolution_m):
     )
 
 
+def describe_aspect(aspect):
+    """Print the aspect NaN count and the share of the extent facing each octant."""
+    values = aspect.to_numpy()
+    present = values[np.isfinite(values)]
+    print(f"  Aspect NaN cells: {values.size - present.size:,} (level ground included)")
+
+    if present.size == 0:
+        print("  No cell carries an aspect.")
+        return
+
+    # Octant 0 is centred on north, so the first bin straddles 0/360: rotate the
+    # bearings by half an octant before binning so each octant is one bin.
+    octant_width = 360 / len(OCTANT_NAMES)
+    octants = np.floor(((present + octant_width / 2) % 360) / octant_width).astype(int)
+    counts = np.bincount(octants, minlength=len(OCTANT_NAMES))
+    print(
+        "  Octants : "
+        + ", ".join(
+            f"{name} {count / present.size:.1%}"
+            for name, count in zip(OCTANT_NAMES, counts, strict=True)
+        )
+    )
+
+
 def main(*, pilot, resolutions_m, use_cached_dem):
-    """Build a DEM and a slope at each cell size over the extent and write them.
+    """Build a DEM, a slope and an aspect at each cell size over the extent.
 
     Args:
         pilot: Whether to run over ``SMALL_WLG_PILOT`` rather than the four
@@ -240,15 +294,17 @@ def main(*, pilot, resolutions_m, use_cached_dem):
         print(f"\nBuilding {resolution_m:g} m ...", flush=True)
         dem = fine_dem if factor == 1 else block_mean(fine_dem, factor)
         slope = slope_degrees(dem, cell_size(dem))
+        aspect = downhill_azimuth_degrees(dem, cell_size(dem))
 
         dem = trim_to_extent(dem, snapped)
         slope = trim_to_extent(slope, snapped)
+        aspect = trim_to_extent(aspect, snapped)
         describe_slope(slope, dem, resolution_m)
+        describe_aspect(aspect)
 
-        written.append(write_raster(dem, output_path("dem", resolution_m, pilot=pilot)))
-        written.append(
-            write_raster(slope, output_path("slope", resolution_m, pilot=pilot))
-        )
+        written.append(write_raster(dem, dem_path(resolution_m, pilot=pilot)))
+        written.append(write_raster(slope, slope_path(resolution_m, pilot=pilot)))
+        written.append(write_raster(aspect, aspect_path(resolution_m, pilot=pilot)))
 
     print(RULE)
     for path in written:

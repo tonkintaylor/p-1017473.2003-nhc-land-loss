@@ -1,188 +1,172 @@
 # Step 1 — Landslide realisation: method
 
-- The step turns a supplied per-cell probability of slope failure into a set of
-  individual landslides, each with a polygon for the ground it left and a polygon
-  for the ground it landed on. It is run by `s1_simulate_landslides.py`, and the
-  figure it is checked against is produced by `fig_landslide_realisation.py` in
-  the same folder, written to
-  `report/hazard/landslide/landslide-realisation/fig/`.
-- What a run does is set by `config.py` in the step folder — `PILOT`, `SEED` and
-  `USE_CACHED_DEM` — read in each script's `if __name__ == "__main__":` block and
-  passed into `main()` as keyword arguments. Neither script takes command line
-  arguments and neither `main()` carries a default, so a realisation can be
-  accounted for from the tracked source alone. `PILOT` is `True`, meaning runs go
-  over `SMALL_WLG_PILOT` rather than the four territorial authorities.
-- The base rate is ESNZ's earthquake-induced landslide probability grid, read by
-  `landloss.io.source_material.get_eil_landslide_probability`. The file it reads
-  is named once, in `EIL_PROBABILITY_SOURCE_PATH` in
-  `landloss.domain.constants`, rather than in the script.
-- The supplied file is a **32 m** grid in NZTM, float32 with NaN nodata, covering
-  1,730,628–1,791,588 E and 5,409,316–5,459,044 N, with about 57% of its cells
-  carrying a value. Probabilities run from 0.002 to 0.98, median 0.024. Nothing
-  in the code assumes 32 m — `cell_size()` reads it off the grid and every
-  derivative is computed at whatever it finds — so a resupply at another
-  resolution needs no code change.
-- That extent stops short of the study area on the east (1,791,588 against
-  1,794,002) and the north (5,459,044 against 5,464,683), so a full run covers
-  slightly less ground than the four territorial authorities. `describe_extent()`
-  prints the grid's extent rather than the requested one for that reason.
-- The shaking level the grid is conditioned on is taken from the file name
-  (`EILProb_PGA2g.tif`) and has not been confirmed with the supplier. Nothing in
-  the code depends on it — the grid is used exactly as supplied — but no result
-  from this step can be described in the report until it is. The same constant's
-  comment records this.
-- The grid is used as supplied in one further respect: it is not rescaled or
-  clipped. `check_probabilities()` refuses to run on a grid holding any value
-  outside [0, 1], because a grid in per cent and a grid carrying an undeclared
-  nodata marker both look like ordinary numbers and would each produce a hundred
-  times too many landslides.
-- **Each cell is sampled independently.** A cell fails when a uniform draw falls
-  below its probability. Real failures cluster, so this is the largest known
-  error in the step; it is stated in the module docstring of
-  `s1_simulate_landslides.py` and again in the run output.
-- **Size** is drawn from a bounded power law between `MIN_SOURCE_AREA_M2` (3 m²)
-  and `MAX_SOURCE_AREA_M2` (3000 m²), with exponent `SIZE_EXPONENT`, by inverting
-  the cumulative distribution in `sample_areas()`. The exponent is **1.19, and it
-  is calibrated to total area rather than fitted to a size inventory.** The
-  supplied grid fixes how many failures there are and says nothing about how
-  large they are, so the exponent is the only free parameter controlling total
-  landslide area, and it is solved backwards from the areal-coverage cross-check:
-  1.19 gives a mean source area of 259 m², a median of 33 m², and 0.98% areal
-  coverage over the graded area, against the order of 1% that Nowicki Jessee et
-  al. (2018) give for strong shaking in steep terrain.
-- That exponent is far shallower than any published size fit — Massey et al.
-  (2020) give 2.1 for the Kaikōura greywacke source polygons and Malamud et al.
-  (2004) 2.3 to 2.5 generally — and the reason is stated in the constant's own
-  comment. Those fits hold above a cutoff near 500 m², real inventories roll over
-  below it, and a single power law stretched two decades below the cutoff cannot
-  carry both a published slope and the right total area. **This step currently
-  buys the right total area at the price of the right shape.** A size
-  distribution quoted from it has to say so; a total area quoted from it is
-  calibrated and defensible.
-- **The calibration now leans on the 3000 m² upper bound.** A shallow exponent
-  puts most of the area in the largest failures, so the cap is doing real work
-  rather than just trimming a tail: holding the exponent at 1.19 and moving the
-  cap to 1,000 m² gives 0.44% coverage, 5,000 m² gives 1.44% and 10,000 m² gives
-  2.42%. The 3 m² floor barely matters any more; the cap decides the answer. Both
-  bounds were given as the range to model rather than derived, so the cap is now
-  as much a calibration parameter as the exponent, and phase 2 has to fit the two
-  together.
-- **Shape** is a circle centred on the cell, built by `circles()`. The radius
-  comes from `circle_radius()`, which corrects for the fact that a buffer is a
-  64-sided polygon rather than a true circle, so the polygon carries exactly the
-  area that was sampled. Real source areas are elongated downslope; a circle of
-  the right area is the crudest shape that gets the area right, and area is what
-  the loss model reads.
+- The step turns a supplied per-cell probability of slope failure into the
+  **large** population of landslides, one realisation per modelled earthquake:
+  the failures above the urban size range, placed in the slope units step 5
+  cuts, each with a polygon for the ground it left and a polygon for the ground
+  it landed on. It is run by `s1_simulate_landslides.py`, and the figure it is
+  checked against is produced by `fig_landslide_realisation.py` in the same
+  folder, written to `report/hazard/landslide/landslide-realisation/fig/`. The
+  small failures beside buildings are the urban population, drawn by landslide
+  step 9 against their own fragilities, and step 9 combines the two.
+- What a run does is set by `config.py` in the step folder — `PILOT`,
+  `REALISATION_IDS`, `LARGE_MIN_SOURCE_AREA_M2`, `URBAN_AREA_SHARE`,
+  `SOURCE_ASPECT_RATIO` and `CREST_WEIGHT` — read in each script's
+  `if __name__ == "__main__":` block and passed into `main()` as keyword
+  arguments. Neither script takes command line arguments and neither `main()`
+  carries a default. `PILOT` is `True`, meaning runs go over `SMALL_WLG_PILOT`
+  rather than the four territorial authorities, and steps 3 and 5 must have
+  been run over the same extent.
+- **The step reads only hazard outputs and fetches nothing.** `input_paths()`
+  names them: the slope units from step 5 (`gen_slope_units.slope_units_path`)
+  and, from step 3, the 10 m DEM, slope and downhill azimuth
+  (`gen_multiscale_slope.dem_path`, `slope_path`, `aspect_path`) and the 100 m
+  topographic position (`gen_terrain_derivatives.terrain_path`).
+- The base rate is ESNZ's earthquake-induced landslide probability grid, read
+  by `landloss.io.source_material.get_eil_landslide_probability` from the file
+  named once in `EIL_PROBABILITY_SOURCE_PATH` in `landloss.domain.constants`.
+  The supplied file is a 32 m grid; `cell_size()` reads the cell size off
+  whatever grid arrives, so a resupply at another resolution needs no code
+  change. The shaking level it is conditioned on is taken from the file name
+  and has not been confirmed with the supplier; the constant's comment records
+  this.
+- The grid is used as supplied, neither rescaled nor clipped.
+  `check_probabilities()` refuses a grid holding any value outside [0, 1],
+  because a grid in per cent and a grid carrying an undeclared nodata marker
+  both look like ordinary numbers and would each produce a hundred times too
+  many landslides.
+- **The working grid is the 10 m DEM grid** the slope units were cut on.
+  `align_probability()` resamples the probability onto it nearest neighbour
+  (`rio.reproject_match`), so each 10 m cell takes the value of the 32 m cell
+  it falls in and a unit's sum over its cells is the supplied grid's own sum
+  over the same ground. `unit_labels()` burns the units onto that grid, one
+  label per unit; the probability, position, slope and aspect are then read
+  cell for cell.
+- **No large landslide starts on flat land** (the project lead, 2026-10-02).
+  `flatland_mask()` burns the step 4 ground map pieces with `is_flatland` true
+  (the NLM flatland release) onto the working grid by cell centre, and
+  `mask_flatland()` sets the probability to NaN there before the expected area
+  or the seeding reads it, so a flat cell adds nothing and is never a seed.
+  `describe_flatland_mask()` prints the cells and the share of the grid's
+  summed probability removed. A source seeded on a slope is not clipped where
+  it runs onto flat land.
+- **Expected failed area per unit** is computed by `expected_failed_area_m2()`:
+  the sum over the unit's cells of probability times cell area, times
+  `BETA_SOURCE_AREA_FRACTION`, times one minus `URBAN_AREA_SHARE`. The
+  fraction, 0.252, is the share of a failing cell's area that becomes source;
+  it restates the phase 1 areal-coverage calibration (258 m² of source per
+  failing 1,024 m² cell, 0.99% coverage against the order of 1% in
+  [nowicki_jessee_2018]) and is a beta placeholder, as its comment says. The
+  urban share, 0.25, is the share of the inventory's area the urban model
+  draws instead, a placeholder until a research script measures it from
+  `landloss.io.kaikoura`; every run prints it. A cell the grid does not reach
+  contributes nothing, so a unit off the grid is never seeded.
+- **The count per unit** is a Poisson draw, `draw_counts()`, with mean the
+  unit's expected area over the mean of the size law,
+  `truncated_power_law_mean_m2()` — 1,306 m² on the committed settings. The
+  unit decides where a failure starts, not how large it can be.
+- **Size** is drawn per failure by `sample_areas()` from a bounded power law
+  between `LARGE_MIN_SOURCE_AREA_M2` (700 m², the top of the urban range) and
+  `MAX_SOURCE_AREA_M2` (3000 m²), with exponent `SIZE_EXPONENT` of 2.1, the
+  Kaikōura greywacke fit of [massey_2020], which holds above a cutoff near
+  500 m² and so over the whole range drawn. The exponent sets the shape of the
+  sizes and, through the mean, the count; the total area is the expected area
+  and does not move with it.
+- **Seeding.** `seeding_weight()` weights every cell by its probability times
+  `1 + CREST_WEIGHT × clip(TPI_100m / CREST_FULL_LIFT_M, 0, 1)`: a cell
+  standing `CREST_FULL_LIFT_M` (10 m) or more above its 100 m neighbourhood
+  gets the full lift, a cell below its surroundings none, and a cell the
+  derivative has no value for (within half a window of the extent edge) is
+  treated as level. `seed_cells()` then chooses each failure's seed by a
+  weighted draw, without replacement, among the unit's top
+  `SEED_CANDIDATE_CELLS` (10) cells by weight — or as many as there are
+  failures when that is more. A unit with fewer positive-weight cells than
+  failures reuses cells, and `drop_overlapping()` keeps the larger of the pair.
+- **Shape** is an ellipse built by `ellipses()` from the axes `ellipse_axes()`
+  gives: the sampled area at `SOURCE_ASPECT_RATIO` (2.0, long over short,
+  placeholder for the Kaikōura ratio), the long axis along the downhill azimuth
+  at the seed cell, and the centre half a long axis downslope of the seed so the
+  seed is the ellipse's crest. The axes are stretched for the 64-sided polygon
+  so it carries exactly the area sampled, because area is what the loss model
+  reads. The ellipse is not clipped to its unit: a failure larger than its unit
+  crosses into the neighbours, which is "grown along the facet" in its simplest
+  form. A seed whose cell has no slope or no azimuth takes its unit's
+  `mean_slope_degrees` and `mean_aspect_degrees` instead (`build_failures()`),
+  so a unit the grid expects failures in always places them.
 - **Overlaps are resolved on the source areas only**, by `drop_overlapping()`,
-  which works largest first and drops any smaller failure touching one that has
-  survived. A failure that has already been dropped cannot drop anything else, so
-  one large landslide cannot clear a hole wider than itself through a chain of
-  failures that did not happen.
-- **A dropped failure takes its runout with it.** `to_polygons()` only ever sees
-  the survivors, so a landslide removed for overlapping a larger one contributes
-  neither an evacuated nor an inundated polygon. This is the settled rule: no two
-  evacuated polygons overlap, inundated polygons may overlap each other, and
-  evacuated and inundated polygons may overlap. Two landslides cannot start from
-  the same ground; they can perfectly well finish on it.
-- Overlap removal now bites, where at the earlier exponent it almost never did.
-  Cell centres are a cell apart — 32 m on the supplied grid — so two circles meet
-  only if their radii sum to more than that, and at a median 33 m² failure
-  (radius 3.2 m) most still do not. The top of the distribution does: over the
-  full study area 586 failures of 66,431, just under 1%, are dropped for
-  overlapping a larger one. The step therefore trims the top of the size
-  distribution slightly, which is part of why the delivered rate is 0.99 times
-  the grid's rather than exactly 1.00.
-- **Slope and downhill direction** come from `landloss.common.utils.terrain`:
-  `slope_degrees()` and `downhill_azimuth_degrees()`, both Horn's 3×3 kernel on
-  the same gradient, so the steepness and the bearing describe the same
-  hillside. The bearing is degrees clockwise from grid north and points
-  downslope, the convention GDAL and ArcGIS use. Level ground and nodata return
-  NaN rather than a direction.
-- The elevation model is the LINZ LiDAR, fetched by
-  `landloss.io.readers.get_dem` at the probability grid's own cell size and
-  resampled bilinearly onto that grid in `build_terrain()`. The probability grid
-  is never moved: its cells are the units the answer is counted in. The DEM is
-  fetched over the extent plus `DEM_BUFFER_CELLS` (3) cells and the derivatives
-  trimmed back, so that the outermost ring of the probability grid — the
-  coastline, on any real extent — still gets a slope.
-- Any failure whose cell has no slope or no downhill direction is dropped, and
-  the count is printed. There is nowhere to put the debris, and a landslide that
-  does not move is not what this step models.
-- **Displacement** is a function of slope alone, `displacement_from_slope()`: a
-  straight ramp from `MIN_DISPLACEMENT_M` (1 m) at or below 10° to
-  `MAX_DISPLACEMENT_M` (40 m) at or above 45°. This stands in for a Newmark
-  displacement, which would take the yield acceleration and the shaking rather
-  than the slope on its own. The "How far" panel of the figure plots this
-  assumption directly, so it is visible beside the landslides it produced.
-- **The two polygons** are built by `to_polygons()`: the source circle, labelled
-  `evacuated land`, and the same circle rebuilt at the displaced centre,
-  labelled `inundated land`. They are two rows sharing a `landslide_id`, told
-  apart by the `land_class` column. They are deliberately not merged or
-  differenced — NHC settles loss of support and runout differently, so the
-  vulnerability model needs to know which is which. Where the displacement is
-  short next to the landslide the two overlap, which is real: the ground is
-  stripped and then buried again.
-- The realisation is written under `temp/hazard/landslide/` to the path
-  `realisation_path()` returns — `landslide-realisation-pilot.geoparquet` when
-  `PILOT` is set and `landslide-realisation.geoparquet` otherwise — so a pilot
-  run cannot overwrite a full one. `temp/` is gitignored and the directory comes
-  from `TEMP_DIR` in `scripts.landloss.paths`.
-  `fig_landslide_realisation.py` calls `realisation_path()` with the same
-  `config.PILOT` rather than rebuilding the name, so the figure cannot draw a
-  different extent from the one last run.
-- Every run is seeded from `SEED` and prints the seed, so a realisation can be
-  reproduced exactly.
-- `describe_extent()` prints the extent of the grid actually read rather than the
-  extent asked for. The two differ whenever the supplied grid stops short of the
-  study area, and it is the ground simulated that a result has to be quoted
-  against.
-- A run where cells failed but every one of them was dropped for want of a slope
-  raises rather than reporting an empty realisation: it means the elevation model
-  does not cover the probability grid, which is a broken run rather than a quiet
-  one. A run where nothing failed at all prints that and **writes an empty
-  layer** with the full schema, so the vulnerability steps reading the
-  realisation find a file and report nothing damaged.
-- The reusable parts are covered without the network:
-  `tests/landloss/common/utils/test_terrain.py` for the slope and the downhill
-  direction, on hillsides whose answer can be pointed at, and
-  `tests/landloss/io/test_source_material.py` for the reader, against rasters the
-  tests write themselves. The sampling and the overlap logic live in the script
-  and are not covered.
+  largest first and stable on ties; a failure already dropped drops nothing
+  else, so one large landslide cannot clear a hole wider than itself through
+  failures that did not happen. A dropped failure takes its runout with it,
+  because `to_polygons()` only ever sees the survivors. No two evacuated
+  polygons overlap; inundated polygons may.
+- **Displacement** is a function of slope alone, `displacement_from_slope()`:
+  a straight ramp from `MIN_DISPLACEMENT_M` (1 m) at or below 10° to
+  `MAX_DISPLACEMENT_M` (40 m) at or above 45°, read at the seed cell. It stands
+  in for a Newmark displacement. The "How far" panel of the figure plots the
+  assumption beside the landslides it produced.
+- **Identifiers.** `mint_landslide_ids()` sorts the survivors by their source's
+  representative point (`landloss.common.utils.ids.sort_by_point`, x then y)
+  and numbers them `LS0000001` upward (`mint_ids` with
+  `constants.LARGE_LANDSLIDE_ID_PREFIX`), within the realisation. An id is
+  stable as long as the inputs and settings are; a changed extent renumbers.
+- **The two polygons** are built by `to_polygons()`: the source ellipse,
+  labelled `evacuated land`, and the same ellipse rebuilt at the runout centre,
+  labelled `inundated land`, two rows sharing a `landslide_id` and told apart
+  by `land_class`. The class names come from
+  `landloss.hazard.landslide.land_class`, the one vocabulary every landslide
+  layer uses. Volume comes from the volume-area law in
+  `landloss.hazard.landslide.geometry.landslide_volume_m3`, conserved through
+  the runout, and `depth_m` is that volume over each polygon's own area.
+- Every row carries `realisation_id`, `population` (always `large`), the
+  `unit_id` the failure was seeded in and a null `slope_id`, the columns step 9
+  pairs a large row with an urban one on. The full column order is
+  `OUTPUT_COLUMNS` in `s1_simulate_landslides.py`; the phase 1 `radius_m` is
+  replaced by `semi_major_m` and `semi_minor_m`, and `seed_easting` and
+  `seed_northing` record the seed cell beside the ellipse centre.
+- Each run draws one realisation per id in `config.REALISATION_IDS`, from
+  `landloss.hazard.realisation.realisation_seed` with the project-wide
+  `BASE_SEED`, the realisation id and the stream `"landslide"`, so the
+  landslides of realisation 3 belong to the same earthquake as the shaking and
+  liquefaction of realisation 3. The step holds no seed of its own.
+- The realisation is written by `draw_realisation()` to the path
+  `realisation_path()` returns,
+  `temp/hazard/landslide/landslide-realisation-rNNN[-pilot].geoparquet`, so a
+  pilot run cannot overwrite a full one. `fig_landslide_realisation.py` calls
+  `realisation_path()` and `input_paths()` with the same `config.PILOT` rather
+  than rebuilding the names.
+- A run where nothing failed prints that and **writes an empty layer** with
+  the full schema, so the vulnerability steps reading the realisation find a
+  file and report nothing damaged.
+- Every run prints the extent and working grid, the probability deciles, the
+  placement settings and the size law they imply, the unit count and expected
+  coverage, the counts drawn and dropped, the source area, slope and
+  displacement deciles, the summed and dissolved areas by land class, and the
+  volume and depth deciles (`describe_*()` functions).
+- The figure, `fig_landslide_realisation.py`, draws four panels: every
+  landslide over the slope unit outlines; a close-up around the largest failure
+  with the seed cell and an arrow from source to runout; the source areas as a
+  complementary cumulative distribution with the lower bound marked; and
+  displacement against slope.
+- Every function above is covered without the network or the T: drive by
+  `tests/landloss/hazard/landslide/test_large_placement.py`, on a synthetic
+  three-unit plane with a crest row and an unmapped margin, and the step is
+  run end to end through `main()` with `input_paths()` and `read_probability()`
+  replaced, asserting the contract's columns, the id format, the size bounds,
+  the non-overlap of sources, and that the same realisation id reproduces.
 
 ## Known weaknesses
 
-- Independent cell sampling produces too few clusters. This biases the *shape*
-  of the loss distribution — too few very bad days and too few very quiet ones —
-  much more than it biases the average, and the portfolio question NHC is asking
-  is a question about the shape.
-- The size distribution, the displacement ramp and the circular shape are all
-  assumptions, none of them fitted to an inventory. The sizes are the most
-  consequential of the three, because total area drives the loss answer.
-- Displacement does not depend on the size of the failure, only on the slope, so
-  a 3 m² slip and a 3000 m² one on the same hillside travel the same distance.
-- Runout is a rigid translation of the source, so the debris keeps the source's
-  area and shape and does not spread, thin or follow a gully.
-- **No two evacuated polygons overlap; two inundated ones can.** `drop_overlapping()`
-  acts on the sources, and the runouts are those same circles moved different
-  distances in different directions — two failures on opposite sides of a gully
-  both run into its floor and land on top of one another. Ground buried twice is
-  still buried once, so anything summing inundated area has to dissolve first.
-  `describe_result()` prints the summed and the dissolved area for the inundated
-  polygons, and says in words how much of the sum is polygons lying over each
-  other; for the evacuated polygons it prints the sum alone and says none of it
-  overlaps, because `drop_overlapping()` has already guaranteed that and
-  dissolving a hundred thousand of them to confirm it costs about a minute.
-- The probability grid carries no spatial correlation of its own to inherit, and
-  nothing in this step adds any.
-- Each run draws one realisation per id in `config.REALISATION_IDS`. The
-  generator comes from `landloss.hazard.realisation.realisation_seed` with the
-  project-wide `BASE_SEED`, the realisation id and the stream name
-  `"landslide"`, so the landslides of realisation 3 belong to the same modelled
-  earthquake as the shaking and liquefaction of realisation 3. The step holds no
-  seed of its own; two hazards seeded separately could not be paired.
-- Every polygon carries `realisation_id`, and the output is written per
-  realisation as `landslide-realisation-rNNN[-pilot].geoparquet` by
-  `realisation_path()`.
-
+- The source is an ellipse stamped on the terrain, not a region grown along
+  the steepest-descent lines, so it does not follow a gully or stop at a ridge.
+- Runout is a rigid translation of the source: the debris keeps the source's
+  shape and area and does not spread, thin or follow a gully, and the distance
+  depends on the slope at the seed and not on the size of the failure.
+- The counts of neighbouring units are drawn independently, so clustering
+  exists within a unit but not between units.
+- `URBAN_AREA_SHARE`, `SOURCE_ASPECT_RATIO` and `BETA_SOURCE_AREA_FRACTION`
+  are placeholders, and the total area follows the last of them directly.
+- Two inundated polygons can overlap; `describe_result()` prints the summed
+  and the dissolved inundated area for that reason, and anything summing
+  inundated area has to dissolve first.
 
 Potential future improvements: see `s1_landslide_realisation_implementation_plan.md`.

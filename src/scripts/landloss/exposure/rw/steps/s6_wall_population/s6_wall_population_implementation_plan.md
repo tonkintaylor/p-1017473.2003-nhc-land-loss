@@ -1,22 +1,20 @@
 # Step 6 — Retaining wall population: implementation plan
 
-**Status:** Phases 1, 1b and 1c complete, but they put a probability on each
-*property*. That is an interim shape: the target is **candidate wall lines, each
-with its own probability** (phase 2). The per-property table stays until the
-line model replaces it.
+**Status:** Phase 2 complete in shape: candidate wall lines (phase 2a), a
+probability on each line (phase 2b) and a draw per exposure world (phase 2c).
+The numbers are judgement until the claim report extraction (**T-50**) lands;
+phase 2d reads it. Phases 1, 1b and 1c, the per-property interim model, are
+superseded and their code is deleted.
 
-## Phase 1 — A population of the right shape (complete)
+## Phase 1 — A population of the right shape (superseded)
 
-- [x] Draw at most one wall per insured property, against a slope-driven
-      prevalence (`beta_wall_prevalence`).
-- [x] Size each wall by retained height and classify it small, medium or large
-      on the agreed 1 m and 2.5 m boundaries (`classify_wall_size`).
-- [x] Give each wall an initial condition, modern or poor.
-- [x] Place each wall as a line along the contour (`wall_lines`).
-- [x] Seed the draw from the project realisation stream so it reproduces and
-      pairs with the hazards.
-- [x] Write one file per realisation with the columns the vulnerability work
-      reads.
+Drew at most one wall per insured property against a slope-driven prevalence,
+sized it from the slope, placed it as a line along the contour at the
+property's own point, and seeded it on the hazard realisation. Every piece is
+replaced by phase 2: the lines come from geometry, the height from the DEM,
+the draw from a world seed. The size classes and initial conditions it
+defined (`classify_wall_size`, `describe_population`,
+`landloss.exposure.rw.beta_population`) are the one part kept.
 
 ## Phase 1b — Coverage filter and wall id for the loss contract (complete)
 
@@ -28,36 +26,16 @@ line model replaces it.
 - [ ] Rerun over the pilot box and record the kept and dropped counts in the
       method file.
 
-## Phase 1c — Interim: a probability per property, then a realisation (complete)
+## Phase 1c — Interim: a probability per property (superseded)
 
-**Superseded in shape by phase 2.** A property-level probability cannot say where
-a wall is, cannot give a property more than one wall, and places every wall at
-the property's own point. It is kept because it carries the structure the
-vulnerability work reads, and because its evidence readers are reused.
-
-The step is split in two so the evidence is read once and any number of
-realisations are drawn cheaply from it. `gen_wall_probability.py` writes a
-probability per property; `gen_wall_population.py` draws a realisation.
-
-- [x] Write a probability per property: `p_wall`, the retained height as a
-      lognormal (`height_median_m`, `height_log_sd`), the probability of each
-      size class given a wall (`p_small`, `p_medium`, `p_large`), `p_poor` and
-      `length_m` (`wall_probability_table`).
-- [x] Read the GNS SLIDE mapped retaining walls as direct evidence of a wall
-      (`mapped_wall_length_m`, from `get_gns_slide_morphology`). The mapping is
-      one-sided, so it raises a probability and never lowers one.
-- [x] Read the GNS SLIDE cut slopes and fill bodies as a lift on prevalence
-      (`engineered_share`, from `get_slide_genesis`).
-- [x] Read the NLM landform class as a cap on plains and coastal lowlands
-      (`landform_at`, from `get_nlm_geomorphology`).
-- [x] Draw a realisation from the probability table (`draw_walls`), height from
-      the lognormal and class from the height, replacing the deterministic
-      height.
-- [ ] Rerun over the four territorial authorities, not only the pilot box, and
-      record the counts in the method file.
-- [ ] Check the expected walls per property against the claim report extraction
-      once it lands (**T-50**); the combining numbers in `wall_probability.py`
-      are judgement until then.
+Put `p_wall`, a lognormal height and size class probabilities on each
+property, from the slope lifted by the GNS earthworks share, capped on an NLM
+plain and set to the mapped-wall floor where a wall was mapped on the
+property. Dropped with phase 2b: a property-level probability cannot say where
+a wall is or give a property more than one. The mapped-wall floor
+(`BETA_MAPPED_WALL_PROBABILITY`) and the one-sided reading of the mapping
+carry over to the line probability; the NLM landform cap becomes the ground
+map's `is_flatland` cap.
 
 ## Phase 2 — Candidate wall lines with a probability on each line
 
@@ -67,92 +45,199 @@ coverage filter, the landslide footprint intersection and the settlement read.
 A property with two or three walls is simply a property with two or three
 candidate lines that drew, each with its own height and condition.
 
-Candidate lines come from geometry that marks where a wall could be:
+### Phase 2a — The candidate lines (`gen_wall_lines.py`, complete)
 
-- [ ] The edges of the urban slope model's candidate failure polygons, the toe
-      of a fill or the toe or crest of a cut, so that every wall on sloping
-      land has the polygon of land it holds (decided 2026-10-01); see
-      `hazard/landslide/status.md`.
-- [ ] The GNS SLIDE mapped retaining walls (`get_gns_slide_morphology`), as
-      lines. They are the only observed walls, so they carry the highest
-      probability. The mapping is one-sided (visible from above, Wellington City
-      only), so it raises a line's probability and never lowers another's.
-- [ ] The edges of GNS SLIDE cut slopes and fill bodies and the cut/fill lines in
-      the morphology layer (`get_slide_genesis`), where a wall holds the toe or
-      crest of the earthwork.
-- [ ] Sharp breaks in slope from the GNS morphology, and steps in the DEM, within
-      and beside the insured land, for ground the SLIDE mapping does not reach.
-- [ ] Section boundaries and road-frontage edges on sloping ground, and driveway
-      edges, which is where Wellington walls are usually found: at the edge of
-      the section, not the middle of it.
+Candidate lines come from geometry that marks where a wall could be
+(`landloss.exposure.rw.lines`, contract sections 3.5 and 7.8):
+
+- [x] The edges of the urban slope model's candidate failure polygons, as the
+      terrain breaks: the downhill edge of a finest-scale candidate at or above
+      45 degrees with a 5 m face of at least `MIN_WALL_HEIGHT_M`, against a
+      neighbour below 20 degrees (`terrain_break_lines`). The crest edge is not
+      a line; step 7 reconciles the polygons to the lines (decided 2026-10-01);
+      see `hazard/landslide/status.md`.
+- [x] The GNS SLIDE mapped retaining walls (`get_gns_slide_morphology`), as
+      lines, snapped onto the nearest candidate edge within
+      `SNAP_TOLERANCE_M` (`mapped_wall_lines`, `snap_to_candidate_edges`). They
+      are the only observed walls, so they carry the highest precedence and
+      `is_mapped_wall`. The mapping is one-sided (visible from above,
+      Wellington City only), so it raises a line's probability and never
+      lowers another's.
+- [x] The edges of GNS SLIDE cut slopes and fill bodies (`get_slide_genesis`,
+      `genesis_edge_lines`) and the cut/fill lines in the morphology layer
+      (`slide_cut_fill_lines`), where a wall holds the toe or crest of the
+      earthwork.
+- [ ] Sharp breaks in slope from the GNS morphology (the concave and convex
+      `Type` values), within and beside the insured land, for ground the SLIDE
+      mapping does not reach. Steps in the DEM are covered by the terrain
+      breaks above; the morphology breaks are not read.
+- [x] Section boundaries and road-frontage edges on sloping ground
+      (`boundary_lines`: the claim property boundaries noded and merged, road
+      frontages within `config.ROAD_FRONTAGE_DISTANCE_M` of a road centreline,
+      both kept only on a 10 m slope of at least `MIN_SLOPING_GROUND_DEG` and
+      within `URBAN_BUILDING_DISTANCE_M` of a building), which is where
+      Wellington walls are usually found: at the edge of the section, not the
+      middle of it.
+- [ ] Driveway edges. Step 5 does not write the driveway corridors separately,
+      so they are not a source in this build (decided 2026-10-01).
 - [ ] Cut-and-fill model and road batter geometry from the councils
       (**T-11**, **T-20**) once obtained.
-- [ ] Segment and de-duplicate the candidates so one wall is one line, and record
-      which source each line came from.
+- [x] Segment and de-duplicate the candidates so one wall is one line, and record
+      which source each line came from (`collapse_coincident` keeps the
+      highest-precedence line among coincident ones; `split_at_boundaries` cuts
+      every line at the claim property boundaries; `source` is recorded).
+- [x] Read the face height along each line from the 5 m local relief
+      (`face_height_m`), class it (`classify_wall_size`), mark fill or cut
+      from the residual uphill (`wall_position`), read the ground map at the
+      midpoint, and assign the claim by the midpoint with the uphill/downhill
+      rule on boundary lines (`assign_claim`). Faces under
+      `MIN_WALL_HEIGHT_M` are dropped unless a wall is mapped there.
+- [x] Mint `wall_line_id` by location (`mint_wall_line_ids`) and draw the lines
+      by source (`fig_wall_lines.py`).
+- [ ] Run over the pilot box and record the counts by source in the method
+      file; then over the four territorial authorities. The collapse and the
+      split are per-line loops over an STRtree, which is fine for the pilot
+      and untested at the full extent.
+- [ ] The snap moves each vertex of a mapped wall independently, so a wall
+      whose ends alone are within tolerance of a candidate edge is bent rather
+      than moved whole. Replace with a whole-line snap when step 7's
+      reconciliation shows it matters.
 
-Each line then takes a probability from the evidence around it, and a height
-read from the DEM:
+### Phase 2b — A probability per line (`gen_wall_probability.py`, complete)
 
-- [ ] Start from slope across the line and on the land it would hold up.
-- [ ] Read the GNS 1:50,000 geology (`get_wellington_urban_geology`, confirmed
-      separate from the QMAP layer). **Steep ground on greywacke at or near the
-      surface lowers a line's probability and height**: a rock cut stands
-      unsupported and is claimed for spalling or slides, not wall failure (Oriental
-      Bay and Evans Bay are the worked examples). Colluvium, fan and fill units
-      raise it, because walls there stabilise soil rather than rock. The SLIDE
-      interpreted materials layer is the finer statement where it reaches.
-- [ ] Read the retained height at each line from the 1 m DEM, as the face
+Each line takes a probability from what the lines step read onto it
+(`landloss.exposure.rw.wall_probability`, contract sections 3.7 and 7.9):
+
+- [x] A prior by source (`BETA_SOURCE_PROBABILITY`), highest for a GNS mapped
+      wall and lowest for a property boundary, lifted to at least
+      `BETA_MAPPED_WALL_PROBABILITY` where a wall is mapped along the line
+      (`line_wall_probability`), with the rule that set it recorded in
+      `p_wall_basis`.
+- [x] Lowered on a rock cut (`BETA_ROCK_CUT_FACTOR` where `is_rock_cut`, from
+      the ground map's material and modification): a rock cut stands
+      unsupported and is claimed for spalling or slides, not wall failure
+      (Oriental Bay and Evans Bay are the worked examples). The ground map
+      reads the GNS 1:50,000 geology and the SLIDE interpreted materials
+      where they reach, so colluvium, fan and fill are already told apart
+      from rock on the line.
+- [x] Capped on the NLM flat land (`BETA_FLATLAND_MAX_PROBABILITY` where
+      `is_flatland`).
+- [x] A probability of poor condition per line (`poor_condition_probability`):
+      the default `BETA_POOR_SHARE`, `BETA_UNCONSENTED_POOR_SHARE` under
+      `UNCONSENTED_WALL_HEIGHT_M`, and the dwelling age where held, with the
+      rule recorded in `p_poor_basis`.
+- [x] The count bounds hook (`apply_count_bounds`): scale the probabilities
+      inside each claim so the expected count sits between the claim's
+      minimum and maximum. Written and tested; not called, because no bounds
+      file exists yet (phase 2d).
+- [x] Read the retained height at each line from the 1 m DEM, as the face
       height across it, and class it small, medium or large on the agreed
-      boundaries; no height distribution is drawn (decided 2026-10-01).
+      boundaries; no height distribution is drawn (decided 2026-10-01). Done
+      on the lines in phase 2a (`face_height_m`); the draw carries it as
+      `height_m`.
+- [ ] Let the slope across the line and on the land it would hold up move the
+      prior: a boundary on a 30 degree hillside is more likely retained than
+      one on 6 degrees. Not in `p_wall` yet; the boundary sources are only
+      kept above `MIN_SLOPING_GROUND_DEG`.
+- [ ] Let the wall position move the prior: a fill edge below a platform is
+      more often retained than a cut toe the owner may have left as a batter.
+- [ ] Soil over rock at the line (the ground map's `material` beyond the rock
+      cut rule) raising the prior, because walls there stabilise soil rather
+      than rock.
+- [ ] Mark lines on new subdivisions as very likely to have walls, from the
+      subdivision or dwelling age once held.
+- [ ] Wall type where known (anchored timber, gravity concrete, crib) moving
+      `p_poor`; no type is known on a line.
 - [ ] Give a property several lines of independent height and construction. A
-      property with several walls is not all small or all large.
-- [ ] Mark lines on new subdivisions as very likely to have walls.
-- [ ] Draw each line independently in the realisation, apart from a property's
-      shared initial condition, and write the drawn lines in the shape the
-      contract already reads.
-- [ ] Key the draw on an exposure seed and world id of its own, separate from
-      the hazard seed and realisation id, so a few wall populations can be
-      paired with many hazard realisations (decided 2026-10-01). The
-      `"exposure"` stream today pairs a wall draw with the hazards of the same
-      id under the one `BASE_SEED`.
+      property with several walls is not all small or all large. Partly there:
+      each line carries its own face height; the condition draw is independent
+      per line rather than shared across a property.
 
-And be checked and calibrated against the claim report extraction (**T-50**),
-which is the only calibration source the study will have and arrives after the
-build starts, so that part is a later phase: the SME suburb estimate, the
-manual mapping study, the remote sensing pilot and the ICNZ database will not
-be obtained (decided 2026-10-01).
+### Phase 2c — A draw per exposure world (`gen_wall_population.py`, complete)
 
+- [x] Draw each line independently in the world (`draw_wall_population`):
+      two uniforms per line in line order, one for existence against `p_wall`
+      and one for condition against `p_poor`, so a line's draw does not depend
+      on lines after it.
+- [x] Key the draw on `EXPOSURE_BASE_SEED` and the world id of its own,
+      separate from the hazard seed and realisation id, so a few wall
+      populations pair with many hazard realisations (decided 2026-10-01).
+      `config.WORLD_IDS` replaces `REALISATION_IDS`; the file is
+      `wall-population-wNNN[-pilot].geoparquet`.
+- [x] Write the drawn lines in the shape the contract reads: `rw_id`,
+      `claim_id`, `wall_line_id`, `world_id`, size class, condition, height,
+      length, position, flat land, source, material and the line geometry.
+      Claimless lines are dropped (**I-05**), the coverage filter is kept and
+      `rw_id` minted after both.
+- [x] Write every wall the world drew, before the claim and coverage
+      filters, to `drawn-walls-wNNN[-pilot].geoparquet`
+      (`drawn_walls_path`), with the minted `rw_id` joined back on
+      `wall_line_id` and null for a wall the filters dropped
+      (`attach_rw_ids`), so landslide step 8 models the slope with uninsured
+      walls in place (decision 36 of the build contract).
+- [x] Run the three scripts from `gen_exposure.py` after the insured land step,
+      over `exposure/config.py`'s `WORLD_IDS`.
+- [ ] Run over the pilot box and record the lines drawn, the claim and
+      coverage counts, the drawn walls without an `rw_id` and the population
+      by size class and condition in the method file; then over the four
+      territorial authorities.
+- [x] Re-point the vul rw steps 9 and 11 at the world-keyed population: both
+      `gen_wall_damage_state.py` and `gen_wall_landslide_damage.py` now read
+      `wall_population_path(world_id, pilot=...)` with `(w, r)` naming
+      (phase 4 of the build, contract sections 3.11 and 3.12).
+
+### Phase 2d — Calibration against the claim report extraction (**T-50**)
+
+The extraction is the only calibration source the study will have and arrives
+after the build starts: the SME suburb estimate, the manual mapping study, the
+remote sensing pilot and the ICNZ database will not be obtained (decided
+2026-10-01).
+
+- [ ] `gen_wall_count_bounds.py`: read the extraction and the address spine
+      and write a minimum and maximum number of walls per claim to
+      `temp/exposure/wall-count-bounds.parquet`.
+- [ ] Have `gen_wall_probability.py` read the bounds where the file exists and
+      call `apply_count_bounds` before writing, and record in the method file
+      which claims were scaled.
+- [ ] Replace the `BETA_` source priors, the rock cut factor and the flat land
+      cap with values fitted so the expected counts match the extraction by
+      suburb, and drop the `BETA_` prefixes.
+- [ ] Measure the fraction of real walls the GNS mapping captures, from the
+      claims with walls at addresses inside the SLIDE footprint, replacing the
+      fixed `BETA_MAPPED_WALL_PROBABILITY`.
 - [ ] Fit the wall length distribution along the contour to the GNS mapped wall
       segments now, and check it against the extraction later.
-- [ ] Later phase: read the extraction, which gives a minimum and maximum number
-      of walls per property, and raise the probabilities of the candidate lines
-      inside each property so the drawn count falls within them.
-- [ ] Later phase: measure the fraction of real walls the GNS mapping captures
-      from the claims with walls at addresses inside the SLIDE footprint,
-      replacing the fixed 0.9.
 - [ ] Height, and so size class, stays a judgement until a source for it
-      exists.
+      exists; the set heights the loss module prices at (0.75, 1.75, 2.75 m)
+      are to be re-confirmed against the 0.5–1.0, 1.0–2.5 and 2.5+ m ranges
+      the DEM face height gives (**I-14**).
 
 ## Phase 3 — Initial condition from age
 
 - [ ] Read the building construction age parquet, built outside this build and
-      keyed to the address spine. Sources, in order: NHC's own property
-      attributes if it holds construction decade; the District Valuation Roll
-      building age code licensed from QV or CoreLogic, since LINZ publishes it
-      openly for five councils only, none in the study area; failing both, an
-      SA2 proxy from Stats NZ building consents since 1990 adjusted to the
-      regional decade split. Summarised in `../../status.md`.
-- [ ] Set `p_poor` from it, replacing the even split: pre-1990 walls (cast in situ
-      concrete gravity walls from the 1970s and 80s) are more likely to be poor
-      and replaced, and post-1991 Building Act walls, more often timber anchored,
-      tend to be larger.
+      keyed to the address spine, onto the lines as `dwelling_age_decade`.
+      Sources, in order: NHC's own property attributes if it holds construction
+      decade; the District Valuation Roll building age code licensed from QV or
+      CoreLogic, since LINZ publishes it openly for five councils only, none in
+      the study area; failing both, an SA2 proxy from Stats NZ building consents
+      since 1990 adjusted to the regional decade split. Summarised in
+      `../../status.md`.
+- [x] Set `p_poor` from it where held (`poor_condition_probability`,
+      `BETA_PRE_1990_POOR_SHARE` and `BETA_POST_1990_POOR_SHARE` either side of
+      `BUILDING_ACT_DECADE`): pre-1990 walls (cast in situ concrete gravity
+      walls from the 1970s and 80s) are more likely to be poor and replaced,
+      and post-1991 Building Act walls, more often timber anchored, tend to be
+      larger. The rule is coded and tested; no age is held, so it never fires.
+- [ ] Set the two age shares from the extraction rather than judgement.
 
 ## Phase 4 — Costing reads the line
 
-- [ ] Take a wall's length from the line. A drawn line has its own length, so
-      `length_m` no longer comes from the area of the section.
+- [x] Take a wall's length from the line. A drawn wall is its line, so
+      `length_m` is the line's length and no longer comes from the area of the
+      section.
 - [ ] Confirm with the loss team that size class affects costing while initial
-      condition only affects the probability of failure.
+      condition only affects the probability of failure, and that the pricing
+      heights stand against the new size ranges (**I-14**).
 
 ## Potential future improvements
 
@@ -163,3 +248,5 @@ be obtained (decided 2026-10-01).
   wetter soils, as a predictor. Not obviously usable, so it is not in phase 2.
 - Exclude non-residential properties such as the zoo near Yabby Creek Road with a
   land-use layer rather than by hand, so they draw no lines.
+- Share one condition draw across the lines of a property, where the walls were
+  built together; each line draws its own condition today.

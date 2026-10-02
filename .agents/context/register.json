@@ -511,6 +511,14 @@
       "Phase": "2",
       "Source": "Wgtn Land Model 2026-10-01",
       "Status": "Open"
+    },
+    {
+      "ID": "T-65",
+      "Task": "Ask the loss module owner to move the five loss_input_path calls, in loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py, loss/steps/s1_settlement/s1_gen_settlement.py, loss/validations/gen_calc_walkthrough.py (two calls) and loss/validations/gen_viewer_data.py, to world_loss_input_path(name, world_id, realisation_id, pilot=pilot) with a WORLD_IDS setting, so the loss module reads every exposure world rather than world 0 only and the deprecated loss_input_path can be deleted.",
+      "Owner": "Unassigned",
+      "Phase": "3",
+      "Source": "Urban slope build 2026-10-02",
+      "Status": "Open"
     }
   ],
   "Limitations": [

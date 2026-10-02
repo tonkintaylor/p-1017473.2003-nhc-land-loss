@@ -1,28 +1,34 @@
 # Shaking hazard: status
 
 **Status:** A PGA field per realisation runs, off the NLM grid. Coarse: one
-cell covers the whole pilot box.
+cell covers the whole pilot box. A PGV field per realisation, scaled by the
+same factor, is built (step 5) and tested on synthetic inputs, and has not yet
+been run over the pilot.
 
-**Updated:** 2026-09-29
+**Updated:** 2026-10-02
 
 ## Approach
 
 Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
-Intended, not implemented.
-
-- [>] Port the National Liquefaction Model (NLM) code for the TS1170.5 PGA
-  demands — `gen_pga_layer` from `p-1017473-nlm-loss-modelling` — rather than
-  rewriting it, so both studies compute their demand the same way.
-- [ ] Take the site class from the **Foster et al. (2019) V<sub>s</sub>30 model**
+- [x] Take the TS1170.5 PGA demand from the Table 3.2 grids
+  `static_data_gen/gen_ts1170_grids.py` builds the way the National
+  Liquefaction Model (NLM) built its own, reproducing its 2500-year site
+  class 5 grid cell for cell, so both studies compute their demand the same way.
+- [x] Take the site class from the **Foster et al. (2019) V<sub>s</sub>30 model**
   instead of a single assumed class. This resolves **T-15** by mapping the
   class per point rather than assigning one per landform.
-- [ ] Generate **PGA** and **Sa(T₁)** across the study extent on a **100 m grid**,
+- [x] Generate **PGA** and **Sa(T₁)** across the study extent on a **100 m grid**,
   both at the **2500-year return period**.
-- [ ] Derive **PGV** from the same TS1170.5 spectrum rather than generating it
+- [x] Derive **PGV** from the same TS1170.5 spectrum rather than generating it
   independently, as **PGV (mm/s) ≈ 750 · Sa(1.0 s) [g]**. Several of the
   retaining wall fragility curves in
   `.agents/context/retaining-wall-fragility.md` are velocity-based.
+- [x] Scale PGV per realisation by the factor PGA takes, so one modelled
+  earthquake's two measures agree.
+- [ ] Replace the flat 10% coefficient of variation and the one field-wide
+  multiplier with the ground motion model's own sigma and a spatially
+  correlated field, PGA and PGV each with their own dispersion.
 **Parked.** NSHM (2022) scenario demands run through a GMPE in OpenQuake were
 held as the alternative to TS1170.5. That route is parked: the demand comes from
 TS1170.5. It would produce the same PGA and PGV layers from the same
@@ -35,53 +41,57 @@ A first end-to-end run is being assembled that produces the right data
 structures rather than the right numbers; see
 `.agents/plans/beta-build.md` for the whole chain.
 
-The shaking beta reads the **NLM TS1170.5 PGA raster directly**: no Vs30, no
-site class, and no port of `gen_pga_layer`. Realisations come from a **10%
-coefficient of variation** on PGA. **PGV is not produced** — it may be dropped
-from the study, so nothing downstream should depend on it yet.
+The shaking beta first read the **NLM's site class 5 PGA raster directly**
+(`s1_pga_realisation`, retired 2026-09-30). Steps 2 to 5 replace it: a site
+class per cell, PGA and PGV demand per cell, and one realisation of each from a
+**10% coefficient of variation** shared between the two measures.
 
-The output structure is a raster of PGA in g, one per realisation.
+The output structure is a raster of PGA in g and a raster of PGV in m/s, one
+of each per realisation.
 
 ## Where it is now
 
-`steps/s1_pga_realisation/` writes one PGA field per realisation: the NLM's
-2500-year site class 5 grid, clipped to the extent and scaled by one lognormal
-draw against a 10% coefficient of variation, seeded from the project realisation
-stream.
+`steps/s2_site_class/` writes a TS1170.5 site class per 100 m cell over the
+extent, from the Foster et al. (2019) V<sub>s</sub>30 model on that model's own
+grid; cells Foster leaves empty along the harbour edge take the class of the
+nearest classed cell within 200 m. The profile criteria of TS1170.5 Table 3.3
+are not applied (**L-38**).
 
-**The grid is national and about 9,930 m across a cell** — 149 by 114 cells over
-New Zealand, PGA 0.35 to 1.3 g, median 0.59, with Wellington's cell at 1.0 g.
-Over the four territorial authorities that is roughly 6 by 5 cells; over the
-pilot box it is a **single cell**. So every property in the pilot reads the same
-PGA, and because the realisation multiplier is shared across the field, every
-asset in a realisation shakes identically. Variation between assets has to come
-from the fragility draw, not from the shaking.
+`steps/s3_pgv/` writes Sa(1.0 s) and PGV per cell, the TS1170.5 Table 3.2
+demand of each cell's site class at 2500 years, with PGV (mm/s) =
+750 × Sa(1.0 s) (g). `steps/s4_pga_realisation/` writes one PGA field per
+realisation the same way, scaled by one lognormal draw against a 10%
+coefficient of variation, seeded from the project realisation stream.
+`gen_hazard.main` runs shaking steps 2 to 5 in order.
 
-PGV is not produced as a layer yet, but the pieces exist:
-`landloss.io.nlm` reads the NLM's 2500-year PGA and Sa(1.0 s) grids at any of
-site classes 1-7 (`get_nlm_scenario_pga_2500yr`, `get_nlm_scenario_sa_t1_2500yr`),
-and `landloss.hazard.shaking.pgv` converts Sa(1.0 s) to PGV. Where no site class
-is otherwise set, `constants.BETA_SITE_CLASS` (site class 2) is read. The
-shaking step itself still reads site class 5 PGA.
+**The demand grids are about 9,930 m across a cell**, so within one demand cell
+PGA and PGV change only where the site class does, and the realisation
+multiplier is one number over the whole field. Variation between assets within
+a realisation still comes mostly from the fragility draw, not from the shaking.
 
-Nothing is implemented here. The folder holds this file and `__init__.py`, and
-no script in the repository reads TS1170.5, V<sub>s</sub>30 or the National
-Seismic Hazard Model.
+`steps/s5_pgv_realisation/` writes one PGV field per realisation: the PGV grid
+step 3 wrote, scaled by the same lognormal factor step 4 puts on PGA for that
+realisation id, recomputed from the same seed, so one modelled earthquake's PGA
+and PGV agree. Output `temp/hazard/shaking/pgv-rNNN[-pilot].tif`; a unit test
+holds the two steps' factors together. Two steps read it through `pgv_path`:
+landslide step 9 (`s9_urban_slope_realisation`) and vul shaking rw step 9
+(`s9_wall_damage_state`), the urban slope realisation and the flat-land wall
+damage state of `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
+Step 5 is tested end to end on synthetic inputs and has not yet been run over
+the pilot: `temp/hazard/shaking/` holds no `pgv-rNNN` raster.
 
-The TS1170.5 demand itself is built and proven as a raster in the National
-Liquefaction Model repository (`p-1017473-nlm-loss-modelling`). Porting it is
-the outstanding work, not writing it.
+`steps/s1_pga_realisation/`, which read the NLM's site class 5 PGA grid
+directly, was retired on 2026-09-30; its method file records how it ran.
 
 ## Next
 
-1. Obtain the Foster et al. (2019) V<sub>s</sub>30 layer over the study area.
-   After the beta, the site class comes per location from it, replacing
-   `BETA_SITE_CLASS` (site class 2) wherever that is read.
-2. Port the NLM code for the TS1170.5 PGA demands into a step under `steps/`,
-   and confirm it reproduces the NLM's own output before modifying it.
-3. Generate the 100 m grid of PGA and Sa(T₁) over the study area, taking the
-   site class from the Foster layer rather than a single assumed class.
-4. Add the Sa(1.0 s) → PGV conversion and write the PGV layer.
+1. Run step 5 over the pilot (`gen_hazard.main` now runs it after step 4).
+2. Replace the flat 10% coefficient of variation with the ground motion
+   model's own sigma, PGA and PGV each taking their own (step 4's plan, phase
+   4; step 5's plan, phase 2).
+3. Replace the single field-wide multiplier with a spatially correlated random
+   field, written by step 4 and read by step 5 rather than recomputed from the
+   seed.
 
 ## Validation
 
@@ -91,7 +101,8 @@ the outstanding work, not writing it.
 
 ## Open decisions
 
-- **T-15** — the site class decision above. Adopting Foster closes it.
+- **T-15** — the site class decision above. Step 2 adopts Foster, which closes
+  it; the register entry still reads as open and needs updating.
 - **T-26** is no longer open: the demand comes from TS1170.5 and the NSHM
   scenario route is parked. The register entry still reads as undecided and
   needs updating.

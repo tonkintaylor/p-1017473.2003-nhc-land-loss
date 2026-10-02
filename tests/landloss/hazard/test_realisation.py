@@ -46,3 +46,40 @@ def test_a_negative_realisation_is_refused():
 def test_an_unnamed_stream_is_refused():
     with pytest.raises(ValueError, match="non-empty"):
         realisation_seed(BASE, 0, "")
+
+
+# --- exposure worlds ---------------------------------------------------------
+
+
+def world_draws(base, realisation_id, stream, world_id, n=8):
+    return realisation_seed(base, realisation_id, stream, world_id=world_id).random(n)
+
+
+def test_no_world_id_reproduces_the_draw_from_before_worlds_existed():
+    # The entropy without a world id is exactly what it was, so every existing
+    # stream -- shaking, liquefaction, landslide -- draws the same numbers.
+    expected = np.random.default_rng(
+        np.random.SeedSequence([BASE, 3, stream_entropy("shaking")])
+    ).random(8)
+    assert np.array_equal(draws(BASE, 3, "shaking"), expected)
+    assert np.array_equal(
+        realisation_seed(BASE, 3, "shaking", world_id=None).random(8), expected
+    )
+
+
+def test_the_same_four_inputs_always_give_the_same_draws():
+    assert np.array_equal(
+        world_draws(BASE, 3, "urban", 0), world_draws(BASE, 3, "urban", 0)
+    )
+
+
+def test_a_world_id_changes_the_draw_for_the_same_earthquake_and_stream():
+    assert not np.array_equal(
+        world_draws(BASE, 3, "urban", 0), world_draws(BASE, 3, "urban", 1)
+    )
+    assert not np.array_equal(world_draws(BASE, 3, "urban", 0), draws(BASE, 3, "urban"))
+
+
+def test_a_negative_world_is_refused():
+    with pytest.raises(ValueError, match="world_id must be zero or more"):
+        realisation_seed(BASE, 0, "urban", world_id=-1)

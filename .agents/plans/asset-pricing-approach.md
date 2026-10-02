@@ -556,6 +556,9 @@ Ordered by how much is blocked behind them:
 2. **T-27** — whether the Canterbury land rates already include retaining wall,
    culvert and bridge damage. Decides whether the liquefaction column of the
    matrix stays empty, and whether modelling walls separately double counts.
+   For retaining walls the project lead ruled on 2026-10-02 that a wall
+   replaced by shaking on flat land and the liquefaction land damage on the
+   same claim are not a double count; culverts and bridges are still open.
 3. ~~**The retaining wall cap.**~~ — **settled.** It is **$50,000 + GST per
    dwelling**, as the explainer states. The flat $25,000 figure in
    `nhc-land-cover-and-settlement.md` was stale and has been corrected, along

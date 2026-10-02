@@ -1,0 +1,1 @@
+`gen_hazard.main` passes landslide step 1's four placement settings from the step's `config.py`, so the hazard runner no longer stops at step 1 with a `TypeError`; landslide step 9 reads step 8's model file through `gen_urban_slope_fragility.urban_slope_model_path` rather than its own copy of the path.

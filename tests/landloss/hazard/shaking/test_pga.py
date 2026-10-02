@@ -94,3 +94,12 @@ def test_a_cell_with_no_data_stays_missing():
 def test_a_negative_acceleration_is_refused():
     with pytest.raises(ValueError, match="not a ground motion"):
         beta_pga_realisation(grid([[-0.1, 0.4]]), rng())
+
+
+def test_the_factor_is_the_first_and_only_draw_on_the_stream():
+    # Shaking step 5 recomputes step 4's factor as beta_scale_factor on a
+    # generator seeded the same way, rather than reading a file step 4 does
+    # not write. This is what holds the PGA and PGV of one realisation
+    # together, so beta_pga_realisation must make exactly that one draw.
+    _, factor = beta_pga_realisation(grid([[0.5, 1.2]]), rng(7))
+    assert factor == beta_scale_factor(rng(7))

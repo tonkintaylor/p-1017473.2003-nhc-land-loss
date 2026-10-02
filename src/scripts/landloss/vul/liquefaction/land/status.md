@@ -129,7 +129,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   damage cost.** The Canterbury rates may already include retaining wall,
   culvert and bridge damage, in which case modelling those assets separately
   would double count them. **T-27** covers confirming it, and the answer decides
-  whether this module needs a retaining wall term at all.
+  whether this module needs a retaining wall term at all. For retaining walls
+  replaced by shaking, the project lead ruled on 2026-10-02 that a retaining wall replaced by shaking on flat land and the liquefaction land damage on the same claim are not a double count; culverts and bridges are still open.
 - **How ILV and IFV are covered.** The packaged rates exclude both, and they
   were a large share of what was paid in Canterbury, so a total built from
   these rates alone understates the loss.

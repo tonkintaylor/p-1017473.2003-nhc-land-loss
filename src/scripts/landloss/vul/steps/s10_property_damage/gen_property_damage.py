@@ -1,8 +1,9 @@
 """Write the four tables the vulnerability module hands to the loss module.
 
 The contract in section 1 of ``.agents/plans/asset-pricing-approach.md`` has vul
-hand loss four tables per realisation, each row carrying its own asset id, the
-``claim_id`` of the LINZ property it belongs to and its coordinates:
+hand loss four tables per exposure world and earthquake, each row carrying its
+own asset id, the ``claim_id`` of the LINZ property it belongs to and its
+coordinates:
 
 - **land**, one row per insured land polygon, with its market value rate, its
   liquefaction land damage state and its landslide damaged areas;
@@ -18,12 +19,19 @@ This step builds them from the earlier vul steps' outputs:
 It adds **no modelling**. The assembly lives in :mod:`landloss.vul.loss_input`
 and every number it writes was decided by the step it came from. The geometry,
 in EPSG:2193, supplies the coordinates, and each table carries a
-``realisation_id``.
+``realisation_id`` and a ``world_id``.
+
+The retaining wall table is spined on the world's wall population, so a wall on
+sloping ground, which the shaking step never sees, appears beside the flat-land
+walls it does; its shaking flag comes from the wall landslide step's reading of
+the urban slope outcome.
 
 The run also prints the overlap four tables hide: how many claims carry both a
-liquefaction land damage state and a retaining wall damaged by shaking. The
-Canterbury land damage rates may already include retaining wall damage, in
-which case such a claim's wall is priced twice over. That is **T-27**.
+liquefaction land damage state and a retaining wall damaged by shaking. Both
+are priced: the project lead ruled on 2026-10-02 that a wall replaced by
+shaking on flat land and the liquefaction land damage on the same claim are not
+a double count (**T-27**, retaining walls; culverts and bridges are still to be
+confirmed).
 
 **Nothing is settled.** Caps, excesses, GST and pricing belong to the loss
 module, which this step does not touch.
@@ -49,16 +57,22 @@ from landloss.domain.loss_contract import (
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_STATE_COLUMN,
     REALISATION_ID_COLUMN,
+    RW_ID_COLUMN,
 )
 from landloss.exposure.land.extent import DWELLING_COUNT_COLUMN
 from landloss.vul.loss_input import (
     LOSS_TABLES,
+    WORLD_ID_COLUMN,
     build_crossing_tables,
     build_land_table,
     build_rw_table,
 )
+from landloss.vul.shaking.fragility import DAMAGE_STATE_COLUMN
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
+)
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
+    wall_population_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 from scripts.landloss.vul.landslide.culverts_bridges.steps.s11_crossing_landslide_damage.gen_crossing_landslide_damage import (
@@ -90,8 +104,24 @@ OUT_STEM = "loss-input"
 RULE = "-" * 72
 
 
-def loss_input_path(table: str, realisation_id: int, *, pilot: bool) -> Path:
-    """Return the file a run writes one realisation's contract table to.
+def world_loss_input_path(
+    table: str, world_id: int, realisation_id: int, *, pilot: bool
+) -> Path:
+    """Return the file a run writes one world and earthquake's contract table to.
+
+    Every vul caller reads and writes the four tables through this function.
+    ``world_id`` is positional with no default, so no caller can fall back on a
+    world silently.
+
+    Args:
+        table: The contract table, one of ``LOSS_TABLES``.
+        world_id: The exposure world (one draw of the wall population) the file holds.
+        realisation_id: The earthquake realisation the file holds.
+        pilot: Whether the run covers the pilot area only, which adds a
+            ``-pilot`` suffix to the file name.
+
+    Returns:
+        The geoparquet path under the vul work directory.
 
     Raises:
         ValueError: If ``table`` is not one of the four contract tables.
@@ -100,7 +130,35 @@ def loss_input_path(table: str, realisation_id: int, *, pilot: bool) -> Path:
         msg = f"unknown loss table {table!r}, expected one of {LOSS_TABLES}"
         raise ValueError(msg)
     suffix = "-pilot" if pilot else ""
-    return WORK_DIR / f"{OUT_STEM}-{table}-r{realisation_id:03d}{suffix}.geoparquet"
+    return (
+        WORK_DIR / f"{OUT_STEM}-{table}-w{world_id:03d}-r{realisation_id:03d}"
+        f"{suffix}.geoparquet"
+    )
+
+
+def loss_input_path(table: str, realisation_id: int, *, pilot: bool) -> Path:
+    """Return world 0's contract table for one earthquake (deprecated).
+
+    Deprecated: it exists only for the loss module's five callers
+    (``s0_gen_land_cover_cap.py``, ``s1_gen_settlement.py``,
+    ``gen_calc_walkthrough.py`` twice and ``gen_viewer_data.py``), which pass no
+    world, until the loss module's owner moves them to worlds. It always reads
+    world 0, which is every world this build runs. Nothing in vul calls it; vul
+    code uses :func:`world_loss_input_path`. Once the loss calls pass a world
+    this function is deleted (contract decision 37).
+
+    Args:
+        table: The contract table, one of ``LOSS_TABLES``.
+        realisation_id: The earthquake realisation the file holds.
+        pilot: Whether the run covers the pilot area only.
+
+    Returns:
+        ``world_loss_input_path(table, 0, realisation_id, pilot=pilot)``.
+
+    Raises:
+        ValueError: If ``table`` is not one of the four contract tables.
+    """
+    return world_loss_input_path(table, 0, realisation_id, pilot=pilot)
 
 
 def in_default_crs(table: gpd.GeoDataFrame, name: str) -> gpd.GeoDataFrame:
@@ -153,11 +211,25 @@ def describe_structures(name, table, flags):
     )
 
 
-def describe_overlap(land, rw):
-    """Print how many claims T-27 would apply to.
+def describe_walls(rw, states):
+    """Print how the wall table splits between the two shaking routes."""
+    if rw.empty:
+        return
+    with_state = rw[RW_ID_COLUMN].isin(states[RW_ID_COLUMN])
+    print(
+        f"  {int(with_state.sum()):,} walls carry a shaking damage state (flat "
+        f"land); {int((~with_state).sum()):,} take their shaking flag from the "
+        "urban slope outcome"
+    )
 
-    The Canterbury rates may already include retaining wall damage, in which
-    case every claim in this line is charged for its wall twice.
+
+def describe_overlap(land, rw):
+    """Print how many claims carry both a liquefaction state and a wall to replace.
+
+    Printed for information. The project lead ruled on 2026-10-02 that a wall
+    replaced by shaking on flat land and the liquefaction land damage on the
+    same claim are not a double count (**T-27**, retaining walls), so both are
+    priced.
     """
     with_state = set(land.loc[land[LIQ_LD_STATE_COLUMN].notna(), CLAIM_ID_COLUMN])
     with_wall = set(rw.loc[rw[IS_DAMAGED_BY_SHAKING_COLUMN], CLAIM_ID_COLUMN])
@@ -165,7 +237,8 @@ def describe_overlap(land, rw):
     print(RULE)
     print(
         f"{both:,} claims carry both a liquefaction land damage state and a wall "
-        "damaged by shaking, which is the double count T-27 would create"
+        "damaged by shaking; both are priced, which is not a double count "
+        "(T-27, the project lead, 2026-10-02)"
     )
     print(
         "Nothing here is settled. Caps, excesses, GST and the market value of "
@@ -173,56 +246,94 @@ def describe_overlap(land, rw):
     )
 
 
-def main(*, pilot, realisation_ids):
-    """Write the four contract tables, per realisation."""
+def main(*, pilot, world_ids, realisation_ids):
+    """Write the four contract tables, per world and earthquake.
+
+    Args:
+        pilot: Whether to run over the pilot area only.
+        world_ids: The exposure worlds to run, each one draw of the wall population.
+        realisation_ids: The earthquake realisations to run in every world.
+    """
     insured = gpd.read_parquet(insured_land_path(pilot=pilot))
 
-    for realisation_id in realisation_ids:
-        print(f"Assembling realisation {realisation_id} ...", flush=True)
-        land = build_land_table(
-            insured,
-            pd.read_parquet(liq_land_damage_path(realisation_id, pilot=pilot)),
-            pd.read_parquet(landslide_land_damage_path(realisation_id, pilot=pilot)),
-        )
-        rw = build_rw_table(
-            gpd.read_parquet(wall_damage_state_path(realisation_id, pilot=pilot)),
-            pd.read_parquet(wall_landslide_damage_path(realisation_id, pilot=pilot)),
-        )
-        culverts, bridges = build_crossing_tables(
-            gpd.read_parquet(structure_damage_state_path(realisation_id, pilot=pilot)),
-            pd.read_parquet(
-                crossing_landslide_damage_path(realisation_id, pilot=pilot)
-            ),
-        )
-        tables = dict(zip(LOSS_TABLES, (land, rw, culverts, bridges), strict=True))
+    for world_id in world_ids:
+        walls = gpd.read_parquet(wall_population_path(world_id, pilot=pilot))
+        for realisation_id in realisation_ids:
+            print(RULE)
+            print(f"Assembling world {world_id}, realisation {realisation_id} ...")
+            land = build_land_table(
+                insured,
+                pd.read_parquet(liq_land_damage_path(realisation_id, pilot=pilot)),
+                pd.read_parquet(
+                    landslide_land_damage_path(world_id, realisation_id, pilot=pilot)
+                ),
+            )
+            states = pd.read_parquet(
+                wall_damage_state_path(world_id, realisation_id, pilot=pilot),
+                columns=[RW_ID_COLUMN, DAMAGE_STATE_COLUMN],
+            )
+            rw = build_rw_table(
+                walls,
+                states,
+                pd.read_parquet(
+                    wall_landslide_damage_path(world_id, realisation_id, pilot=pilot)
+                ),
+            )
+            culverts, bridges = build_crossing_tables(
+                gpd.read_parquet(
+                    structure_damage_state_path(realisation_id, pilot=pilot)
+                ),
+                pd.read_parquet(
+                    crossing_landslide_damage_path(
+                        world_id, realisation_id, pilot=pilot
+                    )
+                ),
+            )
+            tables = dict(zip(LOSS_TABLES, (land, rw, culverts, bridges), strict=True))
 
-        describe_land(land)
-        print(RULE)
-        describe_structures(
-            "Retaining walls",
-            rw,
-            (IS_DAMAGED_BY_SHAKING_COLUMN, IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN),
-        )
-        describe_structures(
-            "Culverts",
-            culverts,
-            (IS_DAMAGED_COLUMN, IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN),
-        )
-        describe_structures(
-            "Bridges",
-            bridges,
-            (IS_DAMAGED_BY_SHAKING_COLUMN, IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN),
-        )
-        describe_overlap(land, rw)
+            describe_land(land)
+            print(RULE)
+            describe_structures(
+                "Retaining walls",
+                rw,
+                (
+                    IS_DAMAGED_BY_SHAKING_COLUMN,
+                    IS_EVACUATED_COLUMN,
+                    IS_INUNDATED_COLUMN,
+                ),
+            )
+            describe_walls(rw, states)
+            describe_structures(
+                "Culverts",
+                culverts,
+                (IS_DAMAGED_COLUMN, IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN),
+            )
+            describe_structures(
+                "Bridges",
+                bridges,
+                (
+                    IS_DAMAGED_BY_SHAKING_COLUMN,
+                    IS_EVACUATED_COLUMN,
+                    IS_INUNDATED_COLUMN,
+                ),
+            )
+            describe_overlap(land, rw)
 
-        for name, table in tables.items():
-            table = in_default_crs(table, name)
-            table.insert(0, REALISATION_ID_COLUMN, realisation_id)
-            out_path = loss_input_path(name, realisation_id, pilot=pilot)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            table.to_parquet(out_path)
-            print(f"Wrote {len(table):,} {name} rows to {out_path}")
+            for name, table in tables.items():
+                table = in_default_crs(table, name)
+                table.insert(0, REALISATION_ID_COLUMN, realisation_id)
+                table.insert(1, WORLD_ID_COLUMN, world_id)
+                out_path = world_loss_input_path(
+                    name, world_id, realisation_id, pilot=pilot
+                )
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                table.to_parquet(out_path)
+                print(f"Wrote {len(table):,} {name} rows to {out_path}")
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(
+        pilot=config.PILOT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

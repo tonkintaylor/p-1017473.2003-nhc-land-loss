@@ -59,25 +59,42 @@ def landslide():
 
 
 def walls():
+    """The world's population: two flat-land walls and one on a slope."""
     return gpd.GeoDataFrame(
         {
-            "rw_id": ["1-RW01", "1-RW02"],
-            "claim_id": [1, 1],
-            "size_class": ["small", "large"],
-            "length_m": [12, 30],
-            "damage_state": ["replace", "no damage"],
+            "rw_id": ["1-RW01", "1-RW02", "2-RW01"],
+            "claim_id": [1, 1, 2],
+            "size_class": ["small", "large", "medium"],
+            "length_m": [12, 30, 8],
+            "is_flatland": [True, True, False],
         },
-        geometry=[LineString([(0, 0), (12, 0)]), LineString([(0, 5), (30, 5)])],
+        geometry=[
+            LineString([(0, 0), (12, 0)]),
+            LineString([(0, 5), (30, 5)]),
+            LineString([(100, 0), (108, 0)]),
+        ],
         crs=CRS,
     )
 
 
-def wall_flags():
+def wall_states():
+    """The shaking step's states: flat-land walls only, in its own order."""
     return pd.DataFrame(
         {
             "rw_id": ["1-RW02", "1-RW01"],
-            "is_evacuated": [True, False],
-            "is_inundated": [False, True],
+            "damage_state": ["no damage", "replace"],
+        }
+    )
+
+
+def wall_flags():
+    """The wall landslide step's flags, one row per wall in the population."""
+    return pd.DataFrame(
+        {
+            "rw_id": ["1-RW02", "2-RW01", "1-RW01"],
+            "is_damaged_by_shaking": [False, True, False],
+            "is_evacuated": [True, False, False],
+            "is_inundated": [False, False, True],
         }
     )
 
@@ -140,22 +157,69 @@ def test_a_duplicated_land_id_is_refused():
         build_land_table(land, liquefaction(), landslide())
 
 
-def test_the_rw_table_maps_size_and_length_and_derives_the_shaking_flag():
-    rw = build_rw_table(walls(), wall_flags())
+def test_the_rw_table_is_spined_on_the_population_in_its_order():
+    rw = build_rw_table(walls(), wall_states(), wall_flags())
     assert list(rw.columns) == [*RW_COLUMNS, "geometry"]
-    assert rw["rw_size"].tolist() == ["small", "large"]
+    assert rw["rw_id"].tolist() == ["1-RW01", "1-RW02", "2-RW01"]
+    assert rw["claim_id"].tolist() == [1, 1, 2]
+    assert rw["rw_size"].tolist() == ["small", "large", "medium"]
     assert rw["rw_length"].dtype == np.float64
-    assert rw["rw_length"].tolist() == [12.0, 30.0]
-    assert rw["is_damaged_by_shaking"].tolist() == [True, False]
-    assert rw["is_evacuated"].tolist() == [False, True]
-    assert rw["is_inundated"].tolist() == [True, False]
-    assert rw["is_evacuated"].dtype == bool
+    assert rw["rw_length"].tolist() == [12.0, 30.0, 8.0]
     assert rw.crs == CRS
+    for column in ("is_damaged_by_shaking", "is_evacuated", "is_inundated"):
+        assert rw[column].dtype == bool
+
+
+def test_the_shaking_flag_is_set_by_either_route():
+    rw = build_rw_table(walls(), wall_states(), wall_flags()).set_index("rw_id")
+    # A flat-land wall the shaking step replaced.
+    assert rw.loc["1-RW01", "is_damaged_by_shaking"]
+    # A flat-land wall it left standing, with no outcome to say otherwise.
+    assert not rw.loc["1-RW02", "is_damaged_by_shaking"]
+    # A sloping wall the shaking step never saw, failed with its polygon.
+    assert rw.loc["2-RW01", "is_damaged_by_shaking"]
+
+
+def test_the_landslide_flags_are_carried_by_rw_id_not_by_position():
+    rw = build_rw_table(walls(), wall_states(), wall_flags()).set_index("rw_id")
+    assert rw["is_evacuated"].to_dict() == {
+        "1-RW01": False,
+        "1-RW02": True,
+        "2-RW01": False,
+    }
+    assert rw["is_inundated"].to_dict() == {
+        "1-RW01": True,
+        "1-RW02": False,
+        "2-RW01": False,
+    }
+
+
+def test_no_damage_states_at_all_leaves_the_shaking_flag_to_the_landslide_step():
+    rw = build_rw_table(walls(), wall_states().iloc[:0], wall_flags())
+    assert rw["is_damaged_by_shaking"].tolist() == [False, False, True]
 
 
 def test_a_wall_without_flags_is_refused():
     with pytest.raises(ValueError, match="no landslide flags"):
-        build_rw_table(walls(), wall_flags().iloc[:1])
+        build_rw_table(walls(), wall_states(), wall_flags().iloc[:2])
+
+
+def test_a_damage_state_for_a_wall_not_in_the_population_is_refused():
+    states = wall_states()
+    states.loc[0, "rw_id"] = "9-RW09"
+    with pytest.raises(ValueError, match="not in the population"):
+        build_rw_table(walls(), states, wall_flags())
+
+
+def test_a_repeated_wall_in_the_population_or_the_states_is_refused():
+    population = walls()
+    population["rw_id"] = "1-RW01"
+    with pytest.raises(ValueError, match="duplicated"):
+        build_rw_table(population, wall_states(), wall_flags())
+    states = wall_states()
+    states["rw_id"] = "1-RW01"
+    with pytest.raises(ValueError, match="duplicated"):
+        build_rw_table(walls(), states, wall_flags())
 
 
 def test_crossings_split_into_culverts_and_bridges_with_renamed_ids():
@@ -190,6 +254,6 @@ def test_no_crossings_gives_two_empty_tables_with_the_full_schema():
 
 
 def test_the_rw_sizes_are_ones_the_loss_module_prices():
-    rw = build_rw_table(walls(), wall_flags())
+    rw = build_rw_table(walls(), wall_states(), wall_flags())
     heights = beta_wall_height_m(rw["rw_size"].to_numpy())
-    assert heights.shape == (2,)
+    assert heights.shape == (3,)

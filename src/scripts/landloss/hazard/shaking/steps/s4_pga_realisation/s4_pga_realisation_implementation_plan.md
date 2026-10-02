@@ -36,8 +36,9 @@ single site class 5 grid. The design is in
 
 ## Potential future improvements
 
-- Carry the same realisation factor on PGV (step 3), so PGA and PGV move
-  together within a realisation.
+- ~~Carry the same realisation factor on PGV (step 3), so PGA and PGV move
+  together within a realisation.~~ Done by step 5 (`s5_pgv_realisation`),
+  which recomputes this step's factor from the same seed.
 - Multiple site classes from the Vs30 sigma (clause 3.1.3.4).
 - Use TS1170.5 Table 3.1 inside the settlement boundaries of Figure 3.2, instead
   of the 0.1 degree grid.

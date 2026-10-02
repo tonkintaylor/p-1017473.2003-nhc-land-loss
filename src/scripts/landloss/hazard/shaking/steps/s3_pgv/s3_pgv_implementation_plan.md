@@ -26,5 +26,7 @@ comes from step 2.
   the 0.1 degree grid.
 - Cite the source of the 750 mm/s per g relation in
   `landloss.hazard.shaking.pgv`.
-- Carry a spread on PGV per realisation, as step 1 does on PGA, once PGA and
-  PGV share a site class grid, so the two move together within a realisation.
+- ~~Carry a spread on PGV per realisation, as step 1 does on PGA, once PGA and
+  PGV share a site class grid, so the two move together within a realisation.~~
+  Done by step 5 (`s5_pgv_realisation`), which scales this step's PGV grid by
+  step 4's realisation factor.
