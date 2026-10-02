@@ -46,7 +46,8 @@ from landloss.common.utils.terrain import (
     vegetation_height,
     write_raster,
 )
-from landloss.io.readers import get_dsm
+from landloss.domain import constants
+from landloss.io.readers import get_dsm, get_nz_building_outlines
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     DECILES,
@@ -187,7 +188,9 @@ def main(
     print(RULE)
     print("Fetching the LINZ surface model at 1 m ...", flush=True)
     dsm = read_layer(get_dsm(bbox, resolution=1, use_cache=use_cached_dsm))
-    layer = vegetation_height(dsm, dem_1m)
+    print("Reading the LINZ building outlines, masked out of the vegetation ...")
+    buildings = get_nz_building_outlines(bbox, constants.DEFAULT_CRS).geometry
+    layer = vegetation_height(dsm, dem_1m, buildings)
     written.append(write_layer("vegetation-height", layer, pilot=pilot))
 
     print(RULE)

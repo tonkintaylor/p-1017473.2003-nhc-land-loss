@@ -1,5 +1,13 @@
 # Urban slope failure and retaining wall build: interface contract
 
+> **Historical (2026-10-02).** This is the contract the first build was made
+> against, with "As built" notes added as it went. It is kept as the record of
+> that build, not as a description of the code. **The current truth is each
+> step's method file** under `src/scripts/landloss/*/steps/`, and the status
+> files above them. The urban polygons and wall candidates it specifies are
+> being replaced: see `.agents/plans/building-face-based-urban-slope-polygons.md`.
+> A reviewer does not need to read this file to review the code.
+
 The single document every implementer of
 `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md` (the
 plan) builds against. Section numbers in the plan are cited as "plan §n". Where

@@ -93,6 +93,42 @@ MIN_SLOPING_GROUND_DEG = 5.0
 # How often the face height raster is read along a line.
 FACE_SAMPLE_SPACING_M = 1.0
 
+# The step test for a property boundary or a road frontage, read off the 1 m
+# DEM at every sample along the line: the rise across a short span either side
+# (twice STEP_NEAR_M) against the rise across a span three times as long
+# (twice STEP_FAR_M). An even hillside rises three times as far over the long
+# span as over the short one, so the excess, (3 x short - long) / 2, is zero
+# on it and equals the height of a step concentrated at the line. A short span
+# of 3 m allows for the surveyed boundary lying a metre or so off the wall.
+STEP_NEAR_M = 1.5
+STEP_FAR_M = 3.0 * STEP_NEAR_M
+
+# The sources that are a potential wall only where the DEM steps across them
+# (the project lead, 2026-10-02): a boundary is where a wall often is, and a
+# SLIDE earthwork edge is where ground was cut or filled, but only a step says
+# a wall is there. The GNS mapped walls are observed and not tested (a wall
+# under about half a metre is below what the 1 m grid resolves), and the
+# terrain breaks are steps by construction.
+STEP_TESTED_SOURCES = (
+    "slide_cut_fill_line",
+    "slide_cut_edge",
+    "slide_fill_edge",
+    "road_frontage",
+    "property_boundary",
+)
+
+# The shortest stretch of a tested line that counts as a step, in metres, and
+# the longest stretch short of the step that is bridged inside one. A tested
+# line keeps only its stepped stretches, so a boundary with a step along half
+# of it keeps that half. Both are the 3 m width of the short span the step is
+# read across (twice STEP_NEAR_M): a dip narrower than the window is not
+# evidence of a break, and a gap that narrow (a gateway, a flight of steps)
+# does not split a wall for costing. Over the pilot on 2026-10-02, a 1 m gap
+# and a 2 m run gave 6,574 boundary lines, 28% of them under 3 m long; 3 m and
+# 3 m give 4,494, 5% under 3 m, over a similar length (47.5 km against 43.3).
+MIN_STEP_RUN_M = 2.0 * STEP_NEAR_M
+MAX_STEP_GAP_M = 2.0 * STEP_NEAR_M
+
 # How far uphill of the midpoint the cut-and-fill residual is read to decide
 # whether the wall holds fill or a cut face.
 POSITION_PROBE_DISTANCE_M = 3.0
@@ -676,6 +712,255 @@ def face_height_m(
     return values.groupby(level=0, sort=False).median().reindex(lines.index)
 
 
+def step_height_m(
+    lines: gpd.GeoSeries,
+    dem_path: Path,
+    *,
+    spacing_m: float,
+    near_m: float = STEP_NEAR_M,
+    far_m: float = STEP_FAR_M,
+) -> pd.Series:
+    """Measure the step the ground makes across each line, from the 1 m DEM.
+
+    At samples ``spacing_m`` apart along the line the DEM is read at
+    ``near_m`` and ``far_m`` either side, square to the line. With ``short``
+    and ``long`` the rises across the two spans, the step is
+    ``(r * short - long) / (r - 1)`` for ``r = far_m / near_m``: zero on an
+    even hillside, whose rise grows with the span, and the height of a step
+    concentrated at the line, which the two spans share. A step against the
+    fall of the slope reads as positive too. The line's step is the median
+    over its samples, so a boundary with a step along half its length or less
+    reads below that step.
+
+    Args:
+        lines: The lines, in a projected system.
+        dem_path: The 1 m DEM, in metres.
+        spacing_m: How far apart the samples are along the line. A line
+            shorter than this is read at its midpoint.
+        near_m: Half the short span, in metres.
+        far_m: Half the long span, in metres; more than ``near_m``.
+
+    Returns:
+        The median step per line in metres, on ``lines.index``; NaN where no
+        sample could be read on both spans.
+
+    Raises:
+        ValueError: If ``far_m`` is not more than ``near_m``.
+    """
+    owners, _, steps = _station_steps(
+        lines, dem_path, spacing_m=spacing_m, near_m=near_m, far_m=far_m
+    )
+    if owners.size == 0:
+        return pd.Series(np.nan, index=lines.index, dtype=float)
+    values = pd.Series(steps, index=owners)
+    # A pandas median skips NaN, and an all-NaN group is NaN.
+    return values.groupby(level=0, sort=False).median().reindex(lines.index)
+
+
+def _station_steps(
+    lines: gpd.GeoSeries,
+    dem_path: Path,
+    *,
+    spacing_m: float,
+    near_m: float,
+    far_m: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the owner, distance along and step at every sample of every line.
+
+    The estimator of :func:`step_height_m`, before the median: one row per
+    sample, in line order and then distance order. Samples where the line has
+    no direction are skipped.
+
+    Raises:
+        ValueError: If ``far_m`` is not more than ``near_m``.
+    """
+    if far_m <= near_m:
+        msg = f"far_m ({far_m}) must be more than near_m ({near_m})"
+        raise ValueError(msg)
+    empty = np.empty(0)
+    if lines.empty:
+        return np.empty(0, dtype=object), empty, empty
+    owners: list[object] = []
+    stations: list[Point] = []
+    along: list[float] = []
+    normals: list[tuple[float, float]] = []
+    for label, line in lines.items():
+        length = line.length
+        if length < spacing_m:
+            distances = np.array([length / 2.0])
+        else:
+            distances = np.arange(0.0, length + _END_TOLERANCE_M, spacing_m)
+        for distance in distances:
+            ahead = line.interpolate(min(float(distance) + 0.5, length))
+            behind = line.interpolate(max(float(distance) - 0.5, 0.0))
+            east, north = ahead.x - behind.x, ahead.y - behind.y
+            norm = float(np.hypot(east, north))
+            if norm == 0.0:
+                continue
+            owners.append(label)
+            along.append(float(distance))
+            stations.append(line.interpolate(float(distance)))
+            # The unit normal, a quarter turn left of the line's direction.
+            normals.append((-north / norm, east / norm))
+    if not stations:
+        return np.empty(0, dtype=object), empty, empty
+    x = np.array([point.x for point in stations])
+    y = np.array([point.y for point in stations])
+    normal = np.asarray(normals)
+
+    def read(offset: float) -> np.ndarray:
+        points = gpd.GeoSeries(
+            shapely.points(x + offset * normal[:, 0], y + offset * normal[:, 1]),
+            crs=lines.crs,
+        )
+        return sample_at_points(dem_path, points).to_numpy(dtype=float)
+
+    short = read(near_m) - read(-near_m)
+    long = read(far_m) - read(-far_m)
+    ratio = far_m / near_m
+    steps = np.abs(ratio * short - long) / (ratio - 1.0)
+    owner_array = np.empty(len(owners), dtype=object)
+    owner_array[:] = owners
+    return owner_array, np.asarray(along), steps
+
+
+def _bridge_gaps(stepped: np.ndarray, max_gap_samples: int) -> np.ndarray:
+    """Set every run of up to ``max_gap_samples`` False flags between two True ones."""
+    bridged = stepped.copy()
+    true_at = np.flatnonzero(stepped)
+    for left, right in pairwise(true_at):
+        if 1 < right - left <= max_gap_samples + 1:
+            bridged[left + 1 : right] = True
+    return bridged
+
+
+def _stepped_runs(
+    distances: np.ndarray,
+    steps: np.ndarray,
+    *,
+    length: float,
+    spacing_m: float,
+    min_step_m: float,
+    min_run_m: float,
+    max_gap_m: float,
+) -> list[tuple[float, float, float]]:
+    """Return the stretches of one line along which it steps.
+
+    A sample steps where its step reaches ``min_step_m``; a stretch of
+    samples short of it no longer than ``max_gap_m``, with stepped samples
+    either side, is bridged, so a wall whose height dips or a noisy reading
+    does not break one wall into several. A run reaches half a sample spacing
+    beyond its first and last samples, clipped to the line, and is kept if it
+    is at least ``min_run_m`` long.
+
+    Returns:
+        ``(start, end, median step)`` per run, in metres along the line.
+    """
+    finite = np.isfinite(steps)
+    stepped = np.zeros(steps.shape, dtype=bool)
+    stepped[finite] = steps[finite] >= min_step_m
+    stepped = _bridge_gaps(stepped, round(max_gap_m / spacing_m))
+    runs: list[tuple[float, float, float]] = []
+    start = None
+    for position, flag in enumerate([*stepped, False]):
+        if flag and start is None:
+            start = position
+        elif not flag and start is not None:
+            first, last = distances[start], distances[position - 1]
+            begin = max(first - spacing_m / 2.0, 0.0)
+            end = min(last + spacing_m / 2.0, length)
+            if length < spacing_m:
+                begin, end = 0.0, length
+            if end - begin >= min(min_run_m, length):
+                runs.append((begin, end, float(np.nanmedian(steps[start:position]))))
+            start = None
+    return runs
+
+
+def keep_stepped_parts(
+    lines: gpd.GeoDataFrame,
+    dem_path: Path,
+    *,
+    tested_sources: Sequence[str],
+    spacing_m: float,
+    min_step_m: float,
+    min_run_m: float,
+    max_gap_m: float,
+) -> tuple[gpd.GeoDataFrame, pd.Series]:
+    """Trim every tested line to the stretches where the 1 m DEM steps across it.
+
+    A line whose source is in ``tested_sources`` is replaced by its stepped
+    stretches (:func:`_stepped_runs` on :func:`_station_steps`), each a line
+    of its own carrying the parent's columns, or dropped where it has none;
+    every other line is kept as it is. A property boundary, a road frontage or
+    a SLIDE earthwork edge is a potential wall only where the ground steps at
+    least ``min_step_m`` across it (the project lead, 2026-10-02), and keeps
+    only those stretches, so a boundary stepped along half its length keeps
+    that half.
+
+    Args:
+        lines: The candidate lines, carrying :data:`SOURCE_COLUMN`.
+        dem_path: The 1 m DEM.
+        tested_sources: The sources the test applies to.
+        spacing_m: How far apart the samples are along a line.
+        min_step_m: The least step a sample has to show.
+        min_run_m: The shortest stretch kept.
+        max_gap_m: The longest unstepped stretch bridged inside a run.
+
+    Returns:
+        The lines, on a fresh index, and on the same index the median step of
+        each kept stretch, NaN for a line that was not tested.
+    """
+    if lines.empty:
+        return lines.reset_index(drop=True), pd.Series(dtype=float)
+    tested = lines[SOURCE_COLUMN].isin(list(tested_sources)).to_numpy()
+    owners, distances, steps = _station_steps(
+        lines.geometry.loc[tested],
+        dem_path,
+        spacing_m=spacing_m,
+        near_m=STEP_NEAR_M,
+        far_m=STEP_FAR_M,
+    )
+    by_owner: dict[object, list[int]] = {}
+    for position, owner in enumerate(owners):
+        by_owner.setdefault(owner, []).append(position)
+    tested_labels = set(lines.index[tested])
+    rows: list[pd.Series] = []
+    geometries: list[BaseGeometry] = []
+    step_values: list[float] = []
+    for label, row in lines.iterrows():
+        if label not in tested_labels:
+            rows.append(row.drop(labels="geometry"))
+            geometries.append(row.geometry)
+            step_values.append(np.nan)
+            continue
+        positions = by_owner.get(label, [])
+        if not positions:
+            continue
+        runs = _stepped_runs(
+            distances[positions],
+            steps[positions],
+            length=row.geometry.length,
+            spacing_m=spacing_m,
+            min_step_m=min_step_m,
+            min_run_m=min_run_m,
+            max_gap_m=max_gap_m,
+        )
+        for begin, end, step in runs:
+            rows.append(row.drop(labels="geometry"))
+            geometries.append(substring(row.geometry, begin, end))
+            step_values.append(step)
+    if not rows:
+        empty = lines.iloc[0:0].reset_index(drop=True)
+        return empty, pd.Series(dtype=float)
+    kept = gpd.GeoDataFrame(
+        pd.DataFrame(rows).reset_index(drop=True),
+        geometry=geometries,
+        crs=lines.crs,
+    )
+    return kept, pd.Series(step_values, index=kept.index, dtype=float)
+
+
 def _midpoints(lines: gpd.GeoSeries) -> gpd.GeoSeries:
     """Return the midpoint of each line along its length."""
     return lines.interpolate(0.5, normalized=True)
@@ -831,6 +1116,7 @@ def build_wall_lines(
     candidates: gpd.GeoDataFrame,
     ground_map: gpd.GeoDataFrame,
     face_height_path: Path,
+    dem_path: Path,
     residual_path: Path,
     slope_3m_path: Path,
     slope_10m_path: Path,
@@ -854,7 +1140,11 @@ def build_wall_lines(
     The property boundaries and road frontages are limited to within
     :data:`~landloss.domain.constants.URBAN_BUILDING_DISTANCE_M` of a building
     outline, the urban domain the candidates are delineated in, so a rural
-    boundary draws no line.
+    boundary draws no line. **A boundary, a road frontage or a SLIDE earthwork
+    edge is kept only along the stretches where the 1 m DEM steps at least
+    ``min_wall_height_m`` across it** (:func:`keep_stepped_parts`, the project
+    lead, 2026-10-02), and its face height is that step rather than the local
+    relief, which reads high on any hillside, wall or not.
 
     Args:
         morphology: The GNS SLIDE morphology lines, with ``Type``.
@@ -867,6 +1157,8 @@ def build_wall_lines(
             scale present supplies the terrain breaks.
         ground_map: The ground map, carrying :data:`GROUND_COLUMNS`.
         face_height_path: The 5 m local relief raster.
+        dem_path: The 1 m DEM, which the step across a boundary or a road
+            frontage is measured on.
         residual_path: The 30 m cut-and-fill residual raster.
         slope_3m_path: The 3 m slope raster, read at the midpoint.
         slope_10m_path: The 10 m slope raster, read by :func:`boundary_lines`.
@@ -931,11 +1223,21 @@ def build_wall_lines(
     )
     collapsed = collapse_coincident(stacked, tolerance_m=snap_tolerance_m)
     lines = split_at_boundaries(collapsed, properties)
+    lines, step_face = keep_stepped_parts(
+        lines,
+        dem_path,
+        tested_sources=STEP_TESTED_SOURCES,
+        spacing_m=FACE_SAMPLE_SPACING_M,
+        min_step_m=min_wall_height_m,
+        min_run_m=MIN_STEP_RUN_M,
+        max_gap_m=MAX_STEP_GAP_M,
+    )
 
     middle = _midpoints(lines.geometry)
     face = face_height_m(
         lines.geometry, face_height_path, spacing_m=FACE_SAMPLE_SPACING_M
     )
+    face = face.where(step_face.reindex(face.index).isna(), step_face)
     slope = sample_at_points(slope_3m_path, middle)
     aspect = sample_at_points(aspect_path, middle)
     position = wall_position(

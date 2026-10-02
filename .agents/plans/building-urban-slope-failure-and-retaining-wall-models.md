@@ -602,6 +602,11 @@ Depth for larger polygons falls back on the volume to area relation in
 
 ## 8. Delineation of the candidates
 
+**Superseded (2026-10-02).** The banded patches below are not tied to a
+published method and did not find crests and toes in the pilot run; the urban
+polygons and the wall candidates are to be built from faces instead, as set
+out in `.agents/plans/building-face-based-urban-slope-polygons.md`. This section is kept as the record of what was built.
+
 ### 8.1 Domain
 
 Off the NLM flatland (`get_nlm_flatland`, the release pinned by

@@ -7,6 +7,7 @@ pointed at ``tmp_path``, so the tests are of what the two scripts write -- the
 files, their band names, their grids -- and not of LINZ.
 """
 
+import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio
@@ -234,6 +235,11 @@ def fake_dsm(work_dir, monkeypatch, step3_dems):
         return path
 
     monkeypatch.setattr(terrain_step, "get_dsm", get_dsm)
+    monkeypatch.setattr(
+        terrain_step,
+        "get_nz_building_outlines",
+        lambda bbox, crs: gpd.GeoDataFrame(geometry=[], crs=crs),
+    )
     return calls
 
 

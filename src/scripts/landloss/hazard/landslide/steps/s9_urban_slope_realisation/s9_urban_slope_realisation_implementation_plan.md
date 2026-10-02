@@ -113,4 +113,5 @@ the contract is sections 3.10, 5 and 7.11 of
   and superseded polygons only where a wall records them; a per-polygon
   table from the run would colour the unwalled ones too.
 - Polygons off the PGV grid are not drawn (`p_fail` NaN) and are counted by the
-  run; a nearest-cell fallback would draw them.
+  run, apart from those with no fragility median (2026-10-02); a nearest-cell
+  fallback would draw them.

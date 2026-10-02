@@ -78,6 +78,21 @@ Candidate lines come from geometry that marks where a wall could be
       within `URBAN_BUILDING_DISTANCE_M` of a building), which is where
       Wellington walls are usually found: at the edge of the section, not the
       middle of it.
+- [x] Keep a boundary or road frontage only where the 1 m DEM steps at least
+      `MIN_WALL_HEIGHT_M` across it (`step_height_m`, the project lead,
+      2026-10-02); its face height is that step.
+- [x] Apply the same test to the SLIDE cut and fill edges and cut/fill lines,
+      which mark earthworks rather than walls (2026-10-02).
+- [x] Trim each tested line to its stepped stretches rather than keeping or
+      dropping it whole on its median (`keep_stepped_parts`), bridging dips of
+      up to `MAX_STEP_GAP_M` and keeping runs of at least `MIN_STEP_RUN_M`,
+      both 3 m, chosen over the pilot from a sweep of 1 to 5 m (method file).
+      Tested; measured over the pilot into a scratch folder, not yet rerun
+      into `temp/` or through the chain.
+- [ ] Check the step test against the NZMM retaining wall flag per address
+      (`landloss.io.nzmm_land_attributes`) and the GNS mapped walls: the share
+      of flagged addresses with a stepped candidate, and of mapped walls with
+      a step under them.
 - [ ] Driveway edges. Step 5 does not write the driveway corridors separately,
       so they are not a source in this build (decided 2026-10-01).
 - [ ] Cut-and-fill model and road batter geometry from the councils

@@ -53,6 +53,13 @@ LOW_FACE_BELOW_Y = 48.0
 LOW_FACE_M = 0.4
 HIGH_FACE_M = 2.0
 
+# The terrace step in the synthetic 1 m DEM, along the A/C boundary.
+STEP_AT_Y = 100.0
+STEP_M = 2.0
+# The step along the top edge of the cut slope in D.
+CUT_TOP_Y = 150.0
+CUT_STEP_M = 1.5
+
 
 def make_dem(elevation, resolution: float = 10.0):
     """Wrap an elevation array as a north-up DEM in NZTM."""
@@ -117,6 +124,19 @@ def rasters(tmp_path):
         ),
         # Downhill to the south everywhere, so uphill is north.
         "aspect": write_grid(tmp_path / "aspect-3m.tif", lambda x, y: 180.0 + 0 * x),
+        # Rising 0.2 m per metre to the north, with a 2 m step along y = 100:
+        # the boundary between A and C is stepped, every other one is not. A
+        # second, 1.5 m step along the top edge of the cut slope in D.
+        "dem": write_grid(
+            tmp_path / "dem-1m.tif",
+            lambda x, y: (
+                0.2 * y
+                + np.where(y >= STEP_AT_Y, STEP_M, 0.0)
+                + np.where(
+                    (y >= CUT_TOP_Y) & (x > 110.0) & (x < 190.0), CUT_STEP_M, 0.0
+                )
+            ),
+        ),
     }
 
 
@@ -212,6 +232,7 @@ def build(rasters, **layers):
     return wl.build_wall_lines(
         **layers,
         face_height_path=rasters["face"],
+        dem_path=rasters["dem"],
         residual_path=rasters["residual"],
         slope_3m_path=rasters["slope_3m"],
         slope_10m_path=rasters["slope_10m"],
@@ -306,6 +327,135 @@ def test_boundary_lines_split_road_frontage_from_boundary_on_sloping_ground(
     )
     assert not others.empty
     assert (others.geometry.interpolate(0.5, normalized=True).y > ORIGIN_NORTHING).all()
+
+
+@ignore_affine_matmul
+def test_the_step_is_read_across_a_stepped_line_and_not_an_even_slope(rasters):
+    """A line along the terrace step reads 2 m; along or down the even slope, 0."""
+    lines = gpd.GeoSeries(
+        [
+            line((10, 100), (90, 100)),  # along the 2 m step
+            line((10, 60), (90, 60)),  # along the even slope
+            line((50, 20), (50, 80)),  # straight down the even slope
+        ],
+        crs=CRS,
+    )
+    steps = wl.step_height_m(lines, rasters["dem"], spacing_m=1.0)
+    assert steps.iloc[0] == pytest.approx(STEP_M, abs=0.05)
+    assert steps.iloc[1] == pytest.approx(0.0, abs=0.05)
+    assert steps.iloc[2] == pytest.approx(0.0, abs=0.05)
+
+
+def test_the_step_spans_must_be_ordered():
+    with pytest.raises(ValueError, match="must be more than"):
+        wl.step_height_m(
+            gpd.GeoSeries([], crs=CRS), "x.tif", spacing_m=1.0, near_m=2.0, far_m=1.0
+        )
+
+
+@ignore_affine_matmul
+def test_only_a_stepped_boundary_is_a_potential_wall(
+    rasters, morphology, genesis, properties, roads, buildings, candidates, ground_map
+):
+    """The A/C boundary steps 2 m and is kept at that height; the rest are dropped."""
+    built = build(
+        rasters,
+        morphology=morphology,
+        genesis=genesis,
+        properties=properties,
+        roads=roads,
+        buildings=buildings,
+        candidates=candidates,
+        ground_map=ground_map,
+    )
+    boundaries = built[built["source"].isin(["road_frontage", "property_boundary"])]
+    assert not boundaries.empty
+    midpoints = boundaries.geometry.interpolate(0.5, normalized=True)
+    assert np.allclose(midpoints.y.to_numpy(), ORIGIN_NORTHING + STEP_AT_Y)
+    assert np.allclose(boundaries["face_height_m"].to_numpy(), STEP_M, atol=0.05)
+    # The cut slope's outline in D keeps only its stepped top edge, at 1.5 m.
+    cut = built[built["source"] == "slide_cut_edge"]
+    assert len(cut) == 1
+    top = cut.geometry.iloc[0].interpolate(0.5, normalized=True)
+    assert top.y == pytest.approx(ORIGIN_NORTHING + CUT_TOP_Y, abs=1.0)
+    assert cut["face_height_m"].iloc[0] == pytest.approx(CUT_STEP_M, abs=0.05)
+
+
+@ignore_affine_matmul
+def test_a_tested_line_keeps_only_its_stepped_stretch(rasters):
+    """A boundary along the step for 40 m and then up the slope keeps the 40 m."""
+    lines = frame(
+        [line((10, 100), (50, 100), (50, 140)), line((20, 30), (80, 30))],
+        source=["property_boundary", "gns_mapped_wall"],
+    )
+    kept, steps = wl.keep_stepped_parts(
+        lines,
+        rasters["dem"],
+        tested_sources=wl.STEP_TESTED_SOURCES,
+        spacing_m=1.0,
+        min_step_m=MIN_HEIGHT_M,
+        min_run_m=wl.MIN_STEP_RUN_M,
+        max_gap_m=wl.MAX_STEP_GAP_M,
+    )
+    boundary = kept[kept["source"] == "property_boundary"]
+    assert len(boundary) == 1
+    assert boundary.geometry.iloc[0].length == pytest.approx(40.0, abs=2.0)
+    assert steps.loc[boundary.index[0]] == pytest.approx(STEP_M, abs=0.05)
+    # A mapped wall is not tested: kept whole, with no step recorded.
+    mapped = kept[kept["source"] == "gns_mapped_wall"]
+    assert mapped.geometry.iloc[0].length == pytest.approx(60.0)
+    assert np.isnan(steps.loc[mapped.index[0]])
+
+
+@ignore_affine_matmul
+def test_a_tested_line_with_no_step_is_dropped(rasters):
+    lines = frame([line((20, 30), (80, 30))], source=["slide_cut_fill_line"])
+    kept, steps = wl.keep_stepped_parts(
+        lines,
+        rasters["dem"],
+        tested_sources=wl.STEP_TESTED_SOURCES,
+        spacing_m=1.0,
+        min_step_m=MIN_HEIGHT_M,
+        min_run_m=wl.MIN_STEP_RUN_M,
+        max_gap_m=wl.MAX_STEP_GAP_M,
+    )
+    assert kept.empty
+    assert steps.empty
+
+
+def test_a_short_dip_in_the_step_does_not_split_a_wall():
+    """A 2 m dip below the step is bridged at a 3 m gap and splits at 1 m."""
+    steps = np.array([1.0] * 10 + [0.2] * 2 + [1.0] * 10)
+    distances = np.arange(steps.size) + 0.5
+    common = {
+        "length": float(steps.size),
+        "spacing_m": 1.0,
+        "min_step_m": MIN_HEIGHT_M,
+        "min_run_m": 3.0,
+    }
+
+    bridged = wl._stepped_runs(distances, steps, max_gap_m=3.0, **common)  # noqa: SLF001
+    split = wl._stepped_runs(distances, steps, max_gap_m=1.0, **common)  # noqa: SLF001
+
+    assert [(begin, end) for begin, end, _ in bridged] == [(0.0, 22.0)]
+    assert [(begin, end) for begin, end, _ in split] == [(0.0, 10.0), (12.0, 22.0)]
+
+
+def test_a_stepped_stretch_shorter_than_the_run_is_dropped():
+    steps = np.array([0.0] * 5 + [1.0] * 2 + [0.0] * 5)
+    distances = np.arange(steps.size) + 0.5
+
+    runs = wl._stepped_runs(  # noqa: SLF001
+        distances,
+        steps,
+        length=float(steps.size),
+        spacing_m=1.0,
+        min_step_m=MIN_HEIGHT_M,
+        min_run_m=3.0,
+        max_gap_m=3.0,
+    )
+
+    assert runs == []
 
 
 # -- the snap, the collapse and the split ------------------------------------
@@ -671,6 +821,9 @@ def redirected_script(
     )
     monkeypatch.setattr(
         script, "aspect_path", lambda resolution_m, *, pilot: rasters["aspect"]
+    )
+    monkeypatch.setattr(
+        script, "dem_path", lambda resolution_m, *, pilot: rasters["dem"]
     )
     return script
 

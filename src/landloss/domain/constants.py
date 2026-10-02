@@ -115,6 +115,30 @@ GNS_SLIDE_GENESIS_LAYER_ID = 125309
 # the result without it.
 EIL_PROBABILITY_SOURCE_PATH = "EILProb_Wellington/EILProb_PGA2g.tif"
 
+# The NZMM address land attributes extract for the four Wellington councils,
+# below the project's SourceMaterial folder on T:. Read by
+# landloss.io.nzmm_land_attributes.get_nzmm_land_attributes. Sensitive: it sits
+# under SENSITIVE/ and is to be destroyed at the end of the project -- see that
+# module's docstring.
+NZMM_LAND_ATTRIBUTES_SOURCE_PATH = (
+    "SENSITIVE/NZMM_ADDRESS_WellingtonTLAs_LandAttributes"
+    "/NZMM_ADDRESS_WellingtonTLAs_LandAttributes.txt"
+)
+
+# QV's rating roll extract for the four Wellington councils, one file per
+# council keyed by QV's district code, below the project's SourceMaterial
+# folder on T:. Read by landloss.io.qv_rating_roll.get_qv_rating_roll.
+# Sensitive: supplied by QV and to be destroyed at the end of the project --
+# see that module's docstring. The README.md beside the files records how the
+# unlabelled fields were named.
+QV_RATING_ROLL_SOURCE_DIR = "SENSITIVE/_Filedrop_ Natural Hazards Data Sets"
+QV_RATING_ROLL_FILES = {
+    "44": "Property44_20261002.txt",  # Porirua City
+    "45": "Property45_20261002.txt",  # Upper Hutt City
+    "46": "Property46_20261002.txt",  # Hutt City
+    "47": "Property47_20261002.txt",  # Wellington City
+}
+
 # The global datasets the Nowicki Jessee (2018) landslide model is rebuilt
 # from, below the project's SourceMaterial folder on T:. Each is put there by
 # a get_ script in src/scripts/landloss/hazard/landslide/static_data_gen/,

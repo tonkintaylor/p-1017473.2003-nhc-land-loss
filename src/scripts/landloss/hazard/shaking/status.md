@@ -103,9 +103,10 @@ directly, was retired on 2026-09-30; its method file records how it ran.
 
 - **T-15** — the site class decision above. Step 2 adopts Foster, which closes
   it; the register entry still reads as open and needs updating.
-- **T-26** is no longer open: the demand comes from TS1170.5 and the NSHM
-  scenario route is parked. The register entry still reads as undecided and
-  needs updating.
+- **T-26** is closed (the lead, 2026-10-02): the TS1170.5 2,500-year demands
+  as the standard gives them, per site class, and the NSHM scenario route is
+  parked. Over the pilot that is 1.68 to 1.77 g on site classes II and III,
+  larger than the roughly 1 g the scope was written around.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

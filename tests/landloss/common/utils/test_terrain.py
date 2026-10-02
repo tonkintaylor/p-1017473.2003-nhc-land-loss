@@ -820,6 +820,22 @@ def test_where_no_surface_model_was_flown_the_height_is_nan() -> None:
     assert np.isnan(height[:, 6:]).all()
 
 
+@ignore_affine_matmul
+def test_a_cell_under_a_building_has_no_vegetation_height() -> None:
+    """A roof is not canopy: cells inside an outline are NaN, the rest kept."""
+    dem = make_dem(np.full((9, 9), 10.0))
+    dsm = (dem + 3.0).rio.write_crs(constants.DEFAULT_CRS)
+    west, south, east, north = dem.rio.bounds()
+    roof = gpd.GeoSeries(
+        [box(west, south, (west + east) / 2, north)], crs=constants.DEFAULT_CRS
+    )
+
+    height = vegetation_height(dsm, dem, roof).to_numpy()
+
+    assert np.isnan(height[:, :4]).all()
+    assert height[:, 5:] == pytest.approx(3.0)
+
+
 # --- circular statistics ------------------------------------------------------
 
 

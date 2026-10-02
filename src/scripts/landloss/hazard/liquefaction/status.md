@@ -3,7 +3,7 @@
 **Status:** Prototype under way; the NLM output in hand is still on draft
 demands.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-02
 
 ## Approach
 
@@ -96,8 +96,8 @@ No river buffers, no LS zone modifier. Output is a raster of `ld_state` values
 - **How the land damage states are revised.** Maxim Millen is revising the
   liquefaction land damage states (**T-54**, 2026-09-30); the LS modifier
   applies to whatever states that produces.
-- **T-26** — TS1170.5 or NSHM (2022) demands. The approach above assumes
-  TS1170.5.
+- ~~**T-26** — TS1170.5 or NSHM (2022) demands.~~ Closed (the lead,
+  2026-10-02): the TS1170.5 2,500-year demands as the standard gives them.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

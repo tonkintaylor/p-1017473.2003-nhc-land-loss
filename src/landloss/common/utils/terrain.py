@@ -764,20 +764,26 @@ def profile_curvature(dem: xr.DataArray, resolution: float) -> xr.DataArray:
     return _as_derivative(dem, curvature, PROFILE_CURVATURE_NAME)
 
 
-def vegetation_height(dsm: xr.DataArray, dem: xr.DataArray) -> xr.DataArray:
+def vegetation_height(
+    dsm: xr.DataArray,
+    dem: xr.DataArray,
+    buildings: gpd.GeoSeries | None = None,
+) -> xr.DataArray:
     """Compute the height of whatever stands on the ground, from a surface model.
 
     The digital surface model minus the bare-earth DEM, with the surface model
     resampled bilinearly onto the DEM's grid first. Over a hillside that is
-    tree canopy; over a street it is rooftops as well, and nothing here tells
-    the two apart -- the name says what it means on the sloping ground the
-    landslide work reads it on.
+    tree canopy; over a building it is the roof. Given ``buildings``, every
+    cell whose centre lies in an outline is NaN, so what is left is
+    vegetation and other structures rather than rooftops.
 
     Args:
         dsm: The surface elevation in metres, on any grid covering ``dem``,
             with a spatial reference.
         dem: Ground elevation in metres, with dimensions :data:`RASTER_DIMS`
             and a spatial reference.
+        buildings: Building outlines in the DEM's system, masked out. None
+            keeps every cell.
 
     Returns:
         Metres of surface above the ground on ``dem``'s grid, named
@@ -797,6 +803,14 @@ def vegetation_height(dsm: xr.DataArray, dem: xr.DataArray) -> xr.DataArray:
     height = _match_grid(dsm, dem).to_numpy() - dem.to_numpy()
     height = np.asarray(height, dtype=float)
     height = np.where(np.isnan(height), np.nan, np.maximum(height, 0.0))
+    if buildings is not None and not buildings.empty:
+        roofs = features.geometry_mask(
+            buildings.to_numpy(),
+            out_shape=height.shape,
+            transform=dem.rio.transform(),
+            invert=True,
+        )
+        height = np.where(roofs, np.nan, height)
     return _as_derivative(dem, height, VEGETATION_HEIGHT_NAME)
 
 

@@ -1,0 +1,1 @@
+Record QV's rating roll in the land and retaining wall exposure status files and in the data sources context: land value is to switch to the roll's land values, with a field specification from QV as a future improvement; wall condition keeps the open-data building age estimate, with a switch to the roll's building age as a low-priority future improvement.

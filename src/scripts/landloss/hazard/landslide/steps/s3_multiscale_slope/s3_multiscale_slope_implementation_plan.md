@@ -90,9 +90,9 @@ handful of points per 100 m cell rather than the ground under it.
       run. Harmless over the pilot, whose snapped extent is wider than the
       pilot box; to remove it, keep the padded DEMs and trim after the
       windows, as the slope script already does for Horn's kernel.
-- [ ] The vegetation height tells canopy from rooftops no better than the
-      surface model does. Masking it with the building outlines is the
-      candidates step's to do if it needs to.
+- [x] Mask the building outlines out of the vegetation height, so a roof is
+      not read as canopy (2026-10-02). Tested on a synthetic roof; the pilot
+      layer is rebuilt on the next run of `gen_terrain_derivatives.py`.
 
 ## Potential future improvements
 

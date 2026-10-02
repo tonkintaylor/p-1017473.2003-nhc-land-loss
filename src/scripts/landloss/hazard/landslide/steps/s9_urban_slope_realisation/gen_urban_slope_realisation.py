@@ -222,14 +222,18 @@ def describe_draw(model, realised):
     failed = realised.draws[urban.FAILED_COLUMN].to_numpy(dtype=bool)
     absorbed = realised.absorbed_by != urban.NONE
     superseded = realised.superseded_by != urban.NONE
-    undrawn = int(realised.draws[urban.P_FAIL_COLUMN].isna().sum())
+    p_fail = realised.draws[urban.P_FAIL_COLUMN]
+    no_pgv = realised.draws[urban.PGV_COLUMN].isna()
+    no_median = model[urban.THETA_COLUMN].isna()
     print(RULE)
     print(f"Failed: {int(failed.sum()):,} of {len(model):,} polygons")
     print(f"  absorbed by a larger failed polygon: {int(absorbed.sum()):,}")
     print(f"  superseded by a large-model landslide: {int(superseded.sum()):,}")
     print(f"  surviving: {int(realised.survivors.sum()):,}")
-    if undrawn:
-        print(f"  {undrawn:,} polygons off the PGV grid were not drawn (p_fail NaN)")
+    if p_fail.isna().any():
+        print(f"  not drawn (p_fail NaN): {int(p_fail.isna().sum()):,}")
+        print(f"    with no fragility median: {int(no_median.sum()):,}")
+        print(f"    off the PGV grid: {int((no_pgv & ~no_median).sum()):,}")
 
 
 def describe_areas(combined):

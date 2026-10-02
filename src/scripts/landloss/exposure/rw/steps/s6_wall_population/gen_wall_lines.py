@@ -54,6 +54,7 @@ from landloss.io.readers import (
 from scripts.landloss.exposure.rw.steps.s6_wall_population import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     aspect_path,
+    dem_path,
     resolve_extent,
     slope_path,
 )
@@ -87,6 +88,9 @@ LAYER_MARGIN_M = 50.0
 # The slope rasters the midpoint attributes and the boundary filter read.
 MIDPOINT_RESOLUTION_M = 3
 BOUNDARY_RESOLUTION_M = 10
+# The DEM a boundary's step is measured on: the finest, so a wall a metre high
+# is a step rather than a slope.
+STEP_RESOLUTION_M = 1
 
 RULE = "-" * 72
 
@@ -275,6 +279,7 @@ def main(*, pilot, use_cached_layers, road_distance_m):
         candidates=candidates,
         ground_map=ground_map,
         face_height_path=terrain_path("face-height-5m", pilot=pilot),
+        dem_path=dem_path(STEP_RESOLUTION_M, pilot=pilot),
         residual_path=terrain_path("cut-fill-residual-30m", pilot=pilot),
         slope_3m_path=slope_path(MIDPOINT_RESOLUTION_M, pilot=pilot),
         slope_10m_path=slope_path(BOUNDARY_RESOLUTION_M, pilot=pilot),

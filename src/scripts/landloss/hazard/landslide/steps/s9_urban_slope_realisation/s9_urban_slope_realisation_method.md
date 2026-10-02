@@ -26,8 +26,10 @@
   gives `p_fail`, and one
   uniform per row is drawn in the model file's order on
   `realisation_seed(BASE_SEED, realisation_id, "urban", world_id=world_id)`.
-  A row fails where its uniform is below `p_fail`; a row with no PGV has
-  `p_fail` NaN, does not fail, and is counted by the run.
+  A row fails where its uniform is below `p_fail`. A row with no PGV, or
+  with no fragility median (`theta` NaN, as on a polygon the fragility step
+  could not attach a curve to), has `p_fail` NaN and does not fail; the run
+  counts the two causes separately.
 - **One uniform per wall line** (contract decision 34). After the per-row
   draw, every row whose `wall_state` is not `no_wall` takes the uniform of
   the first row in model order sharing a wall line with it: a row's lines are
@@ -109,8 +111,10 @@
   `temp/hazard/landslide/urban-wall-outcome-wNNN-rNNN[-pilot].parquet` from
   `urban_wall_outcome_path()`.
 - The run prints the world and earthquake ids, the rate setting, the polygons by wall state, the
-  failed, absorbed, superseded and surviving counts, the summed and dissolved
-  areas by population and land class, and the wall outcome counts.
+  polygons not drawn split into those with no fragility median and those off
+  the PGV grid (`describe_draw()`), the failed, absorbed, superseded and
+  surviving counts, the summed and dissolved areas by population and land
+  class, and the wall outcome counts.
 - The draw of one pair is mapped by outcome in the figure produced by
   `fig_urban_slope_realisation.py`, which reads the two files the run wrote
   through `combined_realisation_path()` and `urban_wall_outcome_path()`

@@ -87,7 +87,10 @@
   `topographic-position-100m`, band `topographic_position_m`).
 - Vegetation height is the LINZ 1 m surface model minus the 1 m DEM, clipped at
   zero, `landloss.common.utils.terrain.vegetation_height()`
-  (`vegetation-height`, band `vegetation_height_m`). The surface model comes
+  (`vegetation-height`, band `vegetation_height_m`), with every cell whose
+  centre lies inside a LINZ building outline set to NaN, so a roof is not read
+  as canopy. The outlines are read over the same bounds with
+  `landloss.io.readers.get_nz_building_outlines`. The surface model comes
   from `landloss.io.readers.get_dsm()`, fetched over the 1 m DEM's own bounds:
   it walks the `/dsm_1m/` collections of LINZ's elevation STAC catalogue,
   mosaics the tiles newest survey first, and caches under

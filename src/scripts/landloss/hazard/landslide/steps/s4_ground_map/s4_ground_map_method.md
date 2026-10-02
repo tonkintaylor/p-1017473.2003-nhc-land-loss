@@ -20,6 +20,16 @@
   were read off the layers on 1 October 2026: fourteen SLIDE material types,
   seventy-four 1:50,000 unit codes, the thirteen NLM `l3_yp` classes
   susceptibility already scores, and fifteen genesis types.
+- SLIDE's five mixed fill classes ("Mixed fill/rock", "Mixed fill/colluvium",
+  "Mixed fill/colluvium/rock", "Mixed fill/talus" and "Old alluvium (mixed
+  fill)") are all mapped to `fill_uncontrolled`, like "Fill", because the layer
+  does not say which part of a mixed polygon is fill or whether it was
+  engineered. Over the pilot the three largest of them cover 65% of the SLIDE
+  area, so 71% of the pilot's mapped ground is fill and Kingsbury's geology
+  value sits at its top over most hillsides. The mapping is left as it is (the
+  lead, 2026-10-02). **Reviewer: a mapping is invited**, for example the
+  dominant natural material with fill recorded as the modification, so that
+  the material and the cut-or-fill state are read separately.
 - The sources are read in `gen_ground_map.main()`: `get_slide_interpreted_materials`,
   `get_wellington_urban_geology`, `get_nlm_geomorphology`, `get_slide_genesis`,
   `get_wcc_cut_areas` and `get_wcc_fill_areas` from `landloss.io.readers`, the

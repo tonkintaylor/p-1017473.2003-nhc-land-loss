@@ -24,6 +24,11 @@ include:
    - The NHC loss modelling team accepted the single high-demand approach but
      noted that settlement behaviour, and therefore the equity conclusions,
      may differ at lower demands.
+   - The project lead decided on 2026-10-02 to use the TS1170.5 2,500-year
+     demands as the standard gives them, per site class (**T-26**). Over the
+     pilot that is a PGA of 1.68 to 1.77 g on site classes II and III and
+     1.00 to 1.27 g on classes IV and V, and a PGV of 1.1 to 2.0 m/s, which is
+     larger than the roughly 1 g the scope was written around.
 2. Decide on spatial extent that covers a portfolio that meets the requirements
    detailed in Bridget Attwood's email dated 10/09/26 (reproduced in
    `nhc-event-parameters-email.md`).

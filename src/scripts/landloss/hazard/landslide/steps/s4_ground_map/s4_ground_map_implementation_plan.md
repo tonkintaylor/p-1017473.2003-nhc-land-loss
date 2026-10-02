@@ -1,14 +1,11 @@
 # Step 4 — Ground map: implementation plan
 
-**Status:** Phase 1 complete in code and tested on synthetic sources only. The
-pilot run is this step's own to make (contract section 3) and has **not** been
-made: it is blocked on landslide step 3's `gen_terrain_derivatives.py`, which
-has not yet written `temp/hazard/landslide/terrain/` (the 30 m and 100 m
-cut-and-fill residuals this step reads), and the step also reads three National
-Liquefaction Model layers (`get_nlm_geomorphology`, `get_gwd_median_depth`,
-`get_nlm_flatland`), which the build rules this phase was written under do not
-allow a step script to fetch. The first phase 2 box below stays open until a
-run over `SMALL_WLG_PILOT` has been made and its printed area shares reviewed.
+**Status:** Phase 1 complete. The step ran over `SMALL_WLG_PILOT` on
+2026-10-02 as part of the whole chain and wrote 19,275 pieces. Two findings
+from that run are open: the map stops short of the extent the other steps use,
+which left 9,144 urban candidates without a material (fixed by phase 0 of
+`.agents/plans/building-face-based-urban-slope-polygons.md`), and SLIDE's mixed
+fill classes make 71% of the pilot fill (below).
 
 ## Background
 
@@ -49,16 +46,17 @@ and the function signatures this step is built against.
 
 ## Phase 2 — The pilot and the full extent
 
-- [ ] Run `gen_ground_map.py` then `fig_ground_map.py` over the pilot once
-      step 3's `gen_terrain_derivatives.py` has written
-      `cut-fill-residual-30m-pilot.tif` and `cut-fill-residual-100m-pilot.tif`
-      under `temp/hazard/landslide/terrain/`; review the area shares by
-      material, modification, prior failure and source that the run prints,
-      the strength row chosen per grade, and the two figure panels. Not yet
-      made: the residual rasters are absent as of 2026-10-02 and the step's
-      NLM inputs could not be fetched under this phase's build rules, so the
-      step is exercised end to end only through `main()` on synthetic inputs
-      in `tests/landloss/hazard/landslide/test_ground_map.py`.
+- [x] Run `gen_ground_map.py` over the pilot. Made on 2026-10-02 in the
+      whole-chain run: 19,275 pieces.
+- [ ] Review the area shares the run prints, the strength row chosen per
+      grade, and the two panels of `fig_ground_map.py`.
+- [ ] Build the map over the same snapped extent as step 3 and the urban
+      candidates, so every candidate has a material (faces plan, phase 0, and
+      `.agents/plans/running-per-territorial-authority.md`, phase 0).
+- [ ] SLIDE's mixed fill classes, 65% of the SLIDE area over the pilot, are
+      mapped to `fill_uncontrolled`. Left as it is (the lead, 2026-10-02).
+      **Reviewer: a mapping is invited**, for example the dominant natural
+      material with fill recorded as the modification.
 - [ ] The full extent. The fill thickness burns every fill piece onto the 1 m
       residual grid at once, which the 59 by 54 km study area cannot carry in
       memory; tile the residual read by step 3's output tiles, or by a

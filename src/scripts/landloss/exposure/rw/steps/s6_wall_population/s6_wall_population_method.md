@@ -41,8 +41,46 @@ and `gen_wall_population.py` draws one population per exposure world.
   was a mapped wall (`collapse_coincident`). Every line is then split where it
   crosses a claim property boundary (`split_at_boundaries`); a line running
   along a boundary is not cut by it.
-- `face_height_m` is the median of the `face-height-5m` terrain derivative read
-  every `FACE_SAMPLE_SPACING_M` along the line (`face_height_m()`), and
+- **A property boundary, a road frontage, a SLIDE cut/fill line or a SLIDE
+  cut or fill edge is a candidate only where the 1 m DEM steps across it**
+  (the project lead's rule of 2026-10-02; `STEP_TESTED_SOURCES`). A boundary
+  is where a wall often is and an earthwork edge is where ground was cut or
+  filled, but only a step says a wall is there. The GNS mapped walls are
+  observed and not tested, and the terrain breaks are steps by construction.
+  The step at a sample (`step_height_m()`, `_station_steps()`) is the rise
+  across 3 m (`STEP_NEAR_M` each side) against the rise across 9 m
+  (`STEP_FAR_M`), `(3 x short - long) / 2`, square to the line, which is zero
+  on an even hillside and the height of a step at the line; samples are
+  `FACE_SAMPLE_SPACING_M` apart. `keep_stepped_parts()` then **trims each
+  tested line to the stretches where the step reaches `MIN_WALL_HEIGHT_M`**,
+  bridging any dip no longer than `MAX_STEP_GAP_M` and keeping stretches of
+  at least `MIN_STEP_RUN_M`, both 3 m, the width of the short span. Each
+  stretch is a line of its own and its face height is its median step. A
+  boundary stepped along half its length keeps that half.
+- Over the pilot on 2026-10-02 (rerun into a scratch folder, not yet through
+  the chain), by source:
+
+  | Source | No step test | Whole line, median step | Trimmed (as built) |
+  | --- | --- | --- | --- |
+  | Property boundary | 4,540 lines, 110 km | 1,574, 34.3 km | 4,494, 47.5 km |
+  | Road frontage | 226 | 76, 2.4 km | 290, 3.6 km |
+  | SLIDE cut edge | 380, 19.2 km | not tested | 658, 12.7 km |
+  | SLIDE fill edge | 315, 12.1 km | not tested | 466, 6.3 km |
+  | SLIDE cut/fill line | 104, 3.2 km | not tested | 147, 1.9 km |
+  | All candidates | 8,342 | 5,226, 99.3 km | 8,832, 100.0 km |
+
+  Most sloping boundaries step somewhere along their length, so trimming
+  keeps more boundary length than the whole-line median did, in shorter
+  pieces (median 8 m). A 1 m gap and a 2 m run gave 6,574 boundary lines, 28%
+  under 3 m: one wall broken into several wherever its height dipped. The
+  claims with a candidate carry three on average, two at the median. With the
+  whole-line test, the share of sloping boundaries running along the contour
+  rose from 37% to 49%.
+- `face_height_m` on every other line is the median of the `face-height-5m`
+  terrain derivative read every `FACE_SAMPLE_SPACING_M` along it
+  (`face_height_m()`); local relief reads high on any hillside, wall or not,
+  which is why the boundaries and edges take the step instead. Lines under
+  `MIN_WALL_HEIGHT_M` are dropped below unless a wall is mapped there. And
   `size_class` follows from it by `classify_wall_size` on the boundaries in
   `landloss.exposure.rw.beta_population` (small below `SMALL_MAX_HEIGHT_M`,
   medium below `MEDIUM_MAX_HEIGHT_M`, large above). `slope_degrees` and

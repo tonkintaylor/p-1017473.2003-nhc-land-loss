@@ -88,9 +88,35 @@ credit are in each reader's docstring.
 - A slope failure estimate from their loss modelling team, for cross-comparison.
   They will need the shaking intensities to produce it.
 - The exact land cover policy wording, and the policy settings to be tested.
+- The NZMM address land attributes for Wellington City, Lower Hutt, Porirua and
+  Upper Hutt, held on T: under `SourceMaterial/SENSITIVE` and read by
+  `get_nzmm_land_attributes`. One row per address against its property, about
+  159,000 properties, each with a land area, a retaining wall flag, a mean slope
+  class and a swimming pool flag. The wall flag is set on about 3% of properties,
+  and how it is populated is undocumented, so a flag is evidence of a recorded
+  wall and its absence is not evidence of no wall. The slope class runs 1 to 3
+  and what it bounds is undocumented too.
+  NHC supplied it as sensitive data: summaries and results derived from it may be
+  published, but the file, its rows and its records re-tabulated may not be
+  reproduced, and every copy is destroyed at the end of the project.
 
 Andrew Kang was identified as the claims data contact and Ali as the loss
 modelling contact, but all approaches now route through Bridget Attwood.
+
+## From QV
+
+- The rating roll for Wellington City, Hutt City, Upper Hutt and Porirua, dated
+  2026-10-02 and supplied directly by QV, held on T: under
+  `SourceMaterial/SENSITIVE/_Filedrop_ Natural Hazards Data Sets` and read by
+  `get_qv_rating_roll`. One row per rating unit, 167,369 in all, carrying the
+  land and capital value at each council's latest revaluation (September 2024 to
+  September 2025), the land area and the building age decade. It joins to the
+  NZMM land attributes on QPID. The files carry no header; the `README.md`
+  beside them records how each field was named, and a field specification from
+  QV has not been asked for.
+  The terms are the NZMM attributes' ones: results derived from it may be
+  published, but the roll, its rows and its records re-tabulated may not be
+  reproduced, and every copy is destroyed at the end of the project.
 
 ## Property files
 
@@ -104,7 +130,10 @@ a close analogue.
 
 ## What is not obtainable
 
-- A dataset of privately owned retaining walls. None is known to exist.
+- A dataset of privately owned retaining walls — where they are, how high, what
+  type. None is known to exist. The closest is the per-property retaining wall
+  flag in NHC's NZMM land attributes, which says a property has a recorded wall
+  but not where on it, nor whether the wall is private.
 - Which individual properties are insured.
 - Driveway extents, which are not in the LINZ data and are hard to separate from
   kerbs and footpaths by remote sensing.

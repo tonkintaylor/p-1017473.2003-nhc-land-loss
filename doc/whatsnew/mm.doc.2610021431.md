@@ -1,0 +1,1 @@
+Add the plan for face-based urban slope polygons and retaining wall candidates, built from a static layer of faces found once in the 1 m DEM, and point the landslide and retaining wall status files at it with the references it rests on.
