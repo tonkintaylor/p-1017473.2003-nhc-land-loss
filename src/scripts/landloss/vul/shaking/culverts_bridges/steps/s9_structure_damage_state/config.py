@@ -9,9 +9,12 @@ lives in :mod:`landloss.vul.shaking.fragility` and is a property of the structur
 and the shaking rather than a setting of the run.
 """
 
-# Whether to run over the small Wellington pilot box. Must match the runs of the
-# shaking hazard and the crossing population this reads.
-PILOT = True
+# The extent to run over: "wlg-pilot" (the small Wellington pilot box),
+# "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
+# territorial authorities). Must match the runs of the shaking hazard and the
+# crossing population this reads.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to draw damage states for.
 REALISATION_IDS = [0]

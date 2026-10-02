@@ -44,6 +44,7 @@ from landloss.exposure.rw.lines import (
     snap_to_candidate_edges,
 )
 from landloss.hazard.landslide.urban.delineation import SNAP_TOLERANCE_M
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import (
     get_gns_slide_morphology,
     get_nz_address_roads,
@@ -95,16 +96,17 @@ STEP_RESOLUTION_M = 1
 RULE = "-" * 72
 
 
-def wall_lines_path(*, pilot):
+def wall_lines_path(*, extent):
     """Return the file a run writes the candidate wall lines to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
@@ -249,21 +251,22 @@ def describe_lines(lines):
         )
 
 
-def main(*, pilot, use_cached_layers, road_distance_m):
+def main(*, extent, use_cached_layers, road_distance_m):
     """Build the candidate wall lines and write them out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_layers: Whether to reuse already-fetched clipped GNS and
             LINZ layers.
         road_distance_m: How near a road centreline a property boundary piece
             has to be to count as a road frontage.
     """
-    bbox, name = resolve_extent(pilot=pilot)
+    bbox, name = resolve_extent(extent=extent)
     print(f"Extent: {name}")
 
-    candidates_file = urban_slope_candidates_path(pilot=pilot)
-    ground_file = ground_map_path(pilot=pilot)
+    candidates_file = urban_slope_candidates_path(extent=extent)
+    ground_file = ground_map_path(extent=extent)
     print(f"Reading the candidates from {candidates_file} ...")
     candidates = gpd.read_parquet(candidates_file)
     print(f"Reading the ground map from {ground_file} ...")
@@ -278,12 +281,12 @@ def main(*, pilot, use_cached_layers, road_distance_m):
         **layers,
         candidates=candidates,
         ground_map=ground_map,
-        face_height_path=terrain_path("face-height-5m", pilot=pilot),
-        dem_path=dem_path(STEP_RESOLUTION_M, pilot=pilot),
-        residual_path=terrain_path("cut-fill-residual-30m", pilot=pilot),
-        slope_3m_path=slope_path(MIDPOINT_RESOLUTION_M, pilot=pilot),
-        slope_10m_path=slope_path(BOUNDARY_RESOLUTION_M, pilot=pilot),
-        aspect_path=aspect_path(MIDPOINT_RESOLUTION_M, pilot=pilot),
+        face_height_path=terrain_path("face-height-5m", extent=extent),
+        dem_path=dem_path(STEP_RESOLUTION_M, extent=extent),
+        residual_path=terrain_path("cut-fill-residual-30m", extent=extent),
+        slope_3m_path=slope_path(MIDPOINT_RESOLUTION_M, extent=extent),
+        slope_10m_path=slope_path(BOUNDARY_RESOLUTION_M, extent=extent),
+        aspect_path=aspect_path(MIDPOINT_RESOLUTION_M, extent=extent),
         snap_tolerance_m=SNAP_TOLERANCE_M,
         road_distance_m=road_distance_m,
         min_slope_deg=MIN_SLOPING_GROUND_DEG,
@@ -293,7 +296,7 @@ def main(*, pilot, use_cached_layers, road_distance_m):
     lines = mint_wall_line_ids(lines)
     describe_lines(lines)
 
-    out_path = wall_lines_path(pilot=pilot)
+    out_path = wall_lines_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     lines.to_parquet(out_path)
     print(RULE)
@@ -306,7 +309,7 @@ def main(*, pilot, use_cached_layers, road_distance_m):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         road_distance_m=config.ROAD_FRONTAGE_DISTANCE_M,
     )

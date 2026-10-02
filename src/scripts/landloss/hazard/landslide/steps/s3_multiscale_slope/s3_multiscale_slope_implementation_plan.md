@@ -46,7 +46,7 @@ handful of points per 100 m cell rather than the ground under it.
 
 ## Phase 2 — Full study area
 
-- [ ] Run with `PILOT = False` over the four territorial authorities. At 1 m
+- [ ] Run with `EXTENT = "full"` over the four territorial authorities. At 1 m
       the study area bounding box is about 3.2 billion cells, which neither the
       fetch nor the Horn kernel can carry in memory; the step has to be tiled
       over the snapped 300 m grid, with each tile fetched padded by one cell

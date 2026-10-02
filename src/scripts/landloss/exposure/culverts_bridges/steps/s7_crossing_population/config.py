@@ -11,11 +11,14 @@ code that applies it, as
 `landloss.exposure.culverts_bridges.crossings.CULVERT_PROBABILITY`.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Must match the run of step 5 whose driveways and
-# insured land this reads: the crossings are detected against those accessways
-# and kept only where they lie wholly inside that insured land.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Must match the run of step 5 whose driveways and insured land this reads:
+# the crossings are detected against those accessways and kept only where they
+# lie wholly inside that insured land.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to draw a population for. Which structure sits at a
 # crossing is a draw, so the population is tied to a realisation the same way the

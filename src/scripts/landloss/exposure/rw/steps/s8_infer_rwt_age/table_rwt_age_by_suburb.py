@@ -25,6 +25,7 @@ import sys
 import geopandas as gpd
 
 from landloss.exposure.rw import age
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.rw.steps.s8_infer_rwt_age import config
 from scripts.landloss.exposure.rw.steps.s8_infer_rwt_age.gen_rwt_age import (
     rwt_age_path,
@@ -41,29 +42,31 @@ SUBURB_COLUMNS = ["territorial_authority", "suburb_locality"]
 RULE = "-" * 72
 
 
-def table_path(level, *, pilot):
+def table_path(level, *, extent):
     """Return the CSV a run writes one level of the table to.
 
     Args:
         level: ``"suburb"`` or ``"ta"``.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The table path, under ``report/exposure/rw/rwt-age/tab/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return TAB_DIR / f"rwt-age-by-{level}{suffix}.csv"
 
 
-def main(*, pilot):
+def main(*, extent):
     """Write the per-suburb and per-authority age bin shares.
 
     Args:
-        pilot: Whether the ages were inferred over the pilot box. Must match the
+        extent: The extent the ages were inferred over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full". Must match the
             setting the generation was run with, which is why both read it from
             the same ``config.py``.
     """
-    ages_path = rwt_age_path(pilot=pilot)
+    ages_path = rwt_age_path(extent=extent)
     print(f"Reading the property ages from {ages_path} ...")
     ages = gpd.read_parquet(ages_path)
 
@@ -72,7 +75,7 @@ def main(*, pilot):
         "ta": age.bin_shares(ages, SUBURB_COLUMNS[:1]),
     }
     for level, table in tables.items():
-        out_path = table_path(level, pilot=pilot)
+        out_path = table_path(level, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         table.to_csv(out_path, index=False, float_format="%.3f")
         print(RULE)
@@ -83,4 +86,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

@@ -27,7 +27,11 @@ from landloss.hazard.shaking.site_class import (
     fill_site_class_gaps,
     ts1170_site_class_from_vs30,
 )
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.ts1170 import SITE_CLASS_NUMERALS
 from landloss.io.vs30 import get_foster_2019_vs30
 from scripts.landloss.hazard.shaking.steps.s2_site_class import config
@@ -41,66 +45,70 @@ WORK_DIR = TEMP_DIR / "hazard" / "shaking"
 RULE = "-" * 72
 
 
-def resolve_extent(*, pilot):
+def resolve_extent(*, extent):
     """Return the bounding box, in NZTM, and its name for this run.
 
     The shaking steps all run over this extent: this step sets the grid, and
     the steps after it read the grid this step wrote.
     """
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), "Small Wellington pilot"
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), aoi.name
     areas = get_study_areas(constants.DEFAULT_CRS)
     return tuple(areas.total_bounds), "Four territorial authorities"
 
 
-def site_class_path(*, pilot):
+def site_class_path(*, extent):
     """Return the file a run writes the site class grid to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/shaking/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"site-class-100m{suffix}.tif"
 
 
-def filled_mask_path(*, pilot):
+def filled_mask_path(*, extent):
     """Return the file a run writes the mask of gap-filled cells to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/shaking/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"site-class-filled-100m{suffix}.tif"
 
 
-def read_site_class(*, pilot):
+def read_site_class(*, extent):
     """Read the site class grid this step wrote, for the steps after it.
 
     Raises:
         FileNotFoundError: If step 2 has not been run over this extent.
     """
-    path = site_class_path(pilot=pilot)
+    path = site_class_path(extent=extent)
     if not path.exists():
         msg = f"No site class grid at {path}. Run s2_site_class/gen_site_class.py "
-        msg += f"with PILOT = {pilot} first."
+        msg += f'with EXTENT = "{extent}" first.'
         raise FileNotFoundError(msg)
     with rioxarray.open_rasterio(path, masked=True) as raster:
         return raster.squeeze("band", drop=True).load()
 
 
-def main(*, pilot):
+def main(*, extent):
     """Write the site class grid over the extent.
 
     Args:
-        pilot: Whether to clip to the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
+    bbox, extent_name = resolve_extent(extent=extent)
 
     print("Reading the Foster et al. (2019) Vs30 model ...", flush=True)
     vs30 = get_foster_2019_vs30(bbox)
@@ -128,10 +136,10 @@ def main(*, pilot):
         print(f"  {numeral:>3}: {share:6.1%}")
 
     print(RULE)
-    path = site_class_path(pilot=pilot)
+    path = site_class_path(extent=extent)
     write_raster(site_class.astype("float32"), path)
     print(f"Wrote {path}")
-    path = filled_mask_path(pilot=pilot)
+    path = filled_mask_path(extent=extent)
     write_raster(was_filled.astype("uint8"), path)
     print(f"Wrote {path}")
     print(
@@ -141,4 +149,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

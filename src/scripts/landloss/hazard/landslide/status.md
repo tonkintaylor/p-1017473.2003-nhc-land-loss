@@ -220,10 +220,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   (2020).
 - **Literature review of the walls, 2026-10-02** (part C). The Koutsoupaki
   wall curves fail 30 to 93% of walls at the study's shaking, against about
-  10% in Canterbury at the same PGA, and they have the height trend
-  backwards. This is part of why 88% of sloping walls were replaced in the
-  pilot. The proposal is to anchor the wall medians on Anderson et al. (2015)
-  [anderson_2015]; the detail is in the exposure rw status and
+  10% in Canterbury at the same PGA [anderson_2015], which is part of why 88%
+  of sloping walls were replaced in the pilot. The lead decided on
+  2026-10-02 to keep the curves and state that they overpredict against
+  Christchurch; the detail is in the exposure rw status and
   `.agents/context/retaining-wall-fragility.md`.
 - The anchoring skeleton and the per-territorial-authority plan are written
   and not reviewed.

@@ -207,46 +207,46 @@ def synthetic_run(tmp_path, monkeypatch):
     exposure.mkdir()
     vul.mkdir()
 
-    insured_land().to_parquet(gen_insured_land.insured_land_path(pilot=True))
+    insured_land().to_parquet(gen_insured_land.insured_land_path(extent="wlg-pilot"))
     for world_id in (0, 1):
         wall_population(world_id).to_parquet(
-            gen_wall_population.wall_population_path(world_id, pilot=True)
+            gen_wall_population.wall_population_path(world_id, extent="wlg-pilot")
         )
         for realisation_id in (0, 1):
             landslide_land_damage(world_id, realisation_id).to_parquet(
                 gen_landslide_land_damage.landslide_land_damage_path(
-                    world_id, realisation_id, pilot=True
+                    world_id, realisation_id, extent="wlg-pilot"
                 )
             )
             wall_damage_states(world_id, realisation_id).to_parquet(
                 gen_wall_damage_state.wall_damage_state_path(
-                    world_id, realisation_id, pilot=True
+                    world_id, realisation_id, extent="wlg-pilot"
                 )
             )
             wall_landslide_flags(world_id, realisation_id).to_parquet(
                 gen_wall_landslide_damage.wall_landslide_damage_path(
-                    world_id, realisation_id, pilot=True
+                    world_id, realisation_id, extent="wlg-pilot"
                 )
             )
             crossing_landslide_flags(world_id, realisation_id).to_parquet(
                 gen_crossing_landslide_damage.crossing_landslide_damage_path(
-                    world_id, realisation_id, pilot=True
+                    world_id, realisation_id, extent="wlg-pilot"
                 )
             )
     for realisation_id in (0, 1):
         liq_land_damage(realisation_id).to_parquet(
-            gen_liq_land_damage.liq_land_damage_path(realisation_id, pilot=True)
+            gen_liq_land_damage.liq_land_damage_path(realisation_id, extent="wlg-pilot")
         )
         structure_damage_states(realisation_id).to_parquet(
             gen_structure_damage_state.structure_damage_state_path(
-                realisation_id, pilot=True
+                realisation_id, extent="wlg-pilot"
             )
         )
 
 
 def read_table(table, world_id, realisation_id):
     return gpd.read_parquet(
-        step.world_loss_input_path(table, world_id, realisation_id, pilot=True)
+        step.world_loss_input_path(table, world_id, realisation_id, extent="wlg-pilot")
     )
 
 
@@ -255,41 +255,44 @@ def read_table(table, world_id, realisation_id):
 
 def test_the_path_names_the_table_the_world_the_realisation_and_the_extent():
     assert (
-        step.world_loss_input_path("rw", 0, 3, pilot=True).name
+        step.world_loss_input_path("rw", 0, 3, extent="wlg-pilot").name
         == "loss-input-rw-w000-r003-pilot.geoparquet"
     )
     assert (
-        step.world_loss_input_path("land", 12, 1, pilot=False).name
+        step.world_loss_input_path("land", 12, 1, extent="full").name
         == "loss-input-land-w012-r001.geoparquet"
     )
-    assert step.world_loss_input_path("rw", 0, 0, pilot=True).parent == step.WORK_DIR
+    assert (
+        step.world_loss_input_path("rw", 0, 0, extent="wlg-pilot").parent
+        == step.WORK_DIR
+    )
 
 
 def test_an_unknown_table_is_refused():
     with pytest.raises(ValueError, match="unknown loss table"):
-        step.world_loss_input_path("walls", 0, 0, pilot=True)
+        step.world_loss_input_path("walls", 0, 0, extent="wlg-pilot")
 
 
-@pytest.mark.parametrize("pilot", [True, False])
+@pytest.mark.parametrize("extent", ["wlg-pilot", "full"])
 @pytest.mark.parametrize("table", ["land", "rw", "culverts", "bridges"])
 @pytest.mark.parametrize("realisation_id", [0, 7])
-def test_the_deprecated_path_resolves_world_0(table, realisation_id, pilot):
+def test_the_deprecated_path_resolves_world_0(table, realisation_id, extent):
     # The loss module's five callers pass no world (contract decision 37).
     assert step.loss_input_path(
-        table, realisation_id, pilot=pilot
-    ) == step.world_loss_input_path(table, 0, realisation_id, pilot=pilot)
+        table, realisation_id, extent=extent
+    ) == step.world_loss_input_path(table, 0, realisation_id, extent=extent)
 
 
 def test_the_deprecated_path_refuses_an_unknown_table():
     with pytest.raises(ValueError, match="unknown loss table"):
-        step.loss_input_path("walls", 0, pilot=True)
+        step.loss_input_path("walls", 0, extent="wlg-pilot")
 
 
 def test_the_deprecated_path_reads_the_file_world_0_writes(synthetic_run):
-    step.main(pilot=True, world_ids=[0, 1], realisation_ids=[1])
+    step.main(extent="wlg-pilot", world_ids=[0, 1], realisation_ids=[1])
 
     for table in ("land", "rw", "culverts", "bridges"):
-        written = gpd.read_parquet(step.loss_input_path(table, 1, pilot=True))
+        written = gpd.read_parquet(step.loss_input_path(table, 1, extent="wlg-pilot"))
         assert (written["world_id"] == 0).all()
         assert (written["realisation_id"] == 1).all()
 
@@ -298,7 +301,7 @@ def test_the_deprecated_path_reads_the_file_world_0_writes(synthetic_run):
 
 
 def test_every_table_carries_the_contract_columns_after_the_two_ids(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
 
     land = read_table("land", 0, 0)
     rw = read_table("rw", 0, 0)
@@ -324,7 +327,7 @@ def test_every_table_carries_the_contract_columns_after_the_two_ids(synthetic_ru
 def test_the_rw_table_holds_every_wall_with_the_shaking_flag_from_either_route(
     synthetic_run,
 ):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     rw = read_table("rw", 0, 0).set_index("rw_id")
 
     # Flat-land and sloping walls alike, in population order.
@@ -339,7 +342,7 @@ def test_the_rw_table_holds_every_wall_with_the_shaking_flag_from_either_route(
 
 
 def test_the_land_table_is_spined_on_the_insured_land(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     land = read_table("land", 0, 0).set_index("land_id")
 
     assert land.index.tolist() == ["C01-L01", "C02-L01"]
@@ -355,7 +358,7 @@ def test_the_land_table_is_spined_on_the_insured_land(synthetic_run):
 
 
 def test_the_crossings_split_into_culverts_and_bridges(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     culverts = read_table("culverts", 0, 0)
     bridges = read_table("bridges", 0, 0)
 
@@ -368,7 +371,7 @@ def test_the_crossings_split_into_culverts_and_bridges(synthetic_run):
 
 
 def test_one_set_of_files_is_written_per_world_and_realisation(synthetic_run):
-    step.main(pilot=True, world_ids=[0, 1], realisation_ids=[0, 1])
+    step.main(extent="wlg-pilot", world_ids=[0, 1], realisation_ids=[0, 1])
     for world_id in (0, 1):
         for realisation_id in (0, 1):
             for table in ("land", "rw", "culverts", "bridges"):
@@ -380,7 +383,7 @@ def test_one_set_of_files_is_written_per_world_and_realisation(synthetic_run):
 def test_a_wall_without_landslide_flags_stops_the_run(synthetic_run):
     short = wall_landslide_flags().iloc[:2]
     short.to_parquet(
-        gen_wall_landslide_damage.wall_landslide_damage_path(0, 0, pilot=True)
+        gen_wall_landslide_damage.wall_landslide_damage_path(0, 0, extent="wlg-pilot")
     )
     with pytest.raises(ValueError, match="no landslide flags"):
-        step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+        step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])

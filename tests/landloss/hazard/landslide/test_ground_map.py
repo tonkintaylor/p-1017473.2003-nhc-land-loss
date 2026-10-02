@@ -717,9 +717,11 @@ def test_an_empty_source_list_gives_one_default_piece():
 
 
 def test_the_path_names_the_extent():
-    assert step.ground_map_path(pilot=True).name == "ground-map-pilot.geoparquet"
-    assert step.ground_map_path(pilot=False).name == "ground-map.geoparquet"
-    assert step.ground_map_path(pilot=True).parent == step.WORK_DIR
+    assert (
+        step.ground_map_path(extent="wlg-pilot").name == "ground-map-pilot.geoparquet"
+    )
+    assert step.ground_map_path(extent="full").name == "ground-map.geoparquet"
+    assert step.ground_map_path(extent="wlg-pilot").parent == step.WORK_DIR
 
 
 def test_slide_confidence_folds_the_qualified_highs():
@@ -833,7 +835,7 @@ def synthetic_inputs(tmp_path, monkeypatch):
     """Every reader the step calls, replaced by a synthetic layer under tmp_path."""
     bbox = tuple(float(v) for v in EXTENT.bounds)
     monkeypatch.setattr(step, "WORK_DIR", tmp_path)
-    monkeypatch.setattr(step, "resolve_extent", lambda *, pilot: (bbox, "synthetic"))
+    monkeypatch.setattr(step, "resolve_extent", lambda *, extent: (bbox, "synthetic"))
 
     materials = frame(
         [square(20, 20, 60, 60), square(80, 80, 100, 100), square(60, 0, 80, 20)],
@@ -879,20 +881,20 @@ def synthetic_inputs(tmp_path, monkeypatch):
         30: write_raster(make_grid(residual_30), tmp_path / "residual-30m.tif"),
         100: write_raster(make_grid(residual_100), tmp_path / "residual-100m.tif"),
     }
-    monkeypatch.setattr(step, "residual_path", lambda base, *, pilot: paths[base])
+    monkeypatch.setattr(step, "residual_path", lambda base, *, extent: paths[base])
     return bbox
 
 
 @ignore_affine_matmul
 def test_the_step_writes_the_contracts_file_from_synthetic_sources(synthetic_inputs):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         use_cached_layers=True,
         default_gw_depth_m=4.0,
         residual_modification_threshold_m=1.0,
     )
 
-    ground = gpd.read_parquet(step.ground_map_path(pilot=True))
+    ground = gpd.read_parquet(step.ground_map_path(extent="wlg-pilot"))
     assert list(ground.columns) == list(step.COLUMNS)
     assert ground.crs == CRS
     assert ground.geometry.geom_type.eq("Polygon").all()

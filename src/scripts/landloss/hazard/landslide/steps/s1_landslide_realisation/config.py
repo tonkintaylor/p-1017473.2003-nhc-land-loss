@@ -11,10 +11,12 @@ actually wrote. The placement settings are the contract's (section 3.9 of
 `.agents/plans/urban-slope-build-contract.md`).
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Steps 3 and 5 must have been run over the same
-# extent: this step reads their 10 m rasters and slope units and fetches nothing.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a name
+# from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" is the small Wellington
+# pilot box). Steps 3 and 5 must have been run over the same extent: this step
+# reads their 10 m rasters and slope units and fetches nothing.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to draw. A realisation id is the whole event: the
 # same id in the shaking, liquefaction and landslide layers is the same

@@ -2,7 +2,7 @@
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s7_urban_slope_polygons/gen_urban_slope_polygons.py
 
-The run settings -- the pilot box or the full study area, whether to reuse the
+The run settings -- the extent, whether to reuse the
 cached LINZ layers, and the road half width -- come from ``config.py`` beside
 this script rather than from the command line.
 
@@ -38,7 +38,7 @@ sections 1.2 and 7; the build contract, sections 3.6 and 7.6):
    so that a realisation only picks them up.
 
 Writes one GeoParquet with a row per ``slope_id`` under ``temp/hazard/landslide/``,
-with a ``-pilot`` suffix for a pilot run.
+with the extent's ``extent_suffix`` (``-pilot`` for the small Wellington pilot).
 """
 
 import sys
@@ -54,6 +54,7 @@ from landloss.hazard.landslide import susceptibility
 from landloss.hazard.landslide.urban import geometry
 from landloss.hazard.landslide.urban.delineation import SNAP_TOLERANCE_M
 from landloss.hazard.landslide.urban.fragility import continuous_rating
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_address_roads, get_nz_building_outlines
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_lines import (
     wall_lines_path,
@@ -104,16 +105,17 @@ DECILES = (0.1, 0.5, 0.9)
 RULE = "-" * 72
 
 
-def urban_slope_polygons_path(*, pilot):
+def urban_slope_polygons_path(*, extent):
     """Return the file a run writes the failure polygons to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
@@ -243,26 +245,26 @@ def describe_result(polygons):
     )
 
 
-def main(*, pilot, use_cached_layers, road_half_width_m):
+def main(*, extent, use_cached_layers, road_half_width_m):
     """Build the failure polygons from the candidates and the wall lines and write them.
 
     Args:
-        pilot: Whether to run over ``SMALL_WLG_PILOT`` rather than the four
-            territorial authorities.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         use_cached_layers: Whether to reuse the cached LINZ building outlines
             and road centrelines.
         road_half_width_m: Half the width a road centreline is buffered to as
             a runout barrier.
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
+    bbox, extent_name = resolve_extent(extent=extent)
     print(RULE)
     print(f"Extent: {extent_name}")
     print(
         f"Snap tolerance: {SNAP_TOLERANCE_M:g} m; road half width: {road_half_width_m:g} m"
     )
 
-    candidates_path = urban_slope_candidates_path(pilot=pilot)
-    lines_path = wall_lines_path(pilot=pilot)
+    candidates_path = urban_slope_candidates_path(extent=extent)
+    lines_path = wall_lines_path(extent=extent)
     print(f"Reading the candidates from {candidates_path} ...")
     candidates = gpd.read_parquet(candidates_path)
     print(f"Reading the wall lines from {lines_path} ...")
@@ -283,7 +285,7 @@ def main(*, pilot, use_cached_layers, road_half_width_m):
     print(f"  {len(polygons):,} polygons, {split:,} pieces of split candidates")
 
     polygons[geometry.RELIEF_COLUMN] = recompute_relief(
-        polygons, dem_path(RELIEF_RESOLUTION_M, pilot=pilot)
+        polygons, dem_path(RELIEF_RESOLUTION_M, extent=extent)
     )
     polygons = mint_slope_ids(polygons)
     polygons[geometry.PARENT_SLOPE_ID_COLUMN] = geometry.nest_parents(polygons)
@@ -296,7 +298,7 @@ def main(*, pilot, use_cached_layers, road_half_width_m):
     polygons = order_columns(polygons, candidates.columns)
     describe_result(polygons)
 
-    out_path = urban_slope_polygons_path(pilot=pilot)
+    out_path = urban_slope_polygons_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     polygons.to_parquet(out_path)
     print(RULE)
@@ -305,7 +307,7 @@ def main(*, pilot, use_cached_layers, road_half_width_m):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         road_half_width_m=config.ROAD_HALF_WIDTH_M,
     )

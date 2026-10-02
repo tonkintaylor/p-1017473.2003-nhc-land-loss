@@ -60,11 +60,12 @@ from scripts.landloss.exposure.steps.s3_dwellings_per_property import (
 from scripts.landloss.pipeline import run_steps
 
 
-def main(*, pilot, realisation_ids, world_ids):
+def main(*, extent, realisation_ids, world_ids):
     """Run the exposure steps in order.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to draw the crossing
             population for.
         world_ids: Which exposure worlds to draw the retaining wall
@@ -76,13 +77,13 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "s1, address spine",
                 lambda: s1_build_address_spine.main(
-                    pilot=pilot, fresh=spine_config.FRESH, out=spine_config.OUT
+                    extent=extent, fresh=spine_config.FRESH, out=spine_config.OUT
                 ),
             ),
             (
                 "land s2, terrain attributes",
                 lambda: s1_build_terrain_attributes.main(
-                    pilot=pilot,
+                    extent=extent,
                     fresh=land_value_config.FRESH,
                     spine=land_value_config.SPINE,
                     out=land_value_config.TERRAIN,
@@ -92,7 +93,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "land s2, accessibility",
                 lambda: s2_build_accessibility.main(
-                    pilot=pilot,
+                    extent=extent,
                     fresh=land_value_config.FRESH,
                     spine=land_value_config.SPINE,
                     out=land_value_config.ACCESSIBILITY,
@@ -101,7 +102,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "land s2, amenity",
                 lambda: s3_build_amenity.main(
-                    pilot=pilot,
+                    extent=extent,
                     fresh=land_value_config.FRESH,
                     spine=land_value_config.SPINE,
                     out=land_value_config.AMENITY,
@@ -110,7 +111,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "land s2, land value per address",
                 lambda: s4_estimate_land_value.main(
-                    pilot=pilot,
+                    extent=extent,
                     fresh=land_value_config.FRESH,
                     spine=land_value_config.SPINE,
                     terrain=land_value_config.TERRAIN,
@@ -123,36 +124,36 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "land s5, insured land extent",
                 lambda: gen_insured_land.main(
-                    pilot=pilot,
+                    extent=extent,
                     use_cached_extent=insured_land_config.USE_CACHED_EXTENT,
                 ),
             ),
             (
                 "s3, dwellings per property",
                 lambda: gen_dwellings_per_property.main(
-                    pilot=pilot, use_cached_extent=dwellings_config.USE_CACHED_EXTENT
+                    extent=extent, use_cached_extent=dwellings_config.USE_CACHED_EXTENT
                 ),
             ),
             (
                 "rw s6, candidate wall lines",
                 lambda: gen_wall_lines.main(
-                    pilot=pilot,
+                    extent=extent,
                     use_cached_layers=wall_config.USE_CACHED_LAYERS,
                     road_distance_m=wall_config.ROAD_FRONTAGE_DISTANCE_M,
                 ),
             ),
             (
                 "rw s6, wall probability",
-                lambda: gen_wall_probability.main(pilot=pilot),
+                lambda: gen_wall_probability.main(extent=extent),
             ),
             (
                 "rw s6, wall population",
-                lambda: gen_wall_population.main(pilot=pilot, world_ids=world_ids),
+                lambda: gen_wall_population.main(extent=extent, world_ids=world_ids),
             ),
             (
                 "culverts and bridges s7, crossing population",
                 lambda: gen_crossing_population.main(
-                    pilot=pilot,
+                    extent=extent,
                     realisation_ids=realisation_ids,
                     use_cached_extent=crossing_config.USE_CACHED_EXTENT,
                 ),
@@ -163,7 +164,7 @@ def main(*, pilot, realisation_ids, world_ids):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
         world_ids=config.WORLD_IDS,
     )

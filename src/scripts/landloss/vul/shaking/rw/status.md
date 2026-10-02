@@ -85,19 +85,16 @@ Part C of the second review read the wall curves against the 2,991
 Canterbury walls of Anderson et al. (2015) [anderson_2015]. The detail is in
 `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury". What it proposes, all for the lead:
 
-- **The curves fail far too many walls.** At the study's 1.0 to 1.7 g the
-  Koutsoupaki curves fail 30 to 93% of walls. In the Port Hills, at the same
-  PGA, about 10% were Very Poor over the whole sequence. The curves also have
-  the height trend backwards: Canterbury's Very Poor share rose from 7% under
-  1.5 m to 23% over 3.5 m.
-- **Anchor the medians on Canterbury:** about 3.1, 2.8, 2.5 and 2.0 g by
-  height band, at β 0.6 (ours). Keep Koutsoupaki only for the
-  modern-to-poor ratio.
-- **"Replace" is Very Poor** (collapse, or failure of more than 5 m² of
-  face). Average and Poor, about a third of walls, are "none", with Poor
-  added as the high case.
+- **The Koutsoupaki curves are kept** (the lead, 2026-10-02). They
+  overpredict against Christchurch: at the study's 1.0 to 1.7 g they fail 30
+  to 93% of walls, where about 10% of Port Hills walls were Very Poor at the
+  same PGA over the whole sequence. The report states this as a known
+  conservatism.
+- **"Replace" is Very Poor** in the comparison (collapse, or failure of more
+  than 5 m² of face). Average and Poor, about a third of walls, are "none".
 - **Name the six classes after Anderson's wall types**, whose Very Poor
-  shares run from 18% (stone masonry) to 0% (MSE).
+  shares run from 18% (stone masonry) to 0% (MSE). Infer each wall's type
+  from its age and the claim reports (the lead, 2026-10-02).
 
 ## Open decisions
 

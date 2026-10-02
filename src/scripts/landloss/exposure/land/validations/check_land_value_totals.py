@@ -22,11 +22,13 @@ The checks are:
 4. DISTRIBUTION -- no zero, negative or null rates, a right-skewed distribution,
    and a sane spread between the 10th and 90th percentiles.
 
-The input defaults to what s4_estimate_land_value.py writes,
-``temp/exposure/land-value-by-address.geoparquet``. Pass --pilot to check the
-pilot output instead, which makes the COUNTS check report rather than enforce
-because a pilot covers only part of each territorial authority, or --input to
-point at a land value output written somewhere else.
+The input defaults to what s4_estimate_land_value.py writes over the extent set
+by EXTENT in the land value step's config.py,
+``temp/exposure/land-value-by-address<suffix>.geoparquet`` where ``<suffix>`` is
+``extent_suffix(extent)``. Pass --extent to check another extent's output; any
+extent other than "full" makes the COUNTS check report rather than enforce,
+because it covers only part of each territorial authority. Pass --input to point
+at a land value output written somewhere else.
 
 No .env keys and no network access are needed. Everything read is either the step
 output already on disk or the packaged base rates asset, which is what makes this
@@ -54,14 +56,15 @@ from landloss.exposure.land.land_value import (
     load_base_rates,
     ta_mean_land_value,
 )
+from landloss.io.area_of_interest import EXTENTS, extent_suffix, is_full_extent
+from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.paths import TEMP_DIR
 
 # Where s4_estimate_land_value.py writes. These names track that script, so a
 # rename there shows up as this script failing to find its input rather than as
 # the checks quietly passing over a stale file.
 WORK_DIR = TEMP_DIR / "exposure"
-OUT_NAME = "land-value-by-address.geoparquet"
-PILOT_OUT_NAME = "land-value-by-address-pilot.geoparquet"
+OUT_STEM = "land-value-by-address"
 
 STEP_COMMAND = (
     "uv run --frozen python "
@@ -531,28 +534,34 @@ def main():
         type=Path,
         default=None,
         help=(
-            f"The land value output to check. Defaults to {WORK_DIR / OUT_NAME}, "
-            f"or to {WORK_DIR / PILOT_OUT_NAME} under --pilot."
+            "The land value output to check. Defaults to "
+            f"{WORK_DIR / OUT_STEM}<suffix>.geoparquet, where <suffix> is "
+            "extent_suffix(extent)."
         ),
     )
     parser.add_argument(
-        "--pilot",
-        action="store_true",
+        "--extent",
+        choices=["full", *EXTENTS],
+        default=config.EXTENT,
         help=(
-            "Check the pilot output. The address counts then cover only part of "
-            "each territorial authority, so the COUNTS check reports rather than "
-            "enforces."
+            "The extent whose output to check. Defaults to EXTENT in the land "
+            f"value step's config.py ({config.EXTENT!r}). Over any extent other "
+            'than "full" the address counts cover only part of each territorial '
+            "authority, so the COUNTS check reports rather than enforces."
         ),
     )
     args = parser.parse_args()
 
-    path = args.input or WORK_DIR / (PILOT_OUT_NAME if args.pilot else OUT_NAME)
+    partial = not is_full_extent(args.extent)
+    path = args.input or (
+        WORK_DIR / f"{OUT_STEM}{extent_suffix(args.extent)}.geoparquet"
+    )
 
     if not path.exists():
         print(f"No land value output found at {path}")
         print(f"\nRun the land value step first:\n  {STEP_COMMAND}")
-        if args.pilot:
-            print("  with PILOT = True in the config.py beside it")
+        if partial:
+            print(f'  with EXTENT = "{args.extent}" in the config.py beside it')
         return 1
 
     print(f"Reading {path}")
@@ -583,8 +592,8 @@ def main():
     report_totals(totals_status, totals_rows)
 
     print()
-    counts_status, counts_rows = check_counts(valued, indexed, partial=args.pilot)
-    report_counts(counts_status, counts_rows, partial=args.pilot)
+    counts_status, counts_rows = check_counts(valued, indexed, partial=partial)
+    report_counts(counts_status, counts_rows, partial=partial)
 
     print()
     ranked = rank_suburbs(valued)
@@ -604,7 +613,7 @@ def main():
                 counts_status,
                 (
                     "addresses per rating unit, over a partial extent"
-                    if args.pilot
+                    if partial
                     else f"addresses per rating unit within "
                     f"{COUNT_RATIO_MIN:.2f}-{COUNT_RATIO_MAX:.2f}"
                 ),

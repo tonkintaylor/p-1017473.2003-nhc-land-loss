@@ -192,15 +192,15 @@ def build_figure(polygons):
     return fig
 
 
-def main(*, pilot):
+def main(*, extent):
     """Draw the polygons the generation wrote for this extent.
 
     Args:
-        pilot: Whether to draw the pilot box run rather than the full study
-            area one. Must match the setting the generation was run with,
-            which is why both read it from the same ``config.py``.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
+            Must match the setting the generation was run with.
     """
-    polygons_path = urban_slope_polygons_path(pilot=pilot)
+    polygons_path = urban_slope_polygons_path(extent=extent)
     figure_path = FIG_DIR / f"{polygons_path.stem}.png"
 
     print(f"Reading the polygons from {polygons_path} ...")
@@ -218,4 +218,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

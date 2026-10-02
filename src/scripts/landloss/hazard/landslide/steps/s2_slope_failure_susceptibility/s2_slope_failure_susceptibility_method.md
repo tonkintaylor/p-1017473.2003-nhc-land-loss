@@ -21,10 +21,12 @@
 - What a run covers and what it is configured with is set by `config.py` beside
   the scripts, read in each script's `if __name__ == "__main__":` block and
   passed into `main()` as keyword arguments. Neither script takes command line
-  arguments and neither `main()` carries a default. `PILOT` is `True`, so runs
-  go over `WLG_EARTHWORKS_PILOT` — Johnsonville and Newlands — rather than the
-  whole Wellington City earthworks extent, which `earthworks_extent()` derives
-  from the records themselves.
+  arguments and neither `main()` carries a default. `EXTENT` is
+  `"wlg-earthworks-pilot"`, so runs go over `WLG_EARTHWORKS_PILOT` —
+  Johnsonville and Newlands — rather than the whole Wellington City earthworks
+  extent (`"full"`), which `earthworks_extent()` derives
+  from the records themselves. Outputs carry the extent's `extent_suffix`, so a
+  pilot run writes `*-wlg-earthworks-pilot.tif`.
 - `WLG_EARTHWORKS_PILOT` was added to `landloss.io.area_of_interest` for this
   step. `SMALL_WLG_PILOT`, which the rest of the project develops against, sits
   over Mt Victoria and Hataitai and contains no earthworks polygons at all, so it

@@ -59,23 +59,27 @@ def step3_pgv(tmp_path, monkeypatch):
     pgv = make_grid([[0.9, 1.2, np.nan], [1.4, 2.1, 1.0]]).rename("pgv_m_s")
     write_raster(
         pgv.astype("float32"),
-        gen_pgv.output_path("pgv", return_period_yr=RETURN_PERIOD_YR, pilot=True),
+        gen_pgv.output_path(
+            "pgv", return_period_yr=RETURN_PERIOD_YR, extent="wlg-pilot"
+        ),
     )
     return pgv
 
 
 def test_the_path_names_the_realisation_and_the_extent():
-    assert step.pgv_path(3, pilot=True).name == "pgv-r003-pilot.tif"
-    assert step.pgv_path(12, pilot=False).name == "pgv-r012.tif"
-    assert step.pgv_path(0, pilot=True).parent == step.WORK_DIR
+    assert step.pgv_path(3, extent="wlg-pilot").name == "pgv-r003-pilot.tif"
+    assert step.pgv_path(12, extent="full").name == "pgv-r012.tif"
+    assert step.pgv_path(0, extent="wlg-pilot").parent == step.WORK_DIR
 
 
 @ignore_affine_matmul
 def test_a_realisation_is_step_3s_grid_scaled_by_step_4s_factor(step3_pgv):
-    step.main(pilot=True, realisation_ids=[0, 4], return_period_yr=RETURN_PERIOD_YR)
+    step.main(
+        extent="wlg-pilot", realisation_ids=[0, 4], return_period_yr=RETURN_PERIOD_YR
+    )
 
     for realisation_id in (0, 4):
-        written = read(step.pgv_path(realisation_id, pilot=True))
+        written = read(step.pgv_path(realisation_id, extent="wlg-pilot"))
         expected_factor = beta_scale_factor(
             realisation_seed(constants.BASE_SEED, realisation_id, step.RNG_STREAM)
         )
@@ -92,9 +96,11 @@ def test_a_realisation_is_step_3s_grid_scaled_by_step_4s_factor(step3_pgv):
 
 @ignore_affine_matmul
 def test_two_realisations_take_different_factors(step3_pgv):
-    step.main(pilot=True, realisation_ids=[0, 1], return_period_yr=RETURN_PERIOD_YR)
-    first = read(step.pgv_path(0, pilot=True)).values
-    second = read(step.pgv_path(1, pilot=True)).values
+    step.main(
+        extent="wlg-pilot", realisation_ids=[0, 1], return_period_yr=RETURN_PERIOD_YR
+    )
+    first = read(step.pgv_path(0, extent="wlg-pilot")).values
+    second = read(step.pgv_path(1, extent="wlg-pilot")).values
     assert not np.allclose(first[np.isfinite(first)], second[np.isfinite(second)])
 
 

@@ -719,26 +719,30 @@ def work_dirs(tmp_path, monkeypatch):
 
 
 def write_inputs(model, walls, large, pgv):
-    model.to_parquet(step.urban_slope_model_path(WORLD, pilot=True))
-    walls.to_parquet(gen_wall_population.wall_population_path(WORLD, pilot=True))
+    model.to_parquet(step.urban_slope_model_path(WORLD, extent="wlg-pilot"))
+    walls.to_parquet(
+        gen_wall_population.wall_population_path(WORLD, extent="wlg-pilot")
+    )
     large.to_parquet(
-        s1_simulate_landslides.realisation_path(pilot=True, realisation_id=EARTHQUAKE)
+        s1_simulate_landslides.realisation_path(
+            extent="wlg-pilot", realisation_id=EARTHQUAKE
+        )
     )
     write_raster(
         make_grid(pgv).rename("pgv_m_s").astype("float32"),
-        gen_pgv_realisations.pgv_path(EARTHQUAKE, pilot=True),
+        gen_pgv_realisations.pgv_path(EARTHQUAKE, extent="wlg-pilot"),
     )
 
 
 def test_the_paths_carry_both_ids_world_first():
-    assert step.combined_realisation_path(2, 13, pilot=True).name == (
+    assert step.combined_realisation_path(2, 13, extent="wlg-pilot").name == (
         "landslide-realisation-w002-r013-pilot.geoparquet"
     )
-    assert step.urban_wall_outcome_path(0, 1, pilot=False).name == (
+    assert step.urban_wall_outcome_path(0, 1, extent="full").name == (
         "urban-wall-outcome-w000-r001.parquet"
     )
     assert (
-        step.urban_slope_model_path(0, pilot=True).name
+        step.urban_slope_model_path(0, extent="wlg-pilot").name
         == "urban-slope-model-w000-pilot.geoparquet"
     )
 
@@ -759,10 +763,10 @@ def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
     large = large_rows([Point(X0 + 500, Y0 - 500).buffer(10)])
     write_inputs(model, walls, large, [[1.2, 1.2, np.nan], [0.8, 0.8, np.nan]])
 
-    step.main(pilot=True, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
 
     combined = gpd.read_parquet(
-        step.combined_realisation_path(WORLD, EARTHQUAKE, pilot=True)
+        step.combined_realisation_path(WORLD, EARTHQUAKE, extent="wlg-pilot")
     )
     assert list(combined.columns[: len(urban.COMBINED_COLUMNS)]) == list(
         urban.COMBINED_COLUMNS
@@ -782,7 +786,7 @@ def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
     assert len(combined[combined["population"] == urban.LARGE]) == 2
 
     outcomes = pd.read_parquet(
-        step.urban_wall_outcome_path(WORLD, EARTHQUAKE, pilot=True)
+        step.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent="wlg-pilot")
     )
     assert list(outcomes.columns) == [
         "world_id",
@@ -809,7 +813,7 @@ def test_the_run_prints_the_rate_setting_of_the_model_file(work_dirs, capsys):
     model = model_rows([square(10, 10, 10)], theta=NEVER_FAILS_M_S, rate_setting="low")
     write_inputs(model, wall_population([]), no_large(), [[1.0, 1.0], [1.0, 1.0]])
 
-    step.main(pilot=True, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
 
     factor = constants.URBAN_RATE_FACTORS["low"]
     assert f"Rate setting 'low', factor {factor:.4f}" in capsys.readouterr().out
@@ -833,17 +837,17 @@ def test_nothing_failing_still_writes_both_files(work_dirs):
     walls = wall_population(["A-RW01"])
     write_inputs(model, walls, no_large(), [[1.0, 1.0], [1.0, 1.0]])
 
-    step.main(pilot=True, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
 
     combined = gpd.read_parquet(
-        step.combined_realisation_path(WORLD, EARTHQUAKE, pilot=True)
+        step.combined_realisation_path(WORLD, EARTHQUAKE, extent="wlg-pilot")
     )
     assert combined.empty
     assert list(combined.columns[: len(urban.COMBINED_COLUMNS)]) == list(
         urban.COMBINED_COLUMNS
     )
     outcomes = pd.read_parquet(
-        step.urban_wall_outcome_path(WORLD, EARTHQUAKE, pilot=True)
+        step.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent="wlg-pilot")
     )
     assert outcomes["outcome"].tolist() == [urban.STANDING]
 
@@ -868,10 +872,10 @@ def test_the_figure_reads_what_the_run_wrote(work_dirs):
     walls = wall_population(rw_ids)
     large = large_rows([Point(X0 + 65, Y0 - 15).buffer(8)])
     write_inputs(model, walls, large, [[1.0, 1.0], [1.0, 1.0]])
-    step.main(pilot=True, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
 
     layers, large_evacuated = fig.outcome_layers(
-        *fig.read_outputs(WORLD, EARTHQUAKE, pilot=True)
+        *fig.read_outputs(WORLD, EARTHQUAKE, extent="wlg-pilot")
     )
 
     assert set(layers) == set(fig.LAYER_COLOURS)
@@ -887,9 +891,9 @@ def test_the_figure_refuses_a_model_file_rewritten_after_the_run(work_dirs):
     model = model_rows([square(10, 10, 10)], theta=ALWAYS_FAILS_M_S, rw_ids=["A-RW01"])
     walls = wall_population(["A-RW01"])
     write_inputs(model, walls, no_large(), [[1.0, 1.0], [1.0, 1.0]])
-    step.main(pilot=True, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
 
-    _, combined, outcomes = fig.read_outputs(WORLD, EARTHQUAKE, pilot=True)
+    _, combined, outcomes = fig.read_outputs(WORLD, EARTHQUAKE, extent="wlg-pilot")
     renumbered = model.assign(slope_id=["SP0000009"])
     with pytest.raises(ValueError, match="rerun"):
         fig.outcome_layers(renumbered, combined, outcomes)

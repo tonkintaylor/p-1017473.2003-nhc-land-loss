@@ -488,7 +488,9 @@ def test_a_wholly_flat_extent_draws_no_large_landslide(step_inputs, monkeypatch)
     """With every cell on flat land the step writes an empty realisation."""
     ground_map(flat_columns=range(COLUMNS)).to_parquet(step_inputs["ground_map"])
     run_step(monkeypatch, probability_grid())
-    written = gpd.read_parquet(step.realisation_path(pilot=True, realisation_id=0))
+    written = gpd.read_parquet(
+        step.realisation_path(extent="wlg-pilot", realisation_id=0)
+    )
     assert written.empty
 
 
@@ -512,7 +514,7 @@ def step_inputs(tmp_path, monkeypatch):
     make_units().to_parquet(paths["units"])
     paths["ground_map"] = tmp_path / "ground-map-pilot.geoparquet"
     ground_map(flat_columns=()).to_parquet(paths["ground_map"])
-    monkeypatch.setattr(step, "input_paths", lambda *, pilot: paths)
+    monkeypatch.setattr(step, "input_paths", lambda *, extent: paths)
     monkeypatch.setattr(step, "WORK_DIR", tmp_path)
     return paths
 
@@ -520,7 +522,7 @@ def step_inputs(tmp_path, monkeypatch):
 def run_step(monkeypatch, probability, realisation_ids=(0,)):
     monkeypatch.setattr(step, "read_probability", lambda bbox: probability)
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         realisation_ids=list(realisation_ids),
         large_min_source_area_m2=SETTINGS["min_source_area_m2"],
         urban_area_share=SETTINGS["urban_area_share"],
@@ -531,18 +533,20 @@ def run_step(monkeypatch, probability, realisation_ids=(0,)):
 
 def test_the_path_names_the_realisation_and_the_extent():
     assert (
-        step.realisation_path(pilot=True, realisation_id=3).name
+        step.realisation_path(extent="wlg-pilot", realisation_id=3).name
         == "landslide-realisation-r003-pilot.geoparquet"
     )
     assert (
-        step.realisation_path(pilot=False, realisation_id=0).name
+        step.realisation_path(extent="full", realisation_id=0).name
         == "landslide-realisation-r000.geoparquet"
     )
 
 
 def test_the_step_writes_the_contract_columns(step_inputs, monkeypatch, capsys):
     run_step(monkeypatch, probability_grid(0.9))
-    written = gpd.read_parquet(step.realisation_path(pilot=True, realisation_id=0))
+    written = gpd.read_parquet(
+        step.realisation_path(extent="wlg-pilot", realisation_id=0)
+    )
 
     assert list(written.columns) == step.OUTPUT_COLUMNS
     assert written.crs == constants.DEFAULT_CRS
@@ -586,10 +590,16 @@ def test_the_same_seed_reproduces_and_another_realisation_differs(
     step_inputs, monkeypatch
 ):
     run_step(monkeypatch, probability_grid(0.9), realisation_ids=(0, 1))
-    first = gpd.read_parquet(step.realisation_path(pilot=True, realisation_id=0))
-    second = gpd.read_parquet(step.realisation_path(pilot=True, realisation_id=1))
+    first = gpd.read_parquet(
+        step.realisation_path(extent="wlg-pilot", realisation_id=0)
+    )
+    second = gpd.read_parquet(
+        step.realisation_path(extent="wlg-pilot", realisation_id=1)
+    )
     run_step(monkeypatch, probability_grid(0.9), realisation_ids=(0,))
-    again = gpd.read_parquet(step.realisation_path(pilot=True, realisation_id=0))
+    again = gpd.read_parquet(
+        step.realisation_path(extent="wlg-pilot", realisation_id=0)
+    )
 
     pd.testing.assert_frame_equal(first, again)
     assert (second["realisation_id"] == 1).all()
@@ -600,7 +610,9 @@ def test_an_empty_realisation_is_written_with_the_full_schema(
     step_inputs, monkeypatch, capsys
 ):
     run_step(monkeypatch, probability_grid(0.0))
-    written = gpd.read_parquet(step.realisation_path(pilot=True, realisation_id=0))
+    written = gpd.read_parquet(
+        step.realisation_path(extent="wlg-pilot", realisation_id=0)
+    )
 
     assert written.empty
     assert list(written.columns) == step.OUTPUT_COLUMNS

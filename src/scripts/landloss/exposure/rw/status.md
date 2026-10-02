@@ -245,14 +245,15 @@ What this module owes the retaining wall table `loss` reads
   of the handoff). The detail is in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury" and in
   the "Literature review" section of `assets/choice-of-rwt-bin-ages.md`.
   Proposals, all for the lead:
-  - **the wall curves**: the Koutsoupaki curves fail 30 to 93% of walls at
-    the study's 1.0 to 1.7 g. Over the whole Canterbury sequence, at the same
-    PGA, about 10% of Port Hills walls were Very Poor [anderson_2015]. Anchor
-    the medians on Canterbury by height (about 3.1 to 2.0 g, ours) and keep
-    only Koutsoupaki's condition ratio;
-  - **the six classes**, named after Anderson's wall types, with
-    Wellington's mix of types to come from the claim reports (**T-50**);
-  - **"replace" is Very Poor**, with Poor as the high case;
+  - **the wall curves are kept** (the lead, 2026-10-02): the Koutsoupaki
+    curves fail 30 to 93% of walls at the study's 1.0 to 1.7 g, against about
+    10% Very Poor over the whole Canterbury sequence at the same PGA
+    [anderson_2015], and the report says they overpredict against
+    Christchurch;
+  - **the six classes**, named after Anderson's wall types, with each wall's
+    type **inferred from its age bin and the claim reports** (**T-50**) (the
+    lead, 2026-10-02), and the type setting the condition;
+  - **"replace" is Very Poor** in the comparison;
   - **condition from age**: keep the four bins, with `pre_1970` as the
     gravity masonry era that Anderson found performed worst. Read 1960 and
     the mid-1970s into the fill's engineered or uncontrolled class, not into

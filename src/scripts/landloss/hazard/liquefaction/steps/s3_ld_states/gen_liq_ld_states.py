@@ -47,6 +47,7 @@ from landloss.common.utils.terrain import write_raster
 from landloss.domain import constants
 from landloss.hazard.liquefaction.land_damage import LD_STATES, draw_ld_states
 from landloss.hazard.realisation import realisation_seed
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities.gen_liq_ld_probabilities import (
     beta_probability_path,
 )
@@ -58,9 +59,6 @@ from scripts.landloss.paths import TEMP_DIR
 WORK_DIR = TEMP_DIR / "hazard" / "liquefaction"
 
 OUT_PREFIX = "ld-state"
-
-# Separate names, so a pilot run cannot overwrite a full one.
-PILOT_SUFFIX = "-pilot"
 
 # One stream name per hazard, not per script: liquefaction's steps belong to the
 # same draw. See landloss.hazard.realisation for why this is a name rather than
@@ -74,7 +72,7 @@ LD_STATE_NAME = "ld_state"
 RULE = "-" * 72
 
 
-def ld_state_path(realisation_id, *, pilot):
+def ld_state_path(realisation_id, *, extent):
     """Return the file a run writes one realisation's states to.
 
     The realisation id is in the name rather than in a folder, so a directory
@@ -88,22 +86,22 @@ def ld_state_path(realisation_id, *, pilot):
 
     Args:
         realisation_id: Which modelled earthquake this is, counting from zero.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/liquefaction/``.
     """
-    suffix = PILOT_SUFFIX if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_PREFIX}-r{realisation_id:03d}{suffix}.tif"
 
 
-def read_probabilities(*, pilot):
+def read_probabilities(*, extent):
     """Read the six state probability grids step 2 wrote.
 
     Args:
-        pilot: Whether to read the pilot box grids rather than the full study
-            area ones. Must match what step 2 was run with, which is why both
-            steps take it from the same ``config.py``.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         One grid per state, keyed by the names in
@@ -116,7 +114,7 @@ def read_probabilities(*, pilot):
     """
     probabilities = {}
     for state in LD_STATES:
-        path = beta_probability_path(state, pilot=pilot)
+        path = beta_probability_path(state, extent=extent)
         # Loaded rather than left lazy: an open GDAL handle finalised during
         # interpreter shutdown surfaces as a bare "Error in sys.excepthook"
         # after an otherwise clean run.
@@ -163,16 +161,16 @@ def describe_draw(probabilities, states):
         print(f"  {state:<12} {count:>12,} {share:>8.4f} {mean:>12.4f}")
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Draw a land damage state per cell for each realisation and write it out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box rather than
-            the four territorial authorities.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: The modelled earthquakes to draw, one raster each.
     """
     print("Reading the land damage probability grids step 2 wrote ...", flush=True)
-    probabilities = read_probabilities(pilot=pilot)
+    probabilities = read_probabilities(extent=extent)
 
     for realisation_id in realisation_ids:
         rng = realisation_seed(constants.BASE_SEED, realisation_id, STREAM)
@@ -185,7 +183,7 @@ def main(*, pilot, realisation_ids):
         # The projection is written back explicitly rather than relied on to
         # survive the draw, because write_raster refuses a grid without one.
         grid = states.rename(LD_STATE_NAME).rio.write_crs(constants.DEFAULT_CRS)
-        path = write_raster(grid, ld_state_path(realisation_id, pilot=pilot))
+        path = write_raster(grid, ld_state_path(realisation_id, extent=extent))
         print(f"Wrote {path}")
 
     print(RULE)
@@ -196,4 +194,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

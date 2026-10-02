@@ -3,7 +3,7 @@
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s3_multiscale_slope/gen_multiscale_slope.py
 
 Needs ``LINZ_API_KEY`` in ``.env`` for the elevation fetch. The run settings --
-the pilot box or the full study area, the cell sizes, and whether to reuse the
+the extent, the cell sizes, and whether to reuse the
 cached DEM -- come from config.py beside this script rather than from the
 command line.
 
@@ -38,8 +38,9 @@ would be counted from wherever the loader's corner happened to land rather than
 from a round coordinate.
 
 Writes, per cell size, ``dem-<n>m.tif``, ``slope-<n>m.tif`` and
-``aspect-<n>m.tif`` under temp/hazard/landslide/, with a ``-pilot`` suffix for
-a pilot run.
+``aspect-<n>m.tif`` under temp/hazard/landslide/, with the extent's
+``extent_suffix`` (``-pilot`` for the small Wellington pilot) on a run that is
+not over the full study area.
 """
 
 import itertools
@@ -58,7 +59,11 @@ from landloss.common.utils.terrain import (
     write_raster,
 )
 from landloss.domain import constants
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.readers import get_dem
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import config
 from scripts.landloss.paths import TEMP_DIR
@@ -86,25 +91,25 @@ DECILES = (0.1, 0.5, 0.9, 0.99)
 RULE = "-" * 72
 
 
-def output_path(kind, resolution_m, *, pilot):
+def output_path(kind, resolution_m, *, extent):
     """Return the file one layer at one cell size is written to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{kind}-{resolution_m:g}m{suffix}.tif"
 
 
-def dem_path(resolution_m, *, pilot):
+def dem_path(resolution_m, *, extent):
     """Return the file the DEM at one cell size is written to."""
-    return output_path("dem", resolution_m, pilot=pilot)
+    return output_path("dem", resolution_m, extent=extent)
 
 
-def slope_path(resolution_m, *, pilot):
+def slope_path(resolution_m, *, extent):
     """Return the file the slope at one cell size is written to."""
-    return output_path("slope", resolution_m, pilot=pilot)
+    return output_path("slope", resolution_m, extent=extent)
 
 
-def aspect_path(resolution_m, *, pilot):
+def aspect_path(resolution_m, *, extent):
     """Return the file the aspect (downhill azimuth) at one cell size is written to."""
-    return output_path("aspect", resolution_m, pilot=pilot)
+    return output_path("aspect", resolution_m, extent=extent)
 
 
 def read_layer(path):
@@ -141,10 +146,11 @@ def check_resolutions(resolutions_m):
     return finest, factors
 
 
-def resolve_extent(*, pilot):
+def resolve_extent(*, extent):
     """Return the bounding box and name of the extent to run over."""
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), SMALL_WLG_PILOT.name
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), aoi.name
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
     bbox = tuple(float(value) for value in study_areas.total_bounds)
@@ -264,12 +270,12 @@ def describe_aspect(aspect):
     )
 
 
-def main(*, pilot, resolutions_m, use_cached_dem):
+def main(*, extent, resolutions_m, use_cached_dem):
     """Build a DEM, a slope and an aspect at each cell size over the extent.
 
     Args:
-        pilot: Whether to run over ``SMALL_WLG_PILOT`` rather than the four
-            territorial authorities.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         resolutions_m: The cell sizes to build at, in metres. Each has to be a
             whole multiple of the finest.
         use_cached_dem: Whether to reuse an already-fetched elevation model.
@@ -279,7 +285,7 @@ def main(*, pilot, resolutions_m, use_cached_dem):
     # 100 m snapping leaves a 2,900 m side that 30 m cells cannot fill.
     step = math.lcm(*(int(resolution) for resolution in resolutions_m))
 
-    bbox, extent_name = resolve_extent(pilot=pilot)
+    bbox, extent_name = resolve_extent(extent=extent)
     snapped = snap_outward(bbox, step)
     describe_extent(extent_name, snapped)
 
@@ -302,9 +308,9 @@ def main(*, pilot, resolutions_m, use_cached_dem):
         describe_slope(slope, dem, resolution_m)
         describe_aspect(aspect)
 
-        written.append(write_raster(dem, dem_path(resolution_m, pilot=pilot)))
-        written.append(write_raster(slope, slope_path(resolution_m, pilot=pilot)))
-        written.append(write_raster(aspect, aspect_path(resolution_m, pilot=pilot)))
+        written.append(write_raster(dem, dem_path(resolution_m, extent=extent)))
+        written.append(write_raster(slope, slope_path(resolution_m, extent=extent)))
+        written.append(write_raster(aspect, aspect_path(resolution_m, extent=extent)))
 
     print(RULE)
     for path in written:
@@ -313,7 +319,7 @@ def main(*, pilot, resolutions_m, use_cached_dem):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         resolutions_m=config.RESOLUTIONS_M,
         use_cached_dem=config.USE_CACHED_DEM,
     )

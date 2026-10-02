@@ -152,17 +152,17 @@ def build_figure(model, *, world_id, rate_setting):
     return fig
 
 
-def main(*, pilot, world_ids):
+def main(*, extent, world_ids):
     """Draw the medians of each world's model file.
 
     Args:
-        pilot: Whether to draw the pilot box run rather than the full study
-            area one. Must match the setting the generation was run with,
-            which is why both read it from the same ``config.py``.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
+            Must match the setting the generation was run with.
         world_ids: Which worlds' model files to draw.
     """
     for world_id in world_ids:
-        model_path = urban_slope_model_path(world_id, pilot=pilot)
+        model_path = urban_slope_model_path(world_id, extent=extent)
         figure_path = FIG_DIR / f"{model_path.stem}.png"
         print(f"Reading the model from {model_path} ...")
         model = gpd.read_parquet(model_path)
@@ -180,4 +180,4 @@ def main(*, pilot, world_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, world_ids=config.WORLD_IDS)
+    main(extent=config.EXTENT, world_ids=config.WORLD_IDS)

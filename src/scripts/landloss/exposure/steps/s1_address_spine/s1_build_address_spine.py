@@ -20,7 +20,7 @@ for evidence of how much of the study area is multi-unit, cross-lease or shared
 land, and the gap between addresses and rating units is the first cheap
 measurement of it.
 
-The run settings -- whether to use the small Wellington pilot box, which is the
+The run settings -- the extent, where the small Wellington pilot box is the
 quick way to exercise the script end to end, whether to ignore the cache, and
 where to write -- come from config.py beside this script rather than from the
 command line.
@@ -35,7 +35,12 @@ import requests
 
 from landloss.domain import constants
 from landloss.exposure.addresses import get_addresses
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+    is_full_extent,
+)
 from scripts.landloss.exposure.steps.s1_address_spine import config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
 
@@ -50,8 +55,9 @@ if hasattr(sys.stdout, "reconfigure"):
 # temp/ is gitignored, which is what this output wants to be: a working layer
 # that is cheap to rebuild from the source and has no business in a diff.
 OUT_DIR = TEMP_DIR / "exposure"
-OUT_NAME = "address-spine.geoparquet"
-PILOT_OUT_NAME = "address-spine-pilot.geoparquet"
+# The name carries extent_suffix(extent), so a run over one extent cannot
+# overwrite another's spine.
+OUT_STEM = "address-spine"
 
 # Rating units counted by each council's most recent published district
 # revaluation. These are the denominators the address counts are compared
@@ -78,7 +84,7 @@ def describe_extent(name, bbox):
     print(f"  Size    : {(maxx - minx) / 1000:.1f} x {(maxy - miny) / 1000:.1f} km")
 
 
-def describe_counts(spine, *, pilot):
+def describe_counts(spine, *, extent):
     """Print the per-TA address counts against the published rating unit counts.
 
     The ratio is the evidence register task T-23 asks for. Two things drive it
@@ -114,7 +120,7 @@ def describe_counts(spine, *, pilot):
     # A pilot covers a few streets of one authority, so its ratio compares a
     # fragment against a whole city and means nothing. Said out loud, because a
     # ratio of 0.01 printed without comment reads like a failure.
-    if pilot:
+    if not is_full_extent(extent):
         print(
             "\nThe extent is a pilot box, so these ratios compare part of one "
             "territorial\nauthority against its whole published count and are "
@@ -138,7 +144,7 @@ def describe_suburbs(spine, limit=10):
         print(f"  {suburb!s:<32}{count:>9,}")
 
 
-def resolve_out(out, *, pilot):
+def resolve_out(out, *, extent):
     """Choose where the spine is written.
 
     Resolved here rather than as a config default, so that a pilot run cannot
@@ -147,36 +153,39 @@ def resolve_out(out, *, pilot):
 
     Args:
         out: The path from config.py, or None for the standard location.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The path to write the spine to.
     """
     if out is not None:
         return Path(out)
-    return OUT_DIR / (PILOT_OUT_NAME if pilot else OUT_NAME)
+    return OUT_DIR / f"{OUT_STEM}{extent_suffix(extent)}.geoparquet"
 
 
-def main(*, pilot, fresh, out):
+def main(*, extent, fresh, out):
     """Build the address spine and write it out.
 
     Args:
-        pilot: Use the small Wellington pilot box instead of the full study area.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         fresh: Ignore the extent cache and re-read from the source layer.
         out: Where to write the spine. None writes it to the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
 
     Returns:
         1 if the spine could not be built, otherwise None.
     """
-    out = resolve_out(out, pilot=pilot)
+    out = resolve_out(out, extent=extent)
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
 
-    if pilot:
-        bbox = SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS)
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        bbox = aoi.bbox(constants.DEFAULT_CRS)
         clip_to = None
-        describe_extent(SMALL_WLG_PILOT.name, bbox)
+        describe_extent(aoi.name, bbox)
     else:
         bbox = tuple(float(value) for value in study_areas.total_bounds)
         clip_to = study_areas
@@ -208,7 +217,7 @@ def main(*, pilot, fresh, out):
         print("\nNo addresses found within the extent.")
         return 1
 
-    describe_counts(spine, pilot=pilot)
+    describe_counts(spine, extent=extent)
     describe_suburbs(spine)
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -223,4 +232,4 @@ def main(*, pilot, fresh, out):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, fresh=config.FRESH, out=config.OUT)
+    main(extent=config.EXTENT, fresh=config.FRESH, out=config.OUT)

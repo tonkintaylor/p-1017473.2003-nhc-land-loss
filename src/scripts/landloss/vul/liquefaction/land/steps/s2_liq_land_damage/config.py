@@ -6,9 +6,12 @@ their own, so what a run did can be established by reading this file and the git
 history of it, rather than by remembering which flags were typed.
 """
 
-# Whether to run over the small Wellington pilot box. Must match the runs of the
-# liquefaction hazard and the insured land extent this reads.
-PILOT = True
+# The extent to run over: "wlg-pilot" (the small Wellington pilot box),
+# "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
+# territorial authorities). Must match the runs of the liquefaction hazard and
+# the insured land extent this reads.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to price.
 REALISATION_IDS = [0]

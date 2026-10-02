@@ -7,9 +7,12 @@ history. The values are the contract's (section 3.3 of
 `.agents/plans/urban-slope-build-contract.md`).
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Steps 3 and 4 must have been run over the same extent.
-PILOT = True
+# The extent to run over: "wlg-pilot" for the small Wellington pilot box,
+# "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
+# the four territorial authorities.
+# Steps 3 and 4 must have been run over the same extent.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # The upstream area, in hectares, at which a cell becomes a channel. The channel
 # network sets the sub-basins the half-basins are cut from, so a lower threshold

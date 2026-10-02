@@ -162,20 +162,22 @@ def synthetic_run(tmp_path, monkeypatch):
 
     write_raster(
         make_grid(SITE_CLASS).astype("float32").rename("site_class"),
-        gen_site_class.site_class_path(pilot=True),
+        gen_site_class.site_class_path(extent="wlg-pilot"),
     )
     write_raster(
         make_grid(STEP3_PGV).astype("float32").rename("pgv_m_s"),
-        gen_pgv.output_path("pgv", return_period_yr=RETURN_PERIOD_YR, pilot=True),
+        gen_pgv.output_path(
+            "pgv", return_period_yr=RETURN_PERIOD_YR, extent="wlg-pilot"
+        ),
     )
     for realisation_id, factor in FACTORS.items():
         write_raster(
             make_grid(STEP3_PGV * factor).astype("float32").rename("pgv_m_s"),
-            gen_pgv_realisations.pgv_path(realisation_id, pilot=True),
+            gen_pgv_realisations.pgv_path(realisation_id, extent="wlg-pilot"),
         )
 
     population = wall_population()
-    path = gen_wall_population.wall_population_path(0, pilot=True)
+    path = gen_wall_population.wall_population_path(0, extent="wlg-pilot")
     path.parent.mkdir(parents=True)
     population.to_parquet(path)
 
@@ -192,7 +194,7 @@ def synthetic_run(tmp_path, monkeypatch):
 
 def read_states(world_id, realisation_id):
     return gpd.read_parquet(
-        step.wall_damage_state_path(world_id, realisation_id, pilot=True)
+        step.wall_damage_state_path(world_id, realisation_id, extent="wlg-pilot")
     )
 
 
@@ -201,14 +203,14 @@ def read_states(world_id, realisation_id):
 
 def test_the_path_names_the_world_the_realisation_and_the_extent():
     assert (
-        step.wall_damage_state_path(0, 3, pilot=True).name
+        step.wall_damage_state_path(0, 3, extent="wlg-pilot").name
         == "wall-damage-state-w000-r003-pilot.geoparquet"
     )
     assert (
-        step.wall_damage_state_path(12, 1, pilot=False).name
+        step.wall_damage_state_path(12, 1, extent="full").name
         == "wall-damage-state-w012-r001.geoparquet"
     )
-    assert step.wall_damage_state_path(0, 0, pilot=True).parent == step.WORK_DIR
+    assert step.wall_damage_state_path(0, 0, extent="wlg-pilot").parent == step.WORK_DIR
 
 
 # --- end to end ------------------------------------------------------------------
@@ -219,7 +221,7 @@ def test_the_output_carries_the_contract_columns_for_flat_land_walls_only(
     synthetic_run,
 ):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[0],
         realisation_ids=[0],
         return_period_yr=RETURN_PERIOD_YR,
@@ -264,7 +266,7 @@ def test_the_output_carries_the_contract_columns_for_flat_land_walls_only(
 @ignore_affine_matmul
 def test_pgv_and_the_site_class_are_sampled_at_the_midpoint(synthetic_run):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[0],
         realisation_ids=[1],
         return_period_yr=RETURN_PERIOD_YR,
@@ -283,7 +285,7 @@ def test_pgv_and_the_site_class_are_sampled_at_the_midpoint(synthetic_run):
 @ignore_affine_matmul
 def test_a_pga_curve_is_converted_at_the_walls_own_ratio(synthetic_run):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[0],
         realisation_ids=[0],
         return_period_yr=RETURN_PERIOD_YR,
@@ -311,7 +313,7 @@ def test_a_pga_curve_is_converted_at_the_walls_own_ratio(synthetic_run):
 @ignore_affine_matmul
 def test_a_wall_outside_the_grids_draws_no_damage(synthetic_run):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[0],
         realisation_ids=[0],
         return_period_yr=RETURN_PERIOD_YR,
@@ -328,7 +330,7 @@ def test_a_wall_outside_the_grids_draws_no_damage(synthetic_run):
 @ignore_affine_matmul
 def test_the_draw_is_on_the_vulnerability_stream_keyed_on_both_ids(synthetic_run):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[0],
         realisation_ids=[0, 1],
         return_period_yr=RETURN_PERIOD_YR,
@@ -345,7 +347,7 @@ def test_the_draw_is_on_the_vulnerability_stream_keyed_on_both_ids(synthetic_run
 @ignore_affine_matmul
 def test_a_run_reproduces_exactly(synthetic_run):
     kwargs = {
-        "pilot": True,
+        "extent": "wlg-pilot",
         "world_ids": [0],
         "realisation_ids": [0],
         "return_period_yr": RETURN_PERIOD_YR,
@@ -362,10 +364,10 @@ def test_a_world_with_no_flat_land_walls_writes_an_empty_file(
     synthetic_run, monkeypatch
 ):
     sloping = synthetic_run.assign(is_flatland=False)
-    sloping.to_parquet(gen_wall_population.wall_population_path(0, pilot=True))
+    sloping.to_parquet(gen_wall_population.wall_population_path(0, extent="wlg-pilot"))
 
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[0],
         realisation_ids=[0],
         return_period_yr=RETURN_PERIOD_YR,

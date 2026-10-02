@@ -85,7 +85,11 @@ from landloss.common.utils.terrain import (
 )
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
-from landloss.io.area_of_interest import WLG_EARTHWORKS_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.readers import (
     get_dem,
     get_gwd_median_depth,
@@ -113,15 +117,15 @@ ZONE_STEM = "slope-susceptibility-zone"
 RULE = "-" * 72
 
 
-def rating_path(*, pilot):
+def rating_path(*, extent):
     """Return the file a run writes the susceptibility rating to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{RATING_STEM}{suffix}.tif"
 
 
-def zone_path(*, pilot):
+def zone_path(*, extent):
     """Return the file a run writes the banded susceptibility zone to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{ZONE_STEM}{suffix}.tif"
 
 
@@ -144,23 +148,22 @@ def earthworks_extent(earthworks, study_areas):
     return tuple(float(value) for value in inside.total_bounds)
 
 
-def resolve_extent(earthworks, study_areas, *, pilot):
+def resolve_extent(earthworks, study_areas, *, extent):
     """Choose the extent to run over, and say which one it is.
 
     Args:
         earthworks: The mapped cut and fill polygons.
         study_areas: The four territorial authorities.
-        pilot: Whether to use the Johnsonville and Newlands pilot box instead of
-            the whole earthworks extent.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         ``(bbox, name)``: the extent in the study's own projection, and a label
         for the run output.
     """
-    if pilot:
-        return WLG_EARTHWORKS_PILOT.bbox(constants.DEFAULT_CRS), (
-            WLG_EARTHWORKS_PILOT.name
-        )
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), aoi.name
 
     return earthworks_extent(earthworks, study_areas), (
         "the Wellington City earthworks extent"
@@ -605,7 +608,7 @@ def describe_modification(modification, resolution):
 
 def main(
     *,
-    pilot,
+    extent,
     coarse_resolution_m,
     fine_resolution_m,
     slope_height_window_m,
@@ -616,8 +619,8 @@ def main(
     """Score slope failure susceptibility over the extent and write it out.
 
     Args:
-        pilot: Whether to run over the Johnsonville and Newlands pilot box
-            rather than the whole Wellington City earthworks extent.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         coarse_resolution_m: The cell size the rating is reported on.
         fine_resolution_m: The cell size the cut angle and face height are
             measured at.
@@ -632,7 +635,7 @@ def main(
 
     print("Reading the Wellington City earthworks records ...", flush=True)
     all_earthworks = read_earthworks()
-    bbox, extent_name = resolve_extent(all_earthworks, study_areas, pilot=pilot)
+    bbox, extent_name = resolve_extent(all_earthworks, study_areas, extent=extent)
     earthworks = read_earthworks(bbox=bbox)
 
     describe_extent(extent_name, bbox, earthworks)
@@ -715,12 +718,12 @@ def main(
     describe_modification(modification, coarse_resolution_m)
     describe_zones(zone, coarse_resolution_m)
 
-    write_raster(rating, rating_path(pilot=pilot))
-    write_raster(zone, zone_path(pilot=pilot))
+    write_raster(rating, rating_path(extent=extent))
+    write_raster(zone, zone_path(extent=extent))
 
     print(RULE)
-    print(f"Wrote {rating_path(pilot=pilot)}")
-    print(f"Wrote {zone_path(pilot=pilot)}")
+    print(f"Wrote {rating_path(extent=extent)}")
+    print(f"Wrote {zone_path(extent=extent)}")
     print(
         "\nThe 1995 generalisation rules are not applied, so this grid is\n"
         "systematically less severe than the published map. See the\n"
@@ -730,7 +733,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         coarse_resolution_m=config.COARSE_RESOLUTION_M,
         fine_resolution_m=config.FINE_RESOLUTION_M,
         slope_height_window_m=config.SLOPE_HEIGHT_WINDOW_M,

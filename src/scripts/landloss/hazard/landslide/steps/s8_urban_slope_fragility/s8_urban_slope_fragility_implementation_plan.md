@@ -110,10 +110,10 @@ for the lead:
   becomes the low-demand anchor, and the rate setting brackets antecedent
   wetness, with one factor set for fill and one for everything else
   [dellow_hancox_2006].
-- **The wall curves** (part C, 2026-10-02): anchor the medians on the
-  Canterbury Very Poor share by height [anderson_2015], about 3.1 to 2.0 g,
-  in place of the Koutsoupaki medians, which fail 30 to 93% of walls at the
-  study's shaking. The detail is in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury".
+- **The wall curves** (part C, 2026-10-02): the Koutsoupaki curves are kept
+  (the lead's decision). They overpredict against Christchurch, failing 30
+  to 93% of walls at the study's shaking against about 10% Very Poor in the
+  Port Hills [anderson_2015], and the report says so. The detail is in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury".
 
 ## Phase 3 — The researched rules
 

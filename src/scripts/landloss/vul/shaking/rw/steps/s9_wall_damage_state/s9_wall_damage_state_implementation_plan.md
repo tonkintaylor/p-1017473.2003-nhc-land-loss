@@ -64,18 +64,17 @@ Part C of the second review read the wall curves against the Canterbury wall
 population [anderson_2015]. The detail is in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury".
 Proposals for the lead:
 
-- [ ] Replace the Koutsoupaki medians in `retaining-wall-fragility.csv` with
-      medians anchored on the Canterbury Very Poor share by height: about
-      3.1 g under 1.5 m to 2.0 g over 3.5 m, at β 0.6 (ours). Keep the
-      Koutsoupaki modern-to-poor ratio for condition. At 1.0 to 1.7 g the
-      current curves fail 30 to 93% of walls, against about 10% observed.
-      Flat-land walls are mostly in the lowest band.
-- [ ] Keep two states. "Replace" is Anderson's Very Poor, with the Poor class
-      added as the high case.
+- [x] Keep the Koutsoupaki curves (the lead, 2026-10-02). At 1.0 to 1.7 g
+      they fail 30 to 93% of walls, against about 10% Very Poor in
+      Canterbury at the same PGA; the method file and the report state that
+      they overpredict against Christchurch.
+- [ ] Add the Canterbury comparison to the run's printout: the realised
+      share replaced by height band beside Anderson's Very Poor shares (7.1,
+      10.2, 13.9 and 22.5%).
 - [ ] Name the six classes after Anderson's wall types: gravity masonry,
       concrete block, timber pole, crib, gabion, and MSE or engineered
-      concrete. Index the curves on them once the claim report extraction
-      (**T-50**) gives Wellington's mix of types.
+      concrete. Infer each wall's type from its age bin and the claim reports
+      (**T-50**), and let the type set the condition.
 
 ## Phase 3 — Once the shaking field varies within a site class
 

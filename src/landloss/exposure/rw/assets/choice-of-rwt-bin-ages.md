@@ -121,8 +121,11 @@ bins against `temp/gns_review/` (finding ids in backticks). Every point is a
   where the bins and the Act split at July 1992. With a decade-coded roll the
   difference is the same small error the section above describes, but the
   constant names should follow the bins.
-- **What the condition does.** Under the wall fragility proposal in
-  `.agents/context/retaining-wall-fragility.md` ("Literature review"), poor
-  divides the Canterbury median by about 1.3 and modern multiplies it by
-  about 1.3. That is the Koutsoupaki modern-to-poor ratio, which matches
-  Anderson's stone masonry against timber pole and concrete block at one PGA.
+- **The bins also give the wall type** (the lead, 2026-10-02): `pre_1970`
+  mostly stone and mass concrete gravity walls and untreated timber,
+  `1970_1991` treated timber pole and concrete block cantilevers, and the
+  later bins engineered walls, with the claim reports (**T-50**) giving the
+  type where a wall was described and the mix per bin. The type then sets the
+  condition the Koutsoupaki curves read. Their modern-to-poor median ratio,
+  1.65, matches Anderson's stone masonry against timber pole and concrete
+  block at one PGA.

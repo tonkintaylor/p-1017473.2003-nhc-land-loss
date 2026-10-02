@@ -7,9 +7,9 @@ writes one row per address.
 
     uv run --frozen python src/scripts/landloss/exposure/land/steps/s2_land_value/s1_build_terrain_attributes.py
 
-The run settings -- the pilot box or the full study area, whether to ignore the
-caches, the input and output paths and the window override -- come from
-config.py beside this script rather than from the command line.
+The run settings -- the extent (a pilot box or the full study area), whether to
+ignore the caches, the input and output paths and the window override -- come
+from config.py beside this script rather than from the command line.
 
 This is s1 of the land value step: terrain is the first of the four attributes
 the step attaches, and s4 is the valuation that reads them. The two are
@@ -69,7 +69,11 @@ from landloss.exposure.land.land_value import (
     TOPOGRAPHIC_POSITION_COLUMN,
     load_factors,
 )
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.readers import get_dem
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
@@ -85,18 +89,16 @@ if hasattr(sys.stdout, "reconfigure"):
 # temp/ is gitignored. These are working layers, rebuildable from the source and
 # the packaged assets, so they have no business in a diff.
 WORK_DIR = TEMP_DIR / "exposure"
-SPINE_NAME = "address-spine.geoparquet"
-PILOT_SPINE_NAME = "address-spine-pilot.geoparquet"
-OUT_NAME = "terrain-by-address.geoparquet"
-PILOT_OUT_NAME = "terrain-by-address-pilot.geoparquet"
+# Each name carries extent_suffix(extent), so runs over different extents sit
+# side by side.
+SPINE_STEM = "address-spine"
+OUT_STEM = "terrain-by-address"
 
 # The derivative rasters are kept as well as the sampled points. They are what a
 # surprising address gets checked against, and recomputing them means fetching
 # the DEM again.
-SLOPE_RASTER_NAME = "terrain-slope.tif"
-PILOT_SLOPE_RASTER_NAME = "terrain-slope-pilot.tif"
-POSITION_RASTER_NAME = "terrain-position.tif"
-PILOT_POSITION_RASTER_NAME = "terrain-position-pilot.tif"
+SLOPE_RASTER_STEM = "terrain-slope"
+POSITION_RASTER_STEM = "terrain-position"
 
 # The parameter carrying the neighbourhood the topographic position is measured
 # over. It lives in the land value factors asset rather than here, because the
@@ -340,7 +342,7 @@ def describe_missing(sampled):
     return total
 
 
-def resolve_outputs(*, pilot, spine, out):
+def resolve_outputs(*, extent, spine, out):
     """Choose where the spine is read from and where the outputs are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
@@ -348,39 +350,38 @@ def resolve_outputs(*, pilot, spine, out):
     everything downstream reading them without noticing.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         spine: The address spine path from config.py, or None for the default.
         out: The terrain attributes path from config.py, or None for the default.
 
     Returns:
         The spine path, the output path, and the two derivative raster paths.
     """
+    suffix = extent_suffix(extent)
     spine_path = (
         Path(spine)
         if spine is not None
-        else WORK_DIR / (PILOT_SPINE_NAME if pilot else SPINE_NAME)
+        else WORK_DIR / f"{SPINE_STEM}{suffix}.geoparquet"
     )
     out_path = (
-        Path(out)
-        if out is not None
-        else WORK_DIR / (PILOT_OUT_NAME if pilot else OUT_NAME)
+        Path(out) if out is not None else WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
     )
-    slope_raster = WORK_DIR / (PILOT_SLOPE_RASTER_NAME if pilot else SLOPE_RASTER_NAME)
-    position_raster = WORK_DIR / (
-        PILOT_POSITION_RASTER_NAME if pilot else POSITION_RASTER_NAME
-    )
+    slope_raster = WORK_DIR / f"{SLOPE_RASTER_STEM}{suffix}.tif"
+    position_raster = WORK_DIR / f"{POSITION_RASTER_STEM}{suffix}.tif"
     return spine_path, out_path, slope_raster, position_raster
 
 
-def resolve_extent(study_areas, *, pilot):
+def resolve_extent(study_areas, *, extent):
     """Return the bounding box, clip boundary and name of the extent to run over.
 
     The clip matters as much as the box. The four authorities sit in a rectangle
     that also contains most of the Wairarapa, so the full run is cut back to the
     real boundaries; a pilot is a rectangle already and needs no clip.
     """
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), None, SMALL_WLG_PILOT.name
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), None, aoi.name
 
     bbox = tuple(float(value) for value in study_areas.total_bounds)
     return bbox, study_areas, ", ".join(study_areas["name"])
@@ -447,18 +448,18 @@ def write_outputs(terrain, out):
     print(f"  CRS     : {terrain.crs.name} (EPSG:{epsg})")
 
 
-def main(*, pilot, fresh, spine, out, window):
+def main(*, extent, fresh, spine, out, window):
     """Sample slope and topographic position onto every address in the spine.
 
     Args:
-        pilot: Use the small Wellington pilot box instead of the full study area.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         fresh: Ignore the caches and re-fetch the DEM and the address spine.
         spine: The address spine from step 1. None reads the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
             Rebuilt from LINZ if it is not there.
         out: Where to write the terrain attributes. None writes to the standard
-            location under temp/exposure/, with a pilot name when ``pilot`` is
-            True.
+            location under temp/exposure/, named with ``extent_suffix(extent)``.
         window: Override for the topographic position neighbourhood width, in
             metres. None takes the ``topographic_position_window_m`` row of the
             land value factors asset.
@@ -467,7 +468,7 @@ def main(*, pilot, fresh, spine, out, window):
         1 if the spine or the DEM could not be had, otherwise None.
     """
     spine_path, out, slope_raster, position_raster = resolve_outputs(
-        pilot=pilot, spine=spine, out=out
+        extent=extent, spine=spine, out=out
     )
 
     factors = load_factors()
@@ -475,7 +476,7 @@ def main(*, pilot, fresh, spine, out, window):
     resolution = constants.DEM_RESOLUTION_M
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
-    bbox, clip_to, extent_name = resolve_extent(study_areas, pilot=pilot)
+    bbox, clip_to, extent_name = resolve_extent(study_areas, extent=extent)
     describe_extent(extent_name, bbox)
 
     addresses = read_spine(spine_path, bbox, clip_to, use_cache=not fresh)
@@ -530,7 +531,7 @@ def main(*, pilot, fresh, spine, out, window):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         fresh=config.FRESH,
         spine=config.SPINE,
         out=config.TERRAIN,

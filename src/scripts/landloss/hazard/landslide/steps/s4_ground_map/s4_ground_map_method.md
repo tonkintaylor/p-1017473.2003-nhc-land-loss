@@ -6,8 +6,8 @@
   `config.py` beside the scripts, read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments; neither script takes command line arguments and neither `main()`
-  carries a default. `PILOT` is `True`, so runs go over `SMALL_WLG_PILOT`; the
-  full extent is the bounding box of the four territorial authorities, resolved
+  carries a default. `EXTENT` is `"wlg-pilot"`, so runs go over `SMALL_WLG_PILOT`;
+  the full extent (`"full"`) is the bounding box of the four territorial authorities, resolved
   by step 3's `gen_multiscale_slope.resolve_extent()`.
 - The vocabulary of the map — `MATERIALS`, `MODIFICATIONS`, `PRIOR_FAILURES`,
   `GW_DEPTH_CLASSES` and `CONFIDENCES` — and the mapping of each source's

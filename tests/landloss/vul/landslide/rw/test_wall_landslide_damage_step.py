@@ -157,7 +157,7 @@ def synthetic_run(tmp_path, monkeypatch):
     monkeypatch.setattr(gen_urban_slope_realisation, "WORK_DIR", tmp_path / "hazard")
     monkeypatch.setattr(step, "WORK_DIR", tmp_path / "vul")
 
-    walls_path = gen_wall_population.wall_population_path(0, pilot=True)
+    walls_path = gen_wall_population.wall_population_path(0, extent="wlg-pilot")
     walls_path.parent.mkdir(parents=True)
     wall_population().to_parquet(walls_path)
 
@@ -169,7 +169,7 @@ def synthetic_run(tmp_path, monkeypatch):
             slides = slides.iloc[:2].copy()
             slides["geometry"] = [Point(900, 900).buffer(5), Point(950, 900).buffer(5)]
         path = gen_urban_slope_realisation.combined_realisation_path(
-            0, realisation_id, pilot=True
+            0, realisation_id, extent="wlg-pilot"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         slides.to_parquet(path)
@@ -180,7 +180,7 @@ def synthetic_run(tmp_path, monkeypatch):
             outcomes["taken_by"] = None
         outcomes.to_parquet(
             gen_urban_slope_realisation.urban_wall_outcome_path(
-                0, realisation_id, pilot=True
+                0, realisation_id, extent="wlg-pilot"
             )
         )
     return wall_population()
@@ -188,7 +188,7 @@ def synthetic_run(tmp_path, monkeypatch):
 
 def read_flags(world_id, realisation_id):
     return pd.read_parquet(
-        step.wall_landslide_damage_path(world_id, realisation_id, pilot=True)
+        step.wall_landslide_damage_path(world_id, realisation_id, extent="wlg-pilot")
     )
 
 
@@ -197,21 +197,24 @@ def read_flags(world_id, realisation_id):
 
 def test_the_path_names_the_world_the_realisation_and_the_extent():
     assert (
-        step.wall_landslide_damage_path(0, 3, pilot=True).name
+        step.wall_landslide_damage_path(0, 3, extent="wlg-pilot").name
         == "wall-landslide-damage-w000-r003-pilot.parquet"
     )
     assert (
-        step.wall_landslide_damage_path(12, 1, pilot=False).name
+        step.wall_landslide_damage_path(12, 1, extent="full").name
         == "wall-landslide-damage-w012-r001.parquet"
     )
-    assert step.wall_landslide_damage_path(0, 0, pilot=True).parent == step.WORK_DIR
+    assert (
+        step.wall_landslide_damage_path(0, 0, extent="wlg-pilot").parent
+        == step.WORK_DIR
+    )
 
 
 # --- end to end ------------------------------------------------------------------
 
 
 def test_the_output_carries_the_contract_columns_for_every_wall(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     flags = read_flags(0, 0)
 
     assert list(flags.columns) == [
@@ -236,7 +239,7 @@ def test_the_output_carries_the_contract_columns_for_every_wall(synthetic_run):
 
 
 def test_each_wall_takes_the_flags_of_section_5_2(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     flags = read_flags(0, 0).set_index("rw_id")
 
     expected = {
@@ -259,7 +262,7 @@ def test_each_wall_takes_the_flags_of_section_5_2(synthetic_run):
 def test_slope_id_and_outcome_are_carried_and_null_for_flat_land_walls(
     synthetic_run,
 ):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     flags = read_flags(0, 0).set_index("rw_id")
 
     for rw_id, is_flatland, _, row in WALLS:
@@ -276,7 +279,7 @@ def test_slope_id_and_outcome_are_carried_and_null_for_flat_land_walls(
 
 
 def test_each_realisation_is_flagged_against_its_own_landslides(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0, 1])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0, 1])
 
     quiet = read_flags(0, 1)
     assert (quiet["realisation_id"] == 1).all()
@@ -290,9 +293,9 @@ def test_each_realisation_is_flagged_against_its_own_landslides(synthetic_run):
 
 
 def test_a_run_reproduces_exactly(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     first = read_flags(0, 0)
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     second = read_flags(0, 0)
     pd.testing.assert_frame_equal(first, second)
 
@@ -303,7 +306,7 @@ def test_an_outcome_naming_a_wall_outside_the_population_stops_the_run(
     outcomes = wall_outcomes(0, 0)
     outcomes.loc[0, "rw_id"] = "Z-RW99"
     outcomes.to_parquet(
-        gen_urban_slope_realisation.urban_wall_outcome_path(0, 0, pilot=True)
+        gen_urban_slope_realisation.urban_wall_outcome_path(0, 0, extent="wlg-pilot")
     )
     with pytest.raises(ValueError, match="not in the population"):
-        step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+        step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])

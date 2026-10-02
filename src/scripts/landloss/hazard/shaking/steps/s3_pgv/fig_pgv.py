@@ -36,6 +36,7 @@ from shapely.geometry import box
 
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.ts1170 import SITE_CLASS_NUMERALS
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
     resolve_extent,
@@ -117,25 +118,28 @@ def draw_pgv(ax, pgv, extent, *, return_period_yr):
     ax.set_title(f"PGV, {return_period_yr}-year TS1170.5 demand", fontsize=9)
 
 
-def main(*, pilot, return_period_yr):
+def main(*, extent, return_period_yr):
     """Draw the site class and PGV maps.
 
     Args:
-        pilot: Whether the run being drawn was over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         return_period_yr: The return period of the run being drawn.
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
-    extent = gpd.GeoDataFrame(geometry=[box(*bbox)], crs=constants.DEFAULT_CRS)
-    site_class = read_layer(site_class_path(pilot=pilot))
-    pgv = read_layer(output_path("pgv", return_period_yr=return_period_yr, pilot=pilot))
+    bbox, extent_name = resolve_extent(extent=extent)
+    extent_frame = gpd.GeoDataFrame(geometry=[box(*bbox)], crs=constants.DEFAULT_CRS)
+    site_class = read_layer(site_class_path(extent=extent))
+    pgv = read_layer(
+        output_path("pgv", return_period_yr=return_period_yr, extent=extent)
+    )
 
     fig, (ax_class, ax_pgv) = plt.subplots(1, 2, figsize=(11, 5.5))
-    draw_site_class(ax_class, site_class, extent)
-    draw_pgv(ax_pgv, pgv, extent, return_period_yr=return_period_yr)
+    draw_site_class(ax_class, site_class, extent_frame)
+    draw_pgv(ax_pgv, pgv, extent_frame, return_period_yr=return_period_yr)
     fig.suptitle(extent_name, fontsize=10)
     fig.tight_layout()
 
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     path = FIG_DIR / f"site-class-pgv-{return_period_yr}yr{suffix}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=DPI)
@@ -144,4 +148,4 @@ def main(*, pilot, return_period_yr):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, return_period_yr=config.RETURN_PERIOD_YR)
+    main(extent=config.EXTENT, return_period_yr=config.RETURN_PERIOD_YR)

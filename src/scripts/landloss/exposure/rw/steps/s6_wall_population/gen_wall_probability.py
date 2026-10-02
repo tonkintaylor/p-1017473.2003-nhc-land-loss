@@ -40,6 +40,7 @@ from landloss.exposure.rw.wall_probability import (
     WALL_BASES,
     wall_probability_table,
 )
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.rw.steps.s6_wall_population import config
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_lines import (
     wall_lines_path,
@@ -57,16 +58,17 @@ OUT_STEM = "wall-probability"
 RULE = "-" * 72
 
 
-def wall_probability_path(*, pilot):
+def wall_probability_path(*, extent):
     """Return the file a run writes the probabilities to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
@@ -107,20 +109,21 @@ def describe_probabilities(table):
     print(f"Lines with a dwelling age held: {int(held):,}")
 
 
-def main(*, pilot):
+def main(*, extent):
     """Compute the wall probabilities and write them out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
     """
-    lines_file = wall_lines_path(pilot=pilot)
+    lines_file = wall_lines_path(extent=extent)
     print(f"Reading the candidate wall lines from {lines_file} ...")
     lines = gpd.read_parquet(lines_file)
 
     table = wall_probability_table(lines)
     describe_probabilities(table)
 
-    out_path = wall_probability_path(pilot=pilot)
+    out_path = wall_probability_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     table.to_parquet(out_path)
     print(RULE)
@@ -132,4 +135,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

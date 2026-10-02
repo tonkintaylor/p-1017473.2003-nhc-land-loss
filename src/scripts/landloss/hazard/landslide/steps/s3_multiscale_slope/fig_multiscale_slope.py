@@ -27,6 +27,7 @@ from shapely.geometry import box
 
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
+from landloss.io.area_of_interest import extent_suffix, is_full_extent
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     aspect_path,
@@ -80,18 +81,19 @@ def draw_panel(ax, layer, extent, *, title, cmap, vmin, vmax, label):
     ax.set_title(title, fontsize=9)
 
 
-def main(*, pilot, resolutions_m):
+def main(*, extent, resolutions_m):
     """Draw the slope and the aspect at each cell size.
 
     Args:
-        pilot: Whether the run being drawn was over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         resolutions_m: The cell sizes the run built.
     """
     resolutions = sorted(resolutions_m)
-    slopes = {r: read_layer(slope_path(r, pilot=pilot)) for r in resolutions}
-    aspects = {r: read_layer(aspect_path(r, pilot=pilot)) for r in resolutions}
+    slopes = {r: read_layer(slope_path(r, extent=extent)) for r in resolutions}
+    aspects = {r: read_layer(aspect_path(r, extent=extent)) for r in resolutions}
     first = next(iter(slopes.values()))
-    extent = gpd.GeoDataFrame(
+    frame = gpd.GeoDataFrame(
         geometry=[box(*first.rio.bounds())], crs=constants.DEFAULT_CRS
     )
 
@@ -105,7 +107,7 @@ def main(*, pilot, resolutions_m):
         draw_panel(
             axes[0, column],
             slopes[resolution],
-            extent,
+            frame,
             title=f"Slope, {resolution:g} m",
             cmap=SLOPE_CMAP,
             vmin=0.0,
@@ -115,17 +117,20 @@ def main(*, pilot, resolutions_m):
         draw_panel(
             axes[1, column],
             aspects[resolution],
-            extent,
+            frame,
             title=f"Aspect, {resolution:g} m",
             cmap=ASPECT_CMAP,
             vmin=0.0,
             vmax=360.0,
             label="degrees clockwise from north, downhill",
         )
-    fig.suptitle("Slope and aspect by cell size" + (" (pilot)" if pilot else ""))
+    fig.suptitle(
+        "Slope and aspect by cell size"
+        + ("" if is_full_extent(extent) else f" ({extent})")
+    )
     fig.tight_layout()
 
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     path = FIG_DIR / f"multiscale-slope{suffix}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=DPI)
@@ -134,4 +139,4 @@ def main(*, pilot, resolutions_m):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, resolutions_m=config.RESOLUTIONS_M)
+    main(extent=config.EXTENT, resolutions_m=config.RESOLUTIONS_M)

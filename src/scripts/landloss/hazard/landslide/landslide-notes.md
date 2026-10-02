@@ -165,6 +165,37 @@ area is taken to be **25 km from an Mw 8.1 event** (`BETA_SCENARIO_MW`,
 - **Still to record for the report:** the return period, and the NSHM version and
   tool the deaggregation was taken from.
 
+**Failure rates of banks against walls, for the report** (the project lead,
+2026-10-02). The report should compare the urban failure rate of a bank (a
+face with no wall) with that of a wall, by wall type, height band and
+condition, because the comparison is useful in its own right and is the
+plainest check that the two kinds of curve sit sensibly against each other.
+
+- **Like for like.** A face is a wall candidate because it is steeper than its
+  ground stands unsupported (faces plan, phase 1), so compare a wall with an
+  unsupported cut of the same height and ground, and separately with a gentle
+  bank. On the evidence, a sound wall should fail less often than the
+  oversteep cut it replaces and more often than a gentle bank.
+- **What to set it against.**
+  - Walls: the Canterbury Very Poor shares by type (stone masonry about 18%
+    to timber pole about 3%) and height (7% under 1.5 m to 23% over 3.5 m),
+    cumulative over the 2010 to 2011 sequence [anderson_2015].
+  - Banks: steep unsupported cuts over 3 m fail from MM6 [brabhaharan_2018;
+    hancox_2015], Wellington's 5 to 20 m cuts steeper than 50 to 60° are
+    forecast to fail widely at MM9 to MM10 [hancox_2013_slope_types], and
+    batters at 45 to 50° are reasonably resistant at MM8 to MM9
+    [hancox_brabhaharan_1995].
+  - Where they meet: several Canterbury crib wall failures began with the
+    slope above or below the wall, or the unretained slope beside it
+    (`anderson2015-F24` in `temp/gns_review/`).
+- **What it shows about the model.** In the pilot the wall curves
+  (Koutsoupaki et al. 2023 [koutsoupaki_2023]) fail more often than the
+  average bank, mainly because they overpredict against Christchurch (the
+  lead kept them, 2026-10-02; `.agents/context/retaining-wall-fragility.md`).
+  The bank medians are placeholders until the anchoring runs, so the
+  comparison is made on the anchored model, from step 9's realised shares by
+  wall state, type, height band and Kingsbury zone.
+
 **Marc et al. (2016) rebuilt and checked.**
 `landloss.hazard.landslide.calibration.marc_2016` reproduces the paper's fit on
 its own 26 events (steepness scale 11.7° against 11.6°, sensitivity within 10%);

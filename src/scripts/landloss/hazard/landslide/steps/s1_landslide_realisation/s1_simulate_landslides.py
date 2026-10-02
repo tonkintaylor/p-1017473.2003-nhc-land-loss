@@ -61,8 +61,8 @@ Nine stages, each of which is a stated assumption rather than a measurement.
    material left, and **inundated land**, where it came to rest, in the land
    classes of :mod:`landloss.hazard.landslide.land_class`.
 
-Leave ``PILOT`` set in ``config.py`` while the model is being changed; steps 3
-and 5 must have been run over the same extent.
+Leave ``EXTENT = "wlg-pilot"`` in ``config.py`` while the model is being
+changed; steps 3 and 5 must have been run over the same extent.
 """
 
 import sys
@@ -85,7 +85,11 @@ from landloss.hazard.landslide.land_class import (
     LAND_CLASS_COLUMN,
 )
 from landloss.hazard.realisation import realisation_seed
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.source_material import get_eil_landslide_probability
 from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
@@ -252,7 +256,7 @@ MIN_REPORTED_OVERLAP_PERCENT = 0.05
 RULE = "-" * 72
 
 
-def realisation_path(*, pilot, realisation_id):
+def realisation_path(*, extent, realisation_id):
     """Return the file a run writes one realisation to.
 
     A function rather than a constant because the name depends on the extent and
@@ -261,34 +265,36 @@ def realisation_path(*, pilot, realisation_id):
     actually wrote.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_id: Which modelled earthquake this is.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.geoparquet"
 
 
-def input_paths(*, pilot):
+def input_paths(*, extent):
     """Return the step 5 slope units, the step 4 ground map and the step 3 rasters."""
     return {
-        "units": slope_units_path(pilot=pilot),
-        "ground_map": ground_map_path(pilot=pilot),
-        "dem": gen_multiscale_slope.dem_path(RESOLUTION_M, pilot=pilot),
-        "slope": gen_multiscale_slope.slope_path(RESOLUTION_M, pilot=pilot),
-        "aspect": gen_multiscale_slope.aspect_path(RESOLUTION_M, pilot=pilot),
+        "units": slope_units_path(extent=extent),
+        "ground_map": ground_map_path(extent=extent),
+        "dem": gen_multiscale_slope.dem_path(RESOLUTION_M, extent=extent),
+        "slope": gen_multiscale_slope.slope_path(RESOLUTION_M, extent=extent),
+        "aspect": gen_multiscale_slope.aspect_path(RESOLUTION_M, extent=extent),
         "topographic_position": gen_terrain_derivatives.terrain_path(
-            TOPOGRAPHIC_POSITION_LAYER, pilot=pilot
+            TOPOGRAPHIC_POSITION_LAYER, extent=extent
         ),
     }
 
 
-def resolve_extent(*, pilot):
+def resolve_extent(*, extent):
     """Return the bounding box and name of the extent to run over."""
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), SMALL_WLG_PILOT.name
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), aoi.name
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
     bbox = tuple(float(value) for value in study_areas.total_bounds)
@@ -1066,7 +1072,7 @@ def describe_result(polygons):
 
 def main(
     *,
-    pilot,
+    extent,
     realisation_ids,
     large_min_source_area_m2,
     urban_area_share,
@@ -1076,8 +1082,8 @@ def main(
     """Draw a realisation of large landslides per id and write each one out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box rather than
-            the four territorial authorities.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to draw.
         large_min_source_area_m2: The smallest source the large population
             draws; the top of the urban range.
@@ -1087,8 +1093,8 @@ def main(
         crest_weight: How much the 100 m topographic position lifts a cell's
             seeding weight.
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
-    paths = input_paths(pilot=pilot)
+    bbox, extent_name = resolve_extent(extent=extent)
+    paths = input_paths(extent=extent)
     print(RULE)
     print(f"Extent    : {extent_name}")
     for name, path in paths.items():
@@ -1126,7 +1132,7 @@ def main(
             aspect,
             topographic_position,
             units,
-            pilot=pilot,
+            extent=extent,
             realisation_id=realisation_id,
             large_min_source_area_m2=large_min_source_area_m2,
             urban_area_share=urban_area_share,
@@ -1142,7 +1148,7 @@ def draw_realisation(
     topographic_position,
     units,
     *,
-    pilot,
+    extent,
     realisation_id,
     large_min_source_area_m2,
     urban_area_share,
@@ -1161,14 +1167,15 @@ def draw_realisation(
         aspect: Downhill azimuth in degrees, on the same grid.
         topographic_position: The 100 m topographic position, on the same grid.
         units: The slope units.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_id: Which modelled earthquake this is.
         large_min_source_area_m2: The lower bound of the size law.
         urban_area_share: The share of the failed area the urban model draws.
         source_aspect_ratio: The long axis over the short axis of a source.
         crest_weight: How much the topographic position lifts the seeding.
     """
-    out_path = realisation_path(pilot=pilot, realisation_id=realisation_id)
+    out_path = realisation_path(extent=extent, realisation_id=realisation_id)
     print(RULE)
     print(f"Realisation {realisation_id}")
 
@@ -1220,7 +1227,7 @@ def draw_realisation(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
         large_min_source_area_m2=config.LARGE_MIN_SOURCE_AREA_M2,
         urban_area_share=config.URBAN_AREA_SHARE,

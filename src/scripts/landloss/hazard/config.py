@@ -9,9 +9,11 @@ Everything else a step reads, such as whether to reuse a cached elevation model
 or the urban rate setting, still comes from that step's own `config.py`.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS, such as "wlg-pilot" for the
+# small Wellington pilot box.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to run. The seed stream is shared across the
 # hazards, so realisation 3 is the same earthquake in every module.

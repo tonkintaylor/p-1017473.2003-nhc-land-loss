@@ -24,7 +24,7 @@ The run cuts the units once per threshold in ``CHANNEL_THRESHOLDS_TRIED_HA`` and
 prints the unit count and median area at each, so the choice of threshold is
 reported with every run; the layer written is the one at ``CHANNEL_THRESHOLD_HA``.
 
-Writes ``slope-units[-pilot].geoparquet`` under temp/hazard/landslide/, one row
+Writes ``slope-units{extent_suffix}.geoparquet`` under temp/hazard/landslide/, one row
 per ``unit_id``, with the columns of contract section 3.3.
 """
 
@@ -38,6 +38,7 @@ import rioxarray
 from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.hazard.landslide.slope_units import M2_PER_HA, delineate_slope_units
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
     gen_multiscale_slope,
 )
@@ -83,19 +84,19 @@ DECILES = (0.1, 0.5, 0.9)
 RULE = "-" * 72
 
 
-def slope_units_path(*, pilot):
+def slope_units_path(*, extent):
     """Return the file the slope units are written to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
-def input_paths(*, pilot):
+def input_paths(*, extent):
     """Return the step 3 rasters and the step 4 ground map this step reads."""
     return {
-        "dem": gen_multiscale_slope.dem_path(RESOLUTION_M, pilot=pilot),
-        "slope": gen_multiscale_slope.slope_path(RESOLUTION_M, pilot=pilot),
-        "aspect": gen_multiscale_slope.aspect_path(RESOLUTION_M, pilot=pilot),
-        "ground_map": ground_map_path(pilot=pilot),
+        "dem": gen_multiscale_slope.dem_path(RESOLUTION_M, extent=extent),
+        "slope": gen_multiscale_slope.slope_path(RESOLUTION_M, extent=extent),
+        "aspect": gen_multiscale_slope.aspect_path(RESOLUTION_M, extent=extent),
+        "ground_map": ground_map_path(extent=extent),
     }
 
 
@@ -182,7 +183,7 @@ def describe_units(units):
 
 def main(
     *,
-    pilot,
+    extent,
     channel_threshold_ha,
     channel_thresholds_tried_ha,
     aspect_merge_tolerance_deg,
@@ -192,8 +193,8 @@ def main(
     """Cut the slope units over the extent and write them.
 
     Args:
-        pilot: Whether to run over ``SMALL_WLG_PILOT`` rather than the four
-            territorial authorities.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         channel_threshold_ha: The channel threshold the written layer uses.
         channel_thresholds_tried_ha: The thresholds the sensitivity is
             reported over.
@@ -202,9 +203,9 @@ def main(
         min_unit_area_ha: Units under this are absorbed into a neighbour.
         max_unit_area_ha: Units over this are split.
     """
-    paths = input_paths(pilot=pilot)
+    paths = input_paths(extent=extent)
     print(RULE)
-    print(f"Extent    : {'pilot' if pilot else 'full study area'}")
+    print(f"Extent    : {extent}")
     for name, path in paths.items():
         print(f"  {name:<10}: {path}")
 
@@ -237,7 +238,7 @@ def main(
     units = units[OUTPUT_COLUMNS]
     describe_units(units)
 
-    path = slope_units_path(pilot=pilot)
+    path = slope_units_path(extent=extent)
     path.parent.mkdir(parents=True, exist_ok=True)
     units.to_parquet(path)
     print(RULE)
@@ -246,7 +247,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         channel_threshold_ha=config.CHANNEL_THRESHOLD_HA,
         channel_thresholds_tried_ha=config.CHANNEL_THRESHOLDS_TRIED_HA,
         aspect_merge_tolerance_deg=config.ASPECT_MERGE_TOLERANCE_DEG,

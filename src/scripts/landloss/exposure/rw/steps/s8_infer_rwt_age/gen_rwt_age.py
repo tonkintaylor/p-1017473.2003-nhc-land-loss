@@ -8,7 +8,7 @@ the year, the age bin and the rule that set it:
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s8_infer_rwt_age/gen_rwt_age.py
 
 Run exposure step 3 (``gen_dwellings_per_property.py``) first, over the same
-extent, which ``PILOT`` in ``config.py`` beside this script must match. Needs
+extent, which ``EXTENT`` in ``config.py`` beside this script must match. Needs
 ``LINZ_API_KEY`` in ``.env``: the NZ Property Boundaries layer and the NZ
 Property Titles List table are read from LINZ, both CC BY 4.0, so anything
 published from the output credits Land Information New Zealand.
@@ -33,6 +33,7 @@ from landloss.exposure.land.extent import (
     build_claim_properties,
 )
 from landloss.exposure.rw import age
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_property_boundaries, get_nz_property_titles_list
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     fetch_extent,
@@ -70,16 +71,17 @@ CHECK_PLANS = (
 RULE = "-" * 72
 
 
-def rwt_age_path(*, pilot):
+def rwt_age_path(*, extent):
     """Return the file a run writes the property ages to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
@@ -115,18 +117,19 @@ def describe_ages(ages):
     print((bins / len(ages)).round(3).to_string())
 
 
-def main(*, pilot, use_cached_extent):
+def main(*, extent, use_cached_extent):
     """Date every claim property and write the ones with a dwelling.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_extent: Whether to reuse already-fetched LINZ boundaries.
     """
-    value_path = land_value_path(pilot=pilot)
+    value_path = land_value_path(extent=extent)
     print(f"Reading the addresses from {value_path} ...", flush=True)
     addresses = gpd.read_parquet(value_path)
-    dwellings = pd.read_parquet(dwellings_per_property_path(pilot=pilot))
-    claim_addresses = pd.read_parquet(address_to_claim_path(pilot=pilot))
+    dwellings = pd.read_parquet(dwellings_per_property_path(extent=extent))
+    claim_addresses = pd.read_parquet(address_to_claim_path(extent=extent))
 
     print("Fetching the property boundaries ...", flush=True)
     boundaries = get_nz_property_boundaries(
@@ -156,7 +159,7 @@ def main(*, pilot, use_cached_extent):
     )
     describe_ages(out)
 
-    out_path = rwt_age_path(pilot=pilot)
+    out_path = rwt_age_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(out_path)
     print(RULE)
@@ -164,4 +167,4 @@ def main(*, pilot, use_cached_extent):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, use_cached_extent=config.USE_CACHED_EXTENT)
+    main(extent=config.EXTENT, use_cached_extent=config.USE_CACHED_EXTENT)

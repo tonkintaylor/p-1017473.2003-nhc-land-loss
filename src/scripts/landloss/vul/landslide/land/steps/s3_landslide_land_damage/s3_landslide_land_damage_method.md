@@ -11,7 +11,7 @@
   (exposure step 5's `insured_land_path()`) and landslides from the combined
   realisation landslide step 9 writes,
   `temp/hazard/landslide/landslide-realisation-w<NNN>-r<NNN>[-pilot].geoparquet`,
-  read through `combined_realisation_path(world_id, realisation_id, pilot=...)`.
+  read through `combined_realisation_path(world_id, realisation_id, extent=...)`.
   The combined realisation holds the large model's polygons and the urban slope
   model's together, with a `population` column saying which; this step treats
   them alike, because a square metre of insured land does not care which model
@@ -63,7 +63,7 @@
   packaged, so this step stops at area and depth and the pricing is left to the
   loss module.
 - Output is `temp/vul/landslide-land-damage-w<NNN>-r<NNN>[-pilot].parquet`,
-  built by `landslide_land_damage_path(world_id, realisation_id, pilot=...)`,
+  built by `landslide_land_damage_path(world_id, realisation_id, extent=...)`,
   with columns `realisation_id`, `world_id`, `land_id`, `claim_id`,
   `evacuated_area_m2`, `inundated_area_m2`, `landslide_area_m2`,
   `evacuated_depth_m`, `inundated_depth_m`, `cause_evacuated` and

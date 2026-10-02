@@ -8,19 +8,22 @@ history of it, rather than by remembering which flags were typed.
 `s1_build_terrain_attributes.py`, `s2_build_accessibility.py`,
 `s3_build_amenity.py`, `s4_estimate_land_value.py` and `fig_town_centres.py`
 read from here. Sharing
-`PILOT`, `TERRAIN` and `ACCESSIBILITY` is what keeps the valuation reading the
+`EXTENT`, `TERRAIN` and `ACCESSIBILITY` is what keeps the valuation reading the
 attributes the earlier scripts actually wrote.
 
 Every path below is None by default, which means the standard location under
-temp/exposure/, with a `-pilot` suffix when PILOT is True so a pilot run cannot
-overwrite the full outputs.
+temp/exposure/, with the extent_suffix(EXTENT) suffix (`-pilot` for
+"wlg-pilot") so a run over one extent cannot overwrite another's outputs.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Leave this True while the model is being changed: the
-# DEM for the full study area is a long background job measured in tens of
-# minutes, while the pilot finishes in a couple of them.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Leave this on "wlg-pilot" while the model is being changed: the DEM for the
+# full study area is a long background job measured in tens of minutes, while
+# the pilot finishes in a couple of them.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Whether to ignore the caches and re-fetch the DEM, the flatland layer and, if
 # it has to be rebuilt, the address spine.

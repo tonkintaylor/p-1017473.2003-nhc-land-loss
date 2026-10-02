@@ -131,7 +131,9 @@ def synthetic_run(tmp_path, monkeypatch):
     monkeypatch.setattr(gen_urban_slope_realisation, "WORK_DIR", tmp_path / "hazard")
     monkeypatch.setattr(step, "WORK_DIR", tmp_path / "vul")
 
-    crossings_path = gen_crossing_population.crossing_population_path(0, pilot=True)
+    crossings_path = gen_crossing_population.crossing_population_path(
+        0, extent="wlg-pilot"
+    )
     crossings_path.parent.mkdir(parents=True)
     crossing_population().to_parquet(crossings_path)
 
@@ -141,7 +143,7 @@ def synthetic_run(tmp_path, monkeypatch):
             # The second world's urban model failed nothing: large rows only.
             slides = slides.iloc[:2]
         path = gen_urban_slope_realisation.combined_realisation_path(
-            world_id, 0, pilot=True
+            world_id, 0, extent="wlg-pilot"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         slides.to_parquet(path)
@@ -150,7 +152,9 @@ def synthetic_run(tmp_path, monkeypatch):
 
 def read_flags(world_id, realisation_id):
     return pd.read_parquet(
-        step.crossing_landslide_damage_path(world_id, realisation_id, pilot=True)
+        step.crossing_landslide_damage_path(
+            world_id, realisation_id, extent="wlg-pilot"
+        )
     )
 
 
@@ -159,21 +163,24 @@ def read_flags(world_id, realisation_id):
 
 def test_the_path_names_the_world_the_realisation_and_the_extent():
     assert (
-        step.crossing_landslide_damage_path(0, 3, pilot=True).name
+        step.crossing_landslide_damage_path(0, 3, extent="wlg-pilot").name
         == "crossing-landslide-damage-w000-r003-pilot.parquet"
     )
     assert (
-        step.crossing_landslide_damage_path(12, 1, pilot=False).name
+        step.crossing_landslide_damage_path(12, 1, extent="full").name
         == "crossing-landslide-damage-w012-r001.parquet"
     )
-    assert step.crossing_landslide_damage_path(0, 0, pilot=True).parent == step.WORK_DIR
+    assert (
+        step.crossing_landslide_damage_path(0, 0, extent="wlg-pilot").parent
+        == step.WORK_DIR
+    )
 
 
 # --- end to end ------------------------------------------------------------------
 
 
 def test_the_output_carries_the_columns_and_flags_every_crossing(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     flags = read_flags(0, 0)
 
     assert list(flags.columns) == [
@@ -195,7 +202,7 @@ def test_the_output_carries_the_columns_and_flags_every_crossing(synthetic_run):
 
 
 def test_each_world_is_flagged_against_its_own_realisation(synthetic_run):
-    step.main(pilot=True, world_ids=[0, 1], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0, 1], realisation_ids=[0])
     quiet = read_flags(1, 0)
     assert (quiet["world_id"] == 1).all()
     assert quiet["is_evacuated"].tolist() == [True, False, False, False]
@@ -204,15 +211,19 @@ def test_each_world_is_flagged_against_its_own_realisation(synthetic_run):
 
 def test_a_crossing_population_without_ids_stops_the_run(synthetic_run):
     stale = synthetic_run.drop(columns="crossing_id")
-    stale.to_parquet(gen_crossing_population.crossing_population_path(0, pilot=True))
+    stale.to_parquet(
+        gen_crossing_population.crossing_population_path(0, extent="wlg-pilot")
+    )
     with pytest.raises(ValueError, match="crossing_id"):
-        step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+        step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
 
 
 def test_no_crossings_writes_an_empty_file_with_the_full_columns(synthetic_run):
     empty = synthetic_run.iloc[:0]
-    empty.to_parquet(gen_crossing_population.crossing_population_path(0, pilot=True))
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    empty.to_parquet(
+        gen_crossing_population.crossing_population_path(0, extent="wlg-pilot")
+    )
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     flags = read_flags(0, 0)
     assert flags.empty
     assert list(flags.columns) == [

@@ -16,9 +16,9 @@ Colour is on a logarithmic scale, because the land value model reads the
 logarithm of gravity accessibility -- the elasticity multiplies it -- so equal
 steps of colour are equal steps of effect on value.
 
-PILOT in config.py beside this script chooses the pilot box or the full study
-area, and ACCESSIBILITY the file read, so the figure draws what s2 wrote. It
-reads that file and does not rebuild it, so run s2 first.
+EXTENT in config.py beside this script chooses the extent drawn (a pilot box
+or the full study area), and ACCESSIBILITY the file read, so the figure draws
+what s2 wrote. It reads that file and does not rebuild it, so run s2 first.
 
 Needs no API key: everything it reads is on disk, apart from the basemap tiles.
 """
@@ -37,7 +37,11 @@ from matplotlib.colors import LogNorm
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
 from landloss.exposure.land.accessibility import GRAVITY_COLUMN, load_centres
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.exposure.land.steps.s2_land_value.s2_build_accessibility import (
     resolve_paths,
@@ -53,8 +57,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # Any directory named fig is gitignored, so the figure is regenerated rather
 # than committed and this script is the record of how it was made.
 FIG_DIR = REPORT_DIR / "exposure" / "land" / "land-value" / "fig"
-FIG_NAME = "town-centres.png"
-PILOT_FIG_NAME = "town-centres-pilot.png"
+FIG_STEM = "town-centres"
 
 BUILDER_PATH = (
     "src/scripts/landloss/exposure/land/steps/s2_land_value/s2_build_accessibility.py"
@@ -72,7 +75,7 @@ CENTRE_EDGE_COLOUR = "#b2182b"
 CENTRE_SIZE_PER_WEIGHT = 900.0
 
 MARKER_SIZE = 0.9
-PILOT_MARKER_SIZE = 3.0
+AOI_MARKER_SIZE = 3.0
 MARKER_ALPHA = 0.85
 
 FIGURE_SIZE_IN = (9.0, 9.0)
@@ -159,11 +162,12 @@ def describe(centres):
         )
 
 
-def main(*, pilot, spine, accessibility):
+def main(*, extent, spine, accessibility):
     """Draw the centres over the gravity accessibility surface.
 
     Args:
-        pilot: Draw the small Wellington pilot box instead of the study area.
+        extent: The extent to draw, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         spine: The address spine path from config.py, passed through so the path
             resolved is the one s2 used.
         accessibility: The accessibility attributes path from config.py, or
@@ -173,7 +177,7 @@ def main(*, pilot, spine, accessibility):
         FileNotFoundError: If s2_build_accessibility.py has not been run over
             this extent, naming the command to run.
     """
-    _, path = resolve_paths(pilot=pilot, spine=spine, out=accessibility)
+    _, path = resolve_paths(extent=extent, spine=spine, out=accessibility)
     if not path.exists():
         msg = (
             f"No accessibility attributes at {path}. Run "
@@ -185,23 +189,18 @@ def main(*, pilot, spine, accessibility):
     centres = load_centres(crs=measured.crs)
     study_areas = get_study_areas(constants.DEFAULT_CRS)
 
-    if pilot:
-        extent = gpd.GeoDataFrame(
-            geometry=SMALL_WLG_PILOT.to_geoseries(constants.DEFAULT_CRS)
-        )
-        boundaries, marker_size, out = None, PILOT_MARKER_SIZE, PILOT_FIG_NAME
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        view = gpd.GeoDataFrame(geometry=aoi.to_geoseries(constants.DEFAULT_CRS))
+        boundaries, marker_size = None, AOI_MARKER_SIZE
     else:
-        extent, boundaries, marker_size, out = (
-            study_areas,
-            study_areas,
-            MARKER_SIZE,
-            FIG_NAME,
-        )
+        view, boundaries, marker_size = study_areas, study_areas, MARKER_SIZE
+    out = f"{FIG_STEM}{extent_suffix(extent)}.png"
 
     fig = draw(
         measured,
         centres,
-        extent,
+        view,
         boundaries,
         marker_size=marker_size,
         title="Centres and the gravity accessibility they give each address",
@@ -217,4 +216,4 @@ def main(*, pilot, spine, accessibility):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, spine=config.SPINE, accessibility=config.ACCESSIBILITY)
+    main(extent=config.EXTENT, spine=config.SPINE, accessibility=config.ACCESSIBILITY)

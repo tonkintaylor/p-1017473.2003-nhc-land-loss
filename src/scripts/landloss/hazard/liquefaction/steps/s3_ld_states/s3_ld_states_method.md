@@ -5,10 +5,10 @@
   `gen_liq_ld_states.py`, and the figure it is checked against is produced by
   `fig_ld_states.py` in the same folder, written to
   `report/hazard/liquefaction/ld-states/fig/`.
-- What a run does is set by `config.py` in the step folder — `PILOT` and
+- What a run does is set by `config.py` in the step folder — `EXTENT` and
   `REALISATION_IDS` — read in each script's `if __name__ == "__main__":` block
   and passed into `main()` as keyword arguments. Neither script takes command
-  line arguments and neither `main()` carries a default. `PILOT` is imported
+  line arguments and neither `main()` carries a default. `EXTENT` is imported
   from step 2's `config.py` rather than repeated, because this step reads the
   rasters step 2 wrote and a second copy of the setting could only ever send it
   looking for a file that is not there. `REALISATION_IDS` is `[0]`: one
@@ -40,7 +40,7 @@
   that means a band boundary is in the wrong place.
 - The states are written to `temp/hazard/liquefaction/` at the path
   `ld_state_path()` returns — `ld-state-r000-pilot.tif` for realisation 0 with
-  `PILOT` set, and without the suffix otherwise, so a pilot run cannot overwrite
+  `EXTENT = "wlg-pilot"`, and without the suffix for `"full"`, so a pilot run cannot overwrite
   a full one. The realisation id is in the file name rather than in a folder, so
   a directory listing shows which events have been drawn. `temp/` is gitignored
   and the directory comes from `TEMP_DIR` in `scripts.landloss.paths`.

@@ -10,11 +10,14 @@ report extraction rather than settings of a run, so they live with the code
 that applies them, in `landloss.exposure.rw.wall_probability`.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Must match the run of landslide steps 3, 4 and 6
-# whose rasters, ground map and candidates gen_wall_lines.py reads, and the
-# run of step 5 whose insured land gen_wall_population.py filters on.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Must match the run of landslide steps 3, 4 and 6 whose rasters, ground map
+# and candidates gen_wall_lines.py reads, and the run of step 5 whose insured
+# land gen_wall_population.py filters on.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to draw a population for. A world is one draw of which
 # candidate lines are walls, seeded on EXPOSURE_BASE_SEED and the world id and

@@ -33,7 +33,8 @@ colour on every map in the set and the four can be compared side by side; only
 the classes present in an authority reach its legend.
 
 Reads the valued addresses written by s4_estimate_land_value.py and does not
-rebuild them, so run that first. Pass --pilot to draw the small Wellington box.
+rebuild them, so run that first. Pass --extent to choose the extent drawn; it
+defaults to EXTENT in the config.py beside this script.
 
 Needs no API key: everything it reads is already on disk, apart from the basemap
 tiles, which are what makes a zoomed-in run take a minute or two.
@@ -55,7 +56,14 @@ from shapely.geometry import box
 
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    EXTENTS,
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+    is_full_extent,
+)
+from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.paths import REPO_ROOT, REPORT_DIR, TEMP_DIR
 
 # Suburb and place names are macronised, which the default cp1252 Windows console
@@ -67,12 +75,12 @@ if hasattr(sys.stdout, "reconfigure"):
 # Any directory named fig is gitignored, so the figure is regenerated rather
 # than committed and this script is the record of how it was made.
 FIG_DIR = REPORT_DIR / "exposure" / "land" / "land-value" / "fig"
-FIG_NAME = "land-value-rate.png"
-PILOT_FIG_NAME = "land-value-rate-pilot.png"
+# Both names carry extent_suffix(extent), so figures and inputs over different
+# extents sit side by side.
+FIG_STEM = "land-value-rate"
 
 WORK_DIR = TEMP_DIR / "exposure"
-VALUED_NAME = "land-value-by-address.geoparquet"
-PILOT_VALUED_NAME = "land-value-by-address-pilot.geoparquet"
+VALUED_STEM = "land-value-by-address"
 
 RATE_COLUMN = "land_rate_nzd_per_m2"
 
@@ -91,7 +99,7 @@ BOUNDARY_COLOUR = "#333333"
 # fills in solid, so they are drawn small and slightly transparent; the pilot
 # holds a few hundred, where the same marker would be invisible.
 MARKER_SIZE = 1.2
-PILOT_MARKER_SIZE = 4.0
+AOI_MARKER_SIZE = 4.0
 # One territorial authority fills the page at roughly a tenth of the width of the
 # whole study area, so its addresses carry a marker between the two.
 TA_MARKER_SIZE = 2.0
@@ -333,9 +341,13 @@ def draw_one_ta(valued, study_areas, name, out=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--pilot",
-        action="store_true",
-        help="Draw the small Wellington pilot box instead of the full study area.",
+        "--extent",
+        choices=["full", *EXTENTS],
+        default=None,
+        help=(
+            "The extent to draw. Defaults to EXTENT in the config.py beside this "
+            f"script ({config.EXTENT!r}), or to the full study area under --ta."
+        ),
     )
     parser.add_argument(
         "--valued",
@@ -343,8 +355,8 @@ def main():
         default=None,
         help=(
             f"The valued addresses from s4_estimate_land_value.py. Defaults to "
-            f"{WORK_DIR / VALUED_NAME}, or to {WORK_DIR / PILOT_VALUED_NAME} "
-            "under --pilot."
+            f"{WORK_DIR / VALUED_STEM}<suffix>.geoparquet, where <suffix> is "
+            "extent_suffix(extent)."
         ),
     )
     parser.add_argument(
@@ -361,20 +373,21 @@ def main():
         type=Path,
         default=None,
         help=(
-            f"Where to write the figure. Defaults to {FIG_DIR / FIG_NAME}, or to "
-            f"{FIG_DIR / PILOT_FIG_NAME} under --pilot. Ignored when --ta names "
-            "more than one authority, which writes one file per authority."
+            f"Where to write the figure. Defaults to {FIG_DIR / FIG_STEM}"
+            "<suffix>.png, where <suffix> is extent_suffix(extent). Ignored when "
+            "--ta names more than one authority, which writes one file per "
+            "authority."
         ),
     )
     args = parser.parse_args()
 
-    if args.pilot and args.ta:
-        parser.error("--pilot and --ta describe different extents; pass one or other.")
+    if args.ta and args.extent not in (None, "full"):
+        parser.error("--extent and --ta describe different extents; pass one or other.")
 
-    valued_path = args.valued or WORK_DIR / (
-        PILOT_VALUED_NAME if args.pilot else VALUED_NAME
-    )
-    out = args.out or FIG_DIR / (PILOT_FIG_NAME if args.pilot else FIG_NAME)
+    extent = "full" if args.ta else (args.extent or config.EXTENT)
+    suffix = extent_suffix(extent)
+    valued_path = args.valued or WORK_DIR / f"{VALUED_STEM}{suffix}.geoparquet"
+    out = args.out or FIG_DIR / f"{FIG_STEM}{suffix}.png"
 
     print(RULE)
     print(f"Repo root : {REPO_ROOT}")
@@ -390,7 +403,11 @@ def main():
             "  uv run --frozen python "
             "src/scripts/landloss/exposure/land/steps/s2_land_value/"
             "s4_estimate_land_value.py"
-            + ("\n  with PILOT = True in the config.py beside it" if args.pilot else "")
+            + (
+                ""
+                if is_full_extent(extent)
+                else f'\n  with EXTENT = "{extent}" in the config.py beside it'
+            )
         )
         return 1
 
@@ -426,19 +443,18 @@ def main():
             print(f"Wrote {path}")
         return 0
 
-    if args.pilot:
-        extent = SMALL_WLG_PILOT.to_geoseries(constants.DEFAULT_CRS).to_frame(
-            "geometry"
-        )
-        extent = extent.set_geometry("geometry")
-        marker_size = PILOT_MARKER_SIZE
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        view = aoi.to_geoseries(constants.DEFAULT_CRS).to_frame("geometry")
+        view = view.set_geometry("geometry")
+        marker_size = AOI_MARKER_SIZE
         boundaries = None
     else:
-        extent = study_areas
+        view = study_areas
         marker_size = MARKER_SIZE
         boundaries = study_areas
 
-    fig, classes = plot_rates(valued, extent, boundaries, marker_size=marker_size)
+    fig, classes = plot_rates(valued, view, boundaries, marker_size=marker_size)
     describe(valued, classes)
 
     out.parent.mkdir(parents=True, exist_ok=True)

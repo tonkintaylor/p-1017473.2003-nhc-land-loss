@@ -6,11 +6,11 @@
   be in. It is run by `gen_urban_slope_polygons.py`, and the figure it is
   checked against is produced by `fig_urban_slope_polygons.py` in the same
   folder, written to `report/hazard/landslide/urban-slope-polygons/fig/`.
-- What a run does is set by `config.py` in the step folder — `PILOT`,
+- What a run does is set by `config.py` in the step folder — `EXTENT`,
   `USE_CACHED_LAYERS` and `ROAD_HALF_WIDTH_M` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments. Neither script takes command line arguments and neither `main()`
-  carries a default. `PILOT` is `True`, so runs go over `SMALL_WLG_PILOT`; the
+  carries a default. `EXTENT` is `"wlg-pilot"`, so runs go over `SMALL_WLG_PILOT`; the
   full extent is the bounding box of the four territorial authorities,
   resolved by step 3's `gen_multiscale_slope.resolve_extent()`.
 - The inputs are read in `gen_urban_slope_polygons.main()`: the candidates
@@ -122,7 +122,7 @@
   samples PGV.
 - The output is written under `temp/hazard/landslide/` to the path
   `urban_slope_polygons_path()` returns, `urban-slope-polygons-pilot.geoparquet`
-  when `PILOT` is set and `urban-slope-polygons.geoparquet` otherwise, with
+  when `EXTENT` is `"wlg-pilot"` and `urban-slope-polygons.geoparquet` when it is `"full"`, with
   the columns in the order `order_columns()` sets: `slope_id`, `candidate_id`,
   `piece`, the candidate columns, then the wall (`wall_line_id`,
   `wall_edge_length_m`, `wall_line_ids`, `wall_position`,

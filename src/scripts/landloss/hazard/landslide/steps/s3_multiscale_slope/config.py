@@ -7,11 +7,13 @@ established by reading this file and the git history of it rather than by
 remembering which flags were typed.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. The pilot fetch at 1 m takes a few minutes; the full
-# study area is 59 by 54 km and cannot be carried at 1 m in memory, which the
-# implementation plan records.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a name
+# from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" is the small Wellington
+# pilot box). The pilot fetch at 1 m takes a few minutes; the full study area is
+# 59 by 54 km and cannot be carried at 1 m in memory, which the implementation
+# plan records.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # The cell sizes to build a DEM, a slope and an aspect at, in metres. The finest
 # is fetched from LINZ and every other one is block-averaged from it, so each

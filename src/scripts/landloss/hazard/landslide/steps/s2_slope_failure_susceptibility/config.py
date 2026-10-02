@@ -11,16 +11,18 @@ here, which is what keeps the figure drawing the rating the generator wrote.
 
 from landloss.hazard.landslide import susceptibility
 
-# Whether to run over the Johnsonville and Newlands pilot rather than the whole
-# extent the Wellington City earthworks records cover. Leave this True while the
-# model is being changed: the pilot is 4 by 4 km against 11 by 21 km, and the
+# The extent to run over: "full" for the whole extent the Wellington City
+# earthworks records cover, or a name from landloss.io.area_of_interest.EXTENTS.
+# Leave this on "wlg-earthworks-pilot" (the Johnsonville and Newlands box) while
+# the model is being changed: the pilot is 4 by 4 km against 11 by 21 km, and the
 # fine elevation model is fetched over the whole extent either way.
 #
-# Note that this is not `SMALL_WLG_PILOT`, which the rest of the project
-# develops against. That box sits over Mt Victoria and Hataitai and holds no
-# earthworks polygons at all, so it cannot exercise the modification factor --
+# Note that this is not "wlg-pilot" (`SMALL_WLG_PILOT`), which the rest of the
+# project develops against. That box sits over Mt Victoria and Hataitai and holds
+# no earthworks polygons at all, so it cannot exercise the modification factor --
 # which is half of what this step scores.
-PILOT = True
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-earthworks-pilot"
 
 # The cell size the rating is reported on, in metres. Slope is a property of the
 # length it is measured over, and Kingsbury's class boundaries were calibrated

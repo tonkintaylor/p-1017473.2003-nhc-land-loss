@@ -130,6 +130,12 @@ lead, follows from the face polygons (faces plan, phase 3):
       `sr2013-058-F06`).
 - [ ] The evacuated share of face area by Kingsbury zone, after absorption,
       against the anchors read as shares of area (anchoring plan, question 1).
+- [ ] A table for the report of the realised failure rate of banks against
+      walls, by wall state, wall type, height band, condition and Kingsbury
+      zone, with an unsupported cut of the same height beside each wall
+      class (the lead, 2026-10-02; what to set it against is in
+      `landslide-notes.md`, "Failure rates of banks against walls, for the
+      report").
 
 ## Potential future improvements
 

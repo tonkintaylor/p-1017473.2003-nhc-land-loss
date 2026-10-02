@@ -63,6 +63,7 @@ from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LAND_ID_COLUMN
 from landloss.exposure.land.extent import LAND_RATE_INCL_GST_COLUMN
 from landloss.hazard.realisation import realisation_seed
+from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.liquefaction.costs import (
     COST_YEAR,
     COSTS_INCLUDE_NON_CLAIMANTS,
@@ -112,9 +113,9 @@ OFF_GRID_STATE_NAME = "N/A"
 RULE = "-" * 72
 
 
-def liq_land_damage_path(realisation_id, *, pilot):
+def liq_land_damage_path(realisation_id, *, extent):
     """Return the file a run writes one realisation's land damage to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.parquet"
 
 
@@ -170,7 +171,7 @@ def describe_damage(damage, properties, percentile, *, apply_drop_out):
 
 def main(
     *,
-    pilot,
+    extent,
     realisation_ids,
     cost_percentile,
     drop_out_rates,
@@ -188,13 +189,13 @@ def main(
             "Drop-out off: the packaged costs already average over non-claimants "
             "at $0, so drawing claims against them would count it twice (T-65)."
         )
-    insured = gpd.read_parquet(insured_land_path(pilot=pilot))
+    insured = gpd.read_parquet(insured_land_path(extent=extent))
     points = insured.geometry.representative_point()
     costs = load_ld_costs()
     names = costs["state_name"]
 
     for realisation_id in realisation_ids:
-        raster = ld_state_path(realisation_id, pilot=pilot)
+        raster = ld_state_path(realisation_id, extent=extent)
         print(f"Sampling {raster} at {len(insured):,} properties ...", flush=True)
         sampled = sample_at_points(raster, points).to_numpy()
         on_grid = ~np.isnan(sampled)
@@ -260,7 +261,7 @@ def main(
             damage, len(insured), cost_percentile, apply_drop_out=apply_drop_out
         )
 
-        out_path = liq_land_damage_path(realisation_id, pilot=pilot)
+        out_path = liq_land_damage_path(realisation_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         damage.to_parquet(out_path)
         print(f"Wrote {len(damage):,} rows to {out_path}")
@@ -268,7 +269,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
         cost_percentile=config.COST_PERCENTILE,
         drop_out_rates=config.DROP_OUT_RATES,

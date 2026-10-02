@@ -11,10 +11,13 @@ stream and the world id (`landloss.hazard.realisation.realisation_seed`), so a
 pair of ids reproduces exactly and no step carries a seed of its own.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Step 8, shaking step 5, step 1 and the wall
-# population must have been run over the same extent.
-PILOT = True
+# The extent to run over: "wlg-pilot" for the small Wellington pilot box,
+# "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
+# the four territorial authorities.
+# Step 8, shaking step 5, step 1 and the wall population must have been run
+# over the same extent.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to draw for. A world is one draw of the wall population
 # (`exposure/rw/steps/s6_wall_population/gen_wall_population.py`), and step 8's

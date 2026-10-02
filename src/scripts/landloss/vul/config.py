@@ -7,9 +7,11 @@ Everything else a step reads, such as the cost percentile, still comes from
 that step's own `config.py`.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities.
-PILOT = True
+# The extent to run over: "wlg-pilot" (the small Wellington pilot box),
+# "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
+# territorial authorities).
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to run. A world is one draw of the wall population;
 # each must already have been run through the exposure module and the hazard

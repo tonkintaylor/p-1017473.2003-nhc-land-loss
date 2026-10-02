@@ -9,13 +9,13 @@
   much ground was taken.
 - Crossings come from exposure step 7's
   `temp/exposure/crossing-population-r<NNN>[-pilot].geoparquet`, read through
-  `crossing_population_path(realisation_id, pilot=...)`. The crossing
+  `crossing_population_path(realisation_id, extent=...)`. The crossing
   population is drawn per earthquake, not per world: which structure sits at a
   crossing does not depend on which walls exist, so one population is read
   per earthquake and flagged against every world's landslides.
 - Landslides come from the combined realisation landslide step 9 writes,
   `temp/hazard/landslide/landslide-realisation-w<NNN>-r<NNN>[-pilot].geoparquet`,
-  read through `combined_realisation_path(world_id, realisation_id, pilot=...)`:
+  read through `combined_realisation_path(world_id, realisation_id, extent=...)`:
   the large model's polygons and the urban slope model's together, treated
   alike here.
 - Only insured crossings arrive here: exposure step 7 keeps a crossing only
@@ -41,7 +41,7 @@
 - A crossing population written before `crossing_id` existed is refused with a
   message to rerun exposure steps 5 and 7.
 - Output is `temp/vul/crossing-landslide-damage-w<NNN>-r<NNN>[-pilot].parquet`,
-  built by `crossing_landslide_damage_path(world_id, realisation_id, pilot=...)`,
+  built by `crossing_landslide_damage_path(world_id, realisation_id, extent=...)`,
   with columns `realisation_id`, `world_id`, `crossing_id`, `claim_id`,
   `is_evacuated` and `is_inundated`.
 - The step is exercised end to end on synthetic inputs by

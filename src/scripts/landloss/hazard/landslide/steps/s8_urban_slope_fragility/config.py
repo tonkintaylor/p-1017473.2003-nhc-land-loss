@@ -19,12 +19,14 @@ so a second copy of the setting would only ever send it to look for a file step
 
 from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Must match the run of landslide step 7 whose
-# polygons this step reads, the run of exposure step 6 whose drawn walls it
-# joins, and the run of shaking steps 2 and 3 whose grids the PGV/PGA ratio is
-# read from.
-PILOT = True
+# The extent to run over: "wlg-pilot" for the small Wellington pilot box,
+# "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
+# the four territorial authorities.
+# Must match the run of landslide step 7 whose polygons this step reads, the
+# run of exposure step 6 whose drawn walls it joins, and the run of shaking
+# steps 2 and 3 whose grids the PGV/PGA ratio is read from.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to build a model file for. One file per world, joining
 # the polygons to the walls that world drew (exposure step 6's WORLD_IDS).

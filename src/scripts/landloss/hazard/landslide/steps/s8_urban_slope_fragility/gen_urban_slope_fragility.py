@@ -6,7 +6,7 @@ Run landslide step 7 (the polygons), exposure retaining wall step 6 (the walls
 each world drew) and shaking steps 2 and 3 (the site class grid and the PGV
 grid) first, over the same extent.
 
-The run settings -- the pilot box or the full study area, which worlds, the
+The run settings -- the extent, which worlds, the
 rate setting and the return period of the demand -- come from ``config.py``
 beside this script rather than from the command line.
 
@@ -44,7 +44,8 @@ the earthquake's PGV at the representative point and draws against the row's
 lognormal. Nothing is drawn here.
 
 Writes one GeoParquet per world, sorted by ``slope_id`` with a fresh index,
-under ``temp/hazard/landslide/``, with a ``-pilot`` suffix for a pilot run.
+under ``temp/hazard/landslide/``, with the extent's ``extent_suffix``
+(``-pilot`` for the small Wellington pilot).
 """
 
 import sys
@@ -58,6 +59,7 @@ from landloss.domain.loss_contract import RW_ID_COLUMN
 from landloss.hazard.landslide import susceptibility
 from landloss.hazard.landslide.urban import fragility, geometry
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.ts1170 import get_ts1170_pga
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     drawn_walls_path,
@@ -96,17 +98,18 @@ MODEL_COLUMNS = (
 RULE = "-" * 72
 
 
-def urban_slope_model_path(world_id, *, pilot):
+def urban_slope_model_path(world_id, *, extent):
     """Return the file a run writes one world's model to.
 
     Args:
         world_id: The exposure world the model was built for.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-w{world_id:03d}{suffix}.geoparquet"
 
 
@@ -121,9 +124,9 @@ def representative_points(polygons):
     return gpd.GeoSeries(polygons[geometry.REP_POINT_COLUMN], crs=polygons.crs)
 
 
-def sample_site_class(points, *, pilot):
+def sample_site_class(points, *, extent):
     """Read the TS1170.5 site class at each point, NaN off the grid."""
-    return sample_at_points(site_class_path(pilot=pilot), points)
+    return sample_at_points(site_class_path(extent=extent), points)
 
 
 def add_world_id(model, world_id):
@@ -206,7 +209,7 @@ def describe_flatland_walls(polygons, walls):
     )
 
 
-def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, pilot):
+def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
     """Assemble one world's model from the polygons and that world's walls.
 
     Args:
@@ -216,15 +219,15 @@ def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, pilot):
         rate_setting: ``low``, ``medium`` or ``high``.
         pgv: Shaking step 3's PGV grid.
         pga: The unscaled TS1170.5 PGA on the same grid.
-        pilot: Whether the run is over the pilot box; locates the site class
-            grid.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The model frame of contract section 3.8 less ``world_id``.
     """
     describe_flatland_walls(polygons, walls)
     points = representative_points(polygons)
-    site_class = sample_site_class(points, pilot=pilot)
+    site_class = sample_site_class(points, extent=extent)
     ratio = fragility.pgv_pga_ratio_m_s_per_g(pgv, pga, points)
     describe_demand(ratio, site_class)
     return fragility.assign_fragility(
@@ -237,12 +240,12 @@ def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, pilot):
     )
 
 
-def main(*, pilot, world_ids, urban_rate, return_period_yr):
+def main(*, extent, world_ids, urban_rate, return_period_yr):
     """Write a fragility per polygon for each exposure world.
 
     Args:
-        pilot: Whether to run over ``SMALL_WLG_PILOT`` rather than the four
-            territorial authorities.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         world_ids: Which exposure worlds to build a model file for.
         urban_rate: The rate setting, one of ``URBAN_RATE_FACTORS``' keys.
         return_period_yr: The return period of the TS1170.5 demand the
@@ -252,7 +255,7 @@ def main(*, pilot, world_ids, urban_rate, return_period_yr):
     print(RULE)
     print(f"Rate setting {urban_rate!r}, factor {factor:.4f}")
 
-    polygons_path = urban_slope_polygons_path(pilot=pilot)
+    polygons_path = urban_slope_polygons_path(extent=extent)
     print(f"Reading the polygons from {polygons_path} ...")
     polygons = gpd.read_parquet(polygons_path)
     print(f"  {len(polygons):,} polygons")
@@ -260,16 +263,18 @@ def main(*, pilot, world_ids, urban_rate, return_period_yr):
 
     # The ratio is realisation-free: step 3's PGV over the unscaled PGA, both
     # on the site class grid, so it is built once for every world.
-    site_class = read_site_class(pilot=pilot)
+    site_class = read_site_class(extent=extent)
     print(f"Reading the TS1170.5 PGA grids at {return_period_yr} years ...")
     pga = demand_on_site_class_grid(
         get_ts1170_pga, site_class, return_period_yr=return_period_yr
     )
-    pgv = read_grid(output_path("pgv", return_period_yr=return_period_yr, pilot=pilot))
+    pgv = read_grid(
+        output_path("pgv", return_period_yr=return_period_yr, extent=extent)
+    )
 
     for world_id in world_ids:
         print(RULE)
-        walls_path = drawn_walls_path(world_id, pilot=pilot)
+        walls_path = drawn_walls_path(world_id, extent=extent)
         print(f"World {world_id}: reading the drawn walls from {walls_path} ...")
         walls = gpd.read_parquet(walls_path)
         insured = int(walls[RW_ID_COLUMN].notna().sum())
@@ -282,12 +287,12 @@ def main(*, pilot, world_ids, urban_rate, return_period_yr):
             rate_setting=urban_rate,
             pgv=pgv,
             pga=pga,
-            pilot=pilot,
+            extent=extent,
         )
         model = add_world_id(model, world_id)
         describe_model(model, rate_setting=urban_rate)
 
-        out_path = urban_slope_model_path(world_id, pilot=pilot)
+        out_path = urban_slope_model_path(world_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         model.to_parquet(out_path)
         print(f"Wrote {len(model):,} polygons to {out_path}")
@@ -303,7 +308,7 @@ def main(*, pilot, world_ids, urban_rate, return_period_yr):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         urban_rate=config.URBAN_RATE,
         return_period_yr=config.RETURN_PERIOD_YR,

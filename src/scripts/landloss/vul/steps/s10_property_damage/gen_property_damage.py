@@ -60,6 +60,7 @@ from landloss.domain.loss_contract import (
     RW_ID_COLUMN,
 )
 from landloss.exposure.land.extent import DWELLING_COUNT_COLUMN
+from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.loss_input import (
     LOSS_TABLES,
     WORLD_ID_COLUMN,
@@ -105,7 +106,7 @@ RULE = "-" * 72
 
 
 def world_loss_input_path(
-    table: str, world_id: int, realisation_id: int, *, pilot: bool
+    table: str, world_id: int, realisation_id: int, *, extent: str
 ) -> Path:
     """Return the file a run writes one world and earthquake's contract table to.
 
@@ -117,8 +118,9 @@ def world_loss_input_path(
         table: The contract table, one of ``LOSS_TABLES``.
         world_id: The exposure world (one draw of the wall population) the file holds.
         realisation_id: The earthquake realisation the file holds.
-        pilot: Whether the run covers the pilot area only, which adds a
-            ``-pilot`` suffix to the file name.
+        extent: The extent the run covers, a name from
+            landloss.io.area_of_interest.EXTENTS or "full". It sets the
+            file name suffix through ``extent_suffix``.
 
     Returns:
         The geoparquet path under the vul work directory.
@@ -129,14 +131,14 @@ def world_loss_input_path(
     if table not in LOSS_TABLES:
         msg = f"unknown loss table {table!r}, expected one of {LOSS_TABLES}"
         raise ValueError(msg)
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return (
         WORK_DIR / f"{OUT_STEM}-{table}-w{world_id:03d}-r{realisation_id:03d}"
         f"{suffix}.geoparquet"
     )
 
 
-def loss_input_path(table: str, realisation_id: int, *, pilot: bool) -> Path:
+def loss_input_path(table: str, realisation_id: int, *, extent: str) -> Path:
     """Return world 0's contract table for one earthquake (deprecated).
 
     Deprecated: it exists only for the loss module's five callers
@@ -150,15 +152,16 @@ def loss_input_path(table: str, realisation_id: int, *, pilot: bool) -> Path:
     Args:
         table: The contract table, one of ``LOSS_TABLES``.
         realisation_id: The earthquake realisation the file holds.
-        pilot: Whether the run covers the pilot area only.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
-        ``world_loss_input_path(table, 0, realisation_id, pilot=pilot)``.
+        ``world_loss_input_path(table, 0, realisation_id, extent=extent)``.
 
     Raises:
         ValueError: If ``table`` is not one of the four contract tables.
     """
-    return world_loss_input_path(table, 0, realisation_id, pilot=pilot)
+    return world_loss_input_path(table, 0, realisation_id, extent=extent)
 
 
 def in_default_crs(table: gpd.GeoDataFrame, name: str) -> gpd.GeoDataFrame:
@@ -246,46 +249,47 @@ def describe_overlap(land, rw):
     )
 
 
-def main(*, pilot, world_ids, realisation_ids):
+def main(*, extent, world_ids, realisation_ids):
     """Write the four contract tables, per world and earthquake.
 
     Args:
-        pilot: Whether to run over the pilot area only.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: The exposure worlds to run, each one draw of the wall population.
         realisation_ids: The earthquake realisations to run in every world.
     """
-    insured = gpd.read_parquet(insured_land_path(pilot=pilot))
+    insured = gpd.read_parquet(insured_land_path(extent=extent))
 
     for world_id in world_ids:
-        walls = gpd.read_parquet(wall_population_path(world_id, pilot=pilot))
+        walls = gpd.read_parquet(wall_population_path(world_id, extent=extent))
         for realisation_id in realisation_ids:
             print(RULE)
             print(f"Assembling world {world_id}, realisation {realisation_id} ...")
             land = build_land_table(
                 insured,
-                pd.read_parquet(liq_land_damage_path(realisation_id, pilot=pilot)),
+                pd.read_parquet(liq_land_damage_path(realisation_id, extent=extent)),
                 pd.read_parquet(
-                    landslide_land_damage_path(world_id, realisation_id, pilot=pilot)
+                    landslide_land_damage_path(world_id, realisation_id, extent=extent)
                 ),
             )
             states = pd.read_parquet(
-                wall_damage_state_path(world_id, realisation_id, pilot=pilot),
+                wall_damage_state_path(world_id, realisation_id, extent=extent),
                 columns=[RW_ID_COLUMN, DAMAGE_STATE_COLUMN],
             )
             rw = build_rw_table(
                 walls,
                 states,
                 pd.read_parquet(
-                    wall_landslide_damage_path(world_id, realisation_id, pilot=pilot)
+                    wall_landslide_damage_path(world_id, realisation_id, extent=extent)
                 ),
             )
             culverts, bridges = build_crossing_tables(
                 gpd.read_parquet(
-                    structure_damage_state_path(realisation_id, pilot=pilot)
+                    structure_damage_state_path(realisation_id, extent=extent)
                 ),
                 pd.read_parquet(
                     crossing_landslide_damage_path(
-                        world_id, realisation_id, pilot=pilot
+                        world_id, realisation_id, extent=extent
                     )
                 ),
             )
@@ -324,7 +328,7 @@ def main(*, pilot, world_ids, realisation_ids):
                 table.insert(0, REALISATION_ID_COLUMN, realisation_id)
                 table.insert(1, WORLD_ID_COLUMN, world_id)
                 out_path = world_loss_input_path(
-                    name, world_id, realisation_id, pilot=pilot
+                    name, world_id, realisation_id, extent=extent
                 )
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 table.to_parquet(out_path)
@@ -333,7 +337,7 @@ def main(*, pilot, world_ids, realisation_ids):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         realisation_ids=config.REALISATION_IDS,
     )

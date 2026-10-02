@@ -85,7 +85,9 @@ def small_extent(monkeypatch):
         ORIGIN_EASTING + SIDE_M,
         ORIGIN_NORTHING,
     )
-    monkeypatch.setattr(slope_step, "resolve_extent", lambda *, pilot: (bbox, "square"))
+    monkeypatch.setattr(
+        slope_step, "resolve_extent", lambda *, extent: (bbox, "square")
+    )
     return bbox
 
 
@@ -108,42 +110,42 @@ def fake_fetch(monkeypatch):
 
 
 def test_the_path_wrappers_name_the_layer_the_size_and_the_extent():
-    assert slope_step.dem_path(1, pilot=True).name == "dem-1m-pilot.tif"
-    assert slope_step.slope_path(30, pilot=False).name == "slope-30m.tif"
-    assert slope_step.aspect_path(3, pilot=True).name == "aspect-3m-pilot.tif"
-    assert slope_step.aspect_path(10, pilot=True).parent == slope_step.WORK_DIR
+    assert slope_step.dem_path(1, extent="wlg-pilot").name == "dem-1m-pilot.tif"
+    assert slope_step.slope_path(30, extent="full").name == "slope-30m.tif"
+    assert slope_step.aspect_path(3, extent="wlg-pilot").name == "aspect-3m-pilot.tif"
+    assert slope_step.aspect_path(10, extent="wlg-pilot").parent == slope_step.WORK_DIR
 
 
 def test_the_terrain_paths_carry_the_contract_file_names():
     assert (
-        terrain_step.terrain_path("face-height-5m", pilot=True).name
+        terrain_step.terrain_path("face-height-5m", extent="wlg-pilot").name
         == "face-height-5m-pilot.tif"
     )
     assert (
-        terrain_step.terrain_path("cut-fill-residual-100m", pilot=False).name
+        terrain_step.terrain_path("cut-fill-residual-100m", extent="full").name
         == "cut-fill-residual-100m.tif"
     )
     assert (
-        terrain_step.terrain_path("profile-curvature", pilot=True).name
+        terrain_step.terrain_path("profile-curvature", extent="wlg-pilot").name
         == "profile-curvature-3m-pilot.tif"
     )
     assert (
-        terrain_step.terrain_path("topographic-position-100m", pilot=True).name
+        terrain_step.terrain_path("topographic-position-100m", extent="wlg-pilot").name
         == "topographic-position-100m-pilot.tif"
     )
     assert (
-        terrain_step.terrain_path("vegetation-height", pilot=True).name
+        terrain_step.terrain_path("vegetation-height", extent="wlg-pilot").name
         == "vegetation-height-pilot.tif"
     )
     assert (
-        terrain_step.terrain_path("vegetation-height", pilot=True).parent
+        terrain_step.terrain_path("vegetation-height", extent="wlg-pilot").parent
         == terrain_step.TERRAIN_DIR
     )
 
 
 def test_an_unknown_terrain_layer_is_refused():
     with pytest.raises(KeyError, match="not a terrain layer"):
-        terrain_step.terrain_path("slope-1m", pilot=True)
+        terrain_step.terrain_path("slope-1m", extent="wlg-pilot")
 
 
 def test_every_contract_layer_has_a_band_name():
@@ -166,21 +168,24 @@ def test_every_contract_layer_has_a_band_name():
 def test_the_slope_step_writes_a_dem_a_slope_and_an_aspect_per_cell_size(
     work_dir, small_extent, fake_fetch
 ):
-    slope_step.main(pilot=True, resolutions_m=RESOLUTIONS_M, use_cached_dem=True)
+    slope_step.main(
+        extent="wlg-pilot", resolutions_m=RESOLUTIONS_M, use_cached_dem=True
+    )
 
     for resolution in RESOLUTIONS_M:
-        dem = read(slope_step.dem_path(resolution, pilot=True))
-        slope = read(slope_step.slope_path(resolution, pilot=True))
-        aspect = read(slope_step.aspect_path(resolution, pilot=True))
+        dem = read(slope_step.dem_path(resolution, extent="wlg-pilot"))
+        slope = read(slope_step.slope_path(resolution, extent="wlg-pilot"))
+        aspect = read(slope_step.aspect_path(resolution, extent="wlg-pilot"))
 
         cells = int(SIDE_M / resolution)
         assert dem.shape == slope.shape == aspect.shape == (cells, cells)
         assert dem.rio.bounds() == pytest.approx(small_extent)
         assert (
-            band_name(slope_step.slope_path(resolution, pilot=True)) == "slope_degrees"
+            band_name(slope_step.slope_path(resolution, extent="wlg-pilot"))
+            == "slope_degrees"
         )
         assert (
-            band_name(slope_step.aspect_path(resolution, pilot=True))
+            band_name(slope_step.aspect_path(resolution, extent="wlg-pilot"))
             == "downhill_azimuth_degrees"
         )
         # The margin held the kernel's border, so nothing inside the extent is NaN.
@@ -192,12 +197,12 @@ def test_the_slope_step_writes_a_dem_a_slope_and_an_aspect_per_cell_size(
 def test_the_aspect_points_downhill_and_the_grids_nest(
     work_dir, small_extent, fake_fetch
 ):
-    slope_step.main(pilot=True, resolutions_m=(1, 10), use_cached_dem=True)
+    slope_step.main(extent="wlg-pilot", resolutions_m=(1, 10), use_cached_dem=True)
 
-    aspect_1m = read(slope_step.aspect_path(1, pilot=True)).values
-    aspect_10m = read(slope_step.aspect_path(10, pilot=True)).values
-    dem_1m = read(slope_step.dem_path(1, pilot=True))
-    dem_10m = read(slope_step.dem_path(10, pilot=True))
+    aspect_1m = read(slope_step.aspect_path(1, extent="wlg-pilot")).values
+    aspect_10m = read(slope_step.aspect_path(10, extent="wlg-pilot")).values
+    dem_1m = read(slope_step.dem_path(1, extent="wlg-pilot"))
+    dem_10m = read(slope_step.dem_path(10, extent="wlg-pilot"))
 
     # Away from the knoll the ground rises east, so it runs downhill west.
     assert aspect_1m[10, 10] == pytest.approx(270.0, abs=1.0)
@@ -218,7 +223,7 @@ def step3_dems(work_dir):
     dem_1m = make_dem(hillside(cells, cells, 1.0), 1.0)
     for resolution in RESOLUTIONS_M:
         dem = dem_1m if resolution == 1 else block_mean(dem_1m, resolution)
-        write_raster(dem, slope_step.dem_path(resolution, pilot=True))
+        write_raster(dem, slope_step.dem_path(resolution, extent="wlg-pilot"))
     return dem_1m
 
 
@@ -245,7 +250,7 @@ def fake_dsm(work_dir, monkeypatch, step3_dems):
 
 def run_terrain_step():
     terrain_step.main(
-        pilot=True,
+        extent="wlg-pilot",
         use_cached_dsm=True,
         face_height_windows_m=(5.0, 10.0),
         residual_base_resolutions_m=(30, 100),
@@ -259,7 +264,7 @@ def test_the_terrain_step_writes_every_layer_with_its_band_name(fake_dsm):
     run_terrain_step()
 
     for key, band in terrain_step.TERRAIN_LAYERS.items():
-        path = terrain_step.terrain_path(key, pilot=True)
+        path = terrain_step.terrain_path(key, extent="wlg-pilot")
         assert path.exists(), key
         assert band_name(path) == band, key
 
@@ -269,7 +274,9 @@ def test_the_layers_sit_on_the_grids_the_contract_gives_them(fake_dsm):
     run_terrain_step()
 
     def cell_size_of(key):
-        with rasterio.open(terrain_step.terrain_path(key, pilot=True)) as source:
+        with rasterio.open(
+            terrain_step.terrain_path(key, extent="wlg-pilot")
+        ) as source:
             return source.res[0]
 
     assert cell_size_of("face-height-5m") == pytest.approx(1.0)
@@ -284,7 +291,9 @@ def test_the_layers_sit_on_the_grids_the_contract_gives_them(fake_dsm):
 def test_the_vegetation_height_is_nan_where_no_surface_model_covers(fake_dsm):
     run_terrain_step()
 
-    height = read(terrain_step.terrain_path("vegetation-height", pilot=True)).values
+    height = read(
+        terrain_step.terrain_path("vegetation-height", extent="wlg-pilot")
+    ).values
 
     assert height[:, :150] == pytest.approx(2.0, abs=1e-3)
     assert np.isnan(height[:, 150:]).all()
@@ -304,8 +313,10 @@ def test_the_surface_model_is_fetched_over_the_1m_dem_extent(fake_dsm, step3_dem
 def test_the_face_height_reads_the_knoll_taller_in_the_wider_window(fake_dsm):
     run_terrain_step()
 
-    narrow = read(terrain_step.terrain_path("face-height-5m", pilot=True)).values
-    wide = read(terrain_step.terrain_path("face-height-10m", pilot=True)).values
+    narrow = read(
+        terrain_step.terrain_path("face-height-5m", extent="wlg-pilot")
+    ).values
+    wide = read(terrain_step.terrain_path("face-height-10m", extent="wlg-pilot")).values
 
     inside = np.isfinite(narrow) & np.isfinite(wide)
     assert (wide[inside] >= narrow[inside] - 1e-6).all()

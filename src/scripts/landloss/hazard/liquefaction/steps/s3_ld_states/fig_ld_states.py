@@ -192,19 +192,18 @@ def build_figure(probabilities, states, *, realisation_id):
     return fig
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Draw each realisation the state step wrote for this extent.
 
     Args:
-        pilot: Whether to draw the pilot box realisations rather than the full
-            study area ones. Must match the setting the draw was run with, which
-            is why both read it from the same ``config.py``.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: The modelled earthquakes to draw, one figure each.
     """
-    probabilities = read_probabilities(pilot=pilot)
+    probabilities = read_probabilities(extent=extent)
 
     for realisation_id in realisation_ids:
-        raster_path = ld_state_path(realisation_id, pilot=pilot)
+        raster_path = ld_state_path(realisation_id, extent=extent)
         print(f"Reading the states from {raster_path} ...")
         with rioxarray.open_rasterio(raster_path, masked=True) as opened:
             states = opened.squeeze(drop=True).load()
@@ -220,4 +219,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

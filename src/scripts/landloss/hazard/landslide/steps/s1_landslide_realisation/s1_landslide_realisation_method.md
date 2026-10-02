@@ -9,13 +9,13 @@
   folder, written to `report/hazard/landslide/landslide-realisation/fig/`. The
   small failures beside buildings are the urban population, drawn by landslide
   step 9 against their own fragilities, and step 9 combines the two.
-- What a run does is set by `config.py` in the step folder — `PILOT`,
+- What a run does is set by `config.py` in the step folder — `EXTENT`,
   `REALISATION_IDS`, `LARGE_MIN_SOURCE_AREA_M2`, `URBAN_AREA_SHARE`,
   `SOURCE_ASPECT_RATIO` and `CREST_WEIGHT` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments. Neither script takes command line arguments and neither `main()`
-  carries a default. `PILOT` is `True`, meaning runs go over `SMALL_WLG_PILOT`
-  rather than the four territorial authorities, and steps 3 and 5 must have
+  carries a default. `EXTENT` is `"wlg-pilot"`, meaning runs go over
+  `SMALL_WLG_PILOT` rather than the four territorial authorities (`"full"`), and steps 3 and 5 must have
   been run over the same extent.
 - **The step reads only hazard outputs and fetches nothing.** `input_paths()`
   names them: the slope units from step 5 (`gen_slope_units.slope_units_path`)
@@ -132,9 +132,10 @@
   liquefaction of realisation 3. The step holds no seed of its own.
 - The realisation is written by `draw_realisation()` to the path
   `realisation_path()` returns,
-  `temp/hazard/landslide/landslide-realisation-rNNN[-pilot].geoparquet`, so a
-  pilot run cannot overwrite a full one. `fig_landslide_realisation.py` calls
-  `realisation_path()` and `input_paths()` with the same `config.PILOT` rather
+  `temp/hazard/landslide/landslide-realisation-rNNN<extent_suffix>.geoparquet`
+  (`-pilot` for `"wlg-pilot"`, nothing for `"full"`), so a run over one extent
+  cannot overwrite another. `fig_landslide_realisation.py` calls
+  `realisation_path()` and `input_paths()` with the same `config.EXTENT` rather
   than rebuilding the names.
 - A run where nothing failed prints that and **writes an empty layer** with
   the full schema, so the vulnerability steps reading the realisation find a

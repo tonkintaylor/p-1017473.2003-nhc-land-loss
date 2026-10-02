@@ -5,7 +5,7 @@
   run by `gen_wall_damage_state.py`, and the fragility is in
   `landloss.vul.shaking.fragility`.
 - Walls come from the world's population written by exposure rw step 6, read
-  through its `wall_population_path(world_id, pilot=...)`. Step 6 has already
+  through its `wall_population_path(world_id, extent=...)`. Step 6 has already
   kept only the walls on insured land and sorted them by claim and location,
   so every row arrives with its `rw_id`.
 - **Only walls with `is_flatland` true are drawn here** (`flat_land_walls()`).
@@ -27,7 +27,7 @@
   capacity and respond variably to the same shaking, and the curve is the
   distribution of that difference.
 - **The intensity measure is PGV.** The earthquake's field is shaking step 5's
-  `pgv_path(realisation_id, pilot=...)`, sampled at each wall's **midpoint**
+  `pgv_path(realisation_id, extent=...)`, sampled at each wall's **midpoint**
   (`midpoints()`, `landloss.common.utils.terrain.sample_at_points`) and
   written as `pgv_m_s`.
 - **The curve is the published wall curve** for the wall's `size_class` and
@@ -62,7 +62,7 @@
 - **The wall line is kept as the geometry**, in the population's CRS
   (EPSG:2193), so the loss table can carry coordinates.
 - Output is `temp/vul/wall-damage-state-w<NNN>-r<NNN>[-pilot].geoparquet`
-  (`wall_damage_state_path(world_id, realisation_id, pilot=...)`), written
+  (`wall_damage_state_path(world_id, realisation_id, extent=...)`), written
   with `GeoDataFrame.to_parquet()`. Columns, in order, are `realisation_id`,
   `world_id`, `rw_id`, `claim_id`, `asset`, `size_class`, `initial_condition`,
   `height_m`, `length_m`, `is_flatland` (always true), `pgv_m_s`,

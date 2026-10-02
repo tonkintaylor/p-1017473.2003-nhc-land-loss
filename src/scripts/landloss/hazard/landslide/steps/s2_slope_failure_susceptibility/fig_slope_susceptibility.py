@@ -42,7 +42,7 @@ from landloss.common.utils.colors import GWRC_SEVERITY_COLOURS
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
-from landloss.io.area_of_interest import get_study_areas
+from landloss.io.area_of_interest import get_area_of_interest, get_study_areas
 from landloss.io.readers import get_gwrc_slope_failure
 from scripts.landloss.hazard.landslide.steps.s2_slope_failure_susceptibility import (
     config,
@@ -166,14 +166,15 @@ def describe_agreement(zone, published, extent):
     print(f"  {'mapped at all':<14} {mapped:>6.1%}")
 
 
-def main(*, pilot, out_path):
+def main(*, extent, out_path):
     """Draw the rebuilt zones beside the published ones and write the figure.
 
     Args:
-        pilot: Whether to read the pilot run's output rather than the full one.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         out_path: Where to write the figure.
     """
-    zone_file = gen_slope_susceptibility.zone_path(pilot=pilot)
+    zone_file = gen_slope_susceptibility.zone_path(extent=extent)
     if not zone_file.exists():
         msg = (
             f"{zone_file} does not exist. Run gen_slope_susceptibility.py first; "
@@ -185,26 +186,26 @@ def main(*, pilot, out_path):
     with rioxarray.open_rasterio(zone_file, masked=True) as opened:
         zone = opened.squeeze(drop=True).load()
 
-    extent = extent_frame(zone)
-    bbox = tuple(float(value) for value in extent.total_bounds)
+    frame = extent_frame(zone)
+    bbox = tuple(float(value) for value in frame.total_bounds)
 
     print("Reading the published GWRC layer ...", flush=True)
-    published = get_gwrc_slope_failure(bbox=bbox).clip(extent)
+    published = get_gwrc_slope_failure(bbox=bbox).clip(frame)
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
-    describe_agreement(zone, published, extent)
+    describe_agreement(zone, published, frame)
 
     cmap, norm = zone_colourmap()
     fig, axes = plt.subplots(1, 2, figsize=(11.0, 6.0))
 
     draw_rebuilt(axes[0], zone, cmap, norm)
-    draw_published(axes[1], published, extent)
+    draw_published(axes[1], published, frame)
 
     for ax in axes:
         study_areas.boundary.plot(
             ax=ax, color="#1a1a1a", linewidth=0.7, linestyle="--", zorder=4
         )
-        style_basemap_ax(ax, extent, arrow_kwargs={"scale": 0.2})
+        style_basemap_ax(ax, frame, arrow_kwargs={"scale": 0.2})
 
     axes[0].legend(
         handles=legend_handles(),
@@ -215,9 +216,10 @@ def main(*, pilot, out_path):
         title_fontsize=7,
     )
 
+    aoi = get_area_of_interest(extent)
+    extent_label = aoi.name if aoi is not None else "Wellington City earthworks extent"
     fig.suptitle(
-        "Earthquake induced slope failure susceptibility, "
-        f"{'Johnsonville and Newlands' if pilot else 'Wellington City earthworks extent'}",
+        f"Earthquake induced slope failure susceptibility, {extent_label}",
         fontsize=11,
     )
     fig.text(
@@ -239,4 +241,4 @@ def main(*, pilot, out_path):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, out_path=FIG_DIR / FIG_NAME)
+    main(extent=config.EXTENT, out_path=FIG_DIR / FIG_NAME)

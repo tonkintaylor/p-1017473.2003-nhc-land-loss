@@ -59,6 +59,7 @@ from landloss.domain import constants
 from landloss.hazard.landslide.land_class import EVACUATED, LAND_CLASS_COLUMN
 from landloss.hazard.landslide.urban import realisation as urban
 from landloss.hazard.realisation import realisation_seed
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     wall_population_path,
 )
@@ -91,41 +92,43 @@ RATE_FACTOR_COLUMN = "rate_factor"
 RULE = "-" * 72
 
 
-def _ids_suffix(world_id, realisation_id, *, pilot):
-    """The ``-wNNN-rNNN[-pilot]`` part every output of a pair carries."""
-    suffix = "-pilot" if pilot else ""
+def _ids_suffix(world_id, realisation_id, *, extent):
+    """The ``-wNNN-rNNN{extent_suffix}`` part every output of a pair carries."""
+    suffix = extent_suffix(extent)
     return f"-w{world_id:03d}-r{realisation_id:03d}{suffix}"
 
 
-def combined_realisation_path(world_id, realisation_id, *, pilot):
+def combined_realisation_path(world_id, realisation_id, *, extent):
     """Return the file a run writes the combined realisation of a pair to.
 
     Args:
         world_id: The exposure world the urban failures were drawn in.
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
     return WORK_DIR / (
-        f"{COMBINED_STEM}{_ids_suffix(world_id, realisation_id, pilot=pilot)}.geoparquet"
+        f"{COMBINED_STEM}{_ids_suffix(world_id, realisation_id, extent=extent)}.geoparquet"
     )
 
 
-def urban_wall_outcome_path(world_id, realisation_id, *, pilot):
+def urban_wall_outcome_path(world_id, realisation_id, *, extent):
     """Return the file a run writes the wall outcome table of a pair to.
 
     Args:
         world_id: The exposure world the walls belong to.
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
     return WORK_DIR / (
-        f"{OUTCOME_STEM}{_ids_suffix(world_id, realisation_id, pilot=pilot)}.parquet"
+        f"{OUTCOME_STEM}{_ids_suffix(world_id, realisation_id, extent=extent)}.parquet"
     )
 
 
@@ -189,27 +192,28 @@ def realise(model, pgv, large, rng):
     return Realised(draws, absorbed_by, superseded_by, survivors, large_evacuated)
 
 
-def read_inputs(world_id, realisation_id, *, pilot):
+def read_inputs(world_id, realisation_id, *, extent):
     """Read the four inputs of one pair, in the order the step reads them.
 
     Args:
         world_id: The exposure world.
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         ``(model, walls, pgv_m_s, large)``: the model file, the wall
         population, the PGV sampled at each polygon's representative point,
         and the large-model realisation.
     """
-    model = gpd.read_parquet(urban_slope_model_path(world_id, pilot=pilot))
-    walls = gpd.read_parquet(wall_population_path(world_id, pilot=pilot))
+    model = gpd.read_parquet(urban_slope_model_path(world_id, extent=extent))
+    walls = gpd.read_parquet(wall_population_path(world_id, extent=extent))
     pgv = urban.sample_pgv(
         gpd.GeoSeries(model[urban.REP_POINT_COLUMN]),
-        pgv_path(realisation_id, pilot=pilot),
+        pgv_path(realisation_id, extent=extent),
     )
     large = gpd.read_parquet(
-        realisation_path(pilot=pilot, realisation_id=realisation_id)
+        realisation_path(extent=extent, realisation_id=realisation_id)
     )
     return model, walls, pgv, large
 
@@ -298,13 +302,13 @@ def describe_rate_setting(model):
     print(f"Rate setting {setting!r}, factor {factor} (from the model file)")
 
 
-def run_pair(world_id, realisation_id, *, pilot):
+def run_pair(world_id, realisation_id, *, extent):
     """Draw, resolve and write one world and earthquake pair."""
     print(RULE)
     print(
         f"World {world_id}, earthquake {realisation_id}, stream {urban.URBAN_STREAM!r}"
     )
-    model, walls, pgv, large = read_inputs(world_id, realisation_id, pilot=pilot)
+    model, walls, pgv, large = read_inputs(world_id, realisation_id, extent=extent)
     describe_rate_setting(model)
     rng = realisation_seed(
         constants.BASE_SEED, realisation_id, urban.URBAN_STREAM, world_id=world_id
@@ -330,26 +334,27 @@ def run_pair(world_id, realisation_id, *, pilot):
     outcomes.insert(0, urban.WORLD_ID_COLUMN, world_id)
     describe_outcomes(outcomes)
 
-    combined_path = combined_realisation_path(world_id, realisation_id, pilot=pilot)
+    combined_path = combined_realisation_path(world_id, realisation_id, extent=extent)
     combined_path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_parquet(combined_path)
     print(f"Wrote {len(combined):,} polygons to {combined_path}")
-    outcome_path = urban_wall_outcome_path(world_id, realisation_id, pilot=pilot)
+    outcome_path = urban_wall_outcome_path(world_id, realisation_id, extent=extent)
     outcomes.to_parquet(outcome_path, index=False)
     print(f"Wrote {len(outcomes):,} wall outcomes to {outcome_path}")
 
 
-def main(*, pilot, world_ids, realisation_ids):
+def main(*, extent, world_ids, realisation_ids):
     """Draw the urban failures of every world and earthquake pair.
 
     Args:
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         world_ids: Which exposure worlds to draw for.
         realisation_ids: Which modelled earthquakes to draw for.
     """
     for world_id in world_ids:
         for realisation_id in realisation_ids:
-            run_pair(world_id, realisation_id, pilot=pilot)
+            run_pair(world_id, realisation_id, extent=extent)
 
     print(RULE)
     print(
@@ -360,7 +365,7 @@ def main(*, pilot, world_ids, realisation_ids):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         realisation_ids=config.REALISATION_IDS,
     )

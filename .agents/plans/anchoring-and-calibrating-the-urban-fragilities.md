@@ -178,23 +178,17 @@ is anchored on its own rows (Kingsbury, the forecasts, 2013, Port Hills).
 
 Reviewed in part C (2026-10-02; detail in `.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury").
 
-**The Koutsoupaki curves are not usable as they stand.**
+**Decided (the lead, 2026-10-02): keep the Koutsoupaki curves**, and state in the report that they overpredict against Christchurch: at the study's 1.0 to 1.7 g they fail
+30 to 93% of walls, against about 10% Very Poor over the whole Canterbury
+sequence at the same PGA [anderson_2015] (`anderson2015-F13`, `F15`). The
+curves are not refitted to Canterbury.
 
-- At the study's 1.0 to 1.7 g they fail 30 to 93% of walls. Over the whole
-  Canterbury sequence, at the same 1.0 to 1.7 g, about 10% were Very Poor
-  [anderson_2015] (`anderson2015-F13`, `F15`).
-- They make taller walls stronger, where Canterbury's taller walls failed
-  more.
-
-**Proposal:**
-
-- Anchor the wall medians on the Canterbury Very Poor share by height:
-  about 3.1, 2.8, 2.5 and 2.0 g from under 1.5 m to over 3.5 m, at β 0.6
-  and a representative 1.3 g (ours).
-- Keep Koutsoupaki only for the modern-to-poor ratio of 1.65, which matches
-  Anderson's spread by wall type.
-- "Replace" is Very Poor. The Average and Poor classes (about a third,
-  `anderson2015-F09`) are "none", with Poor plus Very Poor as the high case.
+- "Replace" is Very Poor in the comparison. The Average and Poor classes
+  (about a third, `anderson2015-F09`) are "none".
+- So the wall curves are not part of the anchoring fit; the localised
+  medians are. Because the walls are known to overpredict, check the net
+  evacuated share with walls against the anchors, so that the localised
+  medians are not pushed down to compensate.
 - The rate setting moves the walls with the localised failures, because a
   Canterbury wall's failure share is a property of the slope it holds as
   much as of the wall (`anderson2015-F24`).

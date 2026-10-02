@@ -35,6 +35,7 @@ from landloss.domain import constants
 from landloss.hazard.realisation import realisation_seed
 from landloss.hazard.shaking.pga import BETA_PGA_COV, beta_pga_realisation
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.ts1170 import SITE_CLASS_NUMERALS, get_ts1170_pga
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
     read_site_class,
@@ -57,17 +58,18 @@ RNG_STREAM = "shaking"
 RULE = "-" * 72
 
 
-def pga_path(realisation_id, *, pilot):
+def pga_path(realisation_id, *, extent):
     """Return the file a run writes one realisation's PGA field to.
 
     Args:
         realisation_id: Which modelled earthquake this is.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/shaking/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.tif"
 
 
@@ -87,15 +89,16 @@ def describe_field(site_class, pga, return_period_yr):
     print(f"Spread put on it: {BETA_PGA_COV:.0%} coefficient of variation")
 
 
-def main(*, pilot, realisation_ids, return_period_yr):
+def main(*, extent, realisation_ids, return_period_yr):
     """Write a PGA field per realisation.
 
     Args:
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to draw.
         return_period_yr: The return period of the TS1170.5 demand, in years.
     """
-    site_class = read_site_class(pilot=pilot)
+    site_class = read_site_class(extent=extent)
     print(f"Reading the TS1170.5 PGA grids at {return_period_yr} years ...")
     supplied = demand_on_site_class_grid(
         get_ts1170_pga, site_class, return_period_yr=return_period_yr
@@ -114,7 +117,7 @@ def main(*, pilot, realisation_ids, return_period_yr):
         if finite.size:
             print(f"  median PGA {np.median(finite):.3f} g, max {finite.max():.3f} g")
 
-        out_path = pga_path(realisation_id, pilot=pilot)
+        out_path = pga_path(realisation_id, extent=extent)
         write_raster(field.astype("float32"), out_path)
         print(f"Wrote {out_path}")
 
@@ -128,7 +131,7 @@ def main(*, pilot, realisation_ids, return_period_yr):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
         return_period_yr=config.RETURN_PERIOD_YR,
     )

@@ -14,7 +14,7 @@ mapping stops at its study area boundary, the WCC earthworks are a sparse
 record, and everywhere else is the regional fallback -- so the legend is the
 vocabulary, not the source.
 
-Writes ``ground-map[-pilot].png`` to ``report/hazard/landslide/ground-map/fig/``.
+Writes ``ground-map<extent_suffix>.png`` to ``report/hazard/landslide/ground-map/fig/``.
 """
 
 import sys
@@ -30,6 +30,7 @@ from shapely import box
 
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.hazard.landslide import ground_map
+from landloss.io.area_of_interest import extent_suffix, get_area_of_interest
 from scripts.landloss.hazard.landslide.steps.s4_ground_map import config, gen_ground_map
 from scripts.landloss.paths import REPORT_DIR
 
@@ -64,9 +65,9 @@ MODIFICATION_COLOURS = {
 RULE = "-" * 72
 
 
-def fig_path(*, pilot):
+def fig_path(*, extent):
     """Return the file the figure is written to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return FIG_DIR / f"ground-map{suffix}.png"
 
 
@@ -107,26 +108,29 @@ def draw_classes(ax, ground, column, colours, title):
     )
 
 
-def main(*, pilot):
+def main(*, extent):
     """Draw the material and the modification panels and write the figure.
 
     Args:
-        pilot: Whether to draw the pilot run's map rather than the full one.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
     """
-    map_file = gen_ground_map.ground_map_path(pilot=pilot)
+    map_file = gen_ground_map.ground_map_path(extent=extent)
     print(f"Reading {map_file}")
     ground = gpd.read_parquet(map_file)
 
-    extent = gpd.GeoDataFrame(geometry=[box(*ground.total_bounds)], crs=ground.crs)
+    frame = gpd.GeoDataFrame(geometry=[box(*ground.total_bounds)], crs=ground.crs)
 
     fig, axes = plt.subplots(1, 2, figsize=(11.0, 6.0))
     draw_classes(axes[0], ground, "material", MATERIAL_COLOURS, "Material")
     draw_classes(axes[1], ground, "modification", MODIFICATION_COLOURS, "Modification")
     for ax in axes:
-        style_basemap_ax(ax, extent, arrow_kwargs={"scale": 0.2})
+        style_basemap_ax(ax, frame, arrow_kwargs={"scale": 0.2})
 
+    aoi = get_area_of_interest(extent)
+    extent_label = aoi.name if aoi is not None else "the four territorial authorities"
     fig.suptitle(
-        f"Ground map, {'small Wellington pilot' if pilot else 'the four territorial authorities'}",
+        f"Ground map, {extent_label}",
         fontsize=11,
     )
     fig.text(
@@ -140,7 +144,7 @@ def main(*, pilot):
         fontsize=6,
     )
 
-    out_path = fig_path(pilot=pilot)
+    out_path = fig_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
@@ -150,4 +154,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

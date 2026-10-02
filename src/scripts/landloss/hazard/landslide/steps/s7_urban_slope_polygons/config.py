@@ -7,9 +7,12 @@ established by reading this file and the git history of it rather than by
 remembering which flags were typed.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Leave this True while the model is being changed.
-PILOT = True
+# The extent to run over: "wlg-pilot" for the small Wellington pilot box,
+# "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
+# the four territorial authorities.
+# Leave this "wlg-pilot" while the model is being changed.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Whether to reuse the cached LINZ building outlines and road centrelines for
 # this extent. Set False to fetch them again.

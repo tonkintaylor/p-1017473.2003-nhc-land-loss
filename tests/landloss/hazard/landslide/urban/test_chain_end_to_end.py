@@ -491,9 +491,9 @@ def flat_wall_states(walls, *, pgv_rp, pga, wall_table):
         world_id=WORLD,
         realisation_id=EARTHQUAKE,
         pgv_m_s=sample_at_points(
-            gen_pgv_realisations.pgv_path(EARTHQUAKE, pilot=True), points
+            gen_pgv_realisations.pgv_path(EARTHQUAKE, extent="wlg-pilot"), points
         ),
-        site_class=step.sample_site_class(points, pilot=True),
+        site_class=step.sample_site_class(points, extent="wlg-pilot"),
         pgv_pga_ratio=fragility.pgv_pga_ratio_m_s_per_g(pgv_rp, pga, points),
         table=wall_table,
     )
@@ -506,19 +506,21 @@ def loss_tables(insured, walls, liquefaction):
         liquefaction,
         pd.read_parquet(
             gen_landslide_land_damage.landslide_land_damage_path(
-                WORLD, EARTHQUAKE, pilot=True
+                WORLD, EARTHQUAKE, extent="wlg-pilot"
             )
         ),
     )
     rw = loss_input.build_rw_table(
         walls,
         pd.read_parquet(
-            gen_wall_damage_state.wall_damage_state_path(WORLD, EARTHQUAKE, pilot=True),
+            gen_wall_damage_state.wall_damage_state_path(
+                WORLD, EARTHQUAKE, extent="wlg-pilot"
+            ),
             columns=[RW_ID_COLUMN, shaking_fragility.DAMAGE_STATE_COLUMN],
         ),
         pd.read_parquet(
             gen_wall_landslide_damage.wall_landslide_damage_path(
-                WORLD, EARTHQUAKE, pilot=True
+                WORLD, EARTHQUAKE, extent="wlg-pilot"
             )
         ),
     )
@@ -530,7 +532,7 @@ def loss_tables(insured, walls, liquefaction):
         written[name] = write(
             table,
             gen_property_damage.world_loss_input_path(
-                name, WORLD, EARTHQUAKE, pilot=True
+                name, WORLD, EARTHQUAKE, extent="wlg-pilot"
             ),
         )
     return written
@@ -548,14 +550,14 @@ def chain(tmp_path_factory):
 
 def run_chain(root):
     """The stages, in run order, each reading what the one before it wrote."""
-    pilot = True
+    extent = "wlg-pilot"
     dem_path = write_raster(hillside_dem(), root / "dem-1m.tif")
-    pgv_path = gen_pgv_realisations.pgv_path(EARTHQUAKE, pilot=pilot)
+    pgv_path = gen_pgv_realisations.pgv_path(EARTHQUAKE, extent=extent)
     pgv_path.parent.mkdir(parents=True, exist_ok=True)
     write_raster(constant_grid(PGV_M_S, SHAKING_CELL_M), pgv_path)
     write_raster(
         constant_grid(SITE_CLASS, SHAKING_CELL_M),
-        gen_site_class.site_class_path(pilot=pilot),
+        gen_site_class.site_class_path(extent=extent),
     )
     pgv_rp = constant_grid(RATIO_M_S_PER_G, SHAKING_CELL_M)
     pga = constant_grid(1.0, SHAKING_CELL_M)
@@ -563,16 +565,19 @@ def run_chain(root):
 
     candidates, candidate_ids = make_candidates()
     candidates = write(
-        candidates, gen_urban_slope_candidates.urban_slope_candidates_path(pilot=pilot)
+        candidates,
+        gen_urban_slope_candidates.urban_slope_candidates_path(extent=extent),
     )
     lines, line_ids = make_wall_lines()
-    lines = write(lines, gen_wall_lines.wall_lines_path(pilot=pilot))
+    lines = write(lines, gen_wall_lines.wall_lines_path(extent=extent))
     insured = write(
-        make_insured_land(), gen_insured_land.insured_land_path(pilot=pilot)
+        make_insured_land(), gen_insured_land.insured_land_path(extent=extent)
     )
     large = write(
         make_large_rows(),
-        s1_simulate_landslides.realisation_path(pilot=pilot, realisation_id=EARTHQUAKE),
+        s1_simulate_landslides.realisation_path(
+            extent=extent, realisation_id=EARTHQUAKE
+        ),
     )
 
     # Landslide step 7.
@@ -580,7 +585,7 @@ def run_chain(root):
         candidates, lines, dem_path=dem_path, barriers=make_barriers()
     )
     polygons = write(
-        polygons, gen_urban_slope_polygons.urban_slope_polygons_path(pilot=pilot)
+        polygons, gen_urban_slope_polygons.urban_slope_polygons_path(extent=extent)
     )
     slope_ids = dict(
         zip(
@@ -594,16 +599,16 @@ def run_chain(root):
     # Exposure rw step 6. Every line is made a wall so the draw is certain.
     probabilities = wall_probability.wall_probability_table(lines)
     probabilities = write(
-        probabilities, gen_wall_probability.wall_probability_path(pilot=pilot)
+        probabilities, gen_wall_probability.wall_probability_path(extent=extent)
     )
     forced = probabilities.copy()
     forced["p_wall"] = 1.0
-    write(forced, gen_wall_probability.wall_probability_path(pilot=pilot))
-    gen_wall_population.main(pilot=pilot, world_ids=[WORLD])
+    write(forced, gen_wall_probability.wall_probability_path(extent=extent))
+    gen_wall_population.main(extent=extent, world_ids=[WORLD])
     walls = gpd.read_parquet(
-        gen_wall_population.wall_population_path(WORLD, pilot=pilot)
+        gen_wall_population.wall_population_path(WORLD, extent=extent)
     )
-    drawn = gpd.read_parquet(gen_wall_population.drawn_walls_path(WORLD, pilot=pilot))
+    drawn = gpd.read_parquet(gen_wall_population.drawn_walls_path(WORLD, extent=extent))
 
     # Landslide step 8, on the forced wall table rather than the packaged one.
     model = gen_urban_slope_fragility.build_model(
@@ -613,24 +618,24 @@ def run_chain(root):
         rate_setting=RATE_SETTING,
         pgv=pgv_rp,
         pga=pga,
-        pilot=pilot,
+        extent=extent,
     )
     model = gen_urban_slope_fragility.add_world_id(model, WORLD)
     model = write(
-        model, gen_urban_slope_fragility.urban_slope_model_path(WORLD, pilot=pilot)
+        model, gen_urban_slope_fragility.urban_slope_model_path(WORLD, extent=extent)
     )
 
     # Landslide step 9: the run itself, then its draw again on the same inputs
     # for the assertions on each row.
     step9 = gen_urban_slope_realisation
-    step9.main(pilot=pilot, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    step9.main(extent=extent, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
     combined = gpd.read_parquet(
-        step9.combined_realisation_path(WORLD, EARTHQUAKE, pilot=pilot)
+        step9.combined_realisation_path(WORLD, EARTHQUAKE, extent=extent)
     )
     outcomes = pd.read_parquet(
-        step9.urban_wall_outcome_path(WORLD, EARTHQUAKE, pilot=pilot)
+        step9.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent=extent)
     )
-    read_model, _, pgv, read_large = step9.read_inputs(WORLD, EARTHQUAKE, pilot=pilot)
+    read_model, _, pgv, read_large = step9.read_inputs(WORLD, EARTHQUAKE, extent=extent)
     rng = realisation_seed(
         constants.BASE_SEED, EARTHQUAKE, urban.URBAN_STREAM, world_id=WORLD
     )
@@ -639,24 +644,24 @@ def run_chain(root):
     # Vul shaking rw step 9, flat-land walls only.
     states = write(
         flat_wall_states(walls, pgv_rp=pgv_rp, pga=pga, wall_table=wall_table),
-        gen_wall_damage_state.wall_damage_state_path(WORLD, EARTHQUAKE, pilot=pilot),
+        gen_wall_damage_state.wall_damage_state_path(WORLD, EARTHQUAKE, extent=extent),
     )
 
     # Vul landslide rw step 11 and vul landslide land step 3.
     gen_wall_landslide_damage.main(
-        pilot=pilot, world_ids=[WORLD], realisation_ids=[EARTHQUAKE]
+        extent=extent, world_ids=[WORLD], realisation_ids=[EARTHQUAKE]
     )
     flags = pd.read_parquet(
         gen_wall_landslide_damage.wall_landslide_damage_path(
-            WORLD, EARTHQUAKE, pilot=pilot
+            WORLD, EARTHQUAKE, extent=extent
         )
     )
     gen_landslide_land_damage.main(
-        pilot=pilot, world_ids=[WORLD], realisation_ids=[EARTHQUAKE]
+        extent=extent, world_ids=[WORLD], realisation_ids=[EARTHQUAKE]
     )
     damaged = pd.read_parquet(
         gen_landslide_land_damage.landslide_land_damage_path(
-            WORLD, EARTHQUAKE, pilot=pilot
+            WORLD, EARTHQUAKE, extent=extent
         )
     )
 

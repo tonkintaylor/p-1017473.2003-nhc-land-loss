@@ -6,9 +6,13 @@ from shapely.geometry import Point
 from landloss.domain import constants
 from landloss.io.area_of_interest import (
     CHRISTCHURCH,
+    EXTENTS,
+    FULL_EXTENT,
     SMALL_WLG_PILOT,
     WGS84,
     AreaOfInterest,
+    extent_suffix,
+    get_area_of_interest,
     get_study_area,
     get_study_areas,
     study_area_bbox,
@@ -204,3 +208,27 @@ def test_the_christchurch_extent_is_a_city_and_its_plains() -> None:
     area_km2 = CHRISTCHURCH.polygon().area / 1e6
 
     assert 2_000 < area_km2 < 3_000
+
+
+def test_the_full_extent_keeps_plain_file_names() -> None:
+    """A full study build writes the names it always has, with no suffix."""
+    assert extent_suffix(FULL_EXTENT) == ""
+    assert get_area_of_interest(FULL_EXTENT) is None
+
+
+def test_the_wellington_pilot_keeps_its_legacy_suffix() -> None:
+    """Pilot builds made under the old boolean setting are still found."""
+    assert extent_suffix("wlg-pilot") == "-pilot"
+    assert get_area_of_interest("wlg-pilot") is SMALL_WLG_PILOT
+
+
+def test_every_extent_has_its_own_suffix() -> None:
+    """Two extents never share output names, so neither overwrites the other."""
+    suffixes = [extent_suffix(name) for name in [FULL_EXTENT, *EXTENTS]]
+    assert len(set(suffixes)) == len(suffixes)
+
+
+def test_an_unknown_extent_is_refused() -> None:
+    """A typo in a run setting fails loudly rather than naming a new build."""
+    with pytest.raises(KeyError, match="not a known extent"):
+        extent_suffix("wlg-pliot")

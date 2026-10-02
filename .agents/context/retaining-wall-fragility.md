@@ -74,72 +74,62 @@ The Koutsoupaki et al. (2023) cantilever curves [koutsoupaki_2023] now in
 | large, modern | 1.43 | 0.30 / 0.45 / 0.60 |
 | large, poor | 0.82 | 0.62 / 0.76 / 0.87 |
 
-The curves have three problems against Canterbury:
+**The curves overpredict against Canterbury**, by about four to ten times at
+the study's shaking, against about 10% Very Poor summed over the whole
+sequence. That is part of why 88% of sloping walls were replaced in the
+pilot. They also make the 6 m wall stronger than the 3 m one, where
+Canterbury's taller walls failed more; the lead is not concerned by that
+(2026-10-02). Several things make the Canterbury rate low as a comparison:
 
-1. **They fail four to ten times too many walls**, against about 10%
-   cumulative over the sequence. This is why 88% of sloping walls were
-   replaced in the pilot.
-2. **They have the height trend backwards.** They make the 6 m wall stronger
-   than the 3 m one, where Canterbury's taller walls failed more.
-3. **They describe the wrong walls.** They are numerical cantilever walls
-   designed to a factor of safety, where Wellington's older walls are
-   gravity, crib and timber pole walls.
+- it is cumulative over a sequence, but over walls of all types, many of them
+  facings on strong loess (`anderson2015-F30`);
+- the sample leans to council road walls (`F03`);
+- about 15.5% of walls were not assessed (`F10`).
 
-What they do get right is the effect of condition. Their modern-to-poor
+So the Canterbury shares are the observed comparison, not a replacement.
+
+The curves get the effect of condition about right. Their modern-to-poor
 median ratio is 1.65. At β 0.6, that is the ratio between an 18% and a 4%
 failure share at one PGA, about Anderson's stone masonry against timber pole
 and concrete masonry (ours).
 
-### Proposals for the lead
+### The lead's decision, and the proposals that remain
 
-1. **Anchor the wall curves on Canterbury, and keep Koutsoupaki only for
-   its condition ratio.** Take β = 0.6, the dispersion the curves already
-   carry, and a representative 1.3 g (ours, the middle of the 22 February
-   Port Hills records). The Very Poor share by height then gives these
-   medians (**ours**):
+**Decided (the lead, 2026-10-02): keep the Koutsoupaki curves.** They are
+published and can be justified; medians fitted to Canterbury would be hard to
+justify, because the Canterbury rates mix event, wall type and sample
+selection. The report states that the curves overpredict against
+Christchurch, with the comparison above, as a known conservatism.
 
-   | Height | Very Poor share | Median at 1.3 g (g) |
-   | --- | --- | --- |
-   | under 1.5 m | 7.1% | 3.1 |
-   | 1.5 to 2.5 m | 10.2% | 2.8 |
-   | 2.5 to 3.5 m | 13.9% | 2.5 |
-   | over 3.5 m | 22.5% | 2.0 |
-
-   - Reading the demand at 1.0 g instead gives medians about a quarter lower,
-     and at 1.7 g about a third higher, which is the spread to carry.
-   - Because the rates are cumulative over a sequence, these medians are a
-     lower bound for one event.
-   - They apply to the average wall in Canterbury. The modern and poor
-     curves sit either side of each by the Koutsoupaki ratio: about 1.3
-     times the median for modern, and the median over 1.3 for poor (ours,
-     splitting the 1.65 ratio).
-   - The PGA-to-PGV conversion at each site's ratio stays.
-2. **Two damage states, with "replace" defined as Very Poor.** Anderson's
-   Very Poor is collapse, partial collapse, or excessive displacement with
-   consequential damage. That matches the model's "replace", and the lead's
-   point that few damaged walls are repaired. The Average and Poor classes
-   (about a third of walls, `anderson2015-F09`), with 100 to over 200 mm of
-   outward movement, are "none" in the base case. "Replace" at Poor plus
-   Very Poor is the high case: 17.5%, 21.1% and 28.3% by the three costing
-   size classes, against 7.1%, 10.2% and 17.6% for Very Poor alone
-   (`anderson2015-F16`). EQC treats reinstating a failed wall as land
-   reinstatement (`sr2018-027-F03`). The thresholds are typical values, not
-   strict ones (`anderson2015-F36`).
-3. **Name the six wall classes after Anderson's types**, the one observed
+1. **Two damage states, with "replace" read as Very Poor in the comparison.**
+   Anderson's Very Poor is collapse, partial collapse, or excessive
+   displacement with consequential damage. That matches the model's
+   "replace", and the lead's point that few damaged walls are repaired. The
+   Average and Poor classes (about a third of walls, `anderson2015-F09`),
+   with 100 to over 200 mm of outward movement, are "none". Poor plus Very
+   Poor (17.5%, 21.1% and 28.3% by the three costing size classes, against
+   7.1%, 10.2% and 17.6% for Very Poor alone, `anderson2015-F16`) is the
+   comparison's upper end. EQC treats reinstating a failed wall as land
+   reinstatement (`sr2018-027-F03`). The movement thresholds are typical
+   values, not strict ones (`anderson2015-F36`).
+2. **Name the six wall classes after Anderson's types**, the one observed
    split: stone and mass-concrete masonry gravity, concrete block masonry,
    timber pole, crib, gabion, and MSE or engineered reinforced concrete.
-   Their relative failure rates are 18, 5.5, 2.8, 13, 5.3 and 0%
+   Their Very Poor shares were 18, 5.5, 2.8, 13, 5.3 and 0%
    (`anderson2015-F11`); the 0% for MSE is on 18 walls, so read it as "very
-   low". Wellington's mix of types is unknown until the claim report
-   extraction (**T-50**). Until then, use the type in condition: the
-   pre-1970 bin is the gravity masonry era (`anderson2015-F07`; bin note).
-   Type and height are confounded in the data, because timber pole walls are
-   mostly lower (`F28`). So the height medians above already carry part of
-   the type effect; do not apply both in full.
-4. **One curve set for sloping and flat walls.** The Canterbury walls are
-   Port Hills hillside walls, so the same anchor serves landslide step 8
-   (walls on slopes) and vul shaking rw step 9 (flat-land walls). Flat-land
-   walls are mostly under 1.5 m and read the lowest band.
+   low".
+3. **Infer the wall type from the age and from the claim reports (the lead,
+   2026-10-02).** The age bin gives the likely type, since type tracked era
+   in Canterbury (`anderson2015-F07`): `pre_1970` is mostly stone and mass
+   concrete gravity walls and untreated timber, `1970_1991` treated timber
+   pole and concrete block cantilevers, and the later bins engineered walls
+   (bin note). The claim reports (**T-50**) give the type where a wall was
+   described, and the mix of types per age bin that the inference uses
+   elsewhere. The type then sets the condition: the gravity masonry types
+   read poor, the others read the age rule.
+4. **One curve set for sloping and flat walls**, as now. The Canterbury walls
+   are Port Hills hillside walls, so the comparison serves landslide step 8
+   (walls on slopes) and vul shaking rw step 9 (flat-land walls).
 
 ## Other sources reviewed
 
