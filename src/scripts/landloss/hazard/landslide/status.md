@@ -11,9 +11,10 @@ and is ready to build once the lead settles the step test (Next, 1). The
 second part, the failure polygons, steps 8 and 9 and the anchoring skeleton,
 was reviewed the same day, and so were the large failures; their proposals
 wait on the lead (Next, 3 and 10). The portfolio of large models is proposed,
-not agreed.
+not agreed. The slope elements and polygons library passed its toy-terrain
+proof (stage D1) on 2026-10-02; real pilot examples (stage D2) are next.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-03
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -65,7 +66,7 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
   (step 4) and the slope units (step 5).
 - [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
   superseded, because no published method supports it.
-- [>] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
+- [~] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
   static layer, grown from seeds strongest first (revised 2026-10-02 in place
   of geomorphons), each with its height and overall angle. An element is a
   free-face, and a wall candidate, where it is steeper
@@ -227,6 +228,16 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   `.agents/context/retaining-wall-fragility.md`.
 - The anchoring skeleton and the per-territorial-authority plan are written
   and not reviewed.
+- **The slope elements and polygons library is built and proven on toy
+  terrain (faces plan, stage D1).** `landloss.hazard.landslide.slope_elements`
+  and `landloss.hazard.landslide.slope_polygons` pass all 17 toy grids
+  (the plan's 12 cases plus an added case 13), noise-free, at noise seed 7,
+  and over 30 noise seeds (510 of 510), and 197 regression tests pass.
+  Findings, the `BETA_` values changed on the evidence, and the points left
+  for the lead are in
+  `research/slope_elements/toy_slope_elements.md`. Not yet built: the wall
+  candidates (phase 2), stage D2 on real pilot examples, and the pipeline
+  step itself (`gen_slope_elements.py`, stage D3).
 
 ## Next
 
@@ -245,8 +256,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       step 4 over the common extent and review its area shares and strength
       picks;
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
-      and then on pilot examples with figures for the report (the plan's
-      development stages D1 and D2), each for the lead's review;
+      (done, stage D1) and next on pilot examples with figures for the report
+      (stage D2), for the lead's review;
    5. the wall candidates and their probability on the faces (faces plan,
       phase 2; exposure rw step 6, phase 2e), and the phase 4 checks that need
       only the walls: GNS mapped wall recall and the height shape against

@@ -28,12 +28,21 @@ How an element is found, all of it whole-array numpy and scipy:
    measured on the grown element.
 4. **Seeds.** A cell is eligible where its step height is at least
    :data:`MIN_WALL_HEIGHT_M` or its 3 m slope is over its threshold. Its
-   exceedance, the 3 m slope less the threshold, is its priority. A seed is a
-   4-connected patch of eligible cells.
+   exceedance, the 3 m slope less the threshold, is its priority. An eligible
+   patch, one ground group's connected cells, is cut down to its 1 m
+   footprint, the cells steep enough to grow into
+   or holding at least :data:`BETA_SEED_STEP_SHARE` of the patch's largest
+   step, because the 3 m slope and the 9 m step span spread a patch a few
+   cells past the step it marks; each 4-connected piece left is a seed.
 5. **Free-face pass.** The seeds grow by marker-controlled watershed on the
    negated exceedance (``scipy.ndimage.watershed_ift``), the strongest cell
    first, only into cells whose 1 m slope is over the seed's threshold less
-   :data:`BETA_FREE_FACE_GROW_TOL_DEG`. Each grown region is measured, and a
+   :data:`BETA_FREE_FACE_GROW_TOL_DEG`, and over the cell's own ground's
+   limit; the seeds sharing a grow limit grow together, the strictest limit
+   first, so no seed floods ground it could not keep. Each region then takes
+   the rounded
+   cells at its crest and toe, which Horn's kernel reads part way between the
+   free-face and the ground beyond. Each grown region is measured, and a
    region that does not test as a free-face is released and the pass rerun
    without its seed, so the free-face pass keeps only free-faces and the bank
    ground they leave goes to the bank pass.
@@ -41,17 +50,25 @@ How an element is found, all of it whole-array numpy and scipy:
    :data:`BETA_GROW_ANGLE_DEG` seed, and grow the same way into unclaimed
    cells whose 1 m slope is at least that angle.
 7. **Measurement.** Every region is measured on fall-line transects, one from
-   each crest cell, and a region under :data:`MIN_WALL_HEIGHT_M` high is
-   dropped. Each element is put once into one of the eight
-   :data:`HEIGHT_BANDS_M` and tested against ``STEP_ANGLE_DEG`` on its overall
-   angle: over it, a free-face; otherwise a bank, whichever pass grew it.
+   each crest cell, between the breaks in slope at its ends rather than its
+   end cells' centres (see :func:`_transects`): a face that falls across one
+   interval between two cell centres, a wall, is read as vertical, because the
+   DEM cannot resolve its run. A region under :data:`MIN_WALL_HEIGHT_M` high,
+   shorter along the contour than :data:`BETA_MIN_ELEMENT_LENGTH_M`, or
+   gentler overall than :data:`BETA_GROW_ANGLE_DEG`, is dropped (the free-face
+   pass releases such regions to the bank pass). Each
+   element is put once into one of the eight :data:`HEIGHT_BANDS_M` and tested
+   against ``STEP_ANGLE_DEG`` on its overall angle: over it, a free-face;
+   otherwise a bank, whichever pass grew it.
 
 A crest cell is an element cell whose neighbour one cell uphill along the fall
 line lies outside the element, a toe cell one whose neighbour downhill does,
 and the other boundary cells are the element's ends along the slope. The plan
 words this as the outside neighbour being higher or lower; on the level
 ground at the top and foot of a wall the outside neighbours are the same
-height, so the side is read off the fall line instead.
+height, so the side is read off the fall line instead. Where the neighbour is
+nodata, on its rim or off the grid, the edge of the survey stopped the
+element, and the cell is an end, not a crest or a toe.
 
 The element table (:attr:`SlopeElements.elements`) has one row per element,
 indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
@@ -60,16 +77,25 @@ indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
 - ``element_type``: ``"free_face"`` or ``"bank"``, the step test's answer;
 - ``n_cells``, ``area_m2``;
 - ``height_m``: crest minus toe elevation, the median over fall-line
-  transects; ``height_max_m`` the largest transect;
-- ``run_m``: the horizontal distance crest to toe, median over transects;
+  transects, one from each crest cell, leaving out those cut short by nodata
+  or the grid's edge where there are others; ``height_max_m`` the largest;
+- ``run_m``: the horizontal distance crest to toe, median over transects,
+  zero for a face the DEM reads as vertical;
 - ``overall_angle_deg``: ``atan(height_m / run_m)``;
 - ``n_transects``: the transects the two above are taken over;
 - ``slope_mean_deg``, ``slope_max_deg``: the 1 m slope over the element;
 - ``length_m``: the element's extent along the contour, square to its aspect;
 - ``aspect_deg``: the circular mean downhill bearing, clockwise from north;
 - ``step_peak_m``: the largest step height on the element;
-- ``seed_exceedance_deg``: the seed's largest exceedance;
-- ``seed_row``, ``seed_col``: the seed's cell of largest exceedance;
+- ``seed_exceedance_deg``: the seed's largest exceedance, as its own pass
+  measured it: the 3 m slope less the step test angle for a free-face pass
+  seed, less :data:`BETA_GROW_ANGLE_DEG` for a bank pass seed;
+- ``seed_row``, ``seed_col``: the seed's cell of largest exceedance, and
+  ``seed_x``, ``seed_y`` its centre in map units, the same on every tile that
+  holds the element;
+- ``in_core``: whether the seed lies in the tile's core (see ``core``);
+- ``touches_nodata``: the element reaches ground with no 1 m slope (nodata,
+  its rim or the edge of the grid), so the survey's edge may have cut it;
 - ``ground_group``: the majority ground group, as a :data:`GROUND_GROUPS` name;
 - ``height_band``: 1 to 8, from ``height_m``;
 - ``threshold_angle_deg``: ``STEP_ANGLE_DEG`` for the group and band;
@@ -78,6 +104,9 @@ indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
   at MM6 [brabhaharan_2018; hancox_2015];
 - ``hb1995_cut``: steeper than 45 degrees and higher than 5 m, high to very
   high susceptibility in closely jointed greywacke [hancox_brabhaharan_1995];
+  both flags are geometry only, on banks as on free-faces, as the published
+  criteria are (a 4 m stronger rock bank at 52 degrees carries ``mm6_cut``);
+  the stack rule reads ``mm6_cut`` on free-faces only;
 - ``own_catchment_area_m2``: the 3 m cells whose flow reaches this element
   before any other (see :attr:`SlopeElements.catchments`);
 - ``centroid_x``, ``centroid_y``: the mean cell centre, in map units;
@@ -89,8 +118,11 @@ exists. Material, modification and ``ground_id`` come in as categorical grids
 :func:`rasterise_ground_map`.
 
 Everything takes arrays and a transform and holds no state, so a tile of a
-larger grid is processed the same way as a whole grid; ``core`` keeps only the
-elements whose seed lies in a tile's core.
+larger grid is processed the same way as a whole grid. Every element of a
+tile is kept, its halo's too, with ``in_core`` saying whose it is, so the
+links, the catchments and the polygons are built on the whole tile and only
+the core's written out. An element longer along the contour than the halo is
+wide (a long road cut across a seam) is still cut at the tile's edge.
 """
 
 import math
@@ -179,14 +211,48 @@ BETA_GROW_ANGLE_DEG = 18.4
 # Judgement: the free-face pass grows into cells whose 1 m slope is over the
 # seed's threshold angle less this many degrees, so the rounded edge cells of a
 # wall stay with it while a bank under the threshold above it does not.
-# Proposed in the plan, to be settled in stages D1 and D2.
-BETA_FREE_FACE_GROW_TOL_DEG = 5.0
+# Proposed in the plan as 5 degrees; set to 3 in stage D1, because at 5 the
+# soil-like grow limit is 30 degrees, the slope of the bank above the stage D1
+# excavated toe (case 3), and under LiDAR-like noise the cut grew up into the
+# bank in most draws (the MM6 flag held in 16 of 30, no free-face at all in 3);
+# at 3 it held in 30 of 30 (toy_slope_elements.md). To be settled in stage D2.
+BETA_FREE_FACE_GROW_TOL_DEG = 3.0
+
+# Judgement: a fall across one interval between two cell centres is read as a
+# step the DEM cannot resolve (a vertical wall) only where it is this many
+# degrees steeper than the interval beyond each end. About two and a half
+# times the scatter LiDAR-like noise of 0.05 m gives an interval's angle on a
+# bank, so a break in slope the noise steepens is not taken for a wall, while
+# a 0.5 m wall set in a 35 degree bank still clears it by 15 degrees.
+BETA_STEP_MARGIN_DEG = 10.0
+
+# Judgement: an element shorter than this along the contour, in metres, is not
+# kept. The step estimator reads every break in slope steeper than about the
+# grow angle as a step of at least MIN_WALL_HEIGHT_M (1.5 m times the gradient
+# below it), so the crest and toe of every bank seed short pieces; the noise
+# steepens a few of them past the step test, one to two cells long (stage D1
+# cases 6 and 10). Three cells; to be settled in stage D2 against the mapped
+# walls, the shortest of which a lot boundary sets.
+BETA_MIN_ELEMENT_LENGTH_M = 3.0
+
+# Judgement: the share of a seed patch's largest step height a cell must hold
+# to stay in the seed when it is not steep enough to grow into. The step
+# estimator reads the full height at the two cells either side of a sharp step
+# and a quarter of it a cell further out, so a half keeps the step and drops
+# the level ground beside it.
+BETA_SEED_STEP_SHARE = 0.5
 
 # Judgement: how far uphill of an element's crest the stack links look for the
 # toe of the element above, in metres. Wider than any width behind a crest the
 # plan's phase 3 rules give an element up to band 7 (1.4 H behind a vertical
 # wall at 16 m is about 22 m).
 BETA_STACK_SEARCH_M = 25.0
+
+# Judgement: a walk uphill from a crest (the stack links here, the polygon
+# rays of slope_polygons) has passed over a ridge or a hump once the ground
+# falls this far, in metres, below the highest point it has crossed. The
+# smallest element's height, so a fall no element could make is not a ridge.
+BETA_RIDGE_DROP_M = MIN_WALL_HEIGHT_M
 
 # The cut that fails at MM6: steeper than 50 degrees and higher than 3 m
 # [brabhaharan_2018; hancox_2015] (brabhaharan2018-F03, sr2015-016-F05). A
@@ -243,6 +309,10 @@ _MAX_FREE_FACE_ROUNDS = 6
 
 # A gradient smaller than this, in metres per metre, has no direction.
 _LEVEL_GRADIENT = 1e-9
+
+# The decimal places, in degrees, a seed's priority is read to when its peak
+# cell is picked.
+_SCORE_DECIMALS = 6
 
 # Slopes are compared with this much slack in degrees, so ground built at
 # exactly a limit angle reads the same whatever the floating point rounding.
@@ -450,7 +520,8 @@ def step_height_raster(
     Returns:
         The step height in metres, zero where the drop is no more than the
         hillside's (a negative reading is not a step), zero where there is no
-        fall line, and NaN where a span reaches off the grid or into nodata.
+        fall line or either span rises along it, and NaN where a span reaches
+        off the grid or into nodata.
     """
     rows, cols = np.indices(dem.shape, dtype=float)
     has_direction = np.isfinite(downhill_row) & np.isfinite(downhill_col)
@@ -478,7 +549,12 @@ def step_height_raster(
     short = drop(STEP_NEAR_M)
     long = drop(STEP_FAR_M)
     step = np.maximum((3.0 * short - long) / 2.0, 0.0)
-    step = np.where(has_direction, step, 0.0)
+    # Both spans have to fall along the fall line. On level ground the fall
+    # line is the noise's, and pointed away from a wall a few metres off it
+    # reads the wall as a rise across 9 m and half its height as a step.
+    with np.errstate(invalid="ignore"):
+        falls = (short > 0) & (long > 0)
+    step = np.where(has_direction & falls, step, 0.0)
     return np.where(np.isfinite(short) & np.isfinite(long), step, np.nan)
 
 
@@ -562,8 +638,26 @@ def _neighbour(
     return found
 
 
+def _measured_ground(
+    layers: TerrainLayers, rows: NDArray[np.intp], cols: NDArray[np.intp]
+) -> NDArray[np.bool_]:
+    """Whether each cell is on the grid and has a 1 m slope (not nodata's edge)."""
+    shape = layers.slope_fine_deg.shape
+    inside = (rows >= 0) & (rows < shape[0]) & (cols >= 0) & (cols < shape[1])
+    found = np.zeros(rows.shape, dtype=bool)
+    found[inside] = np.isfinite(layers.slope_fine_deg[rows[inside], cols[inside]])
+    return found
+
+
 def _edge_roles(labels: NDArray[np.int32], layers: TerrainLayers) -> NDArray[np.uint8]:
-    """Mark each element's crest, toe and end cells."""
+    """Mark each element's crest, toe and end cells.
+
+    A boundary cell is on the crest or the toe only where the cell beyond it
+    along the fall line is measured ground: on the grid and with a 1 m slope.
+    Where it is nodata, its rim (where Horn's kernel reaches nodata) or off the
+    grid, the element was stopped by the edge of the survey, not by the
+    ground, and the cell is one of the element's ends.
+    """
     roles = np.zeros(labels.shape, dtype=np.uint8)
     rows, cols = np.nonzero(labels > OUTSIDE)
     own = labels[rows, cols]
@@ -575,8 +669,10 @@ def _edge_roles(labels: NDArray[np.int32], layers: TerrainLayers) -> NDArray[np.
 
     uphill = _neighbour(labels, rows, cols, -step_rows, -step_cols)
     downhill = _neighbour(labels, rows, cols, step_rows, step_cols)
-    crest = has_direction & (uphill != own)
-    toe = has_direction & (downhill != own)
+    above_measured = _measured_ground(layers, rows - step_rows, cols - step_cols)
+    below_measured = _measured_ground(layers, rows + step_rows, cols + step_cols)
+    crest = has_direction & (uphill != own) & above_measured
+    toe = has_direction & (downhill != own) & below_measured
 
     boundary = np.zeros(rows.shape, dtype=bool)
     for d_r, d_c in ((-1, 0), (1, 0), (0, -1), (0, 1)):
@@ -590,51 +686,191 @@ def _edge_roles(labels: NDArray[np.int32], layers: TerrainLayers) -> NDArray[np.
     return roles
 
 
-def _walk(
+# How many distinct cells a transect reads beyond each end of its element: the
+# outside neighbour, and the one beyond that for the gradient of the ground
+# there.
+_CELLS_BEYOND = 2
+
+# How many distinct cells a transect keeps from each end of its element: the
+# end cell, the next one in and the one after, enough to trim one gentle cell
+# off each end and still read the face's gradient inside it.
+_CELLS_KEPT = 3
+
+# A cell on a fall-line walk, as (rows, columns) arrays; -1 where there is none.
+_Cells = tuple[NDArray[np.intp], NDArray[np.intp]]
+
+
+@dataclass(frozen=True)
+class _Trace:
+    """The distinct cells walks along the fall line crossed, -1 where none.
+
+    Attributes:
+        head_rows: The first :data:`_CELLS_KEPT` cells of each walk's own label,
+            the start first, shape ``(n, 3)``; ``head_cols`` alike.
+        head_cols: Their columns.
+        tail_rows: The last :data:`_CELLS_KEPT` cells of its own label, the
+            last at index 2.
+        tail_cols: Their columns.
+        count: How many distinct cells of its own label each walk crossed.
+        beyond_rows: The first :data:`_CELLS_BEYOND` distinct cells after the
+            walk left its own label, -1 off the grid.
+        beyond_cols: Their columns.
+    """
+
+    head_rows: NDArray[np.intp]
+    head_cols: NDArray[np.intp]
+    tail_rows: NDArray[np.intp]
+    tail_cols: NDArray[np.intp]
+    count: NDArray[np.intp]
+    beyond_rows: NDArray[np.intp]
+    beyond_cols: NDArray[np.intp]
+
+
+def _trace(
     labels: NDArray[np.int32],
     start_rows: NDArray[np.intp],
     start_cols: NDArray[np.intp],
     d_row: NDArray[np.float64],
     d_col: NDArray[np.float64],
-    max_steps: int,
-) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.int32], NDArray[np.intp]]:
-    """Walk from cells along a direction until each walk leaves its own label.
+    *,
+    leave_at_once: bool = False,
+) -> _Trace:
+    """Walk from cells along a direction, through their own label and beyond.
 
-    Returns:
-        ``(last_rows, last_cols, next_label, steps)``: the last cell of the
-        walk's own label, the label of the first cell past it (OUTSIDE off the
-        grid or when ``max_steps`` ran out), and the steps taken.
+    With ``leave_at_once`` every cell after the start counts as beyond, so the
+    walk reads the ground outside the start cell whatever its label.
     """
+    n = start_rows.size
+    shape = labels.shape
     own = labels[start_rows, start_cols]
-    last_rows = start_rows.copy()
-    last_cols = start_cols.copy()
-    next_label = np.full(own.shape, OUTSIDE, dtype=np.int32)
-    steps = np.zeros(own.shape, dtype=np.intp)
-    active = np.ones(own.shape, dtype=bool)
+    head_rows = np.full((n, _CELLS_KEPT), -1, dtype=np.intp)
+    head_cols = np.full((n, _CELLS_KEPT), -1, dtype=np.intp)
+    tail_rows = np.full((n, _CELLS_KEPT), -1, dtype=np.intp)
+    tail_cols = np.full((n, _CELLS_KEPT), -1, dtype=np.intp)
+    head_rows[:, 0], head_cols[:, 0] = start_rows, start_cols
+    tail_rows[:, -1], tail_cols[:, -1] = start_rows, start_cols
+    count = np.ones(n, dtype=np.intp)
+    beyond_rows = np.full((n, _CELLS_BEYOND), -1, dtype=np.intp)
+    beyond_cols = np.full((n, _CELLS_BEYOND), -1, dtype=np.intp)
+    n_beyond = np.zeros(n, dtype=np.intp)
+    on_label = np.full(n, not leave_at_once)
+    last_rows = start_rows.astype(np.intp)
+    last_cols = start_cols.astype(np.intp)
+    active = np.ones(n, dtype=bool)
+    max_steps = int(2 * (shape[0] + shape[1]) / WALK_STEP_CELLS)
     for k in range(1, max_steps + 1):
         index = np.nonzero(active)[0]
         if index.size == 0:
             break
-        rows = np.rint(start_rows[index] + k * WALK_STEP_CELLS * d_row[index])
-        cols = np.rint(start_cols[index] + k * WALK_STEP_CELLS * d_col[index])
-        rows = rows.astype(np.intp)
-        cols = cols.astype(np.intp)
-        inside = (
-            (rows >= 0)
-            & (rows < labels.shape[0])
-            & (cols >= 0)
-            & (cols < labels.shape[1])
-        )
+        r = np.rint(start_rows[index] + k * WALK_STEP_CELLS * d_row[index])
+        c = np.rint(start_cols[index] + k * WALK_STEP_CELLS * d_col[index])
+        r = r.astype(np.intp)
+        c = c.astype(np.intp)
+        moved = (r != last_rows[index]) | (c != last_cols[index])
+        index, r, c = index[moved], r[moved], c[moved]
+        if index.size == 0:
+            continue
+        last_rows[index], last_cols[index] = r, c
+        inside = (r >= 0) & (r < shape[0]) & (c >= 0) & (c < shape[1])
         found = np.full(index.shape, OUTSIDE, dtype=np.int32)
-        found[inside] = labels[rows[inside], cols[inside]]
-        same = inside & (found == own[index])
-        last_rows[index[same]] = rows[same]
-        last_cols[index[same]] = cols[same]
-        steps[index] = k
-        left = index[~same]
-        next_label[left] = found[~same]
-        active[left] = False
-    return last_rows, last_cols, next_label, steps
+        found[inside] = labels[r[inside], c[inside]]
+        stays = on_label[index] & inside & (found == own[index])
+
+        kept = index[stays]
+        count[kept] += 1
+        slot = count[kept] - 1
+        early = slot < _CELLS_KEPT
+        head_rows[kept[early], slot[early]] = r[stays][early]
+        head_cols[kept[early], slot[early]] = c[stays][early]
+        tail_rows[kept, :-1] = tail_rows[kept, 1:]
+        tail_cols[kept, :-1] = tail_cols[kept, 1:]
+        tail_rows[kept, -1] = r[stays]
+        tail_cols[kept, -1] = c[stays]
+
+        left = index[~stays]
+        on_label[left] = False
+        on_grid = inside[~stays]
+        slot = n_beyond[left]
+        beyond_rows[left[on_grid], slot[on_grid]] = r[~stays][on_grid]
+        beyond_cols[left[on_grid], slot[on_grid]] = c[~stays][on_grid]
+        n_beyond[left] += 1
+        active[left[~on_grid | (n_beyond[left] >= _CELLS_BEYOND)]] = False
+    return _Trace(
+        head_rows=head_rows,
+        head_cols=head_cols,
+        tail_rows=tail_rows,
+        tail_cols=tail_cols,
+        count=count,
+        beyond_rows=beyond_rows,
+        beyond_cols=beyond_cols,
+    )
+
+
+def _elevation(dem: NDArray[np.float64], cell: _Cells) -> NDArray[np.float64]:
+    """The DEM at cells, NaN where a cell is missing (-1)."""
+    rows, cols = cell
+    found = (rows >= 0) & (cols >= 0)
+    z = np.full(rows.shape, np.nan)
+    z[found] = dem[rows[found], cols[found]]
+    return z
+
+
+def _distance(a: _Cells, b: _Cells, cell_size_m: float) -> NDArray[np.float64]:
+    """The horizontal distance between cell centres, NaN where one is missing."""
+    found = (a[0] >= 0) & (b[0] >= 0)
+    gap = np.hypot(a[0] - b[0], a[1] - b[1]) * cell_size_m
+    return np.where(found, gap, np.nan)
+
+
+def _gradient(
+    dem: NDArray[np.float64], a: _Cells, b: _Cells, cell_size_m: float
+) -> NDArray[np.float64]:
+    """The fall from cell ``a`` to cell ``b`` per metre between them."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return (_elevation(dem, a) - _elevation(dem, b)) / _distance(a, b, cell_size_m)
+
+
+def _end_correction(
+    dem: NDArray[np.float64],
+    cells: tuple[_Cells, _Cells, _Cells, _Cells],
+    face: NDArray[np.float64],
+    cell_size_m: float,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Move one end of each transect from its end cell's centre to the break.
+
+    ``cells`` is ``(far, beyond, end, inward)``, in order towards the element:
+    the two cells outside the end, the end cell and the next one in. The
+    ground outside is read as a straight line at the gradient between the two
+    outside cells, the element as a straight face falling at ``face`` (metres
+    per metre), and the break is where the two meet. Where it lies outside the
+    end cell (a bank's first steep cell sits inside its crest) the face is
+    lengthened to it; where it lies inside (a free-face's rounded edge cell
+    stands on the ground beyond) the outside ground is cut back to it. Exact
+    on ground made of straight pieces.
+
+    Returns:
+        ``(run_m, rise_m)``: what the end adds to the transect's run and to its
+        height, zero where any cell is missing or the face is no steeper than
+        the ground outside.
+    """
+    far, beyond, end, inward = cells
+    outside = _gradient(dem, far, beyond, cell_size_m)
+    across = _gradient(dem, beyond, end, cell_size_m)
+    within = _gradient(dem, end, inward, cell_size_m)
+    out_m = _distance(beyond, end, cell_size_m)
+    in_m = _distance(end, inward, cell_size_m)
+    span = face - outside
+    with np.errstate(invalid="ignore", divide="ignore"):
+        steeper = span > _LEVEL_GRADIENT
+        on_face = np.clip((across - outside) / span, 0.0, 1.0)
+        off_face = np.clip((face - within) / span, 0.0, 1.0)
+    on_face = np.where(steeper, np.nan_to_num(on_face), 0.0)
+    off_face = np.where(steeper, np.nan_to_num(off_face), 0.0)
+    run = np.nan_to_num(on_face * out_m) - np.nan_to_num(off_face * in_m)
+    rise = np.nan_to_num(on_face * out_m * face) - np.nan_to_num(
+        off_face * in_m * outside
+    )
+    return run, rise
 
 
 def _transects(
@@ -646,23 +882,147 @@ def _transects(
 ) -> pd.DataFrame:
     """One fall-line transect from every crest cell to where it leaves its element.
 
+    A transect's height and run are measured between the breaks in slope at
+    its two ends, not between the centres of its end cells, which on a 1 m
+    grid sit up to a cell either side of the break:
+
+    1. An end interval gentler than :data:`BETA_GROW_ANGLE_DEG` (a cell of
+       level ground the step estimator spread the element onto, beside a wall
+       at an angle to the grid) is trimmed off.
+    2. Where what is left falls across one interval between two cell centres,
+       more steeply by :data:`BETA_STEP_MARGIN_DEG` than the interval
+       beyond each end, the DEM cannot tell how steep the face is: it is a
+       step, read as vertical, half
+       way between them (run 0), and its height is the fall between the two
+       less the fall of the ground outside over each half interval (a wall set
+       in a bank), plus any fall the interval next to an end makes beyond the
+       ground's (a face that runs on past the cell). One interval that is
+       not a step (a piece of an even bank) is measured between its cell
+       centres.
+    3. Otherwise the face's gradient is read inside the element, between the
+       cells next to each end (or the steeper of the two intervals of a
+       three-cell transect), and each end is moved to where the face meets a
+       straight line through the two cells beyond it (:func:`_end_correction`).
+
     Returns:
-        A frame with ``label``, ``height_m`` and ``run_m``, one row per transect
-        that crossed at least one cell.
+        A frame with ``label``, ``height_m``, ``run_m`` and ``reaches_nodata``
+        (the walk ran off the grid or onto ground with no 1 m slope at either
+        end), one row per transect that crossed at least one cell.
     """
     rows, cols = np.nonzero((roles & CREST) > 0)
     d_row = layers.downhill_row[rows, cols]
     d_col = layers.downhill_col[rows, cols]
-    max_steps = int(2 * (labels.shape[0] + labels.shape[1]) / WALK_STEP_CELLS)
-    last_rows, last_cols, _, _ = _walk(labels, rows, cols, d_row, d_col, max_steps)
-    run = np.hypot(last_rows - rows, last_cols - cols) * cell_size_m
-    height = dem[rows, cols] - dem[last_rows, last_cols]
-    crossed = run > 0
+    down = _trace(labels, rows, cols, d_row, d_col)
+    up = _trace(labels, rows, cols, -d_row, -d_col, leave_at_once=True)
+
+    def column(
+        cells_rows: NDArray[np.intp], cells_cols: NDArray[np.intp], k: int
+    ) -> _Cells:
+        return cells_rows[:, k], cells_cols[:, k]
+
+    def pick(mask: NDArray[np.bool_], if_true: _Cells, if_false: _Cells) -> _Cells:
+        return (
+            np.where(mask, if_true[0], if_false[0]),
+            np.where(mask, if_true[1], if_false[1]),
+        )
+
+    s0, s1, s2 = (column(down.head_rows, down.head_cols, k) for k in range(3))
+    t2, t1, t0 = (column(down.tail_rows, down.tail_cols, k) for k in range(3))
+    u1, u2 = (column(up.beyond_rows, up.beyond_cols, k) for k in range(2))
+    d1, d2 = (column(down.beyond_rows, down.beyond_cols, k) for k in range(2))
+    m = down.count
+
+    tan_grow = math.tan(math.radians(BETA_GROW_ANGLE_DEG))
+    with np.errstate(invalid="ignore"):
+        trim_top = (m >= 3) & (_gradient(dem, s0, s1, cell_size_m) < tan_grow)
+        trim_foot = (m >= 3) & (_gradient(dem, t1, t0, cell_size_m) < tan_grow)
+    # A three-cell transect gentle at both ends keeps both.
+    neither = trim_top & trim_foot & (m == 3)
+    trim_top &= ~neither
+    trim_foot &= ~neither
+    n_intervals = m - 1 - trim_top.astype(np.intp) - trim_foot.astype(np.intp)
+
+    top = pick(trim_top, s1, s0)
+    top_in = pick(trim_top, s2, s1)
+    top_out = pick(trim_top, s0, u1)
+    top_far = pick(trim_top, u1, u2)
+    foot = pick(trim_foot, t1, t0)
+    foot_in = pick(trim_foot, t2, t1)
+    foot_out = pick(trim_foot, t0, d1)
+    foot_far = pick(trim_foot, d1, d2)
+
+    run_between = _distance(top, foot, cell_size_m)
+    fall_between = _elevation(dem, top) - _elevation(dem, foot)
+
+    # A face across one interval: vertical, half way between the two cells,
+    # the ground outside falling as it does between the two cells beyond each
+    # end. Where the interval next to an end falls faster than that, the face
+    # runs on into it, and the extra fall is the face's.
+    ground_top = np.nan_to_num(_gradient(dem, top_far, top_out, cell_size_m))
+    ground_foot = np.nan_to_num(_gradient(dem, foot_out, foot_far, cell_size_m))
+    with np.errstate(invalid="ignore"):
+        extra_top = np.nan_to_num(
+            np.maximum(_gradient(dem, top_out, top, cell_size_m) - ground_top, 0.0)
+            * _distance(top_out, top, cell_size_m)
+        )
+        extra_foot = np.nan_to_num(
+            np.maximum(_gradient(dem, foot, foot_out, cell_size_m) - ground_foot, 0.0)
+            * _distance(foot, foot_out, cell_size_m)
+        )
+    thin_height = (
+        fall_between
+        - 0.5 * run_between * (ground_top + ground_foot)
+        + extra_top
+        + extra_foot
+    )
+
+    # A wider face: its gradient inside the element, then each end to its break.
+    face = np.where(
+        n_intervals >= 3,
+        _gradient(dem, top_in, foot_in, cell_size_m),
+        np.fmax(
+            _gradient(dem, top, top_in, cell_size_m),
+            _gradient(dem, foot_in, foot, cell_size_m),
+        ),
+    )
+    top_run, top_rise = _end_correction(
+        dem, (top_far, top_out, top, top_in), face, cell_size_m
+    )
+    # The foot is the crest turned over: on the negated DEM its falls read
+    # towards the toe, as the crest's do towards the crest.
+    foot_run, foot_rise = _end_correction(
+        -dem, (foot_far, foot_out, foot, foot_in), face, cell_size_m
+    )
+    wide_run = np.maximum(run_between + top_run + foot_run, 0.0)
+    wide_height = fall_between + top_rise + foot_rise
+
+    # One interval is a step only where it is steeper, by more than
+    # BETA_STEP_MARGIN_DEG, than the interval beyond each end; one cut
+    # out of an even bank (a break in slope the step estimator read as a
+    # step) is measured between its two cell centres.
+    def steeper_than(outside: NDArray[np.float64]) -> NDArray[np.bool_]:
+        with np.errstate(invalid="ignore"):
+            margin = np.degrees(np.arctan(fall_between / run_between)) - np.degrees(
+                np.arctan(np.nan_to_num(outside, nan=-np.inf))
+            )
+        return np.nan_to_num(margin, nan=0.0) > BETA_STEP_MARGIN_DEG
+
+    single = n_intervals == 1
+    thin = (
+        single
+        & steeper_than(_gradient(dem, top_out, top, cell_size_m))
+        & steeper_than(_gradient(dem, foot, foot_out, cell_size_m))
+    )
+    height = np.where(thin, thin_height, np.where(single, fall_between, wide_height))
+    run = np.where(thin, 0.0, np.where(single, run_between, wide_run))
+    reaches_nodata = ~_measured_ground(layers, *d1) | ~_measured_ground(layers, *u1)
+    crossed = m >= 2
     return pd.DataFrame(
         {
             "label": labels[rows, cols][crossed],
             "height_m": height[crossed],
             "run_m": run[crossed],
+            "reaches_nodata": reaches_nodata[crossed],
         }
     )
 
@@ -699,12 +1059,17 @@ def _measure(
     Returns:
         A frame indexed 1 to ``n_labels`` with ``n_cells``, ``height_m``,
         ``height_max_m``, ``run_m``, ``n_transects``, ``overall_angle_deg``,
-        ``ground_group_code``, ``height_band``, ``threshold_angle_deg`` and
-        ``is_free_face``, and the edge role grid.
+        ``ground_group_code``, ``height_band``, ``threshold_angle_deg``,
+        ``is_free_face``, ``length_m`` and ``aspect_deg``, and the edge role
+        grid. A transect that reaches
+        nodata or the edge of the grid is left out where its element has
+        others, because the survey's edge cut it short.
     """
     index = pd.RangeIndex(1, n_labels + 1, name="label")
     roles = _edge_roles(labels, layers)
     transects = _transects(labels, dem, roles, layers, cell_size_m)
+    clean = (~transects["reaches_nodata"]).groupby(transects["label"]).transform("sum")
+    transects = transects[~transects["reaches_nodata"] | (clean == 0)]
     by_label = transects.groupby("label")
     height = by_label["height_m"].median().reindex(index)
     height_max = by_label["height_m"].max().reindex(index)
@@ -729,6 +1094,8 @@ def _measure(
     threshold = step_angle_deg(group, band)
     with np.errstate(invalid="ignore"):
         free_face = (band > 0) & (angle > threshold)
+    aspect = _circular_mean_deg(labels, layers, n_labels)
+    length = _length_along_contour(labels, aspect, cell_size_m)
 
     frame = pd.DataFrame(
         {
@@ -742,6 +1109,8 @@ def _measure(
             "height_band": band,
             "threshold_angle_deg": threshold,
             "is_free_face": free_face,
+            "length_m": length,
+            "aspect_deg": aspect,
         },
         index=index,
     )
@@ -768,38 +1137,60 @@ def _grow(
     """Grow seeds by watershed over allowed cells only.
 
     The cells growth may not enter are themselves made markers of a barrier
-    label, so no flood passes through them; seed cells always keep their
-    seed.
+    label, so no flood passes through them, and they take the top cost, so
+    the barrier's own flood, which costs at least that, never beats a seed's
+    to an allowed cell; seed cells always keep their seed.
     """
     barrier = n_seeds + 1
     markers = np.where(seeds > OUTSIDE, seeds, OUTSIDE).astype(np.int32)
-    markers[(markers == OUTSIDE) & ~allowed] = barrier
+    blocked = (markers == OUTSIDE) & ~allowed
+    markers[blocked] = barrier
     if not np.any(markers == OUTSIDE):
         grown = markers
     else:
-        grown = ndimage.watershed_ift(cost, markers, structure=FOUR_CONNECTED)
+        costs = np.where(blocked, _BARRIER_COST, cost).astype(np.uint16)
+        grown = ndimage.watershed_ift(costs, markers, structure=FOUR_CONNECTED)
     grown = np.where(grown == barrier, OUTSIDE, grown).astype(np.int32)
     return grown
 
 
-def _keep_reachable(
-    grown: NDArray[np.int32],
+def _grow_by_limit(
     seeds: NDArray[np.int32],
-    keep: NDArray[np.bool_],
+    n_seeds: int,
+    cost: NDArray[np.uint16],
+    *,
+    slope: NDArray[np.float64],
+    finite: NDArray[np.bool_],
+    limit: NDArray[np.float64],
+    cell_limit: NDArray[np.float64],
 ) -> NDArray[np.int32]:
-    """Keep each label's cells that ``keep`` allows and its seed reaches."""
-    result = np.zeros_like(grown)
-    for position, window in enumerate(ndimage.find_objects(grown)):
-        if window is None:
-            continue
-        label = position + 1
-        own = (grown[window] == label) & (keep[window] | (seeds[window] == label))
-        components, _ = ndimage.label(own, structure=FOUR_CONNECTED)
-        seeded = np.unique(components[(seeds[window] == label) & own])
-        seeded = seeded[seeded > 0]
-        reached = np.isin(components, seeded)
-        result[window][reached] = label
-    return result
+    """Grow free-face seeds, each only into cells over its own grow limit.
+
+    The seeds sharing a grow limit (one ground group and estimated band) grow
+    together by watershed, strongest first; the limits are taken strictest
+    first, each over the cells the stricter ones left. A cell is also entered
+    only where it is over its own ground's limit (``cell_limit``, a grid), so
+    a soil-like seed does not flood weak rock steeper than the soil's limit
+    but not the rock's, and a seed never floods ground it cannot keep, which
+    would shut out the seed whose ground it is. ``limit`` is indexed by seed
+    label.
+    """
+    grown = np.zeros_like(seeds)
+    live = np.unique(seeds[seeds > OUTSIDE])
+    for value in np.unique(limit[live])[::-1]:
+        members = np.zeros(n_seeds + 1, dtype=bool)
+        members[live[limit[live] == value]] = True
+        own = np.where(members[seeds], seeds, OUTSIDE).astype(np.int32)
+        others = (seeds > OUTSIDE) & ~members[seeds]
+        allowed = (
+            finite
+            & (slope > np.maximum(value, cell_limit) + _ANGLE_SLACK_DEG)
+            & (grown == OUTSIDE)
+            & ~others
+        )
+        found = _grow(own, n_seeds, cost, allowed)
+        grown = np.where(grown == OUTSIDE, found, grown).astype(np.int32)
+    return grown
 
 
 def _relabel(labels: NDArray[np.int32], keep: NDArray[np.bool_]) -> NDArray[np.int32]:
@@ -809,6 +1200,58 @@ def _relabel(labels: NDArray[np.int32], keep: NDArray[np.bool_]) -> NDArray[np.i
     kept = kept[kept > OUTSIDE]
     lookup[kept] = np.arange(1, kept.size + 1, dtype=np.int32)
     return lookup[labels]
+
+
+def _absorb_rounded_edges(
+    grown: NDArray[np.int32], layers: TerrainLayers
+) -> NDArray[np.int32]:
+    """Give each free-face the rounded cells at its crest and toe.
+
+    Horn's kernel spreads a sharp step over the cell either side of it, so the
+    cell above a cut's crest and the one below its toe read a slope part way
+    between the cut's and the ground's beyond. Such a cell, unclaimed, at
+    least :data:`BETA_GROW_ANGLE_DEG` steep and more than
+    :data:`BETA_FREE_FACE_GROW_TOL_DEG` steeper than the cell beyond it along
+    the fall line, is the rounded edge of the free-face and joins it. A bank
+    running on above or below the free-face is as steep as the cell beyond
+    and stays out.
+    """
+    slope = np.nan_to_num(layers.slope_fine_deg, nan=-np.inf)
+    rows, cols = np.nonzero((grown == OUTSIDE) & (slope >= BETA_GROW_ANGLE_DEG))
+    if rows.size == 0:
+        return grown
+    d_row = layers.downhill_row[rows, cols]
+    d_col = layers.downhill_col[rows, cols]
+    has_direction = np.isfinite(d_row) & np.isfinite(d_col)
+    rows, cols = rows[has_direction], cols[has_direction]
+    step_rows = np.rint(d_row[has_direction]).astype(np.intp)
+    step_cols = np.rint(d_col[has_direction]).astype(np.intp)
+    padded_slope = np.pad(slope, 1, constant_values=-np.inf)
+    result = grown.copy()
+    for sign in (1, -1):
+        # sign 1: the free-face lies downhill and the cell is above its crest.
+        face = _neighbour(grown, rows, cols, sign * step_rows, sign * step_cols)
+        beyond = padded_slope[1 + rows - sign * step_rows, 1 + cols - sign * step_cols]
+        rounded = (face > OUTSIDE) & (
+            slope[rows, cols] > beyond + BETA_FREE_FACE_GROW_TOL_DEG
+        )
+        result[rows[rounded], cols[rounded]] = face[rounded]
+    return result
+
+
+def _label_within_groups(
+    mask: NDArray[np.bool_], ground_group: NDArray[np.int8]
+) -> tuple[NDArray[np.int32], int]:
+    """Label the 4-connected pieces of a mask, never across ground groups."""
+    labels = np.zeros(mask.shape, dtype=np.int32)
+    total = 0
+    for code in np.unique(ground_group[mask]):
+        pieces, n = ndimage.label(
+            mask & (ground_group == code), structure=FOUR_CONNECTED
+        )
+        labels = np.where(pieces > OUTSIDE, pieces + total, labels).astype(np.int32)
+        total += int(n)
+    return labels, total
 
 
 def _free_face_pass(
@@ -832,42 +1275,74 @@ def _free_face_pass(
             (np.nan_to_num(layers.step_height_m, nan=0.0) >= MIN_WALL_HEIGHT_M)
             | (np.nan_to_num(exceedance, nan=-np.inf) > 0)
         )
-    seeds, n_seeds = ndimage.label(eligible, structure=FOUR_CONNECTED)
-    seeds = seeds.astype(np.int32)
+    patches, n_patches = _label_within_groups(eligible, ground_group)
+    if n_patches == 0:
+        empty = patches.astype(np.int32)
+        return empty, empty, exceedance
+
+    # Each patch's threshold is the one at its cell of highest exceedance.
+    score = np.nan_to_num(exceedance, nan=-np.inf)
+    step = np.nan_to_num(layers.step_height_m, nan=0.0)
+    slope = np.nan_to_num(layers.slope_fine_deg, nan=-np.inf)
+    patch_index = np.arange(1, n_patches + 1)
+    peaks = np.array(ndimage.maximum_position(score, patches, patch_index))
+    patch_limit = np.zeros(n_patches + 1)
+    patch_limit[1:] = threshold[peaks[:, 0], peaks[:, 1]] - BETA_FREE_FACE_GROW_TOL_DEG
+    patch_step = np.zeros(n_patches + 1)
+    patch_step[1:] = ndimage.maximum(step, patches, patch_index)
+
+    # The seed is the patch's 1 m footprint: the 3 m slope and the 9 m step
+    # span spread a patch a few cells past the step or the cut it marks, so a
+    # patch keeps only the cells steep enough to grow into or holding most of
+    # its step, and each piece left is a seed of its own.
+    footprint = (patches > OUTSIDE) & (
+        (slope > patch_limit[patches] + _ANGLE_SLACK_DEG)
+        | (
+            step
+            >= np.maximum(MIN_WALL_HEIGHT_M, BETA_SEED_STEP_SHARE * patch_step[patches])
+        )
+    )
+    seeds, n_seeds = _label_within_groups(footprint, ground_group)
     if n_seeds == 0:
         return seeds, seeds, exceedance
-
-    seed_index = np.arange(1, n_seeds + 1)
-    peaks = ndimage.maximum_position(
-        np.nan_to_num(exceedance, nan=-np.inf), seeds, seed_index
-    )
-    peak_rows = np.array([peak[0] for peak in peaks], dtype=np.intp)
-    peak_cols = np.array([peak[1] for peak in peaks], dtype=np.intp)
     limit = np.zeros(n_seeds + 1)
-    limit[1:] = threshold[peak_rows, peak_cols] - BETA_FREE_FACE_GROW_TOL_DEG
-    floor = float(limit[1:].min())
-    slope = np.nan_to_num(layers.slope_fine_deg, nan=-np.inf)
-    allowed = finite & (slope > floor + _ANGLE_SLACK_DEG)
+    limit[1:] = ndimage.maximum(patch_limit[patches], seeds, np.arange(1, n_seeds + 1))
     cost = _cost(exceedance)
+
+    cell_limit = np.nan_to_num(threshold - BETA_FREE_FACE_GROW_TOL_DEG, nan=np.inf)
+
+    def grow(active: NDArray[np.bool_]) -> NDArray[np.int32]:
+        live = np.where(active[seeds], seeds, OUTSIDE).astype(np.int32)
+        grown = _grow_by_limit(
+            live,
+            n_seeds,
+            cost,
+            slope=slope,
+            finite=finite,
+            limit=limit,
+            cell_limit=cell_limit,
+        )
+        return _absorb_rounded_edges(grown, layers)
 
     active = np.ones(n_seeds + 1, dtype=bool)
     active[0] = False
-    grown = np.zeros_like(seeds)
     for _ in range(_MAX_FREE_FACE_ROUNDS):
-        live_seeds = np.where(active[seeds], seeds, OUTSIDE).astype(np.int32)
-        grown = _grow(live_seeds, n_seeds, cost, allowed)
-        keep = slope > limit[grown] + _ANGLE_SLACK_DEG
-        grown = _keep_reachable(grown, live_seeds, keep)
+        grown = grow(active)
         measured, _ = _measure(grown, n_seeds, dem, ground_group, layers, cell_size_m)
         passes = np.zeros(n_seeds + 1, dtype=bool)
-        passes[1:] = measured["is_free_face"].to_numpy() & (
-            measured["height_m"].to_numpy() >= MIN_WALL_HEIGHT_M
+        passes[1:] = (
+            measured["is_free_face"].to_numpy()
+            & (measured["height_m"].to_numpy() >= MIN_WALL_HEIGHT_M)
+            & (measured["length_m"].to_numpy() >= BETA_MIN_ELEMENT_LENGTH_M)
         )
         still = active & passes
         if np.array_equal(still, active):
             break
         active = still
-    grown = np.where(active[grown], grown, OUTSIDE).astype(np.int32)
+    else:
+        # The rounds ran out before the seeds settled: the ground of the last
+        # seeds released goes back to the free-faces left before the bank pass.
+        grown = grow(active)
     live_seeds = np.where(active[seeds], seeds, OUTSIDE).astype(np.int32)
     return grown, live_seeds, exceedance
 
@@ -928,6 +1403,7 @@ def _length_along_contour(
 
 def _stack_links(
     labels: NDArray[np.int32],
+    dem: NDArray[np.float64],
     roles: NDArray[np.uint8],
     layers: TerrainLayers,
     cell_size_m: float,
@@ -954,6 +1430,10 @@ def _stack_links(
     distance = np.full(own.shape, np.nan)
     d_row = -layers.downhill_row[rows, cols]
     d_col = -layers.downhill_col[rows, cols]
+    # The walk ends where the ground starts to fall away again by more than
+    # BETA_RIDGE_DROP_M, over a ridge or a hump, so an element on the far side
+    # is not taken for one above.
+    highest = dem[rows, cols].copy()
     active = np.ones(own.shape, dtype=bool)
     for k in range(1, max_steps + 1):
         index = np.nonzero(active)[0]
@@ -964,12 +1444,25 @@ def _stack_links(
         inside = (r >= 0) & (r < labels.shape[0]) & (c >= 0) & (c < labels.shape[1])
         found = np.full(index.shape, -1, dtype=np.int64)
         found[inside] = walk_grid[r[inside], c[inside]]
-        hit = inside & (found > OUTSIDE) & (found != own[index])
+        z = np.full(index.shape, np.nan)
+        z[inside] = dem[r[inside], c[inside]]
+        highest[index] = np.fmax(highest[index], z)
+        over = ~(z >= highest[index] - BETA_RIDGE_DROP_M)
+        met = inside & ~over & (found > OUTSIDE) & (found != own[index])
+        # An element above faces the same way down the fall line; one facing
+        # back (the far side of a ridge, a gully's other wall) is not stacked.
+        facing = np.zeros(index.shape)
+        facing[met] = (
+            layers.downhill_row[r[met], c[met]] * -d_row[index[met]]
+            + layers.downhill_col[r[met], c[met]] * -d_col[index[met]]
+        )
+        hit = met & (facing > 0)
+        over |= met & ~hit
         hits[index[hit]] = found[hit]
         distance[index[hit]] = np.hypot(
             r[hit] - rows[index[hit]], c[hit] - cols[index[hit]]
         )
-        active[index[hit | ~inside]] = False
+        active[index[hit | ~inside | over]] = False
     linked = hits > OUTSIDE
     if not linked.any():
         return pd.DataFrame(columns=columns)
@@ -1050,7 +1543,9 @@ def _catchments(
     factor = max(round(COARSE_SLOPE_M / cell_size_m), 1)
     coarse_dem = _block_mean(dem, factor)
     coarse_labels = _block_mode(labels, factor)
-    coarse_transform = transform * Affine.scale(factor)
+    coarse_transform = Affine(
+        transform.a * factor, 0.0, transform.c, 0.0, transform.e * factor, transform.f
+    )
     receiver = _d8_receivers(coarse_dem, cell_size_m * factor)
 
     flat_labels = coarse_labels.ravel()
@@ -1094,9 +1589,13 @@ def find_slope_elements(
         categories: Integer grids to take the majority of over each element,
             written as ``majority_<name>`` (for example a ground map row index
             for ``ground_id``, material and modification).
-        core: Where given, a boolean grid; only the elements whose seed peak
-            lies on it are kept, so tiles with an overlap margin each keep the
-            elements seeded in their own core.
+        core: Where given, a boolean grid marking a tile's core. Every
+            element is kept, the halo's too, and ``in_core`` says whether its
+            seed peak lies on the core, so the links, the catchments and the
+            polygons are built on the whole tile and only the core's are
+            written out (``build_slope_polygons`` in
+            :mod:`landloss.hazard.landslide.slope_polygons` drops the rest
+            after settling the shared ground).
 
     Returns:
         The elements and their links.
@@ -1110,6 +1609,12 @@ def find_slope_elements(
     if groups.shape != elevation.shape:
         msg = f"The ground group grid is {groups.shape}, the DEM {elevation.shape}."
         raise ValueError(msg)
+    core_grid = np.ones(elevation.shape, dtype=bool)
+    if core is not None:
+        core_grid = np.asarray(core, dtype=bool)
+        if core_grid.shape != elevation.shape:
+            msg = f"The core grid is {core_grid.shape}, the DEM {elevation.shape}."
+            raise ValueError(msg)
     cell_size_m = _cell_size(transform)
     layers = terrain_layers(elevation, cell_size_m)
 
@@ -1130,26 +1635,46 @@ def find_slope_elements(
 
     n_labels = int(labels.max())
     measured, _ = _measure(labels, n_labels, elevation, groups, layers, cell_size_m)
+    # A region under the smallest element's height is not an element, nor is
+    # one gentler overall than the grow angle: ground under it is a bench or a
+    # floor (the plan, phase 1), such as the two steep cells either side of a
+    # gully's axis, which grow along the gully but measure across it. Nor is
+    # one no transect crosses, with no crest on measured ground (a strip along
+    # the grid's or the survey's edge): it cannot be measured.
     keep = np.zeros(n_labels + 1, dtype=bool)
-    keep[1:] = measured["height_m"].to_numpy() >= MIN_WALL_HEIGHT_M
+    with np.errstate(invalid="ignore"):
+        keep[1:] = (
+            (measured["height_m"].to_numpy() >= MIN_WALL_HEIGHT_M)
+            & (measured["length_m"].to_numpy() >= BETA_MIN_ELEMENT_LENGTH_M)
+            & (measured["n_transects"].to_numpy() > 0)
+            & ~(
+                measured["overall_angle_deg"].to_numpy()
+                < BETA_GROW_ANGLE_DEG - _ANGLE_SLACK_DEG
+            )
+        )
 
+    # Each seed's priority as its own pass measured it: a free-face seed's 3 m
+    # slope less its step test angle, a bank seed's less the grow angle.
     seed_exceedance = np.full(n_labels + 1, np.nan)
     seed_rows = np.full(n_labels + 1, -1, dtype=np.intp)
     seed_cols = np.full(n_labels + 1, -1, dtype=np.intp)
     if n_labels:
-        index = np.arange(1, n_labels + 1)
-        score = np.nan_to_num(exceedance, nan=-np.inf)
-        seed_exceedance[1:] = ndimage.maximum(score, seed_grid, index)
-        peaks = ndimage.maximum_position(score, seed_grid, index)
-        for label, peak in zip(index, peaks, strict=True):
-            if peak is not None and len(peak) == 2:
-                seed_rows[label], seed_cols[label] = peak
-    if core is not None and n_labels:
-        core_grid = np.asarray(core, dtype=bool)
-        valid = seed_rows >= 0
-        in_core = np.zeros(n_labels + 1, dtype=bool)
-        in_core[valid] = core_grid[seed_rows[valid], seed_cols[valid]]
-        keep &= in_core
+        bank_score = layers.slope_coarse_deg - BETA_GROW_ANGLE_DEG
+        score = np.where(seed_grid > n_free_faces, bank_score, exceedance)
+        # Rounded to a micro-degree, so cells that tie on even ground tie
+        # exactly whatever the floating point of a tile's filters, and ties go
+        # to the first cell in row order: the same cell on every tile.
+        score = np.round(np.nan_to_num(score, nan=-np.inf), _SCORE_DECIMALS)
+        rows, cols = np.nonzero(seed_grid > OUTSIDE)
+        owner = seed_grid[rows, cols]
+        order = np.lexsort((cols, rows, -score[rows, cols], owner))
+        first = order[np.r_[True, owner[order][1:] != owner[order][:-1]]]
+        seed_exceedance[owner[first]] = score[rows[first], cols[first]]
+        seed_rows[owner[first]] = rows[first]
+        seed_cols[owner[first]] = cols[first]
+    in_core = np.zeros(n_labels + 1, dtype=bool)
+    valid = seed_rows >= 0
+    in_core[valid] = core_grid[seed_rows[valid], seed_cols[valid]]
 
     kept = np.nonzero(keep)[0]
     labels = _relabel(labels, keep)
@@ -1157,7 +1682,9 @@ def find_slope_elements(
     grown_in = np.where(kept <= n_free_faces, FREE_FACE_PASS, BANK_PASS)
 
     measured, roles = _measure(labels, n_labels, elevation, groups, layers, cell_size_m)
-    elements = measured.drop(columns=["ground_group_code", "is_free_face"])
+    elements = measured.drop(
+        columns=["ground_group_code", "is_free_face", "length_m", "aspect_deg"]
+    )
     elements.insert(0, "grown_in", grown_in)
     elements.insert(
         1, "element_type", np.where(measured["is_free_face"], FREE_FACE, BANK)
@@ -1179,6 +1706,26 @@ def find_slope_elements(
     elements["seed_exceedance_deg"] = seed_exceedance[kept]
     elements["seed_row"] = seed_rows[kept]
     elements["seed_col"] = seed_cols[kept]
+    # The seed peak's cell centre in map units: the same on every tile that
+    # holds the element, so tiles' elements can be matched across a seam.
+    seeded = seed_rows[kept] >= 0
+    elements["seed_x"] = np.where(
+        seeded, transform.c + (seed_cols[kept] + 0.5) * transform.a, np.nan
+    )
+    elements["seed_y"] = np.where(
+        seeded, transform.f + (seed_rows[kept] + 0.5) * transform.e, np.nan
+    )
+    elements["in_core"] = in_core[kept]
+    # Ground with no 1 m slope next to an element (nodata, its rim, the edge
+    # of the grid) means the survey's edge, not the ground, stopped it there.
+    unmeasured = ndimage.binary_dilation(
+        ~np.isfinite(layers.slope_fine_deg),
+        structure=np.ones((3, 3), dtype=bool),
+        border_value=1,
+    )
+    elements["touches_nodata"] = (
+        np.bincount(flat, weights=unmeasured[inside], minlength=n_labels + 1)[1:] > 0
+    )
     elements["ground_group"] = np.asarray(GROUND_GROUPS)[
         measured["ground_group_code"].to_numpy()
     ]
@@ -1201,7 +1748,8 @@ def find_slope_elements(
     )
 
     rows, cols = np.nonzero(inside)
-    x, y = transform * (cols + 0.5, rows + 0.5)
+    x = transform.c + (cols + 0.5) * transform.a
+    y = transform.f + (rows + 0.5) * transform.e
     elements["centroid_x"] = pd.Series(x).groupby(flat).mean().reindex(index).to_numpy()
     elements["centroid_y"] = pd.Series(y).groupby(flat).mean().reindex(index).to_numpy()
     for name, grid in (categories or {}).items():
@@ -1215,7 +1763,7 @@ def find_slope_elements(
         labels=labels,
         edge_roles=roles,
         elements=elements,
-        stack_links=_stack_links(labels, roles, layers, cell_size_m),
+        stack_links=_stack_links(labels, elevation, roles, layers, cell_size_m),
         catchments=catchments,
         catchment_transform=catchment_transform,
         drainage_links=drainage,

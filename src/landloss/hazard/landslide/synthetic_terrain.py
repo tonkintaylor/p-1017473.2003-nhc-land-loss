@@ -17,7 +17,15 @@ the 3 m slope reach, so the grid edge, where those read NaN, touches no
 feature.
 
 LiDAR-like noise is optional: independent normal errors per cell, drawn from a
-seeded numpy generator so a noisy case is the same every run.
+seeded numpy generator so a noisy case is the same every run. Real LiDAR DEM
+error is spatially correlated and smoothed by gridding, so the noisy cases
+test robustness to noise, not to a survey's error.
+
+Any profile case can be turned to fall towards another bearing
+(:func:`rotate_toy_case`), on a square grid, so the measurement can be checked
+off the grid's axes. Cases 13 (two 3 m soil-like batters, at 37 and 33
+degrees, either side of the soil-like step test angle) were added in stage D1
+after the review of the first build; they are not in the plan's table.
 """
 
 import math
@@ -26,7 +34,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 from numpy.typing import NDArray
-from rasterio.transform import Affine, from_origin
+from rasterio.transform import Affine
 
 from landloss.hazard.landslide.slope_elements import (
     SOIL_LIKE_CODE,
@@ -50,6 +58,9 @@ BETA_LIDAR_NOISE_SD_M = 0.05
 # How many rows (north to south) every profile case spans, in metres.
 PROFILE_WIDTH_M = 40.0
 
+# The side of the square grid a turned profile case is drawn on, in metres.
+ROTATED_SIZE_M = 80.0
+
 
 @dataclass(frozen=True)
 class ToyTerrain:
@@ -63,7 +74,11 @@ class ToyTerrain:
         transform: The grid's affine transform, cell corner based.
         features_x_m: Named positions along the profile, in metres east of the
             grid's west edge (the wall, the crest, the toe), for checks and
-            figures.
+            figures; on a turned case, metres along the fall line from the
+            profile's start.
+        profile: For a profile case, the elevation along the profile as a
+            function of the distance from its start; None otherwise.
+        profile_length_m: The profile's length, None where there is none.
     """
 
     name: str
@@ -72,10 +87,12 @@ class ToyTerrain:
     ground_group: NDArray[np.int8]
     transform: Affine
     features_x_m: dict[str, float]
+    profile: Callable[[NDArray[np.float64]], NDArray[np.float64]] | None = None
+    profile_length_m: float | None = None
 
 
 def _transform() -> Affine:
-    return from_origin(ORIGIN_EASTING, ORIGIN_NORTHING, CELL_SIZE_M, CELL_SIZE_M)
+    return Affine(CELL_SIZE_M, 0.0, ORIGIN_EASTING, 0.0, -CELL_SIZE_M, ORIGIN_NORTHING)
 
 
 def _centres(length_m: float) -> NDArray[np.float64]:
@@ -109,17 +126,26 @@ def _profile_case(
         ground_group=np.full(dem.shape, group, dtype=np.int8),
         transform=_transform(),
         features_x_m=features_x_m,
+        profile=profile,
+        profile_length_m=length_m,
     )
 
 
-def retaining_wall() -> ToyTerrain:
-    """Case 1: a 2 m vertical wall on fill, level ground above and below."""
+def retaining_wall(height_m: float = 2.0) -> ToyTerrain:
+    """Case 1: a vertical wall on fill, level ground above and below.
+
+    Args:
+        height_m: The wall's height; the plan's case 1 is 2 m.
+
+    Returns:
+        The case.
+    """
     wall = 20.0
     return _profile_case(
         "01_wall",
-        "A 2 m vertical retaining wall, level ground above and below",
+        f"A {height_m:g} m vertical retaining wall, level ground above and below",
         40.0,
-        lambda x: np.where(x < wall, 2.0, 0.0),
+        lambda x: np.where(x < wall, height_m, 0.0),
         SOIL_LIKE_CODE,
         {"wall": wall},
     )
@@ -322,35 +348,24 @@ def concave_toe() -> ToyTerrain:
 def road_cut() -> ToyTerrain:
     """Case 9: a road cut 200 m long and 4 m high in weak rock.
 
-    A 10 degree hillside with a level road cut into it: the cut face is 4 m
-    high at 60 degrees for 200 m along the road, and tapers to nothing over
-    5 m at each end.
+    A level road along the foot of a 10 degree hillside, with the hillside cut
+    back at 60 degrees: the cut is 4 m high for 200 m along the road, and at
+    each end the ground above it ramps down to the road over 20 m, so the
+    ends are gentle ground (under 15 degrees) rather than steep end walls.
     """
-    cut_x, length, taper = 25.0, 200.0, 5.0
+    cut_x, length, ramp = 25.0, 200.0, 20.0
     x = _centres(45.0)
-    y = _centres(length + 2 * taper + 20.0)
-    start = 10.0 + taper
+    y = _centres(length + 2 * ramp + 20.0)
+    start = 10.0 + ramp
     along = np.clip(
-        np.minimum(y - (start - taper), (start + length + taper) - y) / taper, 0.0, 1.0
+        np.minimum(y - (start - ramp), (start + length + ramp) - y) / ramp, 0.0, 1.0
     )
     height = 4.0 * along
-    hillside = 15.0 - _drop(x, 0.0, x[-1], 10.0)
-    run = height / math.tan(math.radians(60.0))
-    # Ground east of the cut's toe is the road, level at the hillside's height
-    # at the toe less the cut, and the hillside carries on below the road.
-    toe_x = cut_x + run
-    hill_at_cut = 15.0 - cut_x * math.tan(math.radians(10.0))
-    xx = x[None, :]
-    road = hill_at_cut - height[:, None]
-    face = hill_at_cut - (xx - cut_x) * height[:, None] / np.maximum(run[:, None], 1e-9)
-    road_end = toe_x[:, None] + 6.0
-    below = road - (xx - road_end) * math.tan(math.radians(10.0))
-    dem = np.where(
-        xx <= cut_x,
-        hillside[None, :],
-        np.where(xx <= toe_x[:, None], face, np.where(xx <= road_end, road, below)),
+    behind = np.clip(cut_x - x, 0.0, None) * math.tan(math.radians(10.0))
+    face = height[:, None] - np.clip(x - cut_x, 0.0, None)[None, :] * math.tan(
+        math.radians(60.0)
     )
-    dem = np.minimum(dem, hillside[None, :])
+    dem = np.clip(face, 0.0, None) + behind[None, :]
     return ToyTerrain(
         name="09_road_cut",
         description="A road cut 200 m long and 4 m high",
@@ -417,6 +432,30 @@ def weak_rock_bank_12m() -> ToyTerrain:
     return _weak_rock_bank("12_weak_rock_bank_12m", 12.0)
 
 
+def _soil_batter(name: str, angle_deg: float) -> ToyTerrain:
+    height, crest = 3.0, 15.0
+    toe = crest + height / math.tan(math.radians(angle_deg))
+    return _profile_case(
+        name,
+        f"A 3 m batter at {angle_deg:g} degrees on soil-like ground, level above "
+        "and below",
+        toe + 15.0,
+        lambda x: height - _drop(x, crest, toe, angle_deg),
+        SOIL_LIKE_CODE,
+        {"crest": crest, "toe": toe},
+    )
+
+
+def soil_batter_37deg() -> ToyTerrain:
+    """Case 13 (added in stage D1): a 3 m soil-like batter at 37 degrees."""
+    return _soil_batter("13_soil_batter_37deg", 37.0)
+
+
+def soil_batter_33deg() -> ToyTerrain:
+    """Case 13, second part: the same batter at 33 degrees."""
+    return _soil_batter("13_soil_batter_33deg", 33.0)
+
+
 # Every toy case by its key, in the order of the plan's table.
 TOY_CASES: dict[str, Callable[[], ToyTerrain]] = {
     "01_wall": retaining_wall,
@@ -434,7 +473,52 @@ TOY_CASES: dict[str, Callable[[], ToyTerrain]] = {
     "11_small_step": small_step,
     "12_weak_rock_bank_3m": weak_rock_bank_3m,
     "12_weak_rock_bank_12m": weak_rock_bank_12m,
+    "13_soil_batter_37deg": soil_batter_37deg,
+    "13_soil_batter_33deg": soil_batter_33deg,
 }
+
+
+def rotate_toy_case(
+    terrain: ToyTerrain, bearing_deg: float, *, size_m: float = ROTATED_SIZE_M
+) -> ToyTerrain:
+    """Turn a profile case so its ground falls towards another bearing.
+
+    The profile is read at each cell centre's distance along the new fall
+    line, the grid's centre at the profile's middle, and held at its end
+    values beyond its ends, on a square grid.
+
+    Args:
+        terrain: A profile case (one with a ``profile``).
+        bearing_deg: The downhill bearing, clockwise from north; 90 is the
+            profile cases' own east.
+        size_m: The side of the square grid.
+
+    Returns:
+        The turned case, its ``features_x_m`` in metres along the fall line
+        from the profile's start.
+
+    Raises:
+        ValueError: If the case has no profile.
+    """
+    if terrain.profile is None or terrain.profile_length_m is None:
+        msg = f"The toy case {terrain.name!r} is not a profile case."
+        raise ValueError(msg)
+    centres = _centres(size_m)
+    north = size_m / 2.0 - centres
+    east = centres - size_m / 2.0
+    bearing = math.radians(bearing_deg)
+    along = east[None, :] * math.sin(bearing) + north[:, None] * math.cos(bearing)
+    length = terrain.profile_length_m
+    x = np.clip(along + length / 2.0, 0.0, length)
+    dem = terrain.profile(x.ravel()).reshape(x.shape)
+    group = int(terrain.ground_group.flat[0])
+    return replace(
+        terrain,
+        name=f"{terrain.name}_bearing_{bearing_deg:g}",
+        description=f"{terrain.description}, falling to {bearing_deg:g} degrees",
+        dem=dem,
+        ground_group=np.full(dem.shape, group, dtype=np.int8),
+    )
 
 
 def add_lidar_noise(terrain: ToyTerrain, *, sd_m: float, seed: int) -> ToyTerrain:

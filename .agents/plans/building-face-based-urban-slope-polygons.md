@@ -266,12 +266,17 @@ documents go in `src/scripts/landloss/hazard/landslide/research/slope_elements/`
 and every `BETA_` value changed in a stage is recorded in that stage's
 findings document with the reason.
 
-- [ ] **Stage D1 — toy terrain.** A small library module,
+- [x] **Stage D1 — toy terrain.** A small library module,
       `landloss.hazard.landslide.synthetic_terrain`, builds each case as a 1 m
       DEM with a ground group grid, with and without LiDAR-like noise at the
       survey's stated vertical accuracy. Each case's expected outcome is
       written down before it is run, in `toy_slope_elements.md`, and each case
-      becomes a regression test in `tests/`. The cases:
+      becomes a regression test in `tests/`. Built and run twice (the review of
+      2026-10-02 is the second build): all 17 grids (the plan's 12 cases plus
+      an added case 13) pass on the noise-free run, on noise seed 7, and on all
+      30 noise seeds (510 of 510); findings, the `BETA_` changes made on the
+      evidence, and the open points for the lead are in `toy_slope_elements.md`.
+      The cases:
 
       | # | Case | What it should show |
       | --- | --- | --- |
@@ -977,10 +982,13 @@ not measurements):
 
 - **The growth (phase 1), settled in stages D1 and D2:** the two grow
   angles, `BETA_GROW_ANGLE_DEG` (18.4° proposed) and
-  `BETA_FREE_FACE_GROW_TOL_DEG` (5° proposed), and whether the estimated
+  `BETA_FREE_FACE_GROW_TOL_DEG`, and whether the estimated
   height band orders the seeds well enough on tall banks. Decided by the lead
   on 2026-10-02: the 3 m slope ranks the seeds, and grow angles stop the
-  growth.
+  growth. Stage D1 found the proposed 5° tolerance let a cut grow into the
+  bank above it under noise (16 to 30 of 30 seeds, depending on the case) and
+  rebuilt it at 3°, which passes 30 of 30; this is the lead's to confirm in
+  stage D2 (`toy_slope_elements.md`, item 4).
 - **Added 2026-10-02, phase 3, all proposals for the lead:**
   - stacks: a bench narrower than the width behind the crest links two
     elements, and a free-face over 50° and 3 m takes the whole stack above it
