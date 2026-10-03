@@ -621,6 +621,22 @@ in the upper quartile of slopes at Northridge [brabhaharan_2018]
   5) also claim. **Open:** whether the urban polygon gives way to the slope
   unit there, or the two are drawn independently and the loss counts the
   ground once. Stage D2 shows how often it happens.
+- [ ] **Graded stack extent, held in reserve. Added 2026-10-03; proposal for
+      the lead.** Rule 2 above takes the stack-dominant free-face's polygon
+      unconditionally to the first bench, platform or ridge, reading
+      Kingsbury's "entire slope" as all-or-nothing. His own text already
+      draws a line short of that: "a small steep area high on a gentle
+      slope" takes a tear-drop shape instead [kingsbury_1995], so the
+      whole-stack reading only holds where the free-face is large against
+      what sits above it, not whenever it is merely dominant. Held in
+      reserve, not built, until stage D1 or D2 shows the binary rule over- or
+      under-reaching a named case: each successive linked element above the
+      free-face would also have to clear some fraction of its own margin
+      over `BETA_GROW_ANGLE_DEG` (or its free-face threshold) to keep the
+      climb going, stopping the polygon (a tear-drop) the first time an
+      element above falls under it. This is a fixed geometric test, computed
+      once like the flag itself, not a read of demand. No fraction is
+      proposed; nothing in stage D1's cases yet needs one.
 - [ ] **Polygons overlap only when they start in different places. Added
       2026-10-02; proposal for the lead.** Elements never overlap (phase 1),
       but a polygon reaches behind its crest, and two can reach the same
@@ -657,6 +673,18 @@ in the upper quartile of slopes at Northridge [brabhaharan_2018]
   no size. The opposite direction, a failure above running out onto ground
   below, is the inundated zone (below), the second of the two probabilities
   GNS adds at a cell (`sr2012-022-F01`).
+- [ ] **Graded retrogression probability, held in reserve. Added 2026-10-03;
+      proposal for the lead.** `BETA_RETROGRESSION_P` is one flat number for
+      every linked pair. The literature's direction — more support lost
+      below, more likely to go above — scales with how much is removed and
+      how close the ground above already sits to its own threshold, so a
+      function of the lower polygon's height (or volume) and the upper
+      element's angle margin over its own stability threshold is physically
+      better founded than a constant. Held in reserve rather than built: the
+      literature gives no magnitude for the flat number either, so a graded
+      form adds flexibility, not evidence, until stage D2 or a validation
+      dataset gives something to fit its shape against.
+      `BETA_RETROGRESSION_P = 0.5` stands as the placeholder meanwhile.
 - [ ] **Asperities, held in reserve. Added 2026-10-02.** Stable ground that
       should stop a polygon from growing: a rib or outcrop of strong rock near
       the surface, or another rigid feature. Two kinds of stop are already in
@@ -668,6 +696,22 @@ in the upper quartile of slopes at Northridge [brabhaharan_2018]
       `BETA_ASPERITY_SOURCES` mask is added to the growth and to the stack
       rule, starting from mapped `rock_uw_mw` at the surface; it is empty
       until then.
+- [ ] **Phased growth, an alternative held in reserve. Added 2026-10-03;
+      proposal for the lead.** A second way to stop the same runaway growth
+      the asperity mask is reserved for, without needing a rock mask: grow in
+      a small fixed number of distance-capped phases instead of one
+      unbounded flood per pass, so an element cannot cross a long chain of
+      only-just-qualifying ground on a uniform near-threshold slope. Phase 1
+      grows as now but stops at a cumulative distance from its seed; later
+      phases relax the cap (and optionally the angle) so a strongly
+      exceeding patch still reaches as far as it does today, while a chain of
+      marginal cells does not. Needs one new raster (cumulative distance from
+      seed, one `scipy.ndimage` call) and a small fixed loop over phases, the
+      same shape as today's two passes — no new architecture. Held in
+      reserve alongside the asperity mask until stage D1 or D2 shows a
+      uniform near-threshold slope actually producing a runaway bank or
+      stack; built only then, and only if the asperity mask alone does not
+      resolve it.
 - [ ] **One failure polygon per element segment**, carrying the element's id and a
       segment number; no snapping, no splitting at property boundaries.
       **Proposal for the lead: segment long elements along the contour.** An element
