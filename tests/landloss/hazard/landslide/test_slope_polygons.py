@@ -370,12 +370,12 @@ def test_case_3_four_metre_cut_takes_the_bank_to_its_crest(noise):
     terrain, found, result = run_case("03_excavated_toe_4m", noise)
     cut = long_elements(found, FREE_FACE)[0]
     polygons = result.polygons[result.polygons["element"] == cut]
-    mm6 = bool(found.elements.loc[cut, "mm6_cut"])
+    stack_dominant = bool(found.elements.loc[cut, "stack_dominant_cut"])
     if not noise:
-        assert mm6
+        assert stack_dominant
     # The polygon follows the flag either way.
-    assert (polygons["is_stack"] == mm6).all()
-    if not mm6:
+    assert (polygons["is_stack"] == stack_dominant).all()
+    if not stack_dominant:
         return
     bank = long_elements(found, BANK)[0]
     assert (polygons["top_element"] == bank).all()

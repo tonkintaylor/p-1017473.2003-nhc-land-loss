@@ -285,7 +285,7 @@ findings document with the reason.
       | --- | --- | --- |
       | 1 | A 2 m vertical retaining wall, level ground above and below | One free-face; polygon the level-ground wedge, about 0.45 H on fill (phase 3) |
       | 2 | The same wall with ground rising at 20° behind it | A free-face with a bank stacked on it; the polygon takes the wall's width only, and the bank is linked by retrogression |
-      | 3 | An excavated toe: a 4 m cut at 60° at the foot of a 30° bank 15 m high, soil-like ground; then the same with a 2 m cut | 4 m: the cut carries the MM6 flag, so the polygon runs to the bank's crest. 2 m: the cut's width only, the bank linked by retrogression |
+      | 3 | An excavated toe: a 4 m cut at 60° at the foot of a 30° bank 15 m high, soil-like ground; then the same with a 2 m cut | 4 m: the cut carries the stack-dominant flag, so the polygon runs to the bank's crest. 2 m: the cut's width only, the bank linked by retrogression |
       | 4 | The same 4 m cut under a 15° slope | The slope is under the grow angle, so not an element: the cut's width only |
       | 5 | Two terraces, each with a 2 m wall, with a bench between them 1 m wide and then 8 m wide | Narrow bench: one stack. Wide bench: two separate polygons |
       | 6 | Two adjacent gullies whose steep heads meet at a ridge | Two elements in different catchments; their polygons may overlap at the ridge top and nowhere else |
@@ -596,17 +596,20 @@ in the upper quartile of slopes at Northridge [brabhaharan_2018]
 
   Kingsbury mapped regional slopes and would not have seen a garden wall, so
   the rule needs a height as well as an angle. It uses the flag phase 1
-  already writes, the cut that fails at MM6: steeper than 50° and higher than
-  3 m [brabhaharan_2018; hancox_2015]. The rule, on the stack links of
-  phase 1:
+  already writes, `stack_dominant_cut`: steeper than 50° and higher than
+  3 m [brabhaharan_2018; hancox_2015], the cut observed to fail from MM6
+  shaking — a fixed geometric threshold computed once from the element's own
+  angle and height, never a read of a realisation's demand. The rule, on the
+  stack links of phase 1:
   1. A link makes a stack where the bench between the lower element's crest
      and the upper element's toe (ground under `BETA_GROW_ANGLE_DEG`) is
      narrower than the lower element's width behind its crest. A wider bench
      breaks the stack (stage D1 case 5).
-  2. A free-face carrying the MM6 flag takes the whole stack above it: its
-     polygon runs to the crest of the highest linked element. Every element
-     is at least `BETA_GROW_ANGLE_DEG` steep, so this is Kingsbury's "entire
-     slope", ending at the first bench, platform or ridge (case 3).
+  2. A free-face carrying the stack-dominant flag takes the whole stack
+     above it: its polygon runs to the crest of the highest linked element.
+     Every element is at least `BETA_GROW_ANGLE_DEG` steep, so this is
+     Kingsbury's "entire slope", ending at the first bench, platform or
+     ridge (case 3).
   3. Any other element takes only its own width behind its crest, even where
      that reaches into the element above (case 2). The element above is then
      linked to it by the retrogression rule (below), not swallowed by it.

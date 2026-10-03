@@ -78,7 +78,7 @@ wrong or is the expectation wrong?
 | --- | --- | --- |
 | 1 | A 2 m vertical retaining wall, level ground above and below | One free-face; polygon the level-ground wedge, about 0.45 H on fill |
 | 2 | The same wall with ground rising at 20° behind it | A free-face with a bank stacked on it; the polygon takes the wall's width only, and the bank is linked by retrogression |
-| 3 | An excavated toe: a 4 m cut at 60° at the foot of a 30° bank 15 m high, soil-like ground; then the same with a 2 m cut | 4 m: the cut carries the MM6 flag, so the polygon runs to the bank's crest. 2 m: the cut's width only, the bank linked by retrogression |
+| 3 | An excavated toe: a 4 m cut at 60° at the foot of a 30° bank 15 m high, soil-like ground; then the same with a 2 m cut | 4 m: the cut carries the stack-dominant flag, so the polygon runs to the bank's crest. 2 m: the cut's width only, the bank linked by retrogression |
 | 4 | The same 4 m cut under a 15° slope | The slope is under the grow angle, so not an element: the cut's width only |
 | 5 | Two terraces, each with a 2 m wall, with a bench between them 1 m wide and then 8 m wide | Narrow bench: one stack. Wide bench: two separate polygons |
 | 6 | Two adjacent gullies whose steep heads meet at a ridge | Two elements in different catchments; their polygons may overlap at the ridge top and nowhere else |
@@ -111,15 +111,15 @@ Runout is the inundated ground beyond the toe on the middle row.
 | --- | --- | --- | --- | --- |
 | 1 wall | pass | pass | 30/30 | One free-face, H 2.00 m, read vertical (90°), band 3. Rule width 0.89 m, kept width 0 (under a cell, so the polygon is the wall's 2 cells). Volume 36 m³, or 0.94 m³/m against the triangle's 0.89. Runout 2 m (fill flow slide, H/L 0.52) |
 | 2 wall, rising ground | pass | pass | 30/30 | Wall H 2.00 m, vertical. Bank H 4.73 m at 20.0°, stacked across a 0 m bench. Wall polygon is its own 2 cells (rule width 0.89 m). Bank linked by retrogression. The bank is natural, so it takes the T-44 band |
-| 3 4 m cut | pass | pass | 30/30 | Cut H 4.00 m at 60.0°, band 5, MM6. Its polygon climbs the 30° bank (H 14.15 m) to x 9.5 m, so the polygon is 18.4 m high. Two segments, 1,029 and 535 m³, mean depth 1.37 m. The bank's own polygon is nested inside it (stack overlap). Runout 2 m below the toe, from the cut's own crest |
-| 3 2 m cut | pass | pass | 30/30 | Cut H 2.29 m at 49.1°, band 3, no MM6. Rule width 1.02 m, kept width 1.0 m. It keeps the bank cell inside its width, shared with the bank's polygon (`within_width`). Bank linked by retrogression. No runout |
-| 4 cut, 15° slope | pass | pass | 30/30 | One element only, the cut, H 4.00 m at 60.0°, MM6. Nothing above it to climb. Rule width 1.78 m, kept width 1.0 m. Volume 130 m³. Runout 1 m |
-| 5 narrow bench | pass | pass | 30/30 | **Merged, not stacked.** One free-face, H 4.00 m at 63.4°, MM6. The 1 m bench is one cell, which Horn's kernel reads as part of both walls. One polygon over both walls. See problem 9 |
+| 3 4 m cut | pass | pass | 30/30 | Cut H 4.00 m at 60.0°, band 5, stack-dominant. Its polygon climbs the 30° bank (H 14.15 m) to x 9.5 m, so the polygon is 18.4 m high. Two segments, 1,029 and 535 m³, mean depth 1.37 m. The bank's own polygon is nested inside it (stack overlap). Runout 2 m below the toe, from the cut's own crest |
+| 3 2 m cut | pass | pass | 30/30 | Cut H 2.29 m at 49.1°, band 3, not stack-dominant. Rule width 1.02 m, kept width 1.0 m. It keeps the bank cell inside its width, shared with the bank's polygon (`within_width`). Bank linked by retrogression. No runout |
+| 4 cut, 15° slope | pass | pass | 30/30 | One element only, the cut, H 4.00 m at 60.0°, stack-dominant. Nothing above it to climb. Rule width 1.78 m, kept width 1.0 m. Volume 130 m³. Runout 1 m |
+| 5 narrow bench | pass | pass | 30/30 | **Merged, not stacked.** One free-face, H 4.00 m at 63.4°, stack-dominant. The 1 m bench is one cell, which Horn's kernel reads as part of both walls. One polygon over both walls. See problem 9 |
 | 5 wide bench | pass | pass | 30/30 | Two vertical free-faces, H 2.00 m each, linked across a bench read as 6.0 m. Two polygons, no overlap, linked by retrogression |
 | 6 gullies | pass | pass | 30/30 | Two free-faces (H 4.66 m, 44.1°, facing 270° and 90°), in separate catchments. Their polygons share 4 cells at the ridge (`separate_catchments`). The gully-floor banks of the first build are gone (item 9). Under noise a floor strip just over 18.4° can still survive (problem 4) |
 | 7 convex crest | pass | pass | 30/30 | Free-face H 14.11 m at 43.2° overall (steepest cell 45°), band 7. Crest at x 16.5 m, against the 30° point at 16.9 m. The 1 m rounding bank of the first build is now mostly inside the free-face, because the grow limit is 32° (item 4). It appears under noise in some seeds. Rule width 6.28 m, kept width 6.0 m. One polygon of 1,477 m³, mean depth 1.77 m |
 | 8 concave toe | pass | pass | 30/30 | Free-face H 14.11 m at 43.2°. Toe at x 25.5 m, against the 30° point at 25.1 m. Kept width 6.0 m. 1,287 m³, mean depth 1.54 m. Runout 2 m onto the easing |
-| 9 road cut | pass | pass | 30/30 | One free-face 224 m long (the cut and its ramps), H 4.00 m at 60.0°, MM6. **One polygon of 788 m³**: 3.5 m³/m is under the segment volume. Two end pieces 6 m long (0.74 m, vertical) where the cut fades out along the ramps. Runout 1 m. With φ' 0 (a wedge as wide as H), the regression test checks that the cut is segmented |
+| 9 road cut | pass | pass | 30/30 | One free-face 224 m long (the cut and its ramps), H 4.00 m at 60.0°, stack-dominant. **One polygon of 788 m³**: 3.5 m³/m is under the segment volume. Two end pieces 6 m long (0.74 m, vertical) where the cut fades out along the ramps. Runout 1 m. With φ' 0 (a wedge as wide as H), the regression test checks that the cut is segmented |
 | 10 wall in bank | pass | pass | 30/30 | Bank (H 6.30 m, 25°), free-face (**H 1.50 m**, vertical, band 3) and bank (6.30 m, 25°), linked crest to toe both ways |
 | 11 small step | pass | pass | 30/30 | No element |
 | 12 3 m weak rock | pass | pass | 30/30 | Bank, H 3.00 m at 40.0°, band 4, test 45°. Its polygon is its own cells plus the 1 m band. No runout |
@@ -165,8 +165,8 @@ The element count still varies in case 6 (3 to 8, floor strips), in case 7 and c
   rock up to 1.2 m, and several on the diagonal.
 - **Case 1 rotated.** Case 1 at 110, 120 and 135° reads 2.0 m, with and without noise.
 - **Case 3 rotated.** Case 3's 4 m cut at 110, 120 and 135° reads 60.1°, 62.0° and 60.0°,
-  and keeps MM6 and its bank link. The first build read 55.0°, 53.9° and 51.5° as the
-  bearing moved off the grid.
+  and keeps the stack-dominant flag and its bank link. The first build read 55.0°, 53.9°
+  and 51.5° as the bearing moved off the grid.
 - **Nodata.** A 5 by 4 m nodata hole in case 3's bank, with a nodata strip behind its
   crest, leaves the bank at 14.15 m, its height without the hole. In the first build the
   hole moved the bank from band 7 to band 4 (the review's 13.86 to 3.46 m). No crest
@@ -232,8 +232,8 @@ in the library unless it says otherwise.
 4. **`BETA_FREE_FACE_GROW_TOL_DEG`: 5 → 3°, a `BETA_` change.** After item 3, the
    soil-like grow limit of 30° (35 − 5) sat exactly on the 30° bank above case 3's cut.
    Under noise the cut grew up into the bank:
-   - At 5°: the 4 m cut kept its MM6 flag in 16 of 30 seeds, and in 3 seeds there was no
-     free-face. The 2 m cut case passed 10 of 30.
+   - At 5°: the 4 m cut kept its stack-dominant flag in 16 of 30 seeds, and in 3 seeds
+     there was no free-face. The 2 m cut case passed 10 of 30.
    - At 3° (limit 32°): both passed 30 of 30. Walls, batters and case 10 are unchanged.
 
    Case 7's crest moves 1 m up the rounding, and its 1 m rounding bank mostly joins the
@@ -304,8 +304,8 @@ in the library unless it says otherwise.
     - The facing-apart angle is `BETA_FACING_APART_DEG`, and the module docstring says
       that this test is ours, added to the plan's overlap rule 1.
     - The default φ' is `BETA_DEFAULT_RETAINED_PHI_DEG`.
-    - `mm6_cut` and `hb1995_cut` are documented as geometric only (on banks too); the
-      stack rule reads them on free-faces only.
+    - `stack_dominant_cut` and `hb1995_cut` are documented as geometric only (on banks
+      too); the stack rule reads them on free-faces only.
     - In the script, `FILL_CASES` marks only the free-faces as fill.
     - `check_wall` now checks the polygon's cells, not the width ratio.
     - The figures grey out the grid-edge rows.
@@ -424,11 +424,12 @@ library does not spuriously seed growth on gently undulating natural ground.
    polygon 224 m long is still longer than any failure in the record, so the plan's open
    question on segmenting (by volume, or by a length as well) stands. **For the lead.**
 9. **Narrow terraces merge.** Two 2 m walls on a 1 m bench read as one 4 m free-face at
-   63°, which carries MM6. The plan expected "one stack". By the plan's own stack rule 1
-   they would not stack, because the 1 m bench is wider than the lower wall's 0.9 m
-   width, and neither wall is MM6. The plan's expectation and its rules disagree. The
-   merge is defensible geotechnically, because walls set back by less than about their
-   height act together. The check is marked as passing on the merge.
+   63°, which carries the stack-dominant flag. The plan expected "one stack". By the
+   plan's own stack rule 1 they would not stack, because the 1 m bench is wider than the
+   lower wall's 0.9 m width, and neither wall is stack-dominant. The plan's expectation
+   and its rules disagree. The merge is defensible geotechnically, because walls set
+   back by less than about their height act together. The check is marked as passing on
+   the merge.
 10. **A noisy 20° bank breaks up.** At seed 7, case 2's bank reads 1.91 m against
     4.73 m without noise, because it is only 1.6° over the grow angle. Its polygon still
     covers the bank, but its height band is wrong.

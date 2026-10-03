@@ -385,7 +385,7 @@ def test_case_2_wall_with_a_bank_stacked_on_it(noise):
 
 
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
-def test_case_3_four_metre_cut_carries_the_mm6_flag(noise):
+def test_case_3_four_metre_cut_carries_the_stack_dominant_flag(noise):
     terrain, found = run_case("03_excavated_toe_4m", noise)
     cut = free_faces(found)
     assert len(cut) == 1
@@ -393,11 +393,12 @@ def test_case_3_four_metre_cut_carries_the_mm6_flag(noise):
     # 60 degrees. The bank sits exactly on the free-face pass's grow limit
     # (35 less 5 degrees), so under noise the free-face takes the bank cells
     # that read over 30 degrees as well, up to about a metre of it, which
-    # lowers its overall angle; the MM6 flag is checked noise-free only.
+    # lowers its overall angle; the stack-dominant flag is checked noise-free
+    # only.
     assert cut["height_m"].iloc[0] >= 3.8
     assert cut["height_m"].iloc[0] <= (5.2 if noise else 4.2)
     if not noise:
-        assert bool(cut["mm6_cut"].iloc[0])
+        assert bool(cut["stack_dominant_cut"].iloc[0])
         assert cut["overall_angle_deg"].iloc[0] == pytest.approx(60.0, abs=1.0)
     slope = banks(found)
     above = [
@@ -415,11 +416,11 @@ def test_case_3_four_metre_cut_carries_the_mm6_flag(noise):
 
 
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
-def test_case_3_two_metre_cut_has_no_mm6_flag(noise):
+def test_case_3_two_metre_cut_has_no_stack_dominant_flag(noise):
     _, found = run_case("03_excavated_toe_2m", noise)
     cut = free_faces(found)
     assert len(cut) == 1
-    assert not bool(cut["mm6_cut"].iloc[0])
+    assert not bool(cut["stack_dominant_cut"].iloc[0])
     # 2 m of cut and about 0.3 m of the transition cell above it; under noise
     # up to half a metre of the bank above as well (see the 4 m case).
     assert cut["height_m"].iloc[0] >= 2.2
@@ -435,7 +436,7 @@ def test_case_4_slope_under_the_grow_angle_is_not_an_element(noise):
     assert len(found.elements) == 1
     cut = found.elements.iloc[0]
     assert cut["element_type"] == FREE_FACE
-    assert bool(cut["mm6_cut"])
+    assert bool(cut["stack_dominant_cut"])
     assert found.stack_links.empty
 
 
@@ -700,8 +701,9 @@ def test_case_1_wall_off_the_grid_axes(bearing, noise):
 
 @pytest.mark.parametrize("bearing", [110.0, 120.0, 135.0])
 def test_case_3_four_metre_cut_off_the_grid_axes(bearing):
-    # The cut keeps its MM6 flag and its bank above at any bearing: it reads
-    # 60 to 62 degrees, against 55 when it was measured between cell centres.
+    # The cut keeps its stack-dominant flag and its bank above at any
+    # bearing: it reads 60 to 62 degrees, against 55 when it was measured
+    # between cell centres.
     terrain = rotate_toy_case(TOY_CASES["03_excavated_toe_4m"](), bearing)
     found = find_slope_elements(terrain.dem, terrain.ground_group, terrain.transform)
     elements = long_elements(found)
@@ -709,7 +711,7 @@ def test_case_3_four_metre_cut_off_the_grid_axes(bearing):
     bank = elements[elements["element_type"] == BANK]
     assert len(cut) == 1
     assert len(bank) == 1
-    assert bool(cut["mm6_cut"].iloc[0])
+    assert bool(cut["stack_dominant_cut"].iloc[0])
     assert cut["overall_angle_deg"].iloc[0] == pytest.approx(60.0, abs=3.0)
     assert bank["overall_angle_deg"].iloc[0] == pytest.approx(30.0, abs=1.0)
     assert link(found, cut.index[0], bank.index[0]) is not None

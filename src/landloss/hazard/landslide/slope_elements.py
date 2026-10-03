@@ -100,13 +100,16 @@ indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
 - ``height_band``: 1 to 8, from ``height_m``;
 - ``threshold_angle_deg``: ``STEP_ANGLE_DEG`` for the group and band;
 - ``angle_excess_deg``: ``overall_angle_deg`` less the threshold;
-- ``mm6_cut``: steeper than 50 degrees and higher than 3 m, the cut that fails
-  at MM6 [brabhaharan_2018; hancox_2015];
+- ``stack_dominant_cut``: steeper than 50 degrees and higher than 3 m, the
+  angle and height a cut is observed to fail at from MM6 shaking
+  [brabhaharan_2018; hancox_2015]: a fixed geometric flag computed once from
+  the element's own angle and height, never a read of a realisation's demand;
 - ``hb1995_cut``: steeper than 45 degrees and higher than 5 m, high to very
   high susceptibility in closely jointed greywacke [hancox_brabhaharan_1995];
   both flags are geometry only, on banks as on free-faces, as the published
-  criteria are (a 4 m stronger rock bank at 52 degrees carries ``mm6_cut``);
-  the stack rule reads ``mm6_cut`` on free-faces only;
+  criteria are (a 4 m stronger rock bank at 52 degrees carries
+  ``stack_dominant_cut``); the stack rule reads ``stack_dominant_cut`` on
+  free-faces only;
 - ``own_catchment_area_m2``: the 3 m cells whose flow reaches this element
   before any other (see :attr:`SlopeElements.catchments`);
 - ``centroid_x``, ``centroid_y``: the mean cell centre, in map units;
@@ -214,7 +217,8 @@ BETA_GROW_ANGLE_DEG = 18.4
 # Proposed in the plan as 5 degrees; set to 3 in stage D1, because at 5 the
 # soil-like grow limit is 30 degrees, the slope of the bank above the stage D1
 # excavated toe (case 3), and under LiDAR-like noise the cut grew up into the
-# bank in most draws (the MM6 flag held in 16 of 30, no free-face at all in 3);
+# bank in most draws (the stack-dominant flag held in 16 of 30, no free-face at
+# all in 3);
 # at 3 it held in 30 of 30 (toy_slope_elements.md). To be settled in stage D2.
 BETA_FREE_FACE_GROW_TOL_DEG = 3.0
 
@@ -254,11 +258,15 @@ BETA_STACK_SEARCH_M = 25.0
 # smallest element's height, so a fall no element could make is not a ridge.
 BETA_RIDGE_DROP_M = MIN_WALL_HEIGHT_M
 
-# The cut that fails at MM6: steeper than 50 degrees and higher than 3 m
-# [brabhaharan_2018; hancox_2015] (brabhaharan2018-F03, sr2015-016-F05). A
-# flag on each element, and the trigger of the phase 3 stack rule.
-MM6_CUT_ANGLE_DEG = 50.0
-MM6_CUT_HEIGHT_M = 3.0
+# Steeper than 50 degrees and higher than 3 m, the angle and height a cut is
+# observed to fail at from MM6 shaking [brabhaharan_2018; hancox_2015]
+# (brabhaharan2018-F03, sr2015-016-F05): evidence for a fixed geometric
+# threshold. A flag on each element, computed once from its own angle and
+# height, and the trigger of the phase 3 stack rule -- it must never be
+# conditioned on a realisation's demand (named for what it does, not for the
+# intensity that is its evidence; renamed from `MM6_CUT_*` 2026-10-03).
+STACK_DOMINANT_ANGLE_DEG = 50.0
+STACK_DOMINANT_HEIGHT_M = 3.0
 
 # High to very high susceptibility in closely jointed greywacke: steeper than
 # 45 degrees and higher than 5 m [hancox_brabhaharan_1995] (sr1995-005-F07).
@@ -1732,9 +1740,9 @@ def find_slope_elements(
     elements["angle_excess_deg"] = (
         elements["overall_angle_deg"] - elements["threshold_angle_deg"]
     )
-    elements["mm6_cut"] = (elements["overall_angle_deg"] > MM6_CUT_ANGLE_DEG) & (
-        elements["height_m"] > MM6_CUT_HEIGHT_M
-    )
+    elements["stack_dominant_cut"] = (
+        elements["overall_angle_deg"] > STACK_DOMINANT_ANGLE_DEG
+    ) & (elements["height_m"] > STACK_DOMINANT_HEIGHT_M)
     elements["hb1995_cut"] = (elements["overall_angle_deg"] > HB1995_CUT_ANGLE_DEG) & (
         elements["height_m"] > HB1995_CUT_HEIGHT_M
     )

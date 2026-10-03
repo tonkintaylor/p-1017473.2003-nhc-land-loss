@@ -102,8 +102,8 @@ EXPECTED = {
     "01": "One free-face; polygon the level-ground wedge, about 0.45 H on fill",
     "02": "A free-face with a bank stacked on it; the polygon takes the wall's "
     "width only, the bank linked by retrogression",
-    "03_excavated_toe_4m": "The cut carries the MM6 flag, so the polygon runs "
-    "to the bank's crest",
+    "03_excavated_toe_4m": "The cut carries the stack-dominant flag, so the "
+    "polygon runs to the bank's crest",
     "03_excavated_toe_2m": "The cut's width only, the bank linked by retrogression",
     "04": "The slope is under the grow angle, so not an element: the cut's width only",
     "05_terraces_narrow_bench": "Narrow bench: one stack",
@@ -287,13 +287,14 @@ def check_cut_takes_the_bank(run):
     polygon = run.result.polygons.loc[polygons_of(run.result, cut)[0]]
     reach = westmost_evacuated_x(run, cut)
     passed = (
-        bool(element["mm6_cut"])
+        bool(element["stack_dominant_cut"])
         and polygon["n_stack_elements"] >= 1
         and reach <= run.terrain.features_x_m["bank_crest"] + 2.0
     )
     return passed, (
         f"cut H {element['height_m']:.2f} m at {element['overall_angle_deg']:.1f}"
-        f" deg, MM6 {bool(element['mm6_cut'])}, polygon back to x {reach:.1f} m"
+        f" deg, stack-dominant {bool(element['stack_dominant_cut'])}, polygon"
+        f" back to x {reach:.1f} m"
     )
 
 
@@ -307,14 +308,15 @@ def check_cut_width_only(run, *, needs_bank):
     banks = long_of_type(run.found, BANK)
     if needs_bank:
         linked = len(banks) == 1 and retro(run.result, cut, banks.index[0]) is not None
-        passed = not bool(element["mm6_cut"]) and linked
+        passed = not bool(element["stack_dominant_cut"]) and linked
     else:
         passed = len(run.found.elements) == 1
     # Its own width behind its crest cell, to within a cell.
     limit = edge_x(run.found, cut, CREST) - polygon["width_behind_crest_m"] - 1.0
     passed = passed and polygon["n_stack_elements"] == 0 and reach >= limit
     return passed, (
-        f"cut H {element['height_m']:.2f} m, MM6 {bool(element['mm6_cut'])}, "
+        f"cut H {element['height_m']:.2f} m, "
+        f"stack-dominant {bool(element['stack_dominant_cut'])}, "
         f"polygon back to x {reach:.1f} m, {len(banks)} banks"
     )
 
@@ -829,7 +831,7 @@ def describe_elements(run):
             f"E{label} {element['element_type'].replace('_', '-')}: "
             f"H {element['height_m']:.2f} m, {element['overall_angle_deg']:.1f}°, "
             f"band {element['height_band']}, test {element['threshold_angle_deg']:g}°"
-            + (", MM6" if element["mm6_cut"] else "")
+            + (", stack-dominant" if element["stack_dominant_cut"] else "")
         )
     return "\n".join(lines) if lines else "No element"
 
@@ -961,7 +963,7 @@ def element_table(run):
         "threshold_angle_deg",
         "length_m",
         "aspect_deg",
-        "mm6_cut",
+        "stack_dominant_cut",
     ]
     table = run.found.elements[columns].copy()
     table["x_m"] = element_x(run.found)

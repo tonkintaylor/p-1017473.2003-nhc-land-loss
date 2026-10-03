@@ -24,14 +24,15 @@ run only over elements and polygons. The rules, each where the plan sets it:
    - a cut or natural bank: the T-44 headscarp band, half a metre or a metre
      on ground over 30 degrees (:mod:`landloss.hazard.landslide.urban.geometry`).
 
-2. **Stacks.** A free-face carrying the MM6 flag (steeper than 50 degrees and
-   higher than 3 m [brabhaharan_2018; hancox_2015]) takes the whole stack
-   above it: its rays climb into every element above that faces the same way
-   and starts within the width behind the crest of the element below it, and
-   stop at the first bench wider than that width, or at a ridge. Ground past
-   the top element's crest is that element's own width. Every other element
-   takes only its own width, even where that reaches into the element above
-   [kingsbury_1995].
+2. **Stacks.** A free-face carrying the stack-dominant flag (steeper than
+   50 degrees and higher than 3 m [brabhaharan_2018; hancox_2015], a fixed
+   geometric threshold computed once, never a read of demand) takes the whole
+   stack above it: its rays climb into every element above that faces the
+   same way and starts within the width behind the crest of the element
+   below it, and stop at the first bench wider than that width, or at a
+   ridge. Ground past the top element's crest is that element's own width.
+   Every other element takes only its own width, even where that reaches
+   into the element above [kingsbury_1995].
 3. **Retrogression.** Past the end of its polygon, each ray looks on uphill,
    up to :data:`~landloss.hazard.landslide.slope_elements.BETA_STACK_SEARCH_M`
    past the last element it was in, for the first element above that it did
@@ -227,7 +228,7 @@ class SlopePolygons:
             ``style``, ``width_rule``, ``width_behind_crest_m`` (the rule's),
             ``width_realised_m`` (the median over its rays of how far behind
             the crest cell's centre the furthest cell it kept lies),
-            ``is_stack`` (an MM6 free-face whose rays climb),
+            ``is_stack`` (a stack-dominant free-face whose rays climb),
             ``top_element`` and ``n_stack_elements`` (the elements above it
             the polygon took), ``base_height_m`` (the element's height),
             ``height_m`` (the polygon's, toe of the element to the crest of
@@ -583,7 +584,8 @@ def _march_uphill(
     unused). A ray is in three phases at once, each ending on its own:
 
     - evacuated: it marks cells while within the current element's width
-      behind the crest it last left; a climbing ray (an MM6 free-face's)
+      behind the crest it last left; a climbing ray (a stack-dominant
+    free-face's)
       takes every element facing the same way that it enters while still
       evacuating, and that element's width then holds;
     - imminent: from the end of the evacuated band, it marks cells within the
@@ -1393,7 +1395,9 @@ def build_slope_polygons(
         width_m=width,
         run_m=elements["run_m"].to_numpy(),
     )
-    climbs = (element_type == FREE_FACE) & elements["mm6_cut"].to_numpy(dtype=bool)
+    climbs = (element_type == FREE_FACE) & elements["stack_dominant_cut"].to_numpy(
+        dtype=bool
+    )
 
     def by_label(values: NDArray, fill_value: float) -> NDArray:
         return np.r_[np.asarray([fill_value], dtype=values.dtype), values]
