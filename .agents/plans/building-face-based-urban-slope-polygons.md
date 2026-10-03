@@ -272,10 +272,13 @@ findings document with the reason.
       survey's stated vertical accuracy. Each case's expected outcome is
       written down before it is run, in `toy_slope_elements.md`, and each case
       becomes a regression test in `tests/`. Built and run twice (the review of
-      2026-10-02 is the second build): all 17 grids (the plan's 12 cases plus
-      an added case 13) pass on the noise-free run, on noise seed 7, and on all
-      30 noise seeds (510 of 510); findings, the `BETA_` changes made on the
-      evidence, and the open points for the lead are in `toy_slope_elements.md`.
+      2026-10-02 is the second build): all 19 grids (the plan's 12 cases plus
+      three added — case 13's soil-like batters, case 14's two gully heads on
+      a ridge bent so they face 60° apart rather than case 6's 180°, and
+      case 15's undulating hills, a negative control) pass on the noise-free
+      run, on noise seed 7, and on all 30 noise seeds (570 of 570); findings,
+      the `BETA_` changes made on the evidence, and the open points for the
+      lead are in `toy_slope_elements.md`.
       The cases:
 
       | # | Case | What it should show |

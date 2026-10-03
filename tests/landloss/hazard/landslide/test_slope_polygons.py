@@ -616,6 +616,32 @@ def test_case_13_soil_batters_take_the_wedge_or_the_band(noise):
 
 
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_case_14_gully_heads_60_degrees_apart_overlap_within_width(noise):
+    # Added in stage D1: facing under BETA_FACING_APART_DEG apart, the two
+    # gully heads' disjoint catchments still take `within_width`, not
+    # `separate_catchments` (case 6's gully heads face 180 degrees apart and
+    # take the latter).
+    terrain, found, result = run_case("14_gullies_at_bent_ridge", noise)
+    faces = polygons_of(result, found, FREE_FACE)
+    assert len(faces) == 2
+    apex_northing = terrain.features_x_m["apex_northing_m"]
+    sides = np.sign(faces["centroid_y"] - apex_northing)
+    assert set(sides) == {-1.0, 1.0}
+    between = result.overlaps[
+        result.overlaps["polygon_a"].isin(faces.index)
+        & result.overlaps["polygon_b"].isin(faces.index)
+    ]
+    assert not between.empty
+    assert set(between["reason"]) <= {WITHIN_WIDTH}
+
+
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_case_15_undulating_hills_have_no_polygon(noise):
+    _, _, result = run_case("15_undulating_hills", noise)
+    assert result.polygons.empty
+
+
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
 def test_case_12_weak_rock_banks_take_the_band_or_the_wedge(noise):
     _, _, low = run_case("12_weak_rock_bank_3m", noise)
     assert set(low.polygons["width_rule"]) == {HEADSCARP_BAND}

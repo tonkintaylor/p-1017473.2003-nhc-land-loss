@@ -53,6 +53,7 @@ from landloss.hazard.landslide.slope_elements import (
     step_height_raster,
     terrain_layers,
 )
+from landloss.hazard.landslide.slope_polygons import BETA_FACING_APART_DEG
 from landloss.hazard.landslide.synthetic_terrain import (
     BETA_LIDAR_NOISE_SD_M,
     ORIGIN_EASTING,
@@ -627,6 +628,32 @@ def test_case_13_soil_batters_either_side_of_the_soil_like_test_angle(noise):
         assert element["overall_angle_deg"] == pytest.approx(
             angle, abs=1.5 if noise else 0.2
         )
+
+
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_case_14_gully_heads_60_degrees_apart_are_separate_free_faces(noise):
+    # Added in stage D1: a ridge bent at a nose, its two gully heads facing
+    # under BETA_FACING_APART_DEG apart, unlike case 6's 180 degrees.
+    terrain, found = run_case("14_gullies_at_bent_ridge", noise)
+    faces = free_faces(found)
+    assert len(faces) == 2
+    apex_northing = terrain.features_x_m["apex_northing_m"]
+    sides = np.sign(found.elements.loc[faces.index, "centroid_y"] - apex_northing)
+    assert sides.nunique() == 2
+    aspects = sorted(faces["aspect_deg"])
+    assert aspects[1] - aspects[0] < BETA_FACING_APART_DEG
+    # Disjoint catchments, like case 6's.
+    assert found.drainage_links.empty
+    assert set(np.unique(found.catchments[found.catchments > OUTSIDE])) == set(
+        faces.index
+    )
+
+
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_case_15_undulating_hills_give_no_element(noise):
+    # Added in stage D1: rolling ground under the grow angle everywhere.
+    _, found = run_case("15_undulating_hills", noise)
+    assert found.elements.empty
 
 
 # Walls and slopes off the grid's axes ---------------------------------------

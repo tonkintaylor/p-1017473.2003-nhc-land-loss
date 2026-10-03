@@ -24,8 +24,12 @@ wrong or is the expectation wrong?
 - **Terrain.** The 12 cases of the plan's Development table are built by
   `landloss.hazard.landslide.synthetic_terrain` as 1 m DEMs. Cases 3, 5 and 12 have two
   parts each. Stage D1 adds case 13: two 3 m soil-like batters, one at 37° and one at
-  33°, either side of the soil-like 35° test. That makes 17 grids. Every profile but
-  cases 6 and 9 falls east and is the same on every row.
+  33°, either side of the soil-like 35° test; case 14: two gully heads on a ridge that
+  bends at a nose, to test the `BETA_FACING_APART_DEG` threshold at an angle other than
+  case 6's 180°; and case 15: undulating hills, to test that rolling ground under the
+  grow angle gives no element. That makes 19 grids. Every profile but cases 6 and 9
+  falls east and is the same on every row; cases 14 and 15 are two-dimensional and fall
+  on neither axis.
 - **Rotated copies.** `rotate_toy_case` turns any profile case to another bearing. The
   regression tests use it for cases 1 and 3, and for vertical walls 0.6 to 1.6 m high on
   all three ground groups.
@@ -85,6 +89,8 @@ wrong or is the expectation wrong?
 | 11 | A 0.3 m step on level ground | No element |
 | 12 | A bank on weak rock at 40°, 3 m high, then 12 m high | A bank at 3 m (test angle 45°), a free-face at 12 m (34°) |
 | 13 (added in D1) | 3 m soil-like batters at 37° and 33° | A free-face at 37°, a bank at 33° (test angle 35°) |
+| 14 (added in D1) | Two gully heads on a bent ridge, nominal fall bearings 60° and 120° apart | Two free-faces, facing apart under `BETA_FACING_APART_DEG`; disjoint catchments, but the ground they both reach near the nose is kept by both (`within_width`), not `separate_catchments` |
+| 15 (added in D1) | Undulating hills, none of them steeper than 15° anywhere | No element |
 
 ## Observed outcomes
 
@@ -120,9 +126,11 @@ Runout is the inundated ground beyond the toe on the middle row.
 | 12 12 m weak rock | pass | pass | 30/30 | Free-face (grown in the bank pass), H 12.00 m at 40.0°, band 7, test 34°. Rule width 5.34 m, kept width 5.0 m. 1,060 m³, mean depth 1.39 m. No runout |
 | 13 37° batter | pass | pass | 30/30 | Free-face, H 3.00 m at 37.0°, test 35° |
 | 13 33° batter | pass | pass | 30/30 | Bank, H 3.00 m at 33.0°, test 35° |
+| 14 gullies at bent ridge | pass | pass | 30/30 | Two free-faces, H 7.97 m, aspects 66.8° and 113.2° (46.3° apart, well under `BETA_FACING_APART_DEG`'s 90°). Catchments disjoint, no `drainage_links`. Their polygons share 18 cells near the nose, resolved `within_width`, not `separate_catchments` |
+| 15 undulating hills | pass | pass | 30/30 | No element; steepest cell about 14.1°, under the grow angle everywhere |
 
-**All 17 grids pass on the noise-free run, on seed 7 and under all 30 noise seeds (510
-of 510).** This is after the changes below, two of which are `BETA_` changes made on
+**All 19 grids pass on the noise-free run, on seed 7 and under all 30 noise seeds (570
+of 570).** This is after the changes below, two of which are `BETA_` changes made on
 evidence from these runs (items 4 and 10).
 
 Before those two changes, the corrected build failed under noise:
@@ -323,6 +331,50 @@ The first build said a wall under about 0.7 m could not pass 35°, and that this
 which was worse on rock ground (45° and 53°) and on the diagonal. It is now gone: a
 0.6 m wall is a free-face on every group at every bearing tested.
 
+## Two gully heads 60° apart, and undulating hills
+
+Case 6's ridge is straight and its two gully heads face 180° apart, a mirror pair
+either side of the ridge trace. Case 14 bends the ridge at a nose instead: one side
+falls towards 60°, the other towards 120°, meeting `BETA_FACING_APART_DEG` (90°) at a
+different angle than case 6's. Building it took two false starts, worth recording:
+
+- **A trough whose width scales with angle collapses at the apex.** The first attempt
+  measured each flank's cross-fall as an angle from its own fall bearing, scaled by
+  radius from the nose (as case 6's gullies are built along a straight ridge, generalised
+  naively to a bend). Angular width is unbounded as radius goes to zero, so near the nose
+  both troughs always reached full depth regardless of the angle between them, merging
+  into one element every time.
+- **A fixed-width trough still collapses at the apex, by a different route.** Switching
+  to a fixed-width Gaussian in a Cartesian cross-fall coordinate (case 6's own
+  construction) was not enough on its own: near the nose, the perpendicular offset from
+  *either* flank's own fall line shrinks towards zero for both flanks at once, so both
+  troughs still reach near-full depth close together. The fix is a `start` distance: each
+  flank only begins to deepen once it has fallen `start` = 5 m from the nose, so the two
+  troughs are already apart by the time either cuts in.
+- **Which line partitions the two flanks matters.** An apex-radiating partition (each
+  flank owns the angular wedge on its own side of the bisector) never produces an
+  overlap: each flank's own "behind crest" reach direction (opposite its fall bearing)
+  then points away from the other flank, so the two polygons can never contest the same
+  ground, whatever the parameters. The built case instead partitions on a straight line
+  through the nose (here, an east–west line, `north >= apex_north`), mirroring case 6's
+  own straight ridge trace turned 90° from the bisector of the two fall bearings (the
+  only line that reflects 60° into 120°). Across that line each flank's reach can run
+  into the other's territory, the way case 6's two flanks' reaches cross the ridge.
+
+With this construction, the two gully heads measure 66.8° and 113.2° apart (46.3°, not
+the nominal 60°, the bend pulling the measured aspect in from the input bearings; still
+clearly under the 90° threshold, which is what the test needs), in disjoint catchments,
+and the ground they both reach near the nose is kept by both under `within_width`
+(18 cells), not `separate_catchments` — case 6 demonstrates the overlap rule when
+catchments are disjoint **and** facing more than 90° apart; case 14 demonstrates it is
+*not* `separate_catchments` when they face less than 90° apart, even though the
+catchments are still disjoint.
+
+Case 15 (undulating hills: a sum of five sinusoids on a 220 m grid, none of them
+steeper than about 14.1°) is a straightforward negative control: rolling ground under
+the grow angle everywhere gives no element, with or without noise, confirming the
+library does not spuriously seed growth on gently undulating natural ground.
+
 ## Open problems and implications
 
 1. **The wall wedge on tall free-faces that are not walls (revised).** With the
@@ -429,4 +481,6 @@ All in `report/hazard/landslide/slope-elements/fig/`:
 - `toy-12-weak-rock-bank-12m.png`
 - `toy-13-soil-batter-37deg.png`
 - `toy-13-soil-batter-33deg.png`
+- `toy-14-gullies-at-bent-ridge.png`
+- `toy-15-undulating-hills.png`
 - `toy-overview.png`

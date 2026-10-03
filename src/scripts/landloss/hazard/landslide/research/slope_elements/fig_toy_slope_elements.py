@@ -66,10 +66,12 @@ from landloss.hazard.landslide.slope_elements import (
     find_slope_elements,
 )
 from landloss.hazard.landslide.slope_polygons import (
+    BETA_FACING_APART_DEG,
     BETA_SEGMENT_VOLUME_M3,
     EVACUATED,
     IMMINENT,
     INUNDATED,
+    SEPARATE_CATCHMENTS,
     SlopePolygons,
     build_slope_polygons,
     polygon_geometries,
@@ -119,6 +121,11 @@ EXPECTED = {
     "12_weak_rock_bank_12m": "A free-face at 12 m (test angle 34 degrees)",
     "13_soil_batter_37deg": "Added in D1: a free-face (test angle 35 degrees)",
     "13_soil_batter_33deg": "Added in D1: a bank (test angle 35 degrees)",
+    "14_gullies_at_bent_ridge": "Added in D1: two gully heads under "
+    "BETA_FACING_APART_DEG apart; disjoint catchments, kept by both under "
+    "within_width, not separate_catchments",
+    "15_undulating_hills": "Added in D1: no element — undulating hills stay "
+    "under the grow angle",
 }
 
 # The rows this close to a profile case's north or south edge, in cells, are
@@ -366,6 +373,26 @@ def check_gullies(run):
     return passed, f"{int(shared.sum())} cell-polygon pairs on shared ground"
 
 
+def check_gullies_at_bent_ridge(run):
+    apex_northing = run.terrain.features_x_m["apex_northing_m"]
+    faces = of_type(run.found, FREE_FACE)
+    sides = np.sign(faces["centroid_y"] - apex_northing)
+    if len(faces) != 2 or sides.nunique() != 2:
+        return False, f"{len(faces)} free-faces"
+    aspects = sorted(faces["aspect_deg"])
+    apart = aspects[1] - aspects[0]
+    disjoint = run.found.drainage_links.empty and set(
+        np.unique(run.found.catchments[run.found.catchments > 0])
+    ) == set(faces.index)
+    overlaps = run.result.overlaps
+    no_separate_catchments = not bool((overlaps["reason"] == SEPARATE_CATCHMENTS).any())
+    passed = apart < BETA_FACING_APART_DEG and disjoint and no_separate_catchments
+    return passed, (
+        f"aspects {apart:.1f} deg apart, catchments disjoint {disjoint}, "
+        f"overlap reasons {sorted(overlaps['reason'].unique())}"
+    )
+
+
 def check_crest(run):
     faces = of_type(run.found, FREE_FACE)
     if len(faces) != 1:
@@ -492,6 +519,8 @@ CHECKS: dict[str, Callable[[Run], tuple[bool, str]]] = {
     ),
     "13_soil_batter_37deg": lambda run: check_batter(run, kind=FREE_FACE),
     "13_soil_batter_33deg": lambda run: check_batter(run, kind=BANK),
+    "14_gullies_at_bent_ridge": check_gullies_at_bent_ridge,
+    "15_undulating_hills": check_no_element,
 }
 
 

@@ -230,11 +230,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   and not reviewed.
 - **The slope elements and polygons library is built and proven on toy
   terrain (faces plan, stage D1).** `landloss.hazard.landslide.slope_elements`
-  and `landloss.hazard.landslide.slope_polygons` pass all 17 toy grids
-  (the plan's 12 cases plus an added case 13), noise-free, at noise seed 7,
-  and over 30 noise seeds (510 of 510), and 197 regression tests pass.
-  Findings, the `BETA_` values changed on the evidence, and the points left
-  for the lead are in
+  and `landloss.hazard.landslide.slope_polygons` pass all 19 toy grids
+  (the plan's 12 cases plus three added in D1: case 13's soil-like batters,
+  case 14's two gully heads on a ridge bent so they face 60 degrees apart,
+  under `BETA_FACING_APART_DEG` where case 6's face 180 degrees apart, and
+  case 15's undulating hills, a negative control), noise-free, at noise
+  seed 7, and over 30 noise seeds (570 of 570), and 209 regression tests
+  pass. Findings, the `BETA_` values changed on the evidence, and the points
+  left for the lead are in
   `research/slope_elements/toy_slope_elements.md`. Not yet built: the wall
   candidates (phase 2), stage D2 on real pilot examples, and the pipeline
   step itself (`gen_slope_elements.py`, stage D3).

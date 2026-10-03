@@ -456,6 +456,106 @@ def soil_batter_33deg() -> ToyTerrain:
     return _soil_batter("13_soil_batter_33deg", 33.0)
 
 
+def gullies_at_bent_ridge() -> ToyTerrain:
+    """Case 14 (added in stage D1): two gully heads 60 degrees apart.
+
+    Case 6's ridge is straight, its two gully heads facing 180 degrees apart
+    (a mirror pair: each flank's fall bearing is the other's reflection
+    across the ridge trace). This ridge bends at a nose instead: the ground
+    north of the nose falls towards 60 degrees, the ground south of it
+    towards 120 degrees (still a mirror pair, but across a ridge trace
+    turned 90 degrees from the bisector of the two bearings, the only axis
+    that reflects 60 into 120), both at 15 degrees, under the grow angle, so
+    the nose is a true ridge, not two unrelated slopes. Each side stays
+    untouched for the first 5 m of fall away from the nose, so the gullies
+    cannot merge into one feature at the nose itself, then a gully cuts in
+    over the next 5 m, the same shape as case 6's, to 8 m deep. The bend
+    pulls the measured aspect in from the nominal bearings (about 67 and 113
+    degrees, not 60 and 120, roughly 46 degrees apart), well under
+    :data:`~landloss.hazard.landslide.slope_polygons.BETA_FACING_APART_DEG`
+    (90 degrees). Their catchments are disjoint, like case 6's, but because
+    they do not face apart by more than that threshold, the ground they both
+    reach near the nose is kept by both under the width-behind-crest rule
+    (:data:`~landloss.hazard.landslide.slope_polygons.WITHIN_WIDTH`), not
+    :data:`~landloss.hazard.landslide.slope_polygons.SEPARATE_CATCHMENTS`, as
+    stage D1 found case 6's is.
+    """
+    depth, head, sides, flank_angle, start = 8.0, 5.0, 2.0, 15.0, 5.0
+    size = 100.0
+    apex_east, apex_north = 50.0, 50.0
+    bearings_deg = (60.0, 120.0)
+    base_height = 30.0
+
+    col = _centres(size)
+    row = _centres(size)
+    east = col[None, :] - apex_east
+    north = (size - row[:, None]) - apex_north
+    north_of_nose = north >= 0.0
+
+    def flank(bearing_deg: float) -> NDArray[np.float64]:
+        bearing = math.radians(bearing_deg)
+        downhill = np.clip(
+            east * math.sin(bearing) + north * math.cos(bearing), 0.0, None
+        )
+        across = east * math.cos(bearing) - north * math.sin(bearing)
+        plane = base_height - downhill * math.tan(math.radians(flank_angle))
+        deepening = depth * np.clip((downhill - start) / head, 0.0, 1.0)
+        shape = np.exp(-((across / sides) ** 2))
+        return plane - shape * deepening
+
+    dem = np.where(north_of_nose, flank(bearings_deg[0]), flank(bearings_deg[1]))
+
+    return ToyTerrain(
+        name="14_gullies_at_bent_ridge",
+        description="Two gully heads on a bent ridge, meeting 60 degrees apart",
+        dem=dem,
+        ground_group=np.full(dem.shape, SOIL_LIKE_CODE, dtype=np.int8),
+        transform=_transform(),
+        features_x_m={
+            "apex_east_m": apex_east,
+            "apex_north_m": apex_north,
+            # The nose's own map northing, where the dem's north_of_nose
+            # partition flips; north increases towards row 0, so this is
+            # ORIGIN_NORTHING less the nose's distance back from the north
+            # edge (size - apex_north).
+            "apex_northing_m": ORIGIN_NORTHING - (size - apex_north),
+            "bearing_1_deg": bearings_deg[0],
+            "bearing_2_deg": bearings_deg[1],
+        },
+    )
+
+
+def undulating_hills() -> ToyTerrain:
+    """Case 15 (added in stage D1): a bigger grid of undulating hills.
+
+    A 220 m square of rolling ground built from a few sine waves along and
+    across the grid, none of them over 15 degrees anywhere, under the grow
+    angle, on soil-like ground. Every other case carries one feature the
+    growth and polygon rules are meant to find; this one carries none, so it
+    is a negative control at a scale closer to a real hillside: no element
+    should grow anywhere, with or without LiDAR-like noise.
+    """
+    size = 220.0
+    x = _centres(size)
+    y = _centres(size)
+    dem = (
+        1.5 * np.sin(2.0 * math.pi * x[None, :] / 150.0)
+        + 1.5 * np.cos(2.0 * math.pi * y[:, None] / 160.0)
+        + 1.2
+        * np.sin(2.0 * math.pi * x[None, :] / 90.0 + 1.0)
+        * np.cos(2.0 * math.pi * y[:, None] / 110.0 + 0.5)
+        + 0.9 * np.sin(2.0 * math.pi * (x[None, :] + y[:, None]) / 80.0)
+    )
+    return ToyTerrain(
+        name="15_undulating_hills",
+        description="Rolling hills, none of them steeper than 15 degrees anywhere",
+        dem=dem,
+        ground_group=np.full(dem.shape, SOIL_LIKE_CODE, dtype=np.int8),
+        transform=_transform(),
+        features_x_m={},
+    )
+
+
 # Every toy case by its key, in the order of the plan's table.
 TOY_CASES: dict[str, Callable[[], ToyTerrain]] = {
     "01_wall": retaining_wall,
@@ -475,6 +575,8 @@ TOY_CASES: dict[str, Callable[[], ToyTerrain]] = {
     "12_weak_rock_bank_12m": weak_rock_bank_12m,
     "13_soil_batter_37deg": soil_batter_37deg,
     "13_soil_batter_33deg": soil_batter_33deg,
+    "14_gullies_at_bent_ridge": gullies_at_bent_ridge,
+    "15_undulating_hills": undulating_hills,
 }
 
 
