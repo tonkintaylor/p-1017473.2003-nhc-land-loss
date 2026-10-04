@@ -129,3 +129,5 @@ are not reproduced here; they would have to be digitised from the paper.
 5. Slope position, slope and stream layers all come from a 60 m DEM. A finer DEM will
    change the slope and TPI distributions the curves were fitted to, so the DEM
    resolution should match the paper's.
+
+The average membership curves of Figure 5 are digitised in `figures/figure-5-average-membership-points.csv` (rendered page: `figures/page-721.png`), read to about 0.02. The check on that digitisation is the reproduction of the paper's AUCs, which is not yet done.

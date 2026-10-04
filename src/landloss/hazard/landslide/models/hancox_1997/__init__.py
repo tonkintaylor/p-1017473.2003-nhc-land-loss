@@ -9,6 +9,8 @@ the calibration of every large model.
 - :mod:`.relationships` holds the published relationships: area affected
   against magnitude, maximum epicentral distance by landslide size, the
   intensity thresholds and the slope-class shares.
+- :mod:`.model` apportions a Marc event total over the eligible study ground
+  in those slope-class shares.
 
 Source:
     Hancox, G.T., Perrin, N.D. & Dellow, G.D. (1997). Earthquake-induced

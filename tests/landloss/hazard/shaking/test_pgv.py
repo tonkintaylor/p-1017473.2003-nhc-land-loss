@@ -7,6 +7,7 @@ from landloss.hazard.shaking.pga import beta_pga_realisation, beta_scale_factor
 from landloss.hazard.shaking.pgv import (
     PGV_NAME,
     beta_pgv_realisation,
+    mmi_from_pgv,
     pgv_cm_s_from_sa_1s,
     pgv_m_s_from_sa_1s,
 )
@@ -34,6 +35,25 @@ def test_pgv_in_m_s_is_the_same_relation() -> None:
     """1 g of Sa(1.0 s) is 750 mm/s, whichever unit it is written in."""
     assert pgv_m_s_from_sa_1s(1.0) == pytest.approx(0.75)
     assert pgv_m_s_from_sa_1s(2.0) == pytest.approx(pgv_cm_s_from_sa_1s(2.0) / 100)
+
+
+def test_mmi_from_pgv_follows_worden_2012():
+    pgv_cm_s = 10 ** np.array([0.0, 0.53, 1.0])
+    expected = [
+        3.78,
+        3.78 + 1.47 * 0.53,
+        2.89 + 3.16,
+    ]
+    assert mmi_from_pgv(pgv_cm_s) == pytest.approx(expected)
+
+
+def test_mmi_from_pgv_handles_no_shaking_and_caps_at_ten():
+    assert mmi_from_pgv([0.0, 1e4]).tolist() == [0.0, 10.0]
+
+
+def test_mmi_from_pgv_refuses_negative_velocity():
+    with pytest.raises(ValueError, match="negative"):
+        mmi_from_pgv([-0.1, 1.0])
 
 
 # --- a realisation of PGV ----------------------------------------------------

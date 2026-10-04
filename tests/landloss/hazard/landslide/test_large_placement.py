@@ -55,6 +55,7 @@ PROBABILITY = 0.1
 
 SETTINGS = {
     "min_source_area_m2": 700.0,
+    "source_area_fraction": step.BETA_SOURCE_AREA_FRACTION,
     "urban_area_share": 0.25,
     "source_aspect_ratio": 2.0,
     "crest_weight": 0.5,
@@ -520,10 +521,11 @@ def step_inputs(tmp_path, monkeypatch):
 
 
 def run_step(monkeypatch, probability, realisation_ids=(0,)):
-    monkeypatch.setattr(step, "read_probability", lambda bbox: probability)
+    monkeypatch.setattr(step, "read_model_coverage", lambda **kwargs: probability)
     step.main(
         extent="wlg-pilot",
         realisation_ids=list(realisation_ids),
+        coverage_model="esnz",
         large_min_source_area_m2=SETTINGS["min_source_area_m2"],
         urban_area_share=SETTINGS["urban_area_share"],
         source_aspect_ratio=SETTINGS["source_aspect_ratio"],
@@ -540,6 +542,16 @@ def test_the_path_names_the_realisation_and_the_extent():
         step.realisation_path(extent="full", realisation_id=0).name
         == "landslide-realisation-r000.geoparquet"
     )
+
+
+def test_hancox_coverage_is_already_a_source_area_fraction():
+    assert step.coverage_source_area_fraction("hancox_1997") == 1.0
+    assert step.coverage_source_area_fraction("esnz") == step.BETA_SOURCE_AREA_FRACTION
+
+
+def test_an_unknown_large_model_is_refused():
+    with pytest.raises(ValueError, match="large model"):
+        step.coverage_source_area_fraction("unknown")
 
 
 def test_the_step_writes_the_contract_columns(step_inputs, monkeypatch, capsys):

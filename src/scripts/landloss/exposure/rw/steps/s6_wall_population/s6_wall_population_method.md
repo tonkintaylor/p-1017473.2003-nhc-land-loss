@@ -156,7 +156,7 @@ and `gen_wall_population.py` draws one population per exposure world.
   `wall_probability_path()` and the insured land from step 5's
   `insured_land_path()`, and writes one file per world,
   `temp/exposure/wall-population-wNNN[-pilot].geoparquet` from
-  `wall_population_path(world_id, pilot=...)`. The worlds come from
+  `wall_population_path(world_id, extent=...)`. The worlds come from
   `config.WORLD_IDS`.
 - Each world is seeded by `realisation_seed(EXPOSURE_BASE_SEED, world_id,
   "exposure")`: on the exposure seed and the world id, not on any earthquake,
@@ -200,7 +200,7 @@ and `gen_wall_population.py` draws one population per exposure world.
   back onto every wall `draw_wall_population` returned, by `wall_line_id`,
   and the run writes the result to
   `temp/exposure/drawn-walls-wNNN[-pilot].geoparquet` from
-  `drawn_walls_path(world_id, pilot=...)`: one row per line that drew a wall,
+  `drawn_walls_path(world_id, extent=...)`: one row per line that drew a wall,
   in line order, `wall_line_id` unique, with the population file's columns in
   the same order and `rw_id` and `claim_id` nullable. `rw_id` is null for a
   claimless wall and for one off its claim's insured land. The draw and the
@@ -215,7 +215,7 @@ and `gen_wall_population.py` draws one population per exposure world.
   (`describe_drawn_walls()`), and ends by saying plainly that the result is
   not evidence about Wellington.
 - `gen_exposure.py` runs the three scripts in this order after the insured
-  land and dwellings steps, over `exposure/config.py`'s `PILOT` and
+  land and dwellings steps, over `exposure/config.py`'s `EXTENT` and
   `WORLD_IDS`; the lines read landslide steps 3, 4 and 6, so the hazard module
   runs first.
 

@@ -60,14 +60,24 @@ wrong or is the expectation wrong?
   Every other check encodes the table. Since the review, the case 2 and case 3 (2 m)
   checks are tighter: the polygon must stop within one cell of its own width behind the
   crest, where before it could stop up to 3 m back.
-- **Figures.** There is one PNG per case. Each shows a plan over an unstretched
-  hillshade with contours, and a true-scale section along the middle row, for both the
-  noise-free and the noisy run. They show:
-  - the elements (orange for free-face, green for bank);
-  - the polygon outline;
-  - the imminent and inundated zones, at cell size;
-  - each evacuated cell to its own depth, which for a free-face's own ground is its
-    slip plane.
+- **Figures.** There is one PNG per case, four plans and two sections, for both the
+  noise-free and the noisy run (see "Diagnostic plans redesigned" below):
+  - **Plan 1, diagnostic.** A flat background by ground group (red soil-like, amber weak
+    rock, green stronger rock; a toy case's ground is uniform, so this is one colour per
+    case), 90%-index contours labelled every 2 or 5 m, every cell within 80% of its own
+    threshold angle as a point coloured by its eligibility ratio (1.0 = at threshold;
+    `coolwarm`, centred at 1.0 over every run in the case so the two columns share a
+    scale), hollow circles for cells eligible by step height and crosses for cells
+    eligible by the 3 m slope, and a dashed convex-hull "lasso" around each element's own
+    near-threshold cells.
+  - **Plan 2, shape.** The same contours, each element's own cell boundary (orange
+    free-face, green bank), the evacuated zone as modelled (grey fill, solid outline),
+    the imminent zone (amber hatch) and the inundated zone (blue), each free-face's
+    illustrative no-wall band (dashed outline, widened from the as-modelled band; see
+    below) and illustrative wall centreline (solid line through its crest cells).
+  - **Sections**, true scale, unchanged from the first build: the elements, the polygon
+    outline, the imminent and inundated zones at cell size, and each evacuated cell to
+    its own depth.
 
   On the profile cases the 5 rows at each grid edge are greyed out and labelled "grid
   edge rows". There is also an overview of every noise-free section.
@@ -238,7 +248,9 @@ in the library unless it says otherwise.
 
    Case 7's crest moves 1 m up the rounding, and its 1 m rounding bank mostly joins the
    free-face (still within 2 m of the 30° point). 2° gave the same as 3° on case 3, and
-   on case 7 the same as 5°. This is the lead's to confirm in stage D2.
+   on case 7 the same as 5°. The lead left the call to the build, and it was settled
+   at 3° in stage D2: the pilot gives the same result at 2°, 3° and 5°
+   (`pilot_example_slope_elements.md`), so this noise result decides.
 
    In the same pass, growth was changed in two other ways:
    - Seeds and patches are labelled within one ground group.
@@ -374,6 +386,28 @@ Case 15 (undulating hills: a sum of five sinusoids on a 220 m grid, none of them
 steeper than about 14.1°) is a straightforward negative control: rolling ground under
 the grow angle everywhere gives no element, with or without noise, confirming the
 library does not spuriously seed growth on gently undulating natural ground.
+
+## Diagnostic plans redesigned
+
+The first build's single plan (an unstretched hillshade with the polygon outline) did
+not show why a cell was or was not seeded, or what an element would look like without a
+wall. It is replaced by the two plans in "Figures" above:
+
+- **Eligibility.** `eligibility_grids` reproduces
+  `slope_elements._free_face_pass`'s own seed test cell for cell
+  (`height_band` → `step_angle_deg` → compare against `slope_coarse_deg`), so the
+  diagnostic plot's points are exactly the cells the free-face pass would itself judge
+  eligible, not a separate approximation. The ratio it colours by is
+  `max(step_ratio, slope_ratio)`, so a cell eligible by either test is shown by its
+  larger exceedance.
+- **No-wall band and wall centreline are illustrative, not modelled.** Phase 2 (which
+  free-faces carry a wall, and where its line runs) has not been built. `no_wall_band`
+  scales a free-face's own evacuated polygon outward from its toe by the ratio of
+  `headscarp_band_width_m` (the width a bank's own rule would give the same element) to
+  the width it actually kept, never below 1.0: removing a wall can only widen the
+  setback, never narrow it. `wall_centreline` is the best-fit line through the
+  free-face's own crest cells. Both are drawn dashed or thin to keep them visually
+  distinct from the modelled evacuated zone.
 
 ## Open problems and implications
 

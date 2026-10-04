@@ -23,11 +23,14 @@ How an element is found, all of it whole-array numpy and scipy:
    step at the cell, and negative values are read as zero.
 3. **Each cell's threshold.** The cell's ground group (soil-like, weak rock,
    stronger rock; off the ground map, weak rock) and the height band its step
-   height falls in give its threshold angle, ``STEP_ANGLE_DEG[group][band]``.
-   The band is only an estimate: the band that decides free-face or bank is
-   measured on the grown element.
-4. **Seeds.** A cell is eligible where its step height is at least
-   :data:`MIN_WALL_HEIGHT_M` or its 3 m slope is over its threshold. Its
+   height falls in give its slope threshold, ``STEP_ANGLE_DEG[group][band]``,
+   from ``landslide-slope-thresholds.csv``. A cell with no step reads the first
+   band. The band is only an estimate: the band that decides free-face or bank
+   is measured on the grown element.
+4. **Seeds.** A cell is eligible on either of two tests, a step or a slope: its
+   step height is at least ``STEP_SEED_HEIGHT_M[group]``, or its 3 m slope is
+   over its slope threshold (both in ``landslide-seed-thresholds.csv`` and
+   ``landslide-slope-thresholds.csv``). Its
    exceedance, the 3 m slope less the threshold, is its priority. An eligible
    patch, one ground group's connected cells, is cut down to its 1 m
    footprint, the cells steep enough to grow into
@@ -47,7 +50,8 @@ How an element is found, all of it whole-array numpy and scipy:
    without its seed, so the free-face pass keeps only free-faces and the bank
    ground they leave goes to the bank pass.
 6. **Bank pass.** The cells left over with a 3 m and a 1 m slope of at least
-   :data:`BETA_GROW_ANGLE_DEG` seed, and grow the same way into unclaimed
+   their ground group's ``BANK_SEED_SLOPE_DEG`` (:data:`BETA_GROW_ANGLE_DEG`,
+   18.4 degrees, as shipped) seed, and grow the same way into unclaimed
    cells whose 1 m slope is at least that angle.
 7. **Measurement.** Every region is measured on fall-line transects, one from
    each crest cell, between the breaks in slope at its ends rather than its
@@ -57,7 +61,7 @@ How an element is found, all of it whole-array numpy and scipy:
    shorter along the contour than :data:`BETA_MIN_ELEMENT_LENGTH_M`, or
    gentler overall than :data:`BETA_GROW_ANGLE_DEG`, is dropped (the free-face
    pass releases such regions to the bank pass). Each
-   element is put once into one of the eight :data:`HEIGHT_BANDS_M` and tested
+   element is put once into one of the :data:`HEIGHT_BANDS_M` and tested
    against ``STEP_ANGLE_DEG`` on its overall angle: over it, a free-face;
    otherwise a bank, whichever pass grew it.
 
@@ -89,7 +93,7 @@ indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
 - ``step_peak_m``: the largest step height on the element;
 - ``seed_exceedance_deg``: the seed's largest exceedance, as its own pass
   measured it: the 3 m slope less the step test angle for a free-face pass
-  seed, less :data:`BETA_GROW_ANGLE_DEG` for a bank pass seed;
+  seed, less the bank seed slope for a bank pass seed;
 - ``seed_row``, ``seed_col``: the seed's cell of largest exceedance, and
   ``seed_x``, ``seed_y`` its centre in map units, the same on every tile that
   holds the element;
@@ -97,7 +101,7 @@ indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
 - ``touches_nodata``: the element reaches ground with no 1 m slope (nodata,
   its rim or the edge of the grid), so the survey's edge may have cut it;
 - ``ground_group``: the majority ground group, as a :data:`GROUND_GROUPS` name;
-- ``height_band``: 1 to 8, from ``height_m``;
+- ``height_band``: 1 to :data:`N_HEIGHT_BANDS` (8 as shipped), from ``height_m``;
 - ``threshold_angle_deg``: ``STEP_ANGLE_DEG`` for the group and band;
 - ``angle_excess_deg``: ``overall_angle_deg`` less the threshold;
 - ``stack_dominant_cut``: steeper than 50 degrees and higher than 3 m, the
@@ -131,6 +135,7 @@ wide (a long road cut across a seam) is still cut at the tile's edge.
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
@@ -142,6 +147,7 @@ from scipy import ndimage
 
 from landloss.domain.constants import MIN_WALL_HEIGHT_M
 from landloss.hazard.landslide.ground_map import MATERIALS
+from landloss.io import ASSETS_DIR
 
 # The three ground groups the step test reads, in the order of their integer
 # codes on a ground group grid (0, 1, 2).
@@ -175,41 +181,145 @@ MATERIAL_GROUND_GROUP: dict[str, str] = {
     "unknown": WEAK_ROCK,
 }
 
-# The lower edge of each of the eight height bands, in metres (the plan, phase
-# 1, confirmed by the lead on 2026-10-02). Band k runs from its edge to the
-# next; band 8 has no top. The breaks: MIN_WALL_HEIGHT_M and the small/medium
+# Judgement, not a published stopping rule: ground under this slope is a bench,
+# a platform or open gentle hillside, so an element gentler overall than this is
+# dropped, and no bank seed may be set under it. 18.4 degrees (1V:3H) is the
+# slope above which the Auckland Unitary Plan flags land on soils other than
+# recent sediments as possibly unstable [de_vilder_2024] (devilder2024-F12),
+# written as a screening slope; its use to stop growth is ours. Proposed in the
+# plan, to be settled in stages D1 and D2. The bank pass seeds and grows at this
+# slope by default, and the seed thresholds CSV can raise it per ground group.
+BETA_GROW_ANGLE_DEG = 18.4
+
+# The two threshold tables are packaged CSVs, so the numbers are edited in one
+# visible place rather than found in code; assets/README.md says where each
+# value came from. The files are read once, when this module is imported.
+SEED_THRESHOLDS_PATH = ASSETS_DIR / "landslide-seed-thresholds.csv"
+SLOPE_THRESHOLDS_PATH = ASSETS_DIR / "landslide-slope-thresholds.csv"
+
+
+def load_seed_thresholds(
+    path: Path = SEED_THRESHOLDS_PATH,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Read the seed thresholds of each ground group.
+
+    Args:
+        path: The CSV, with columns ``ground_group``, ``min_step_height_m`` and
+            ``bank_min_slope_deg`` and one row per :data:`GROUND_GROUPS` name.
+
+    Returns:
+        ``(step_height_m, bank_slope_deg)``, each by group: the smallest step
+        height, in metres, that makes a cell a free-face seed, and the least 3 m
+        and 1 m slope, in degrees, that makes a cell a bank seed.
+
+    Raises:
+        ValueError: If a group is missing, repeated or unknown, a step height
+            is missing or below :data:`MIN_WALL_HEIGHT_M` (an element lower
+            than that is dropped anyway), or a bank slope is missing, over 90
+            or below :data:`BETA_GROW_ANGLE_DEG` (an element gentler than that
+            is dropped anyway).
+    """
+    table = pd.read_csv(path)
+    columns = {"ground_group", "min_step_height_m", "bank_min_slope_deg"}
+    if set(table.columns) != columns or sorted(table["ground_group"]) != sorted(
+        GROUND_GROUPS
+    ):
+        msg = (
+            f"{path.name} needs the columns {sorted(columns)} and one row for "
+            f"each of {list(GROUND_GROUPS)}."
+        )
+        raise ValueError(msg)
+    table = table.set_index("ground_group")
+    heights = table["min_step_height_m"]
+    if not (heights >= MIN_WALL_HEIGHT_M).all():
+        msg = f"{path.name}: every step height must be at least {MIN_WALL_HEIGHT_M} m."
+        raise ValueError(msg)
+    slopes = table["bank_min_slope_deg"]
+    if not ((slopes >= BETA_GROW_ANGLE_DEG) & (slopes <= 90)).all():
+        msg = (
+            f"{path.name}: every bank slope must be from {BETA_GROW_ANGLE_DEG} "
+            "to 90 degrees."
+        )
+        raise ValueError(msg)
+    return (
+        {group: float(heights[group]) for group in GROUND_GROUPS},
+        {group: float(slopes[group]) for group in GROUND_GROUPS},
+    )
+
+
+def load_slope_thresholds(
+    path: Path = SLOPE_THRESHOLDS_PATH,
+) -> tuple[tuple[float, ...], dict[str, tuple[float, ...]]]:
+    """Read the height bands and the slope threshold of each ground group.
+
+    Args:
+        path: The CSV, one row per height band, with the columns
+            ``height_from_m`` (the lower edge of the band) and one column of
+            angles in degrees for each of :data:`GROUND_GROUPS`.
+
+    Returns:
+        ``(height_bands_m, angles)``: the lower edge of each band in metres,
+        ascending, and for each group the steepest overall angle it stands
+        unsupported at in each band. An element steeper than its entry is a
+        free-face. Band k runs from its edge to the next; the last has no top.
+
+    Raises:
+        ValueError: If a column is missing or extra, the edges do not ascend or
+            start under :data:`MIN_WALL_HEIGHT_M`, or an angle is not in
+            (0, 90].
+    """
+    table = pd.read_csv(path)
+    if set(table.columns) != {"height_from_m", *GROUND_GROUPS} or table.empty:
+        msg = (
+            f"{path.name} needs rows and the columns height_from_m and "
+            f"{list(GROUND_GROUPS)}."
+        )
+        raise ValueError(msg)
+    edges = table["height_from_m"]
+    if (
+        not edges.is_monotonic_increasing
+        or edges.duplicated().any()
+        or edges.iloc[0] < MIN_WALL_HEIGHT_M
+    ):
+        msg = (
+            f"{path.name}: height_from_m must ascend from at least "
+            f"{MIN_WALL_HEIGHT_M} m."
+        )
+        raise ValueError(msg)
+    angles = table[list(GROUND_GROUPS)]
+    if not ((angles > 0) & (angles <= 90)).all().all():
+        msg = f"{path.name}: every angle must be above 0 and at most 90 degrees."
+        raise ValueError(msg)
+    return (
+        tuple(float(edge) for edge in edges),
+        {
+            group: tuple(float(angle) for angle in angles[group])
+            for group in GROUND_GROUPS
+        },
+    )
+
+
+# The smallest step height, in metres, that makes a cell a free-face seed, and
+# the least slope, in degrees, that makes it a bank seed, by ground group
+# (landslide-seed-thresholds.csv).
+STEP_SEED_HEIGHT_M, BANK_SEED_SLOPE_DEG = load_seed_thresholds()
+
+# The lower edge of each height band, in metres, and the steepest overall angle,
+# in degrees, each ground group stands unsupported at in each band
+# (landslide-slope-thresholds.csv). The shipped bands are the plan's, phase 1,
+# confirmed by the lead on 2026-10-02: MIN_WALL_HEIGHT_M and the small/medium
 # costing break (0.5, 1.0); the Building Act consent exemption
 # [nz_parliament_2004] and Anderson et al.'s classes [anderson_2015] (1.5, 2.5,
 # 3.5); NZGS Figure 35 [nzgs_2025_torlesse] (6, 10, 16); above 16 m,
-# Grant-Taylor's envelope [grant_taylor_1964].
-HEIGHT_BANDS_M = (MIN_WALL_HEIGHT_M, 1.0, 1.5, 2.5, 3.5, 6.0, 10.0, 16.0)
+# Grant-Taylor's envelope [grant_taylor_1964]. The rock angles are NZGS Unit
+# 7C.2 Figure 35, the maximum unsupported cut angles near Wellington housing
+# [nzgs_2025_torlesse]: highly and completely weathered rock 1 on 1 to 10 m and
+# 2 on 3 to 16 m, moderately weathered 4 on 3 to 6 m; the degree conversions are
+# ours. The soil-like 35 degrees is judgement, a round number inside the
+# published friction angles for this ground and at the floor of Figure 35
+# [nzgs_2025_torlesse; brown_larkin_2005; monteith_2020; lyndsell_2019].
+HEIGHT_BANDS_M, STEP_ANGLE_DEG = load_slope_thresholds()
 N_HEIGHT_BANDS = len(HEIGHT_BANDS_M)
-
-# The steepest overall angle, in degrees, each ground group stands unsupported
-# at in each height band (bands 1 to 8); an element steeper than its entry is a
-# free-face (the plan, phase 1, the 24 numbers confirmed by the lead as written
-# on 2026-10-02). The rock rows are NZGS Unit 7C.2 Figure 35, the maximum
-# unsupported cut angles near Wellington housing [nzgs_2025_torlesse]: highly
-# and completely weathered rock 1 on 1 to 10 m and 2 on 3 to 16 m, moderately
-# weathered 4 on 3 to 6 m; the degree conversions are ours, and band 8 keeps
-# the 10 to 16 m angle. The soil-like 35 degrees is judgement, a round number
-# inside the published friction angles for this ground and at the floor of
-# Figure 35 [nzgs_2025_torlesse; brown_larkin_2005; monteith_2020;
-# lyndsell_2019].
-STEP_ANGLE_DEG: dict[str, tuple[float, ...]] = {
-    SOIL_LIKE: (35.0, 35.0, 35.0, 35.0, 35.0, 35.0, 35.0, 35.0),
-    WEAK_ROCK: (45.0, 45.0, 45.0, 45.0, 45.0, 45.0, 34.0, 34.0),
-    STRONGER_ROCK: (53.0, 53.0, 53.0, 53.0, 53.0, 45.0, 34.0, 34.0),
-}
-
-# Judgement, not a published stopping rule: the bank pass grows only over
-# ground at least this steep, and ground under it is a bench, a platform or
-# open gentle hillside. 18.4 degrees (1V:3H) is the slope above which the
-# Auckland Unitary Plan flags land on soils other than recent sediments as
-# possibly unstable [de_vilder_2024] (devilder2024-F12), written as a screening
-# slope; its use to stop growth is ours. Proposed in the plan, to be settled in
-# stages D1 and D2.
-BETA_GROW_ANGLE_DEG = 18.4
 
 # Judgement: the free-face pass grows into cells whose 1 m slope is over the
 # seed's threshold angle less this many degrees, so the rounded edge cells of a
@@ -421,15 +531,15 @@ def ground_group_codes(materials: ArrayLike) -> NDArray[np.int8]:
 
 
 def height_band(height_m: ArrayLike) -> NDArray[np.int8]:
-    """Put heights into the eight height bands.
+    """Put heights into the height bands.
 
     Args:
         height_m: Heights in metres.
 
     Returns:
-        The band of each height, 1 to 8, and 0 for a height under
-        :data:`MIN_WALL_HEIGHT_M` or NaN. A height on a break falls in the band
-        above it.
+        The band of each height, 1 to :data:`N_HEIGHT_BANDS`, and 0 for a height
+        under the first band's lower edge or NaN. A height on a break falls in
+        the band above it.
     """
     heights = np.asarray(height_m, dtype=float)
     bands = np.searchsorted(np.asarray(HEIGHT_BANDS_M), heights, side="right")
@@ -442,8 +552,9 @@ def step_angle_deg(group: ArrayLike, band: ArrayLike) -> NDArray[np.float64]:
 
     Args:
         group: Ground group codes, indices into :data:`GROUND_GROUPS`.
-        band: Height bands, 1 to 8; a band of 0 (under the minimum height)
-            reads band 1, so a cell's estimate always has a threshold.
+        band: Height bands, 1 to :data:`N_HEIGHT_BANDS`; a band of 0 (under the
+            first band's edge) reads band 1, so a cell's estimate always has a
+            threshold.
 
     Returns:
         The angle in degrees, broadcast over the two inputs.
@@ -452,6 +563,33 @@ def step_angle_deg(group: ArrayLike, band: ArrayLike) -> NDArray[np.float64]:
     groups = np.asarray(group, dtype=np.intp)
     columns = np.clip(np.asarray(band, dtype=np.intp), 1, N_HEIGHT_BANDS) - 1
     return table[groups, columns]
+
+
+def step_seed_height_m(group: ArrayLike) -> NDArray[np.float64]:
+    """Look up the step height that makes a cell a seed, by ground group.
+
+    Args:
+        group: Ground group codes, indices into :data:`GROUND_GROUPS`.
+
+    Returns:
+        The height in metres from :data:`STEP_SEED_HEIGHT_M`, shaped as ``group``.
+    """
+    heights = np.array([STEP_SEED_HEIGHT_M[name] for name in GROUND_GROUPS])
+    return heights[np.asarray(group, dtype=np.intp)]
+
+
+def bank_seed_slope_deg(group: ArrayLike) -> NDArray[np.float64]:
+    """Look up the slope that makes a cell a bank seed, by ground group.
+
+    Args:
+        group: Ground group codes, indices into :data:`GROUND_GROUPS`.
+
+    Returns:
+        The angle in degrees from :data:`BANK_SEED_SLOPE_DEG`, shaped as
+        ``group``.
+    """
+    angles = np.array([BANK_SEED_SLOPE_DEG[name] for name in GROUND_GROUPS])
+    return angles[np.asarray(group, dtype=np.intp)]
 
 
 def _horn_gradient(
@@ -1276,11 +1414,12 @@ def _free_face_pass(
     """
     band = height_band(np.nan_to_num(layers.step_height_m, nan=0.0))
     threshold = step_angle_deg(ground_group, band)
+    min_step = step_seed_height_m(ground_group)
     exceedance = layers.slope_coarse_deg - threshold
     finite = np.isfinite(dem) & np.isfinite(layers.slope_fine_deg)
     with np.errstate(invalid="ignore"):
         eligible = finite & (
-            (np.nan_to_num(layers.step_height_m, nan=0.0) >= MIN_WALL_HEIGHT_M)
+            (np.nan_to_num(layers.step_height_m, nan=0.0) >= min_step)
             | (np.nan_to_num(exceedance, nan=-np.inf) > 0)
         )
     patches, n_patches = _label_within_groups(eligible, ground_group)
@@ -1305,10 +1444,7 @@ def _free_face_pass(
     # its step, and each piece left is a seed of its own.
     footprint = (patches > OUTSIDE) & (
         (slope > patch_limit[patches] + _ANGLE_SLACK_DEG)
-        | (
-            step
-            >= np.maximum(MIN_WALL_HEIGHT_M, BETA_SEED_STEP_SHARE * patch_step[patches])
-        )
+        | (step >= np.maximum(min_step, BETA_SEED_STEP_SHARE * patch_step[patches]))
     )
     seeds, n_seeds = _label_within_groups(footprint, ground_group)
     if n_seeds == 0:
@@ -1356,7 +1492,10 @@ def _free_face_pass(
 
 
 def _bank_pass(
-    claimed: NDArray[np.bool_], dem: NDArray[np.float64], layers: TerrainLayers
+    claimed: NDArray[np.bool_],
+    dem: NDArray[np.float64],
+    layers: TerrainLayers,
+    ground_group: NDArray[np.int8],
 ) -> tuple[NDArray[np.int32], NDArray[np.int32]]:
     """Seed and grow the banks on the ground the free-faces left.
 
@@ -1365,14 +1504,15 @@ def _bank_pass(
     """
     fine = np.nan_to_num(layers.slope_fine_deg, nan=-np.inf)
     coarse = np.nan_to_num(layers.slope_coarse_deg, nan=-np.inf)
-    allowed = ~claimed & np.isfinite(dem) & (fine >= BETA_GROW_ANGLE_DEG)
+    least = bank_seed_slope_deg(ground_group)
+    allowed = ~claimed & np.isfinite(dem) & (fine >= least)
     seeds, n_seeds = ndimage.label(
-        allowed & (coarse >= BETA_GROW_ANGLE_DEG), structure=FOUR_CONNECTED
+        allowed & (coarse >= least), structure=FOUR_CONNECTED
     )
     seeds = seeds.astype(np.int32)
     if n_seeds == 0:
         return seeds, seeds
-    cost = _cost(layers.slope_coarse_deg - BETA_GROW_ANGLE_DEG)
+    cost = _cost(layers.slope_coarse_deg - least)
     grown = _grow(seeds, n_seeds, cost, allowed)
     return grown, seeds
 
@@ -1634,7 +1774,7 @@ def find_slope_elements(
     free_face_seeds = _relabel(free_face_seeds, present[: free_face_seeds.max() + 1])
     n_free_faces = int(free_faces.max())
 
-    banks, bank_seeds = _bank_pass(free_faces > OUTSIDE, elevation, layers)
+    banks, bank_seeds = _bank_pass(free_faces > OUTSIDE, elevation, layers, groups)
     offset = np.where(banks > OUTSIDE, banks + n_free_faces, OUTSIDE)
     labels = np.where(free_faces > OUTSIDE, free_faces, offset).astype(np.int32)
     seeds_offset = np.where(bank_seeds > OUTSIDE, bank_seeds + n_free_faces, OUTSIDE)
@@ -1667,7 +1807,7 @@ def find_slope_elements(
     seed_rows = np.full(n_labels + 1, -1, dtype=np.intp)
     seed_cols = np.full(n_labels + 1, -1, dtype=np.intp)
     if n_labels:
-        bank_score = layers.slope_coarse_deg - BETA_GROW_ANGLE_DEG
+        bank_score = layers.slope_coarse_deg - bank_seed_slope_deg(groups)
         score = np.where(seed_grid > n_free_faces, bank_score, exceedance)
         # Rounded to a micro-degree, so cells that tie on even ground tie
         # exactly whatever the floating point of a tile's filters, and ties go

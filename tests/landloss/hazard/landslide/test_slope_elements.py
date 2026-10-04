@@ -30,6 +30,7 @@ from landloss.hazard.landslide.ground_map import MATERIALS
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     BANK_PASS,
+    BANK_SEED_SLOPE_DEG,
     BETA_GROW_ANGLE_DEG,
     CREST,
     FREE_FACE,
@@ -40,17 +41,22 @@ from landloss.hazard.landslide.slope_elements import (
     OUTSIDE,
     SOIL_LIKE_CODE,
     STEP_ANGLE_DEG,
+    STEP_SEED_HEIGHT_M,
     STRONGER_ROCK_CODE,
     TOE,
     WEAK_ROCK,
     WEAK_ROCK_CODE,
     SlopeElements,
+    bank_seed_slope_deg,
     find_slope_elements,
     ground_group_codes,
     height_band,
+    load_seed_thresholds,
+    load_slope_thresholds,
     rasterise_ground_map,
     step_angle_deg,
     step_height_raster,
+    step_seed_height_m,
     terrain_layers,
 )
 from landloss.hazard.landslide.slope_polygons import BETA_FACING_APART_DEG
@@ -141,6 +147,92 @@ def test_the_step_test_table_has_24_entries():
     assert len(HEIGHT_BANDS_M) == 8
     assert sorted(STEP_ANGLE_DEG) == sorted(GROUND_GROUPS)
     assert all(len(row) == 8 for row in STEP_ANGLE_DEG.values())
+
+
+def test_the_shipped_threshold_files_hold_the_plans_numbers():
+    assert HEIGHT_BANDS_M == (MIN_WALL_HEIGHT_M, 1.0, 1.5, 2.5, 3.5, 6.0, 10.0, 16.0)
+    assert STEP_ANGLE_DEG["soil_like"] == (35.0,) * 8
+    assert STEP_ANGLE_DEG["weak_rock"] == (45.0,) * 6 + (34.0,) * 2
+    assert STEP_ANGLE_DEG["stronger_rock"] == (53.0,) * 5 + (45.0, 34.0, 34.0)
+    assert dict.fromkeys(GROUND_GROUPS, MIN_WALL_HEIGHT_M) == STEP_SEED_HEIGHT_M
+    assert dict.fromkeys(GROUND_GROUPS, BETA_GROW_ANGLE_DEG) == BANK_SEED_SLOPE_DEG
+
+
+def test_seed_lookups_read_the_group(monkeypatch):
+    monkeypatch.setitem(STEP_SEED_HEIGHT_M, WEAK_ROCK, 1.2)
+    monkeypatch.setitem(BANK_SEED_SLOPE_DEG, WEAK_ROCK, 30.0)
+    codes = [SOIL_LIKE_CODE, WEAK_ROCK_CODE, STRONGER_ROCK_CODE]
+    assert step_seed_height_m(codes).tolist() == [MIN_WALL_HEIGHT_M, 1.2, 0.5]
+    assert bank_seed_slope_deg(codes).tolist() == [18.4, 30.0, 18.4]
+
+
+def test_loaders_read_an_edited_table(tmp_path):
+    slope = tmp_path / "slope.csv"
+    slope.write_text(
+        "height_from_m,soil_like,weak_rock,stronger_rock\n0.5,30,40,50\n2.0,30,38,45\n"
+    )
+    seed = tmp_path / "seed.csv"
+    seed.write_text(
+        "ground_group,min_step_height_m,bank_min_slope_deg\n"
+        "soil_like,0.5,18.4\nweak_rock,1.0,30\nstronger_rock,1.5,35\n"
+    )
+    bands, angles = load_slope_thresholds(slope)
+    assert bands == (0.5, 2.0)
+    assert angles["weak_rock"] == (40.0, 38.0)
+    steps, banks_ = load_seed_thresholds(seed)
+    assert steps == {"soil_like": 0.5, "weak_rock": 1.0, "stronger_rock": 1.5}
+    assert banks_ == {"soil_like": 18.4, "weak_rock": 30.0, "stronger_rock": 35.0}
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        "0.5,35,45,53\n0.5,35,45,53\n",  # edges repeat
+        "1.0,35,45,53\n0.5,35,45,53\n",  # edges descend
+        "0.2,35,45,53\n",  # starts under the minimum wall height
+        "0.5,35,45,95\n",  # angle over 90
+        "0.5,35,,53\n",  # angle missing
+    ],
+)
+def test_load_slope_thresholds_rejects_a_bad_table(tmp_path, rows):
+    path = tmp_path / "slope.csv"
+    path.write_text("height_from_m,soil_like,weak_rock,stronger_rock\n" + rows)
+    with pytest.raises(ValueError, match=r"slope\.csv"):
+        load_slope_thresholds(path)
+
+
+def test_load_slope_thresholds_rejects_a_missing_column(tmp_path):
+    path = tmp_path / "slope.csv"
+    path.write_text("height_from_m,soil_like,weak_rock\n0.5,35,45\n")
+    with pytest.raises(ValueError, match=r"slope\.csv"):
+        load_slope_thresholds(path)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        "soil_like,0.5,18.4\nweak_rock,0.5,18.4\n",  # a group missing
+        "soil_like,0.5,18.4\nweak_rock,0.5,18.4\nweak_rock,0.5,18.4\n",  # repeated
+        "soil_like,0.5,18.4\nweak_rock,0.2,18.4\nstronger_rock,0.5,18.4\n",  # step
+        "soil_like,0.5,18.4\nweak_rock,0.5,10\nstronger_rock,0.5,18.4\n",  # slope low
+        "soil_like,0.5,18.4\nweak_rock,0.5,95\nstronger_rock,0.5,18.4\n",  # slope high
+    ],
+)
+def test_load_seed_thresholds_rejects_a_bad_table(tmp_path, rows):
+    path = tmp_path / "seed.csv"
+    path.write_text("ground_group,min_step_height_m,bank_min_slope_deg\n" + rows)
+    with pytest.raises(ValueError, match=r"seed\.csv"):
+        load_seed_thresholds(path)
+
+
+def test_a_higher_bank_slope_for_a_group_leaves_its_gentler_ground_alone(monkeypatch):
+    # The 40 degree weak rock bank of case 12 is a bank at the shipped 18.4, and
+    # is no element at all once weak rock needs 45 degrees to seed a bank.
+    _, shipped = run_case("12_weak_rock_bank_3m", 0.0)
+    assert len(shipped.elements) == 1
+    monkeypatch.setitem(BANK_SEED_SLOPE_DEG, WEAK_ROCK, 45.0)
+    _, raised = run_case("12_weak_rock_bank_3m", 0.0)
+    assert raised.elements.empty
 
 
 @pytest.mark.parametrize(

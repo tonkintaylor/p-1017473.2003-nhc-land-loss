@@ -11,10 +11,12 @@ and is ready to build once the lead settles the step test (Next, 1). The
 second part, the failure polygons, steps 8 and 9 and the anchoring skeleton,
 was reviewed the same day, and so were the large failures; their proposals
 wait on the lead (Next, 3 and 10). The portfolio of large models is proposed,
-not agreed. The slope elements and polygons library passed its toy-terrain
-proof (stage D1) on 2026-10-02; real pilot examples (stage D2) are next.
+not agreed; its Hancox model 3 and Wellington step are built but not run. The
+slope elements and polygons library passed its toy-terrain
+proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
+2026-10-03; the pipeline step (stage D3) is next.
 
-**Updated:** 2026-10-03
+**Updated:** 2026-10-04
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -47,8 +49,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   `.agents/plans/building-kritikos-2015-landslide-model.md`,
   `.agents/plans/building-hancox-landslide-model-and-calibration.md`.
 - [~] Rebuild the literature models and calibrations: Nowicki Jessee, Marc and
-  the Hancox relationships are built and checked against their sources; none
-  has been run over Wellington.
+  Hancox model 3 are built and checked against their sources; Hancox has a
+  Wellington forward step, and Kritikos has a step that writes its relative
+  hazard, but none has been run over Wellington.
 - [ ] Replace the runout, a rigid translation set by slope, with a reach angle
   by volume and failure style [de_vilder_2022].
 - [ ] Add spatial correlation beyond one slope unit.
@@ -130,8 +133,23 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 - **Literature models:** Nowicki Jessee (2018) is rebuilt and reproduces the
   USGS at Loma Prieta (`validations/nowicki_2018/`); Marc et al. (2016)
   reproduces the paper's fit (`validations/calibration/`); the Hancox
-  relationships and the calibration interface are built. None has been run over
-  Wellington.
+  relationships, model 3 and the step 10 Wellington coverage run are built.
+  Step 1 is configured to place that coverage directly. None has been run over
+  Wellington. Step 10 already takes each realisation's MM threshold from the
+  TS1170.5-derived PGV; its separate Marc amount uses the plan's central
+  interface sensitivity rather than final NSHM source geometry.
+- **Kritikos model 2** (`.agents/plans/building-kritikos-2015-landslide-model.md`)
+  has its library and forward step built and unit tested, not run. The paper's
+  average memberships are digitised from Figure 5 to about 0.02
+  (`context/lit/landslide/kritikos_2015/figures/`); the fuzzy gamma model, the
+  60 m inputs, the AF250 fault reader, the success-rate AUC and the monotone
+  transfer-function fit are in `landloss.hazard.landslide.models.kritikos_2015`
+  and `landloss.io.active_faults`. Step 11 writes the relative hazard H per
+  realisation; it stops there, because the hazard-to-coverage transfer function
+  needs Northridge and Wenchuan from the GFDB on `R:`, and step 1 does not yet
+  read it. The digitisation is unchecked until the paper's AUCs are
+  reproduced (plan, phase 4), the AF250 file layout is unconfirmed, and the TPI
+  window and class thresholds are judgements.
 - **Literature review of the first part, 2026-10-02.** Steps 3 to 5 and the
   faces plan's phases 0 to 2 were read against the 991 findings of
   `temp/gns_review/`, and the plans edited in place with citations: the faces
@@ -239,8 +257,33 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   pass. Findings, the `BETA_` values changed on the evidence, and the points
   left for the lead are in
   `research/slope_elements/toy_slope_elements.md`. Not yet built: the wall
-  candidates (phase 2), stage D2 on real pilot examples, and the pipeline
-  step itself (`gen_slope_elements.py`, stage D3).
+  candidates (phase 2) and the pipeline step itself
+  (`gen_slope_elements.py`, stage D3).
+- **The library has been run over the whole small Wellington pilot, with
+  twelve example sites (stage D2, 2026-10-03, rerun 2026-10-04).** 10,750
+  elements and 12,466 polygons in 31 s, with 22% of the pilot's land
+  evacuated. 83% of GNS mapped wall cells have an element within 2 m, and
+  87% of sharp breaks in slope have a crest or toe within 3 m. No `BETA_`
+  value changed, and the grow tolerance is settled at 3° (the pilot is the
+  same at 2° to 5°). The sea is masked with the LINZ coastline polygons
+  (`get_nz_coastline_polygons`), which removed the polygons the DEM's flat
+  sea gave seawalls; the lead confirmed that run-out over flat ground fans
+  out. The sites also show very large polygons on weak-rock and fill
+  hillsides. The ground map still reads about 74% of the pilot as fill until
+  step 4 is rerun, which inflates the fill results. GNS holds no wall height,
+  so wall heights are the DEM's. Figures are in
+  `report/hazard/landslide/slope-elements/fig/`; findings and the points for
+  the lead are in `research/slope_elements/pilot_example_slope_elements.md`.
+- **The slope elements' seed thresholds are two packaged CSVs (2026-10-04),**
+  `landslide-slope-thresholds.csv` (the angle each ground group stands at, by
+  height band) and `landslide-seed-thresholds.csv` (per ground group, the
+  minimum step height for a free-face seed and the minimum slope for a bank
+  seed) in `src/landloss/io/assets/`, read by `slope_elements.py` instead of
+  being written in it. The shipped values are the numbers the lead confirmed on
+  2026-10-02 and the 18.4° bank slope, so the results do not move;
+  `assets/README.md` says what each column means. Raising `bank_min_slope_deg`
+  for a group is the lever for pilot 5's rock hillside reading as one bank. The
+  other `BETA_` settings are still constants.
 
 ## Next
 
@@ -259,8 +302,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       step 4 over the common extent and review its area shares and strength
       picks;
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
-      (done, stage D1) and next on pilot examples with figures for the report
-      (stage D2), for the lead's review;
+      (done, stage D1) and run over pilot examples (done, stage D2); next,
+      the lead reviews whether the weak-rock hillside polygons are
+      acceptable, then stage D3 builds the pipeline step, carrying the water
+      mask;
    5. the wall candidates and their probability on the faces (faces plan,
       phase 2; exposure rw step 6, phase 2e), and the phase 4 checks that need
       only the walls: GNS mapped wall recall and the height shape against
@@ -281,9 +326,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    Kaikōura model's centroid definition (step 1 plan, "Literature review of
    the placeholders"). Download GNS SR2018/08 and SR2023/04, the forecast
    tool reports, which may answer it first.
-7. Choose the large-model route. Run Nowicki Jessee over Wellington as the
-   USGS runs it, with its Kaikōura test reported, and build model 3 with
-   Marc's scenario total as its amount (Hancox plan, phase 6).
+7. Choose the large-model route. Run Hancox model 3 over the pilot and review
+   its total and slope distribution, then run Nowicki Jessee over Wellington
+   as the USGS runs it, with both models' Kaikōura tests reported.
+   Kritikos model 2 waits on the lead running its phases 4 to 6 (reproduce the
+   paper's AUCs, score Kaikōura, fit the transfer function), all of which read
+   `R:`.
 8. Replace the large-model runout rule with the de Vilder et al. (2022) reach
    angles; the urban rule is in the faces plan, phase 3.
 9. Add imminent-risk land to each large landslide (**T-45**), with the same
@@ -296,6 +344,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 
 - Total failed area, urban plus large, against Marc et al. (2016) and Nowicki
   Jessee et al. (2018) at the demand.
+- Hancox slope-class shares, MM and extent masks, Marc apportionment and the
+  step 1 handoff in `tests/landloss/hazard/landslide/`.
+- Kritikos memberships, fuzzy gamma, inputs, AUC and transfer fit in
+  `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`; the paper's
+  AUCs (Northridge 0.904, Wenchuan 0.839, Chi-Chi 0.921) are the check on the
+  digitisation and are not yet reproduced.
 - Large-model density against the Greater Wellington `SEVERITY` zonation, as a
   rank correlation (`validations/fig_landslide_vulnerability_model_gwrc.py`).
 - Sizes and reach angles against the Kaikōura inventory (`landloss.io.kaikoura`).
@@ -332,7 +386,9 @@ otherwise.
   phase 3); for the large failures it is part B of the review.
 - **Depth where two runouts overlap**: the deeper or the sum.
 - **The face detection and geometry rules**: the faces plan's open decisions,
-  and the headscarp band (**T-44**). The step test is proposed from NZGS
+  and the headscarp band (**T-44**). Stage D2 leaves one for the lead: whether
+  the large weak-rock hillside polygons are acceptable
+  (`research/slope_elements/pilot_example_slope_elements.md`). The step test is proposed from NZGS
   Figure 35 [nzgs_2025_torlesse]; which Figure 35 row each rock class reads
   waits on a weathering grade the ground map does not yet carry.
 - **Converting the PGA wall curves to PGV** at each site's ratio, as built.

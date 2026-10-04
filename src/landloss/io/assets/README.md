@@ -18,6 +18,8 @@ committed. Nothing here is large enough to belong in a cache.
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
 | `retaining-wall-fragility.csv` | Lognormal fragility (median, dispersion) per retaining wall class, size and initial condition, with the published intensity measure and source | Maintained by hand from `.agents/context/retaining-wall-fragility.md` — see below | `landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility` |
 | `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a fraction of polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
+| `landslide-slope-thresholds.csv` | The steepest overall angle each ground group stands unsupported at, by height band: the slope test of the slope elements | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_slope_thresholds` |
+| `landslide-seed-thresholds.csv` | Per ground group, the smallest step height that makes a free-face seed and the slope that makes a bank seed: the seed tests of the slope elements | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_seed_thresholds` |
 
 ## `land-value-base-rates.csv`
 
@@ -360,3 +362,54 @@ slowly with demand than a lognormal at the dispersion of 0.6 the model carries
 `landloss.hazard.landslide.urban.fragility.fit_localised_fragility` therefore
 fits the dispersion as well as the two medians, and the validation figure
 prints all three for the project lead to accept or override.
+
+## `landslide-slope-thresholds.csv` and `landslide-seed-thresholds.csv`
+
+The numbers the slope elements (`landloss.hazard.landslide.slope_elements`) are
+found with, kept here so they can be read and edited in one place. The code reads
+them when it is imported, so a changed value needs the script run again, and
+`slope_elements.py` rejects a table that is malformed. Edit the numbers, not the
+columns or the group names.
+
+A cell is eligible as a seed on **either** of two tests:
+
+- **The step test**, `min_step_height_m` in `landslide-seed-thresholds.csv`: the
+  cell's step height is at least this for its ground group. One row for each of
+  `soil_like`, `weak_rock` and `stronger_rock`, and no value under
+  `MIN_WALL_HEIGHT_M` (0.5 m), because an element lower than that is dropped. All
+  three are 0.5 m as shipped.
+- **The slope test**, `landslide-slope-thresholds.csv`: the cell's 3 m slope is
+  over the angle its ground group stands unsupported at. The angle depends on how
+  tall the step is, so the file is one row per height band. `height_from_m` is the
+  band's lower edge (a band runs to the next row's edge, the last has no top) and
+  there is one column of angles in degrees for each ground group. A cell with no
+  step reads the first row.
+
+The same table decides, once an element has grown, whether it is a free-face (its
+overall angle is over the angle for its group and band) or a bank (under it). The
+ground group of each ground map material is `MATERIAL_GROUND_GROUP` in
+`slope_elements.py`; `rock` is `weak_rock`, `rock_uw_mw` is `stronger_rock`, and
+ground off the map is `weak_rock`.
+
+The shipped bands and angles are the plan's, phase 1
+(`.agents/plans/building-face-based-urban-slope-polygons.md`), confirmed by the
+project lead on 2026-10-02. The band edges are `MIN_WALL_HEIGHT_M` and the
+small/medium costing break (0.5, 1.0), the Building Act consent exemption
+[nz_parliament_2004] and Anderson et al.'s classes [anderson_2015] (1.5, 2.5,
+3.5), and NZGS Figure 35 [nzgs_2025_torlesse] (6, 10, 16). The rock angles are
+Figure 35's maximum unsupported cut angles near Wellington housing, 1 on 1 to
+10 m and 2 on 3 to 16 m for highly and completely weathered rock and 4 on 3 to
+6 m for moderately weathered, converted to degrees by us. The soil-like 35 degrees
+is judgement.
+
+Cells that pass neither test can still seed a **bank**: any ground whose 3 m and
+1 m slopes are at least `bank_min_slope_deg` in `landslide-seed-thresholds.csv`
+for its ground group, and that no free-face has claimed. This is not the slope
+test above and does not use the rock table; it is why a long rock hillside reads
+as one big bank. Raise a group's value to stop its gentler ground seeding banks.
+All three are 18.4 degrees as shipped (`BETA_GROW_ANGLE_DEG`), which is also the
+lowest value accepted, because ground gentler than that is dropped later
+anyway; the upper limit is 90.
+
+Not in these files: the other `BETA_` settings and the step estimator. They are
+constants in `slope_elements.py`.

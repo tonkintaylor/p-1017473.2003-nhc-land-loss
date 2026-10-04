@@ -201,7 +201,7 @@ Each line takes a probability from what the lines step read onto it
       territorial authorities.
 - [x] Re-point the vul rw steps 9 and 11 at the world-keyed population: both
       `gen_wall_damage_state.py` and `gen_wall_landslide_damage.py` now read
-      `wall_population_path(world_id, pilot=...)` with `(w, r)` naming
+      `wall_population_path(world_id, extent=...)` with `(w, r)` naming
       (phase 4 of the build, contract sections 3.11 and 3.12).
 
 ### Phase 2d — Calibration against the claim report extraction (**T-50**)

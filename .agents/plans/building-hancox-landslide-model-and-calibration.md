@@ -219,7 +219,7 @@ density forward.
 
 ### Phase 5 — Model 3 as a model
 
-- [ ] `landloss.hazard.landslide.models.hancox_1997.model`: coverage over the
+- [x] `landloss.hazard.landslide.models.hancox_1997.model`: coverage over the
       study area as
   - zero where the study's MM is below MM7 (Wellington Region threshold),
   - zero outside the extent (under the forward scenario, nowhere in the study
@@ -230,12 +230,17 @@ density forward.
   - scaled so the total matches the amount, Marc's total for the scenario
     apportioned to the study area (phase 6; model 3 is the one model scaled
     to Marc).
-- [ ] Slope at 10 m from the multiscale stack (`s3_multiscale_slope`), stated as
+- [x] Slope at 10 m from the multiscale stack (`s3_multiscale_slope`), stated as
       a judgement: Hancox measured slope angles of individual failures, not of a
       coarse grid.
-- [ ] Wellington forward step under `src/scripts/landloss/hazard/landslide/steps/`
-      (next free number), with method and plan files, handing coverage to the
-      realisation machinery above the size split.
+- [x] Wellington forward step
+      (`steps/s10_hancox_1997/gen_hancox_1997_coverage.py`), with method and
+      plan files, handing coverage to the realisation machinery above the size
+      split. Its committed Marc settings are the central interface sensitivity
+      in this plan (`R0 = 22.5 km`, modal slope 22°, `A_topo = 1`, all
+      asperities onshore), explicitly a beta until NSHM geometry replaces it.
+      That replacement affects only Marc's amount: the Hancox MM threshold
+      already reads each realisation's TS1170.5-derived PGV.
 
 ### Phase 6 — Where the Wellington amount comes from
 
@@ -256,7 +261,7 @@ density forward.
   2. **Marc's total for the scenario earthquake**, apportioned to the study
      area. It needs a rupture model, which the scenario lacks, and it inherits
      the shaking mismatch.
-- [ ] The constants `BETA_SCENARIO_MW` and `BETA_SITE_DISTANCE_KM` in
+- [x] The constants `BETA_SCENARIO_MW` and `BETA_SITE_DISTANCE_KM` in
       `landloss.domain.constants`, with a comment naming each term that reads
       them.
 
@@ -307,10 +312,12 @@ Options, cheapest first:
   there are too few onshore subduction inventories to fit two parameters.
 
 Recommendation: **A as the base, with B and C as reported sensitivities.**
-Phase 6 option 1 is unchanged: Marc calibrates the models on crustal events and
-does not set the Wellington total. A needs two inputs: the interface depth
-beneath the study area (a download of the NSHM 2022 geometry), and Marc's
-estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
+The lead's phase 6 decision makes model 3 the exception: Marc sets its
+Wellington total, while it remains a reported test beside the other large
+models. The built step uses the central `R0 = 22.5 km`, all-onshore sensitivity
+until A supplies the interface depth beneath the study area and its onshore
+fraction. A also needs Marc's estimated volumes for Tohoku and Pisco (read from
+Figure 1 or its sources).
 
 ## Files
 
@@ -344,9 +351,10 @@ estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
   because deep offshore ruptures deliver only moderate onshore shaking. Beneath
   Wellington that reasoning does not hold, since the interface lies about 20–25 km
   under the city. Hancox's historical events are all crustal too. Consequences:
-  - Marc and Hancox **calibrate the models on crustal events** (Kaikōura, the
-    Table S1 events, GFDB), which they are fitted for. They are not used to set
-    the Wellington total directly (phase 6, option 1).
+  - Marc and Hancox **test the portfolio on crustal events** (Kaikōura, the
+    Table S1 events, GFDB), which they are fitted for. Marc also sets model 3's
+    Wellington total under the lead's phase 6 decision; the other models keep
+    their own published amounts.
   - **Duration** is the physical difference. A subduction rupture shakes for
     much longer, which none of models 1–3 represents (Nowicki Jessee's
     cross-validation was worst on Tohoku). Carry this as a stated limitation,

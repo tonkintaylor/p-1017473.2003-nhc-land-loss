@@ -1,6 +1,6 @@
 # Step 1 — Landslide realisation: method
 
-- The step turns a supplied per-cell probability of slope failure into the
+- The step turns a selected per-cell large-landslide model grid into the
   **large** population of landslides, one realisation per modelled earthquake:
   the failures above the urban size range, placed in the slope units step 5
   cuts, each with a polygon for the ground it left and a polygon for the ground
@@ -10,7 +10,7 @@
   small failures beside buildings are the urban population, drawn by landslide
   step 9 against their own fragilities, and step 9 combines the two.
 - What a run does is set by `config.py` in the step folder — `EXTENT`,
-  `REALISATION_IDS`, `LARGE_MIN_SOURCE_AREA_M2`, `URBAN_AREA_SHARE`,
+  `REALISATION_IDS`, `COVERAGE_MODEL`, `LARGE_MIN_SOURCE_AREA_M2`, `URBAN_AREA_SHARE`,
   `SOURCE_ASPECT_RATIO` and `CREST_WEIGHT` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments. Neither script takes command line arguments and neither `main()`
@@ -22,24 +22,21 @@
   and, from step 3, the 10 m DEM, slope and downhill azimuth
   (`gen_multiscale_slope.dem_path`, `slope_path`, `aspect_path`) and the 100 m
   topographic position (`gen_terrain_derivatives.terrain_path`).
-- The base rate is ESNZ's earthquake-induced landslide probability grid, read
-  by `landloss.io.source_material.get_eil_landslide_probability` from the file
-  named once in `EIL_PROBABILITY_SOURCE_PATH` in `landloss.domain.constants`.
-  The supplied file is a 32 m grid; `cell_size()` reads the cell size off
-  whatever grid arrives, so a resupply at another resolution needs no code
-  change. The shaking level it is conditioned on is taken from the file name
-  and has not been confirmed with the supplier; the constant's comment records
-  this.
-- The grid is used as supplied, neither rescaled nor clipped.
+- `read_model_coverage()` reads the model selected by `COVERAGE_MODEL`.
+  `"hancox_1997"`, the committed setting, reads the per-realisation source
+  coverage written by step 10; `"esnz"` reads the supplied probability through
+  `landloss.io.source_material.get_eil_landslide_probability` from the path in
+  `EIL_PROBABILITY_SOURCE_PATH`.
+- Each selected grid is used at its own scale, neither rescaled nor clipped.
   `check_probabilities()` refuses a grid holding any value outside [0, 1],
   because a grid in per cent and a grid carrying an undeclared nodata marker
   both look like ordinary numbers and would each produce a hundred times too
   many landslides.
 - **The working grid is the 10 m DEM grid** the slope units were cut on.
-  `align_probability()` resamples the probability onto it nearest neighbour
-  (`rio.reproject_match`), so each 10 m cell takes the value of the 32 m cell
-  it falls in and a unit's sum over its cells is the supplied grid's own sum
-  over the same ground. `unit_labels()` burns the units onto that grid, one
+  `align_probability()` puts the selected grid onto it nearest neighbour
+  (`rio.reproject_match`); the Hancox grid is already aligned and the ESNZ
+  grid's 32 m cells are repeated over the 10 m cells they contain.
+  `unit_labels()` burns the units onto that grid, one
   label per unit; the probability, position, slope and aspect are then read
   cell for cell.
 - **No large landslide starts on flat land** (the project lead, 2026-10-02).
@@ -51,12 +48,11 @@
   summed probability removed. A source seeded on a slope is not clipped where
   it runs onto flat land.
 - **Expected failed area per unit** is computed by `expected_failed_area_m2()`:
-  the sum over the unit's cells of probability times cell area, times
-  `BETA_SOURCE_AREA_FRACTION`, times one minus `URBAN_AREA_SHARE`. The
-  fraction, 0.252, is the share of a failing cell's area that becomes source;
-  it restates the phase 1 areal-coverage calibration (258 m² of source per
-  failing 1,024 m² cell, 0.99% coverage against the order of 1% in
-  [nowicki_jessee_2018]) and is a beta placeholder, as its comment says. The
+  the sum over the unit's cells of model coverage times cell area, times the
+  value from `coverage_source_area_fraction()`, times one minus
+  `URBAN_AREA_SHARE`. Hancox's value is already source coverage and uses a
+  fraction of 1. ESNZ uses `BETA_SOURCE_AREA_FRACTION` 0.252, the phase 1
+  areal-coverage placeholder. The
   urban share, 0.25, is the share of the inventory's area the urban model
   draws instead, a placeholder until a research script measures it from
   `landloss.io.kaikoura`; every run prints it. A cell the grid does not reach

@@ -22,7 +22,7 @@ code that the LINZ address layer does not carry.
 ## Phase 1a — Run settings in config.py (complete)
 
 - [x] Replace the command-line flags with `config.py` beside the script
-      (`PILOT`, `FRESH`, `OUT`), read in the `__main__` block and passed
+      (`EXTENT`, `FRESH`, `OUT`), read in the `__main__` block and passed
       into `main()` as keyword arguments.
 
 ## Phase 2 — Join LINZ parcels for land area (register task T-07)

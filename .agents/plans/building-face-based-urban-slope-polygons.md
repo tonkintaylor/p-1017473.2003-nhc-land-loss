@@ -233,6 +233,11 @@ elements.
       unit this way. Expected to take step 6's attribute reading from about
       25 minutes to seconds over the pilot. The elements are born as a label
       grid, so they use the same reduction directly.
+- [ ] **A water mask.** The sea is masked with the LINZ NZ Coastlines and Islands
+      Polygons (Topo 1:50k), layer 51153, read by `get_nz_coastline_polygons`:
+      every cell outside the land polygons is no data before the elements are
+      found. Decided 2026-10-04 and run in the stage D2 script; the pipeline step
+      has to carry it, with the DEM source mask below.
 - [ ] **A DEM source mask.** Step 3 writes, beside the 1 m DEM, which cells are
       LiDAR and the survey year of each (L-12). Elements are found only on
       LiDAR cells; elsewhere the elements layer is empty and says so, and the
@@ -300,7 +305,18 @@ findings document with the reason.
       each showing the elements (free-face or bank), the polygon, and the
       imminent and inundated zones at their true size
       (`fig_toy_slope_elements.py`).
-- [ ] **Stage D2 — real examples from the pilot.** Eight to twelve sites in
+- [x] **Stage D2 — real examples from the pilot.** Built 2026-10-03: twelve
+      sites, a whole-pilot run and a GNS agreement count. No `BETA_` value was
+      changed. Deviations: GNS holds no wall height, so a wall's height is the
+      DEM-measured free-face height; the figure code is self-contained
+      because the toy figure script was being refactored; the sites exposed a
+      need for a water mask (the DEM's flat sea reads as seawall free-faces),
+      which the lead decided on 2026-10-04 should be the LINZ coastline and
+      which the script now applies, and a fill caveat (74% of the pilot ground
+      map is fill until step 4 is rerun). The lead also confirmed that
+      run-out over flat ground fans out, and the grow tolerance was settled at 3°. The urban/large overlap count is left to D3. Findings and the
+      points for the lead are in `pilot_example_slope_elements.md`. The brief:
+      eight to twelve sites in
       `SMALL_WLG_PILOT`, listed with the reason each was picked in the stage's
       `config.py`, covering: a GNS mapped wall of known height; a SLIDE fill
       body in a gully; a SLIDE cut slope; an excavated toe under a natural
@@ -1037,8 +1053,9 @@ not measurements):
   on 2026-10-02: the 3 m slope ranks the seeds, and grow angles stop the
   growth. Stage D1 found the proposed 5° tolerance let a cut grow into the
   bank above it under noise (16 to 30 of 30 seeds, depending on the case) and
-  rebuilt it at 3°, which passes 30 of 30; this is the lead's to confirm in
-  stage D2 (`toy_slope_elements.md`, item 4).
+  rebuilt it at 3°, which passes 30 of 30. Settled at 3° in stage D2 (2026-10-04):
+  the pilot gives the same result at 2°, 3° and 5°, so the toy noise result decides
+  (`pilot_example_slope_elements.md`).
 - **Added 2026-10-02, phase 3, all proposals for the lead:**
   - stacks: a bench narrower than the width behind the crest links two
     elements, and a free-face over 50° and 3 m takes the whole stack above it

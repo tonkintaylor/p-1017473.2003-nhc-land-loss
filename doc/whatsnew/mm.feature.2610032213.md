@@ -1,0 +1,1 @@
+Ran the slope elements and polygons library over the small Wellington pilot at twelve example sites (stage D2 of the face-based urban slope polygons plan), with figures, a whole-pilot count and a comparison with the GNS mapped walls and breaks in slope. The findings and the points left for the lead are in `research/slope_elements/pilot_example_slope_elements.md`.

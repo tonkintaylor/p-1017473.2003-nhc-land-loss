@@ -1,0 +1,7 @@
+event,case,auc,published_auc,difference
+wenchuan,base,0.831,0.839,-0.008
+wenchuan,slope > 5 deg,0.801,0.845,-0.044
+wenchuan,MMI >= 6,0.704,,
+wenchuan,gamma 0.8,0.831,,
+wenchuan,TPI window 300 m,0.832,,
+wenchuan,TPI window 1200 m,0.829,,

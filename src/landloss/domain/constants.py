@@ -42,6 +42,11 @@ NZ_RIVER_NAME_LINES_LAYER_ID = 103632
 # rivers wide enough to need a bridge, so the culvert and bridge work reads both.
 NZ_RIVER_NAME_POLYGONS_LAYER_ID = 103631
 
+# https://data.linz.govt.nz/layer/51153-nz-coastlines-and-islands-polygons-topo-150k/
+# The land polygons of the mainland and islands, from Topo50, in NZGD2000. Land
+# is inside the polygon and the sea outside, which is what a water mask needs.
+NZ_COASTLINE_POLYGONS_LAYER_ID = 51153
+
 # https://lris.scinfo.org.nz/layer/123148-lcdb-v60-land-cover-database-version-60-mainland-new-zealand/
 # LCDB v6.0, released October 2025. Polygons carrying a land cover class at each
 # of six time steps from summer 1996/97 to summer 2023/24.
@@ -114,6 +119,14 @@ GNS_SLIDE_GENESIS_LAYER_ID = 125309
 # the answer -- the grid is used as supplied -- but the report cannot describe
 # the result without it.
 EIL_PROBABILITY_SOURCE_PATH = "EILProb_Wellington/EILProb_PGA2g.tif"
+
+# Where a landslide model needs a magnitude or source distance, the 2,500-year
+# demand is represented by the modal event in the NSHM 2022 deaggregation of
+# Wellington PGA at Vs30 = 400 m/s. Hancox model 3 reads both; models driven
+# only by the study's shaking do not. These beta stand-ins go when a spatial
+# source model is adopted.
+BETA_SCENARIO_MW = 8.1
+BETA_SITE_DISTANCE_KM = 25.0
 
 # The NZMM address land attributes extract for the four Wellington councils,
 # below the project's SourceMaterial folder on T:. Read by

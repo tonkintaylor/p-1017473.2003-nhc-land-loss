@@ -3,11 +3,21 @@
 Stage D1 of ``.agents/plans/building-face-based-urban-slope-polygons.md``:
 every toy case of ``landloss.hazard.landslide.synthetic_terrain`` is run
 through ``find_slope_elements`` and ``build_slope_polygons``, without noise and
-with LiDAR-like noise, and drawn as a plan view over hillshade with contours
-beside a cross-section along the middle row (the fall line of every case). The
-elements are coloured free-face or bank, the polygon (the evacuated ground) is
-outlined, and the imminent and inundated zones are filled, all at their true
-size, cell edges and all.
+with LiDAR-like noise, and drawn as two plans beside a cross-section along the
+middle row (the fall line of every case), for both runs.
+
+The first plan is diagnostic: the ground coloured by ground group (red the
+weakest, green the strongest), contours, and every cell within 80% of
+exceeding its own threshold, coloured by how close it is (the step test and
+the 3 m slope test both feed one ratio), a hollow circle where the step test
+exceeds and a cross where the slope test does, and a lasso (a hull) around
+each element's own near-threshold cells.
+
+The second plan is the shape: each element's own boundary, the imminent zone,
+and the evacuated zone as the model gives it today (every free-face takes a
+wall's wedge, phase 2 not yet built), alongside a dashed illustrative band
+using the headscarp band a bank would get instead, as a what-if for no wall,
+and the free-face's crest line as an illustrative wall position.
 
 Each case's expected outcome, the plan's Development table, is checked by a
 function here, on the noise-free case and on every noise seed in the config,
@@ -48,22 +58,29 @@ import numpy as np
 import pandas as pd
 import shapely
 import shapely.ops
+from matplotlib.colors import BoundaryNorm, ListedColormap, TwoSlopeNorm
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.transforms import Bbox
 from rasterio import features
 from rasterio.transform import Affine
-from shapely.affinity import translate
+from shapely.affinity import scale, translate
+from shapely.geometry import LineString, MultiPoint
 from shapely.geometry import shape as to_shape
 
+from landloss.domain.constants import MIN_WALL_HEIGHT_M
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     CREST,
     FREE_FACE,
+    GROUND_GROUPS,
     OUTSIDE,
     SOIL_LIKE_CODE,
     TOE,
     SlopeElements,
     find_slope_elements,
+    height_band,
+    step_angle_deg,
 )
 from landloss.hazard.landslide.slope_polygons import (
     BETA_FACING_APART_DEG,
@@ -74,6 +91,7 @@ from landloss.hazard.landslide.slope_polygons import (
     SEPARATE_CATCHMENTS,
     SlopePolygons,
     build_slope_polygons,
+    headscarp_band_width_m,
     polygon_geometries,
 )
 from landloss.hazard.landslide.synthetic_terrain import (
@@ -96,6 +114,17 @@ IMMINENT_COLOUR = "#eda100"
 INK = "#0b0b0b"
 MUTED = "#898781"
 TYPE_COLOUR = {FREE_FACE: FREE_FACE_COLOUR, BANK: BANK_COLOUR}
+
+# Ground group background: red the lowest threshold angle (soil-like), green
+# the highest (stronger rock), in GROUND_GROUPS order.
+GROUND_GROUP_COLOUR = ("#c0392b", "#e8b339", "#2f9e44")
+
+# The eligibility ratio (step height over MIN_WALL_HEIGHT_M, or the 3 m slope
+# over its threshold, whichever is closer to exceeding) a cell is shown from,
+# and the value an exact threshold reads.
+ELIGIBILITY_SHOWN_FROM = 0.8
+ELIGIBILITY_AT_THRESHOLD = 1.0
+ELIGIBILITY_CMAP = "coolwarm"
 
 # The plan's table, one line per case, for the figure titles.
 EXPECTED = {
@@ -593,28 +622,6 @@ def plan_window(runs, margin_m):
     return max(0.0, first - margin_m), min(float(cols), last + margin_m)
 
 
-def hillshade(dem, *, azimuth_deg=315.0, altitude_deg=45.0):
-    """The ground lit from the north-west, not stretched, so level ground is grey.
-
-    Matplotlib's ``LightSource.hillshade`` stretches the light to the full
-    range of each grid, which makes LiDAR-like noise on level ground look like
-    relief; this keeps the plain cosine of the angle to the light.
-    """
-    east = np.gradient(dem, axis=1)
-    north = -np.gradient(dem, axis=0)
-    normal = np.stack([-east, -north, np.ones_like(dem)])
-    normal /= np.linalg.norm(normal, axis=0)
-    azimuth, altitude = np.radians(azimuth_deg), np.radians(altitude_deg)
-    light = np.array(
-        [
-            np.sin(azimuth) * np.cos(altitude),
-            np.cos(azimuth) * np.cos(altitude),
-            np.sin(altitude),
-        ]
-    )
-    return np.clip(np.tensordot(light, normal, axes=1), 0.0, 1.0)
-
-
 def swap_axes(frame):
     """The geometries with east and north exchanged, for a plan drawn on its side."""
     frame = frame.copy()
@@ -624,52 +631,308 @@ def swap_axes(frame):
     return frame
 
 
-def draw_plan(ax, run, *, interval, window, on_side):
-    """Draw the plan; ``on_side`` puts north along the horizontal axis."""
-    dem = run.terrain.dem
-    rows, cols = dem.shape
-    shade = hillshade(dem)
-    orient = swap_axes if on_side else (lambda frame: frame)
+def orient_frame(on_side):
+    """The geometry-swapping function a plan's orientation calls for."""
+    return swap_axes if on_side else (lambda frame: frame)
+
+
+def plotted_xy(rows_idx, cols_idx, n_rows, *, on_side):
+    """Cell centres as the axes already plot them: (east, north), or on its side."""
+    east = cols_idx + 0.5
+    north = n_rows - (rows_idx + 0.5)
+    return (north, east) if on_side else (east, north)
+
+
+def eligibility_grids(run):
+    """Per cell, the ratio that decides a seed, and the step and slope ratios it reads.
+
+    This is the same test ``slope_elements._free_face_pass`` seeds a face
+    from: the step height over :data:`MIN_WALL_HEIGHT_M`, or the 3 m slope
+    over its threshold (the ground group and the estimated height band's test
+    angle), whichever is larger. 1.0 is exactly at a threshold; NaN is off the
+    grid's resolvable edge, the same cells the library itself will not seed
+    from.
+    """
+    layers = run.found.layers
+    band = height_band(np.nan_to_num(layers.step_height_m, nan=0.0))
+    threshold = step_angle_deg(run.terrain.ground_group, band)
+    step_ratio = np.nan_to_num(layers.step_height_m, nan=0.0) / MIN_WALL_HEIGHT_M
+    with np.errstate(invalid="ignore", divide="ignore"):
+        slope_ratio = layers.slope_coarse_deg / threshold
+    finite = np.isfinite(run.terrain.dem) & np.isfinite(layers.slope_fine_deg)
+    eligibility = np.where(
+        finite, np.fmax(step_ratio, np.nan_to_num(slope_ratio, nan=-np.inf)), np.nan
+    )
+    return eligibility, step_ratio, slope_ratio
+
+
+def eligibility_norm(runs):
+    """A colour scale shared by both runs, centred where a cell is at its threshold."""
+    tops = []
+    for run in runs:
+        eligibility, _, _ = eligibility_grids(run)
+        shown = eligibility[
+            np.isfinite(eligibility) & (eligibility >= ELIGIBILITY_SHOWN_FROM)
+        ]
+        if shown.size:
+            tops.append(float(shown.max()))
+    vmax = max(ELIGIBILITY_AT_THRESHOLD + 1e-3, max(tops) if tops else 0.0)
+    return TwoSlopeNorm(
+        vmin=ELIGIBILITY_SHOWN_FROM, vcenter=ELIGIBILITY_AT_THRESHOLD, vmax=vmax
+    )
+
+
+def draw_ground_raster(ax, run, *, on_side):
+    """The ground group under every cell: red the weakest, green the strongest."""
+    codes = run.terrain.ground_group
+    rows, cols = codes.shape
+    cmap = ListedColormap(GROUND_GROUP_COLOUR)
+    norm = BoundaryNorm(np.arange(-0.5, len(GROUND_GROUPS)), cmap.N)
     if on_side:
-        # Column k of the turned image is row rows - 1 - k, so north grows to
-        # the right; east grows upwards.
         ax.imshow(
-            shade.T[:, ::-1],
-            cmap="gray",
-            extent=(0, rows, 0, cols),
+            codes.T[:, ::-1], cmap=cmap, norm=norm, extent=(0, rows, 0, cols),
             origin="lower",
-            vmin=0,
-            vmax=1,
         )
     else:
         ax.imshow(
-            shade,
-            cmap="gray",
-            extent=(0, cols, 0, rows),
-            origin="upper",
-            vmin=0,
-            vmax=1,
+            codes, cmap=cmap, norm=norm, extent=(0, cols, 0, rows), origin="upper"
         )
+
+
+def draw_contours(ax, run, *, interval, on_side):
+    """Thin black contours, labelled every 2 or 5 m depending on the interval."""
+    dem = run.terrain.dem
+    rows, cols = dem.shape
+    levels = np.arange(
+        np.floor(np.nanmin(dem) / interval) * interval,
+        np.nanmax(dem) + interval,
+        interval,
+    )
+    east = np.arange(cols) + 0.5
+    north = rows - (np.arange(rows) + 0.5)
+    label_step = 2.0 if interval <= 1.0 else 5.0
+    labelled = levels[
+        np.isclose(levels / label_step, np.round(levels / label_step), atol=1e-6)
+    ]
+    if on_side:
+        contours = ax.contour(
+            north[::-1], east, dem.T[:, ::-1], levels=levels, colors=INK,
+            linewidths=0.5, alpha=0.9,
+        )
+    else:
+        contours = ax.contour(
+            east, north, dem, levels=levels, colors=INK, linewidths=0.5, alpha=0.9
+        )
+    if labelled.size:
+        ax.clabel(contours, levels=labelled, fmt="%g", fontsize=6, inline=True)
+    return contours
+
+
+def draw_points(ax, run, *, on_side, norm):
+    """Cells within :data:`ELIGIBILITY_SHOWN_FROM` of their threshold.
+
+    Coloured by the eligibility ratio; a hollow circle where the step test
+    exceeds, a cross where the 3 m slope test does (both, if a cell exceeds
+    on both tests).
+    """
+    eligibility, step_ratio, slope_ratio = eligibility_grids(run)
+    rows_idx, cols_idx = np.nonzero(eligibility >= ELIGIBILITY_SHOWN_FROM)
+    if rows_idx.size == 0:
+        return None
+    n_rows = run.terrain.dem.shape[0]
+    x, y = plotted_xy(rows_idx, cols_idx, n_rows, on_side=on_side)
+    values = eligibility[rows_idx, cols_idx]
+    points = ax.scatter(
+        x, y, c=values, cmap=ELIGIBILITY_CMAP, norm=norm, s=9, lw=0, zorder=3
+    )
+    exceeds_step = step_ratio[rows_idx, cols_idx] >= ELIGIBILITY_AT_THRESHOLD
+    exceeds_slope = (
+        np.nan_to_num(slope_ratio[rows_idx, cols_idx], nan=-np.inf)
+        >= ELIGIBILITY_AT_THRESHOLD
+    )
+    if exceeds_step.any():
+        ax.scatter(
+            x[exceeds_step], y[exceeds_step], facecolors="none", edgecolors=INK,
+            marker="o", s=28, lw=0.7, zorder=4,
+        )
+    if exceeds_slope.any():
+        ax.scatter(
+            x[exceeds_slope], y[exceeds_slope], c=INK, marker="x", s=20, lw=0.8,
+            zorder=4,
+        )
+    return points
+
+
+def draw_lassos(ax, run, *, on_side):
+    """A hull around each element's own near-threshold cells."""
+    eligibility, _, _ = eligibility_grids(run)
+    near = eligibility >= ELIGIBILITY_SHOWN_FROM
+    labels = run.found.labels
+    n_rows = labels.shape[0]
+    for label in np.unique(labels[(labels > OUTSIDE) & near]):
+        rows_idx, cols_idx = np.nonzero((labels == label) & near)
+        if rows_idx.size < 3:
+            continue
+        x, y = plotted_xy(rows_idx, cols_idx, n_rows, on_side=on_side)
+        hull = MultiPoint(np.column_stack([x, y])).convex_hull
+        if hull.geom_type != "Polygon":
+            continue
+        colour = TYPE_COLOUR[run.found.elements.loc[label, "element_type"]]
+        hx, hy = hull.exterior.xy
+        ax.plot(hx, hy, color=colour, lw=1.1, ls="--", zorder=5)
+
+
+def wall_centreline(run, label):
+    """A straight line through a free-face's crest cells, as an illustrative wall line.
+
+    Phase 2 (which free-faces carry a wall, and where its line runs) has not
+    been built, so this is the best-fit line through the crest cells, trimmed
+    to their own extent, not a model output.
+    """
+    rows_idx, cols_idx = np.nonzero(
+        (run.found.labels == label) & ((run.found.edge_roles & CREST) > 0)
+    )
+    if rows_idx.size < 2:
+        return None
+    n_rows = run.found.labels.shape[0]
+    points = np.column_stack([cols_idx + 0.5, n_rows - (rows_idx + 0.5)])
+    centre = points.mean(axis=0)
+    centred = points - centre
+    if np.allclose(centred, 0.0):
+        return None
+    _, _, axes = np.linalg.svd(centred, full_matrices=False)
+    direction = axes[0]
+    projected = centred @ direction
+    return LineString(
+        [centre + projected.min() * direction, centre + projected.max() * direction]
+    )
+
+
+def draw_wall_lines(ax, run, *, on_side):
+    """Each free-face's illustrative wall centreline."""
+    orient = orient_frame(on_side)
+    elements = run.result.polygons.loc[
+        run.result.polygons["element_type"] == FREE_FACE, "element"
+    ].unique()
+    lines = [
+        line
+        for element in elements
+        if (line := wall_centreline(run, int(element))) is not None
+    ]
+    if not lines:
+        return
+    orient(gpd.GeoDataFrame(geometry=lines)).plot(ax=ax, color=INK, lw=1.6, zorder=6)
+
+
+def no_wall_band(run, polygon_id, geometry):
+    """A free-face's evacuated polygon, scaled to the width a bank would get.
+
+    Illustrative only. Phase 2 (which free-faces carry a wall) has not been
+    built, so this is not the model's own geometry for an unwalled face: it
+    scales the real polygon outward from its toe, by the ratio of the
+    headscarp band a bank's width rule would give the same element to the
+    wedge width it was actually given. The ratio is never let below 1.0,
+    since removing a wall can only widen the setback, never narrow it.
+    """
+    polygon = run.result.polygons.loc[polygon_id]
+    width_with_wall = float(polygon["width_behind_crest_m"])
+    if width_with_wall <= 0:
+        return None
+    element = int(polygon["element"])
+    angle = float(run.found.elements.loc[element, "overall_angle_deg"])
+    width_no_wall = float(headscarp_band_width_m(angle))
+    # Removing a wall can only widen the setback, never narrow it, so this
+    # never scales the band down from what was actually modelled.
+    ratio = max(1.0, width_no_wall / width_with_wall)
+    rows_idx, cols_idx = np.nonzero(
+        (run.found.labels == element) & ((run.found.edge_roles & TOE) > 0)
+    )
+    if rows_idx.size == 0:
+        return None
+    n_rows = run.found.labels.shape[0]
+    anchor = (
+        float(np.mean(cols_idx + 0.5)),
+        float(np.mean(n_rows - (rows_idx + 0.5))),
+    )
+    band = scale(geometry, xfact=ratio, yfact=ratio, origin=anchor)
+    return None if band.is_empty else band
+
+
+def draw_no_wall_bands(ax, run, *, on_side):
+    """The dashed illustrative "no wall" band for every free-face's polygon."""
+    free_face_rows = run.result.polygons[
+        run.result.polygons["element_type"] == FREE_FACE
+    ]
+    if free_face_rows.empty:
+        return
+    evacuated = zone_shapes(run, EVACUATED).set_index("polygon")
+    bands = [
+        band
+        for polygon_id in free_face_rows.index
+        if polygon_id in evacuated.index
+        and (
+            band := no_wall_band(run, polygon_id, evacuated.loc[polygon_id, "geometry"])
+        )
+        is not None
+    ]
+    if not bands:
+        return
+    orient_frame(on_side)(gpd.GeoDataFrame(geometry=bands)).boundary.plot(
+        ax=ax, color=INK, lw=1.0, ls="--", zorder=4
+    )
+
+
+def finish_plan_axes(ax, run, *, window, on_side):
+    """The axis limits, labels and grid-edge shading every plan shares."""
+    rows, cols = run.terrain.dem.shape
+    section = rows - (section_row(run.terrain) + 0.5)
+    if on_side:
+        ax.plot([section, section], [0, cols], color=INK, lw=0.8, ls="--")
+        ax.set_xlim(0, rows)
+        ax.set_ylim(*window)
+        ax.set_xlabel("Metres north of the grid's south edge")
+        ax.set_ylabel("Metres east")
+    else:
+        ax.plot([0, cols], [section, section], color=INK, lw=0.8, ls="--")
+        ax.set_xlim(*window)
+        ax.set_ylim(0, rows)
+        ax.set_xlabel("Metres east of the grid's west edge")
+        ax.set_ylabel("Metres north")
+    if run.terrain.profile is not None:
+        shade_edge_rows(ax, rows, on_side=on_side)
+    ax.set_aspect("equal")
+
+
+def draw_diagnostic(ax, run, *, interval, window, on_side, norm):
+    """Plot 1: ground group, contours, near-threshold cells, and each face's lasso."""
+    draw_ground_raster(ax, run, on_side=on_side)
+    draw_contours(ax, run, interval=interval, on_side=on_side)
+    points = draw_points(ax, run, on_side=on_side, norm=norm)
+    draw_lassos(ax, run, on_side=on_side)
+    finish_plan_axes(ax, run, window=window, on_side=on_side)
+    return points
+
+
+def draw_shape(ax, run, *, interval, window, on_side):
+    """Plot 2: each element's boundary, its zones, and the illustrative wall."""
+    draw_contours(ax, run, interval=interval, on_side=on_side)
+    orient = orient_frame(on_side)
     shapes = orient(element_shapes(run))
     for kind, colour in TYPE_COLOUR.items():
         chosen = shapes[shapes["element_type"] == kind]
         if not chosen.empty:
-            chosen.plot(ax=ax, color=colour, alpha=0.7, edgecolor="white", lw=0.4)
+            chosen.boundary.plot(ax=ax, color=colour, lw=1.3)
     if not run.result.polygons.empty:
         imminent = orient(zone_shapes(run, IMMINENT))
         imminent.plot(
-            ax=ax,
-            facecolor=IMMINENT_COLOUR,
-            alpha=0.45,
-            edgecolor=IMMINENT_COLOUR,
-            hatch="////",
-            lw=0.5,
+            ax=ax, facecolor=IMMINENT_COLOUR, alpha=0.4, edgecolor=IMMINENT_COLOUR,
+            hatch="////", lw=0.5,
         )
         inundated = orient(zone_shapes(run, INUNDATED))
         if not inundated.empty:
-            inundated.plot(ax=ax, color=INUNDATED_COLOUR, alpha=0.45, lw=0)
+            inundated.plot(ax=ax, color=INUNDATED_COLOUR, alpha=0.4, lw=0)
         evacuated = orient(zone_shapes(run, EVACUATED))
-        evacuated.boundary.plot(ax=ax, color=INK, lw=1.3)
+        evacuated.plot(ax=ax, facecolor=INK, alpha=0.12, edgecolor=INK, lw=1.3)
         for _, row in evacuated.iterrows():
             point = row.geometry.representative_point()
             ax.annotate(
@@ -681,38 +944,9 @@ def draw_plan(ax, run, *, interval, window, on_side):
                 va="center",
                 bbox={"boxstyle": "round,pad=0.15", "fc": "white", "alpha": 0.7},
             )
-    levels = np.arange(
-        np.floor(np.nanmin(dem) / interval) * interval,
-        np.nanmax(dem) + interval,
-        interval,
-    )
-    east = np.arange(cols) + 0.5
-    north = rows - (np.arange(rows) + 0.5)
-    section = rows - (section_row(run.terrain) + 0.5)
-    if on_side:
-        ax.contour(
-            north[::-1],
-            east,
-            dem.T[:, ::-1],
-            levels=levels,
-            colors=MUTED,
-            linewidths=0.4,
-        )
-        ax.plot([section, section], [0, cols], color=INK, lw=0.8, ls="--")
-        ax.set_xlim(0, rows)
-        ax.set_ylim(*window)
-        ax.set_xlabel("Metres north of the grid's south edge")
-        ax.set_ylabel("Metres east")
-    else:
-        ax.contour(east, north, dem, levels=levels, colors=MUTED, linewidths=0.4)
-        ax.plot([0, cols], [section, section], color=INK, lw=0.8, ls="--")
-        ax.set_xlim(*window)
-        ax.set_ylim(0, rows)
-        ax.set_xlabel("Metres east of the grid's west edge")
-        ax.set_ylabel("Metres north")
-    if run.terrain.profile is not None:
-        shade_edge_rows(ax, rows, on_side=on_side)
-    ax.set_aspect("equal")
+        draw_no_wall_bands(ax, run, on_side=on_side)
+        draw_wall_lines(ax, run, on_side=on_side)
+    finish_plan_axes(ax, run, window=window, on_side=on_side)
 
 
 def shade_edge_rows(ax, rows, *, on_side):
@@ -836,11 +1070,11 @@ def describe_elements(run):
     return "\n".join(lines) if lines else "No element"
 
 
-def legend_handles():
+def section_legend_handles():
+    """The legend entries ``draw_section``'s colours actually use."""
     return [
         Patch(facecolor=FREE_FACE_COLOUR, alpha=0.7, label="Free-face element"),
         Patch(facecolor=BANK_COLOUR, alpha=0.7, label="Bank element"),
-        Patch(facecolor="none", edgecolor=INK, lw=1.3, label="Polygon (evacuated)"),
         Patch(
             facecolor=IMMINENT_COLOUR,
             alpha=0.45,
@@ -850,7 +1084,34 @@ def legend_handles():
         ),
         Patch(facecolor=INUNDATED_COLOUR, alpha=0.45, label="Inundated zone"),
         Patch(facecolor=INK, alpha=0.18, label="Evacuated, to each cell's depth"),
-        Line2D([], [], color=INK, ls="--", lw=0.8, label="Cross-section line"),
+    ]
+
+
+def legend_handles():
+    """Every legend entry the case figure's two plans and two sections use."""
+    ground_labels = dict(enumerate(("Soil-like", "Weak rock", "Stronger rock")))
+    return [
+        *section_legend_handles(),
+        *(
+            Patch(facecolor=GROUND_GROUP_COLOUR[code], label=f"Ground: {label}")
+            for code, label in ground_labels.items()
+        ),
+        Line2D(
+            [], [],
+            marker="o", mfc="none", mec=INK, mew=0.8, ls="",
+            label="Exceeds by step height",
+        ),
+        Line2D([], [], marker="x", color=INK, ls="", label="Exceeds by 3 m slope"),
+        Patch(
+            facecolor=INK, alpha=0.12, edgecolor=INK, lw=1.3,
+            label="Evacuated (has wall, as modelled)",
+        ),
+        Line2D(
+            [], [], color=INK, lw=1.0, ls="--",
+            label="Evacuated, illustrative no wall",
+        ),
+        Line2D([], [], color=INK, lw=1.6, label="Illustrative wall position"),
+        Line2D([], [], color=INK, lw=0.8, ls="--", label="Cross-section line"),
     ]
 
 
@@ -865,19 +1126,24 @@ def draw_case(name, runs, outcomes, *, intervals, max_contours, noise_sd_m, seed
     section_height = 3.2
     if on_side:
         plan_height = max(1.5, 13.0 / plan_aspect)
-        heights = [plan_height, plan_height, section_height, section_height]
+        heights = [plan_height] * 4 + [section_height, section_height]
         fig = plt.figure(figsize=(14, sum(heights) + 3.0))
-        grid = fig.add_gridspec(4, 1, height_ratios=heights)
-        plan_slots = [grid[0, 0], grid[1, 0]]
-        section_slots = [grid[2, 0], grid[3, 0]]
+        grid = fig.add_gridspec(6, 1, height_ratios=heights)
+        diagnostic_slots = [grid[0, 0], grid[2, 0]]
+        shape_slots = [grid[1, 0], grid[3, 0]]
+        section_slots = [grid[4, 0], grid[5, 0]]
     else:
         plan_height = min(8.0, max(3.0, 6.5 * plan_aspect))
-        heights = [plan_height, section_height, section_height]
+        heights = [plan_height, plan_height, section_height, section_height]
         fig = plt.figure(figsize=(14, sum(heights) + 2.4))
-        grid = fig.add_gridspec(3, 2, height_ratios=heights)
-        plan_slots = [grid[0, 0], grid[0, 1]]
-        section_slots = [grid[1, :], grid[2, :]]
+        grid = fig.add_gridspec(4, 2, height_ratios=heights)
+        diagnostic_slots = [grid[0, 0], grid[0, 1]]
+        shape_slots = [grid[1, 0], grid[1, 1]]
+        section_slots = [grid[2, :], grid[3, :]]
+    norm = eligibility_norm(runs)
     titles = ("No noise", f"LiDAR-like noise, sd {noise_sd_m:g} m, seed {seed}")
+    diagnostic_axes = []
+    points_mappable = None
     for column, (run, title, (passed, detail)) in enumerate(
         zip(runs, titles, outcomes, strict=True)
     ):
@@ -887,11 +1153,21 @@ def draw_case(name, runs, outcomes, *, intervals, max_contours, noise_sd_m, seed
             max_contours,
             noise_sd_m=noise_sd_m if column else 0.0,
         )
-        plan = fig.add_subplot(plan_slots[column])
-        draw_plan(plan, run, interval=interval, window=window, on_side=on_side)
-        plan.set_title(
-            f"{title}: plan{' (on its side)' if on_side else ''}, contours every "
-            f"{interval:g} m",
+        diagnostic = fig.add_subplot(diagnostic_slots[column])
+        points = draw_diagnostic(
+            diagnostic, run, interval=interval, window=window, on_side=on_side,
+            norm=norm,
+        )
+        points_mappable = points_mappable if points is None else points
+        diagnostic_axes.append(diagnostic)
+        diagnostic.set_title(
+            f"{title}: ground, near-threshold cells{' (on its side)' if on_side else ''}",
+            fontsize=9,
+        )
+        shape = fig.add_subplot(shape_slots[column])
+        draw_shape(shape, run, interval=interval, window=window, on_side=on_side)
+        shape.set_title(
+            f"{title}: faces and evacuated extent, contours every {interval:g} m",
             fontsize=9,
         )
         section = fig.add_subplot(section_slots[column])
@@ -908,9 +1184,17 @@ def draw_case(name, runs, outcomes, *, intervals, max_contours, noise_sd_m, seed
         fontsize=11,
     )
     fig.legend(
-        handles=legend_handles(), loc="lower center", ncol=4, fontsize=8, frameon=False
+        handles=legend_handles(), loc="lower center", ncol=5, fontsize=7, frameon=False
     )
-    fig.tight_layout(rect=(0, 0.04, 1, 0.95))
+    # tight_layout has to run before the colorbar axes is added: it does not
+    # know how to make room for a colorbar and warns if one already exists.
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+    if points_mappable is not None:
+        bbox = Bbox.union([ax.get_position() for ax in diagnostic_axes])
+        cbar_ax = fig.add_axes((bbox.x1 + 0.015, bbox.y0, 0.012, bbox.height))
+        fig.colorbar(
+            points_mappable, cax=cbar_ax, label="Eligibility (1.0 = at threshold)"
+        )
     path = figure_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150)
@@ -937,7 +1221,7 @@ def draw_overview(clean_runs, outcomes):
         fontsize=11,
     )
     fig.legend(
-        handles=legend_handles()[:-1],
+        handles=section_legend_handles(),
         loc="lower center",
         ncol=6,
         fontsize=8,

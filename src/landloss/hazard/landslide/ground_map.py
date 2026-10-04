@@ -31,10 +31,30 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import shapely
+import xarray as xr
+from rasterio import features
 
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
 from landloss.io import ASSETS_DIR
+
+
+def flatland_cell_mask(
+    ground_map: gpd.GeoDataFrame, template: xr.DataArray
+) -> np.ndarray:
+    """Return true where a raster cell centre lies on NLM flatland."""
+    flat = ground_map.loc[ground_map["is_flatland"].astype(bool), "geometry"]
+    if flat.empty:
+        return np.zeros(template.shape, dtype=bool)
+    burned = features.rasterize(
+        ((geometry, 1) for geometry in flat),
+        out_shape=template.shape,
+        transform=template.rio.transform(),
+        fill=0,
+        dtype="uint8",
+    )
+    return burned.astype(bool)
+
 
 # ---------------------------------------------------------------------------
 # Vocabulary (contract section 9.1)

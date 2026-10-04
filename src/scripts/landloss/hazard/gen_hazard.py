@@ -71,6 +71,12 @@ from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
 from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
     gen_urban_slope_realisation,
 )
+from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+    config as hancox_config,
+)
+from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+    gen_hancox_1997_coverage,
+)
 from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import (
     gen_liq_ld_probabilities,
 )
@@ -192,9 +198,24 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
+                "landslide s10, Hancox 1997 coverage",
+                lambda: gen_hancox_1997_coverage.main(
+                    extent=extent,
+                    realisation_ids=realisation_ids,
+                    scenario_mw=hancox_config.SCENARIO_MW,
+                    site_distance_km=hancox_config.SITE_DISTANCE_KM,
+                    marc_r0_km=hancox_config.MARC_R0_KM,
+                    marc_fault_type=hancox_config.MARC_FAULT_TYPE,
+                    marc_onshore_fraction=hancox_config.MARC_ONSHORE_FRACTION,
+                    marc_modal_slope_deg=hancox_config.MARC_MODAL_SLOPE_DEG,
+                    marc_a_topo=hancox_config.MARC_A_TOPO,
+                ),
+            ),
+            (
                 "landslide s1, large-model landslide realisations",
                 lambda: s1_simulate_landslides.main(
                     **ids,
+                    coverage_model=large_config.COVERAGE_MODEL,
                     large_min_source_area_m2=large_config.LARGE_MIN_SOURCE_AREA_M2,
                     urban_area_share=large_config.URBAN_AREA_SHARE,
                     source_aspect_ratio=large_config.SOURCE_ASPECT_RATIO,

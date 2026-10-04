@@ -26,6 +26,12 @@ EXTENT = "wlg-pilot"
 # paired.
 REALISATION_IDS = [0]
 
+# The large-landslide coverage model handed to the placement machinery.
+# ``hancox_1997`` reads the coverage raster written by step 10. ``esnz`` keeps
+# the supplied probability-grid route available as the other built portfolio
+# member.
+COVERAGE_MODEL = "hancox_1997"
+
 # The smallest source a large-model failure can have, in square metres: the top
 # of the urban size range (plan section 10.3). Failures below it belong to the
 # urban model, landslide steps 6 to 9, and are not drawn here.

@@ -1,7 +1,8 @@
 # Step 1 — Landslide realisation: implementation plan
 
 **Status:** Phase 2, placement in slope units, is built and tested end to end
-on a synthetic three-unit plane; it has not been run over the pilot. Phase 1 is the cell-by-cell realisation it replaced, kept here because
+on a synthetic three-unit plane and now accepts the Hancox step 10 coverage or
+the supplied ESNZ grid; the Hancox route has not been run over the pilot. Phase 1 is the cell-by-cell realisation it replaced, kept here because
 its calibration still carries into phase 2. Phases 3 to 6 are open.
 
 This step is the **large** population of the landslide model: the failures
@@ -9,12 +10,10 @@ above the urban size range, placed in the slope units step 5 cuts (plan
 section 10 of `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`,
 contract section 3.9 of `.agents/plans/urban-slope-build-contract.md`). The
 small failures beside buildings are the urban population, landslide steps 6 to
-9, and step 9 combines the two realisations. The supplied 32 m probability grid
-stays the base rate: the three things it does not carry — where a failure
-starts, how big it is, where the debris goes — are added on top of it. The
-alternative, a model built from the ground up, is drafted in
-`.agents/plans/estimating-eq-landslide-extent-wellington.md`, and choosing
-between them is still open.
+9, and step 9 combines the two realisations. `COVERAGE_MODEL` selects the
+Hancox step 10 coverage or the supplied 32 m ESNZ probability grid; the three
+things neither carries — where a failure starts, how big it is, where the
+debris goes — are added on top.
 
 ## Phase 1 — A cell-by-cell realisation, every assumption stated (complete, superseded)
 
@@ -49,11 +48,14 @@ number phase 2 inherits, and because the reader of a realisation written before
 - [x] Read the slope units (`slope_units_path`) and the 10 m DEM, slope and
       aspect and the 100 m topographic position from step 3; fetch nothing.
       `USE_CACHED_DEM` is gone from `config.py`.
-- [x] Resample the probability grid onto the 10 m DEM grid, nearest neighbour
-      (`align_probability`), so units, position and probability share cells.
-- [x] Expected failed area per unit: Σ (p × cell area) over the unit's cells,
-      times `BETA_SOURCE_AREA_FRACTION`, times (1 − `URBAN_AREA_SHARE`)
-      (`expected_failed_area_m2`).
+- [x] Read the grid selected by `COVERAGE_MODEL` and put it on the 10 m DEM
+      grid nearest neighbour (`read_model_coverage`, `align_probability`), so
+      units, position and model coverage share cells.
+- [x] Expected failed area per unit: Σ (model value × cell area) over the
+      unit's cells, times the model's source-area fraction, times
+      (1 − `URBAN_AREA_SHARE`) (`expected_failed_area_m2`). Hancox is already
+      source coverage and uses 1; ESNZ retains
+      `BETA_SOURCE_AREA_FRACTION`.
 - [x] A Poisson count per unit, mean the expected area over the mean of the
       size law (`draw_counts`, `truncated_power_law_mean_m2`).
 - [x] Sizes from the power law truncated to
@@ -76,8 +78,7 @@ number phase 2 inherits, and because the reader of a realisation written before
       size panel.
 - [x] `tests/landloss/hazard/landslide/test_large_placement.py`: every
       function above on a synthetic three-unit plane, and the step end to end
-      through `main()` with the input paths and the probability reader
-      replaced.
+      through `main()` with the input paths and model coverage reader replaced.
 - [ ] Run over the pilot after steps 3 to 5 (step 3's
       `topographic-position-100m` and step 5's
       `slope-units-pilot.geoparquet` must exist first), and review the

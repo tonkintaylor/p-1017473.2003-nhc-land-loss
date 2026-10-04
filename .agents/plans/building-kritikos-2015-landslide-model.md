@@ -59,49 +59,57 @@ to the rupture. The scenario enters model 2 only through the calibration.
 
 ### Phase 1 — Digitise the memberships
 
-- [ ] Render Figure 5 (journal p. 721) from the PDF at high resolution into
+- [x] Render Figure 5 (journal p. 721) from the PDF at high resolution into
       `context/lit/landslide/kritikos_2015/figures/`, as was done for Hancox.
-- [ ] Digitise the five average (dashed) curves: MM (V to IX), slope angle
+- [x] Digitise the five average (dashed) curves: MM (V to IX), slope angle
       (0–5° to >50°, 5° classes), distance to active faults (0–5 km to >50 km),
       distance to streams (for the record; not used), and the four slope
-      position values (flat, valley, midslope, ridge).
-- [ ] Hold them in `landloss.hazard.landslide.models.kritikos_2015.memberships`
+      position values (flat, valley, midslope, ridge). Done programmatically
+      from the embedded image, points in
+      `figures/figure-5-average-membership-points.csv`; reading error about
+      0.02, and the fault classes are unequal in width, so the curve is placed
+      at class centres. Unchecked until phase 4.
+- [x] Hold them in `landloss.hazard.landslide.models.kritikos_2015.memberships`
       as tabulated points with linear interpolation between them, each table
       commented with where it was read from. Extrapolation is flat beyond the
       plotted range.
-- [ ] Unit tests: every membership lies in 0–1, rises (MM, slope) or falls
+- [x] Unit tests: every membership lies in 0–1, rises (MM, slope) or falls
       (fault distance) as the figure shows, and the four slope position values
       are in the published order (ridge > midslope > valley > flat).
 
 ### Phase 2 — Inputs
 
-- [ ] `inputs.py`: slope angle on the 60 m grid, from LINZ elevation aggregated
+- [x] `inputs.py`: slope angle on the 60 m grid, from LINZ elevation aggregated
       to 60 m, reusing `landloss.common.utils.terrain`.
-- [ ] Slope position: TPI classified into four classes following Jenness et al.
+- [x] Slope position: TPI classified into four classes following Jenness et al.
       (2013), as the paper does. The paper does not state its TPI neighbourhood;
       choose one, record it as a judgement, and test a smaller and a larger
-      radius.
-- [ ] Distance to mapped active faults: a reader in `landloss.io` for the NZ
+      radius. Built with the window as an argument (600 m in the step's
+      `config.py`); the class thresholds are from the Weiss (2001) scheme, written from memory and marked `verify`; the sensitivity runs are open (step 11 plan).
+- [x] Distance to mapped active faults: a reader in `landloss.io` for the NZ
       Active Faults Database in the data library
       (`210.20_active_faults_NZ_NZAFD_AF250`, V1), following `landloss.io.gfdb`,
       and horizontal distance to the nearest trace on the 60 m grid. R: is read
-      by the project lead's runs, not Claude's.
-- [ ] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
+      by the project lead's runs, not Claude's. The reader finds the single
+      vector file in the data folder and is tested on a temporary file; the real
+      folder's layout is unconfirmed.
+- [x] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
       PGV form (`landloss.hazard.shaking` gains a `mmi_from_pgv`). For the validation events, read MM directly from the
       ShakeMap `grid.xml` (`landloss.io.shakemap` already carries `mmi`).
 
 ### Phase 3 — The model
 
-- [ ] `model.py`: memberships applied per factor, combined by fuzzy gamma
+- [x] `model.py`: memberships applied per factor, combined by fuzzy gamma
       (paper eq. 4) with γ = 0.9, returning H on the 60 m grid. Cells below
       slope 5° are reported but flagged, as the paper scores both with and
       without them.
-- [ ] Unit tests: fuzzy gamma against a hand-computed case; γ = 0 reduces to the
+- [x] Unit tests: fuzzy gamma against a hand-computed case; γ = 0 reduces to the
       fuzzy product, γ = 1 to the fuzzy sum.
 
 ### Phase 4 — Reproduce the paper (the check that the digitisation is right)
 
-- [ ] Rebuild the success-rate AUC for the paper's events with our digitised
+- [ ] Rebuild the success-rate AUC for the paper's events (the AUC itself is
+      built: `evaluation.success_rate_auc`) with our digitised
       curves: Northridge 0.904 and Wenchuan 0.839 (average memberships, whole
       study area), and the blind Chi-Chi test, 0.921. Inventories from the USGS
       Ground Failure Database (`landloss.io.gfdb`), ShakeMap MMI from the USGS
@@ -136,7 +144,8 @@ to coverage is needed, and under the lead's decision of 2026-10-02 (rebuild
 note, "How they combine") it comes from the model's own training events, not
 from Kaikōura, so that model 2 stays an independent estimate.
 
-- [ ] Fit a transfer function from H to areal coverage on **Northridge 1994
+- [ ] Fit (the tool, `evaluation.fit_transfer_function`, is built and tested; the
+      fit needs the inventories) a transfer function from H to areal coverage on **Northridge 1994
       and Wenchuan 2008**, the two events the memberships were derived from:
       bin cells by H, take the observed coverage in each bin, and fit a
       monotone curve (`fit_transfer_function`), as Nowicki Jessee fitted their
@@ -151,12 +160,14 @@ from Kaikōura, so that model 2 stays an independent estimate.
 
 ### Phase 7 — Wellington forward run
 
-- [ ] A step under `src/scripts/landloss/hazard/landslide/steps/` (next free
+- [~] Built as step 11 (`steps/s11_kritikos_2015/`), writing the relative hazard H on
+      the 60 m grid; the coverage and the hand-off to step 1 wait for phase 6.
+      A step under `src/scripts/landloss/hazard/landslide/steps/` (next free
       number), following the `adding-steps-scripts` skill: coverage on the 60 m
       grid over the study area, from the study's MM, then handed to the
       realisation machinery with the size distribution truncated below at the
       split.
-- [ ] Method and plan files for the step; `status.md` updated.
+- [x] Method and plan files for the step; `status.md` updated.
 
 ## Files
 
