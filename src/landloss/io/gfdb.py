@@ -19,10 +19,11 @@ Held on the cross-project data library rather than under this project's own
 ``BASE_DIR`` or ``SOURCE_MATERIAL_DIR``, because it is a static published
 dataset with utility well beyond this study -- see
 ``R:\DataLibrary\README.md`` for the catalogue's own indexing rules. A whole-
-layer read goes straight off ``R:`` rather than through
-``tdrive_sync.get_cached``: the dataset is a multi-file Esri file geodatabase
-rather than a single file (or a shapefile's fixed set of sidecars), which is
-the shape ``tdrive_sync``'s local cache mirroring is built around.
+layer read goes straight off ``R:``, or off a copy of the delivery placed by hand
+under ``.tdrivecache`` when there is one (:func:`gfdb_gdb_path`), rather than
+through ``tdrive_sync.get_cached``: the dataset is a multi-file Esri file
+geodatabase rather than a single file (or a shapefile's fixed set of sidecars),
+which is the shape ``tdrive_sync``'s local cache mirroring is built around.
 
 Filtering :func:`get_gfdb_ground_failure_polygons` or
 :func:`get_gfdb_ground_failure_points` down to one ``event_name`` is a
@@ -79,6 +80,7 @@ from pathlib import Path
 
 import geopandas as gpd
 
+import tdrive_sync
 from landloss.io import koopcache_dir
 
 # v1 is also the catalogue entry's current recommended version. The README
@@ -92,6 +94,23 @@ GFDB_V4_DIR = Path(
 )
 
 GFDB_V4_GDB_PATH = GFDB_V4_DIR / "Ground_Failure_Database_v4.gdb"
+
+
+def gfdb_gdb_path() -> Path:
+    """Return the geodatabase to read: the local cache mirror if present.
+
+    ``tdrive_sync.get_cached`` copies single files, so it cannot mirror a
+    geodatabase folder. The mirror is instead put in place by hand, copied from
+    ``R:`` into the same relative place under ``.tdrivecache`` (the path of
+    :data:`GFDB_V4_GDB_PATH` without its drive), and used from there when it
+    exists.
+
+    Returns:
+        The mirror of :data:`GFDB_V4_GDB_PATH` under ``.tdrivecache`` if it is
+        there, otherwise :data:`GFDB_V4_GDB_PATH` itself.
+    """
+    local = tdrive_sync.get_cached_local_path(GFDB_V4_GDB_PATH)
+    return local if local.exists() else GFDB_V4_GDB_PATH
 
 
 def _event_cache_path(layer: str, event_name: str) -> Path:
@@ -153,7 +172,7 @@ def _read_layer(
         ValueError: If both ``where`` and ``event_name`` are given.
     """
     if event_name is None:
-        gdf = gpd.read_file(GFDB_V4_GDB_PATH, layer=layer, bbox=bbox, where=where)
+        gdf = gpd.read_file(gfdb_gdb_path(), layer=layer, bbox=bbox, where=where)
         return gdf.rename(columns=str.lower)
 
     if where is not None:
@@ -169,11 +188,17 @@ def _read_layer(
         # costs nothing and means a future one would not silently break the
         # query.
         escaped_event_name = event_name.replace("'", "''")
+        # LIKE, not =: an exact match on event_name goes through the
+        # geodatabase's attribute index, which GDAL 3.12 fails on with a
+        # FeatureError in filegdbindex.cpp. LIKE with no wildcard matches the
+        # same rows, and the exact comparison below drops any a stray ``_``
+        # in a name would let through.
         gdf = gpd.read_file(
-            GFDB_V4_GDB_PATH,
+            gfdb_gdb_path(),
             layer=layer,
-            where=f"event_name = '{escaped_event_name}'",
+            where=f"event_name LIKE '{escaped_event_name}'",
         ).rename(columns=str.lower)
+        gdf = gdf[gdf["event_name"] == event_name]
         if use_cache:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             gdf.to_file(cache_path)

@@ -17,7 +17,8 @@
   judgement, and the thresholds are marked `verify` in the module. The border
   half a window wide has no class, so no hazard.
 - Distance to mapped faults is horizontal, from each cell to the nearest vertex
-  of the AF250 traces densified to 30 m, searched out to 55 km, beyond which
+  of the AF250 traces (read from `NZAFD_AF250.geojson` through the local cache)
+  densified to 30 m, searched out to 55 km, beyond which
   the membership is flat and the distance is `inf`. With `FAULT_TERM =
   "far_field"` every cell is set to `inf` and the fault database is not read,
   which holds the term at its far-field value.
@@ -35,8 +36,9 @@
   `extent_suffix()` separating pilot and full-study outputs.
 - The step writes H, not a coverage. The transfer function from H to areal
   coverage is fitted on Northridge and Wenchuan by
-  `evaluation.fit_transfer_function()`, which needs the GFDB inventories on
-  `R:`; step 1 does not yet read this model.
+  `evaluation.fit_transfer_function()`, which needs the GFDB inventories
+  (`landloss.io.gfdb`, now read from the local cache); step 1 does not yet read
+  this model.
 - The memberships, fuzzy gamma, inputs, success-rate AUC, transfer fit and the
   fault reader are covered by
   `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`, and the step's

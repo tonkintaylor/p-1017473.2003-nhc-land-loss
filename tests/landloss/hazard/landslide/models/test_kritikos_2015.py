@@ -273,24 +273,28 @@ class TestActiveFaultsReader:
             ],
             crs=CRS,
         )
-        faults.to_file(directory / name, driver="GPKG")
+        path = directory / name
+        faults.to_file(path, driver="GPKG")
+        return path
 
-    def test_reads_the_single_vector_file_and_filters_by_bbox(
-        self, tmp_path, monkeypatch
-    ):
-        self._write(tmp_path)
-        monkeypatch.setattr(active_faults, "AF250_DIR", tmp_path)
+    def test_reads_the_resolved_file_and_filters_by_bbox(self, tmp_path, monkeypatch):
+        path = self._write(tmp_path)
+        monkeypatch.setattr(active_faults, "active_faults_path", lambda **_: path)
         assert len(active_faults.get_active_faults(crs=CRS)) == 2
         near = active_faults.get_active_faults(
             bbox=(1_700_000, 5_400_000, 1_800_000, 5_500_000), crs=CRS
         )
         assert near["name"].tolist() == ["near"]
 
-    def test_raises_when_there_is_not_exactly_one_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(active_faults, "AF250_DIR", tmp_path)
-        with pytest.raises(ValueError, match="exactly one"):
-            active_faults.get_active_faults()
-        self._write(tmp_path, "a.gpkg")
-        self._write(tmp_path, "b.gpkg")
-        with pytest.raises(ValueError, match="exactly one"):
-            active_faults.get_active_faults()
+    def test_resolves_the_geojson_through_the_cache(self, monkeypatch):
+        seen = {}
+
+        def record(path, *, copy_to_local):
+            seen["path"], seen["copy"] = path, copy_to_local
+            return path
+
+        monkeypatch.setattr("tdrive_sync.get_cached", record)
+        active_faults.active_faults_path(copy_to_local=False)
+        assert seen["path"].name == "NZAFD_AF250.geojson"
+        assert seen["path"].parent == active_faults.AF250_DIR
+        assert seen["copy"] is False

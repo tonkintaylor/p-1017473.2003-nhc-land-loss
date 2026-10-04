@@ -20,10 +20,14 @@ The plan for the model as a whole is
 
 ## Phase 2 — Check the digitisation and the fault reader (the lead, needs `R:`)
 
-- [ ] Confirm the AF250 data folder holds one vector file, which
-      `landloss.io.active_faults` expects; adjust the reader if it does not.
-- [ ] Reproduce the paper's success-rate AUCs, Northridge 0.904, Wenchuan 0.839
-      and Chi-Chi 0.921, within about 0.02, with `evaluation.success_rate_auc()`.
+- [x] Confirm the AF250 data folder layout; the reader now names
+      `NZAFD_AF250.geojson` and reads it through the cache. Confirmed on the real
+      file, and step 11 ran over `wlg-pilot` with it.
+- [x] Reproduce the paper's success-rate AUCs, Northridge 0.904, Wenchuan 0.839,
+      within about 0.02, with `evaluation.success_rate_auc()`
+      (`validations/kritikos_2015/`, findings beside it): Wenchuan 0.831,
+      Northridge 0.867 to 0.927 by study area. Chi-Chi (0.921) is not
+      reproducible from the GFDB, which lacks its landslides.
 - [ ] Score Kaikōura, with and without the greywacke MM shift.
 
 ## Phase 3 — Convert H to coverage

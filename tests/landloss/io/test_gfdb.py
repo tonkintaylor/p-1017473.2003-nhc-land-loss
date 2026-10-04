@@ -211,6 +211,19 @@ def test_event_name_is_cached_after_the_first_read(two_event_polygons) -> None:
     assert cache_path.exists()
 
 
+def test_gdb_path_prefers_the_local_cache_mirror(tmp_path, monkeypatch) -> None:
+    """A copy under .tdrivecache is read in place of the one on R:."""
+    source = tmp_path / "R" / "Ground_Failure_Database_v4.gdb"
+    mirror = tmp_path / "mirror" / "Ground_Failure_Database_v4.gdb"
+    monkeypatch.setattr(gfdb, "GFDB_V4_GDB_PATH", source)
+    monkeypatch.setattr("tdrive_sync.get_cached_local_path", lambda _path: mirror)
+
+    assert gfdb.gfdb_gdb_path() == source
+
+    mirror.mkdir(parents=True)
+    assert gfdb.gfdb_gdb_path() == mirror
+
+
 def test_event_name_second_call_does_not_read_the_source_again(
     two_event_polygons, monkeypatch
 ) -> None:
@@ -244,7 +257,7 @@ def test_use_cache_false_reads_the_source_again(
     gfdb.get_gfdb_ground_failure_polygons(event_name="M 7.5 Guatemala", use_cache=False)
 
     assert len(calls) == 1
-    assert calls[0][1]["where"] == "event_name = 'M 7.5 Guatemala'"
+    assert calls[0][1]["where"] == "event_name LIKE 'M 7.5 Guatemala'"
 
 
 def test_use_cache_false_does_not_write_a_cache_file(two_event_polygons) -> None:

@@ -89,10 +89,12 @@ to the rupture. The scenario enters model 2 only through the calibration.
 - [x] Distance to mapped active faults: a reader in `landloss.io` for the NZ
       Active Faults Database in the data library
       (`210.20_active_faults_NZ_NZAFD_AF250`, V1), following `landloss.io.gfdb`,
-      and horizontal distance to the nearest trace on the 60 m grid. R: is read
-      by the project lead's runs, not Claude's. The reader finds the single
-      vector file in the data folder and is tested on a temporary file; the real
-      folder's layout is unconfirmed.
+      and horizontal distance to the nearest trace on the 60 m grid. The
+      delivery holds the 9,978 traces as `NZAFD_AF250.geojson` (EPSG:2193) and a
+      zipped shapefile; the reader takes the GeoJSON through
+      `tdrive_sync.get_cached`, from the local copy in `.tdrivecache`, and is
+      tested on a temporary file. Confirmed against the real file, and step 11
+      has run over `wlg-pilot` with it.
 - [x] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
       PGV form (`landloss.hazard.shaking` gains a `mmi_from_pgv`). For the validation events, read MM directly from the
       ShakeMap `grid.xml` (`landloss.io.shakemap` already carries `mmi`).
@@ -108,21 +110,30 @@ to the rupture. The scenario enters model 2 only through the calibration.
 
 ### Phase 4 — Reproduce the paper (the check that the digitisation is right)
 
-- [ ] Rebuild the success-rate AUC for the paper's events (the AUC itself is
+- [x] Rebuild the success-rate AUC for the paper's events (the AUC itself is
       built: `evaluation.success_rate_auc`) with our digitised
       curves: Northridge 0.904 and Wenchuan 0.839 (average memberships, whole
       study area), and the blind Chi-Chi test, 0.921. Inventories from the USGS
       Ground Failure Database (`landloss.io.gfdb`), ShakeMap MMI from the USGS
       event pages, a 60 m DEM, and active faults from a global fault map (GEM
       Global Active Faults) for those regions.
-- [ ] Acceptance: within about 0.02 of each published AUC. The GFDB inventories
+      Done for Northridge and Wenchuan with Copernicus 30 m averaged to 60 m
+      (`validations/kritikos_2015/table_kritikos_2015_reproduction.py`).
+      **Chi-Chi cannot be done:** the GFDB v4 holds only its liquefaction, not
+      the Dadson et al. (2004) landslide inventory.
+- [x] Acceptance: within about 0.02 of each published AUC. The GFDB inventories
       may not be the exact versions the paper used (Wenchuan in particular), so
       a larger gap is investigated before it is accepted or blamed on the
       digitisation.
-- [ ] Record the result in a findings file beside the validation scripts
-      (`src/scripts/landloss/hazard/landslide/validations/kritikos_2015/`).
-- [ ] **Note:** GFDB is read off `R:`, which Claude may not access. These runs
-      are made by the project lead.
+      Wenchuan 0.831 (paper 0.839). Northridge 0.867 on the inventory's
+      bounding box, 0.893 with a 5 km margin and 0.927 with 15 km, bracketing
+      0.904: the paper's study area is undefined and it is the study area, not
+      the curves, that moves it. The over-5° AUCs are 0.044 under the paper's
+      on both events, unexplained.
+- [x] Record the result in a findings file beside the validation scripts
+      (`src/scripts/landloss/hazard/landslide/validations/kritikos_2015/kritikos_2015_findings.md`).
+- [x] **Note:** GFDB is read off `R:`, which Claude may not access. These runs
+      used the geodatabase copy the project lead supplied in Downloads.
 
 ### Phase 5 — The New Zealand check: Kaikōura
 
