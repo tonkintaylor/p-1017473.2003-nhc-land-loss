@@ -45,13 +45,13 @@ include non-claimants, and its rates are placeholders.
       (**Q-17**), keyed on `COSTS_INCLUDE_NON_CLAIMANTS` in the costs module.
 - [ ] Replace the costs with claimant-only rates from Virginie Lacrosse and set
       `COSTS_INCLUDE_NON_CLAIMANTS` False, which switches the draw on
-      (**T-65**).
+      (**T-66**).
 - [ ] Validate the rates against her counts of damaged properties and
       claimants per band, which give the drop-out directly, and tune them on
       her and John Leeves' feedback (**T-64**, **Q-16**). The existing diluted
       and the claimant-only rates check them only as means: drop-out = 1 −
       diluted mean ÷ claimant mean. Percentiles do not scale that way.
-- [ ] Calibrate the T-57 repair rates against claimants only, to match.
+- [ ] Refit the T-57 repair rates against claimants only, to match.
 
 ## Phase 1d — Evacuated and inundated areas (complete)
 
@@ -65,8 +65,10 @@ include non-claimants, and its rates are placeholders.
       overlap, capped at the insured area, and hand it to the land table as
       `Liq_LD_damaged_area` for the cap (**T-56**).
 - [ ] Verify the overlap assumption (**L-44**).
-- [ ] Cost from the areas at repair rates per m² calibrated to the Canterbury
-      table, replacing the lookup (**T-57**).
+- [x] Cost from the areas at repair rates calibrated to the Canterbury table
+      (**T-57**), as `area_cost_nzd`, with the no-SVA flag.
+- [ ] Decide whether it replaces the lookup as the cost the loss module
+      settles on.
 
 ## Phase 2 — Beyond the Canterbury lookup
 

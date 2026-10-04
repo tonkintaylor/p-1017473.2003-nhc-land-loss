@@ -37,7 +37,7 @@ liquefaction claim. `liq_claimed` records the draw.
 average over every damaged property, non-claimants at $0, which
 `COSTS_INCLUDE_NON_CLAIMANTS` records; drawing claims against them as well would
 count the drop-out twice. So every property on the grid claims, at the diluted
-cost, until claimant-only rates replace them (T-65, L-43).
+cost, until claimant-only rates replace them (T-66, L-43).
 
 **Each claim carries the ground it lost** (T-55): an evacuated area in m² and an
 inundated area, drawn uniformly within its state's ranges in
@@ -47,7 +47,15 @@ own, so switching the drop-out on does not move them, and are zero wherever
 `ld_state` is null. Their sum less the overlap -- ``config.EVACUATED_OVERLAP_SHARE``
 of the evacuated land, an assumption to be verified (L-44) -- capped at the
 insured area, is `damaged_area_m2`, which the loss module values the land cover
-cap over (T-56). The cost is still the Canterbury lookup until T-57.
+cap over (T-56).
+
+**The cost is priced two ways, and the loss module settles the first.**
+`cost_nzd` is the Canterbury lookup per state. `area_cost_nzd` prices the same
+claim from its ground lost -- ``config.REPAIR_RATES`` per m² of inundated and
+evacuated land plus a fixed cost per claim, fitted to the Canterbury means by
+step 3 (T-57) -- with the inundated rate raised by
+``config.NO_SVA_INUNDATED_MULTIPLIER`` when ``config.NO_SVA`` is set (L-40). It
+rides beside the lookup until it is chosen to replace it.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -80,6 +88,7 @@ from landloss.vul.liquefaction.damaged_area import (
     liquefied_area_m2,
 )
 from landloss.vul.liquefaction.drop_out import check_drop_out_rates, draw_claims
+from landloss.vul.liquefaction.repair_rates import RepairRates, area_repair_cost_nzd
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
@@ -102,6 +111,8 @@ STATE_COLUMN = "ld_state"
 HAZARD_STATE_COLUMN = "hazard_ld_state"
 ON_GRID_COLUMN = "on_liq_grid"
 CLAIMED_COLUMN = "liq_claimed"
+# The repair cost priced from the ground lost, beside the Canterbury lookup.
+AREA_COST_COLUMN = "area_cost_nzd"
 # Its own stream rather than the shared "vulnerability" one, so the claim draw
 # is independent of the wall and crossing damage draws of the same event.
 RNG_STREAM = "liquefaction_claims"
@@ -140,6 +151,7 @@ def describe_damage(damage, properties, percentile, *, apply_drop_out):
             properties=(CLAIM_ID_COLUMN, "size"),
             claimed=(CLAIMED_COLUMN, "sum"),
             total_cost_nzd=("cost_nzd", "sum"),
+            total_area_cost_nzd=(AREA_COST_COLUMN, "sum"),
         )
     )
     claims = (
@@ -151,7 +163,7 @@ def describe_damage(damage, properties, percentile, *, apply_drop_out):
         f"By land damage state, {claims}, "
         f"at the {percentile}th percentile of settled cost:"
     )
-    print(counts.to_string())
+    print(counts.round(0).astype("int64").to_string())
     claims = damage.loc[damage[CLAIMED_COLUMN]]
     if not claims.empty:
         print(RULE)
@@ -166,7 +178,12 @@ def describe_damage(damage, properties, percentile, *, apply_drop_out):
         ].mean()
         print(areas.round(1).to_string())
     total = damage["cost_nzd"].sum()
-    print(f"  total repair cost {total:,.0f} NZD, {COST_YEAR} dollars excluding GST")
+    area_total = damage[AREA_COST_COLUMN].sum()
+    print(
+        f"  total repair cost {total:,.0f} NZD by the Canterbury lookup, "
+        f"{area_total:,.0f} NZD from the ground lost; {COST_YEAR} dollars "
+        "excluding GST"
+    )
 
 
 def main(
@@ -178,16 +195,26 @@ def main(
     evacuated_area_m2,
     inundated_share,
     evacuated_overlap_share,
+    repair_rates,
+    no_sva,
+    no_sva_inundated_multiplier,
 ):
     """Write the liquefaction land damage per property, per realisation."""
     check_drop_out_rates(drop_out_rates)
     check_ranges(evacuated_area_m2, name="evacuated area")
     check_ranges(inundated_share, name="inundated share", upper=1.0)
+    rates = RepairRates(**repair_rates)
+    inundated_multiplier = no_sva_inundated_multiplier if no_sva else 1.0
+    if no_sva:
+        print(
+            "No SVA: the inundated repair rate is raised by "
+            f"{no_sva_inundated_multiplier:g} for clearing without volunteers."
+        )
     apply_drop_out = not COSTS_INCLUDE_NON_CLAIMANTS
     if not apply_drop_out:
         print(
             "Drop-out off: the packaged costs already average over non-claimants "
-            "at $0, so drawing claims against them would count it twice (T-65)."
+            "at $0, so drawing claims against them would count it twice (T-66)."
         )
     insured = gpd.read_parquet(insured_land_path(extent=extent))
     points = insured.geometry.representative_point()
@@ -228,6 +255,13 @@ def main(
             insured["area_m2"].to_numpy(),
             evacuated_overlap_share,
         )
+        area_cost = area_repair_cost_nzd(
+            evacuated,
+            inundated,
+            claimed,
+            rates,
+            inundated_multiplier=inundated_multiplier,
+        )
         hazard_states = pd.Series(sampled).astype("Int64")
         states = hazard_states.where(claimed)
         state_names = (
@@ -252,6 +286,7 @@ def main(
                     LAND_RATE_INCL_GST_COLUMN
                 ].to_numpy(),
                 "cost_nzd": cost,
+                AREA_COST_COLUMN: area_cost,
                 "rate_basis": RATE_BASIS,
                 "cost_year": COST_YEAR,
                 "cost_percentile": cost_percentile,
@@ -276,4 +311,7 @@ if __name__ == "__main__":
         evacuated_area_m2=config.EVACUATED_AREA_M2,
         inundated_share=config.INUNDATED_SHARE,
         evacuated_overlap_share=config.EVACUATED_OVERLAP_SHARE,
+        repair_rates=config.REPAIR_RATES,
+        no_sva=config.NO_SVA,
+        no_sva_inundated_multiplier=config.NO_SVA_INUNDATED_MULTIPLIER,
     )

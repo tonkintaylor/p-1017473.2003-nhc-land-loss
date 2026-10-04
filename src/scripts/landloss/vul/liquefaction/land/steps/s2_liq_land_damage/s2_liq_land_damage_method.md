@@ -41,7 +41,7 @@
     already inside them. `COSTS_INCLUDE_NON_CLAIMANTS` in
     `landloss.vul.liquefaction.costs` records that, and while it is True every
     property on the grid claims at the diluted cost. Replacing the CSV with
-    claimant-only rates and setting it False switches the draw on (**T-65**).
+    claimant-only rates and setting it False switches the draw on (**T-66**).
     In the meantime many small costs meet the excess where a few full ones
     would, so settlements come out somewhat low (**L-43**).
 - **Each claim carries the ground it lost** (**T-55**): an evacuated area in
@@ -66,7 +66,15 @@
   - Both are zero wherever `ld_state` is null -- off the grid, or dropped out.
   - The ranges, `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in `config.py`, are
     judgement from the MBIE state descriptions (**L-39**), to be tuned with the
-    repair rates (**T-57**). The cost is still the Canterbury lookup.
+    repair rates (**T-57**).
+- **Each claim is also priced from its ground lost** (**T-57**), as
+  `area_cost_nzd`: `REPAIR_RATES` in `config.py` per m² of inundated and of
+  evacuated land plus a fixed cost per claim, fitted to the Canterbury means by
+  step 3. Setting `NO_SVA` raises the inundated rate by
+  `NO_SVA_INUNDATED_MULTIPLIER`, a placeholder (**Q-18**), for clearing ejecta
+  without the Student Volunteer Army (**L-40**). It is zero where there is no
+  claim. **The loss module still settles on `cost_nzd`, the lookup**;
+  `area_cost_nzd` rides beside it until it is chosen to replace it.
 - Costs are looked up, not modelled, by `landloss.vul.liquefaction.costs`. They
   are what NHC settled for land damage after the 2010 and 2011 Canterbury
   earthquakes, grouped by the damage state surveyed on the ground, and shipped

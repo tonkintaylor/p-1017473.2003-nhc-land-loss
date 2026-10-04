@@ -1,10 +1,13 @@
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely.geometry import LineString, Point, box
 
 from landloss.exposure.land.driveways import (
     DRIVEWAY_HALF_WIDTH_M,
+    MAX_INSURED_ACCESS_M,
     generate_driveways,
+    main_buildings,
     merge_driveways_into_extent,
     nearest_road_points,
 )
@@ -135,3 +138,77 @@ def test_merging_nothing_returns_the_extent_untouched():
         crs=CRS,
     )
     assert merge_driveways_into_extent(extent, empty) is extent
+
+
+# --- one main access way per property, insured to 60 m ------------------------
+
+
+def two_buildings(main_y=50.0, shed_y=20.0, address="A-001"):
+    """A 10 m house and a 4 m shed on one property; the shed nearer the road."""
+    return gpd.GeoDataFrame(
+        {"claim_id": [address, address]},
+        geometry=[box(0, main_y, 10, main_y + 10), box(30, shed_y, 34, shed_y + 4)],
+        crs=CRS,
+    )
+
+
+def test_a_property_gets_one_driveway_however_many_buildings_it_has():
+    """The Act covers the main access way, not one per building or dwelling."""
+    driveways = generate_driveways(two_buildings(), road())
+
+    assert len(driveways) == 1
+
+
+def test_the_driveway_runs_from_the_main_building_not_the_shed():
+    """The house is the larger building; the shed nearer the road adds nothing."""
+    driveways = generate_driveways(two_buildings(main_y=50.0, shed_y=20.0), road())
+
+    assert driveways["driveway_length_m"].iloc[0] == pytest.approx(50.0)
+
+
+def test_the_main_building_is_the_largest_on_its_property():
+    buildings = pd.concat([two_buildings(address="A"), house(address="B")])
+
+    main = main_buildings(buildings)
+
+    assert sorted(main["claim_id"]) == ["A", "B"]
+    assert main.loc[main["claim_id"] == "A"].geometry.area.iloc[0] == pytest.approx(
+        100.0
+    )
+
+
+def test_two_properties_still_get_a_driveway_each():
+    buildings = pd.concat([house(x=0.0, address="A"), house(x=50.0, address="B")])
+
+    driveways = generate_driveways(buildings, road())
+
+    assert sorted(driveways["claim_id"]) == ["A", "B"]
+
+
+def test_only_the_first_60_m_of_a_long_route_is_insured():
+    """A dwelling 150 m from the road is insured for 60 m of its access way."""
+    driveways = generate_driveways(house(y=150.0), road())
+
+    row = driveways.iloc[0]
+    assert row["driveway_length_m"] == pytest.approx(150.0)
+    assert row["insured_driveway_length_m"] == pytest.approx(MAX_INSURED_ACCESS_M)
+    expected = MAX_INSURED_ACCESS_M * DRIVEWAY_HALF_WIDTH_M * 2
+    assert row.geometry.area == pytest.approx(expected, rel=0.01)
+
+
+def test_the_insured_part_runs_from_the_dwelling():
+    """Measured from the dwelling, so the corridor touches the house, not the road."""
+    corridor = generate_driveways(house(y=150.0), road()).geometry.iloc[0]
+
+    assert corridor.bounds[3] == pytest.approx(150.0)
+    assert corridor.bounds[1] == pytest.approx(150.0 - MAX_INSURED_ACCESS_M)
+
+
+def test_a_short_route_is_insured_whole():
+    row = generate_driveways(house(y=40.0), road()).iloc[0]
+
+    assert row["insured_driveway_length_m"] == pytest.approx(40.0)
+
+
+def test_the_insured_limit_is_the_acts_60_m():
+    assert MAX_INSURED_ACCESS_M == 60.0

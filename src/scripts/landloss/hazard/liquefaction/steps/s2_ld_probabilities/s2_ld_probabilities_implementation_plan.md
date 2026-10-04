@@ -47,12 +47,15 @@ without reading the code. The whole chain it feeds is described in
 
 ## Phase 3 — Lateral spreading
 
-- [ ] Modify the probabilities inside the lateral spreading zones, which the
-      beta skips entirely. The zones come from buffering the rivers; the river
-      layer is the open decision in the hazard's `status.md`.
-- [ ] Decide whether the modifier acts on the exceedance grids before the
-      differencing or on the band probabilities after it. The two are not the
-      same and the choice has to be stated in the method file.
+- [x] Modify the probabilities inside the lateral spreading zones (T-47), with
+      the NLM's piecewise correction, from the free faces step 1 writes. See the
+      method file.
+- [x] Decide where it acts: on the P(at least Major) exceedance, before the
+      differencing, as the NLM applies it, capped at P(at least Moderate).
+- [ ] Run it over the pilot box and the study area and check the per-zone shift
+      in the run output against Ryan's figure.
+- [ ] Once Maxim's revised land damage states (T-54) land, check the correction
+      still reads the right level.
 
 ## Phase 4 — Demands the released model is not yet built on
 

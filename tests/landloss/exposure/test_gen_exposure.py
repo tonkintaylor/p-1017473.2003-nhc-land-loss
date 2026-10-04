@@ -63,8 +63,9 @@ def test_accessibility_runs_between_terrain_and_land_value(
 
     terrain = called.index("s1_build_terrain_attributes")
     accessibility = called.index("s2_build_accessibility")
+    amenity = called.index("s3_build_amenity")
     land_value = called.index("s4_estimate_land_value")
-    assert terrain < accessibility < land_value
+    assert terrain < accessibility < amenity < land_value
 
 
 def test_wall_steps_run_in_contract_order(called: list[str]) -> None:

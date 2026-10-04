@@ -3,12 +3,13 @@
     uv run --frozen python src/scripts/landloss/hazard/gen_hazard.py
 
 :func:`main` runs everything that reads no exposure: shaking (site class, PGV,
-then the PGA and PGV realisations), liquefaction, then the landslide ground
-work -- the multiscale slope and terrain derivatives, the ground map, the slope
-units, the urban slope candidates -- and last the large-model landslide
-realisations, which read only hazard outputs. The extent, realisations and
-worlds come from ``config.py`` beside this; anything else a step reads comes
-from that step's own ``config.py``.
+then the PGA and PGV realisations), liquefaction (free faces, land damage
+probabilities, then states), then the landslide ground work -- the multiscale
+slope and terrain derivatives, the ground map, the slope units, the urban slope
+candidates -- and last the large-model landslide realisations, which read only
+hazard outputs. The extent, realisations and worlds come from ``config.py``
+beside this; anything else a step reads comes from that step's own
+``config.py``.
 
 :func:`main_urban` runs the rest of the landslide chain, steps 7 to 9: the
 urban failure polygons, their fragility per exposure world, and the urban
@@ -77,6 +78,12 @@ from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
 from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
     gen_hancox_1997_coverage,
 )
+from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
+    gen_liq_free_faces,
+)
+from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import (
+    config as ld_probabilities_config,
+)
 from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import (
     gen_liq_ld_probabilities,
 )
@@ -140,8 +147,17 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
+                "liquefaction s1, free faces",
+                lambda: gen_liq_free_faces.main(
+                    extent="pilot" if extent == "wlg-pilot" else "study"
+                ),
+            ),
+            (
                 "liquefaction s2, land damage probabilities",
-                lambda: gen_liq_ld_probabilities.main(extent=extent),
+                lambda: gen_liq_ld_probabilities.main(
+                    extent=extent,
+                    lateral_spreading=ld_probabilities_config.LATERAL_SPREADING,
+                ),
             ),
             (
                 "liquefaction s3, land damage states",

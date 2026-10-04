@@ -38,6 +38,7 @@ draws a state per cell from them.
 Needs the T: drive, which is where the NLM release tree lives.
 """
 
+import geopandas as gpd
 import numpy as np
 
 # Imported for the side effect of registering the ``.rio`` accessor the clip and
@@ -54,6 +55,13 @@ from landloss.hazard.liquefaction.land_damage import (
     LD_STATES,
     beta_expand_ld_probabilities,
 )
+from landloss.hazard.liquefaction.lateral_spreading import (
+    ZONES,
+    apply_lateral_spreading,
+    far_weight_grid,
+    lateral_spreading_zones,
+    zone_grid,
+)
 from landloss.io.area_of_interest import (
     extent_suffix,
     get_area_of_interest,
@@ -62,6 +70,9 @@ from landloss.io.area_of_interest import (
 from landloss.io.nlm import (
     get_nlm_scenario_rp2500y_gwd_med_p_ld_major_fu,
     get_nlm_scenario_rp2500y_gwd_med_p_ld_moderate_fu,
+)
+from scripts.landloss.hazard.liquefaction.steps.s1_free_faces.gen_liq_free_faces import (
+    free_faces_path,
 )
 from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities import config
 from scripts.landloss.paths import TEMP_DIR
@@ -204,19 +215,27 @@ def describe_extent(name, raster, resolution):
     print(f"  {raster.size:,} cells, {finite:,} of them carrying a probability")
 
 
-def describe_expansion(moderate_or_worse, major_or_worse, probabilities):
+def describe_expansion(
+    moderate_or_worse, nlm_major_or_worse, major_or_worse, probabilities
+):
     """Print the two grids that went in beside the six that came out.
 
     Both are printed because the expansion is checkable by eye from them: the
     None and Minor means are half of one minus the Moderate exceedance each, the
     Moderate mean is the difference of the two exceedances, and Major, Severe
-    and Very Severe are a quarter, a half and a quarter of the Major exceedance.
+    and Very Severe are a quarter, a half and a quarter of the Major exceedance
+    that was expanded -- the corrected one, when lateral spreading is applied.
     A reader who cannot make those add up is looking at a bug.
     """
     print(RULE)
     print("Mean exceedance probability, as the NLM release supplies it:")
     print(f"  P(at least Moderate)  {np.nanmean(moderate_or_worse.to_numpy()):.4f}")
-    print(f"  P(at least Major)     {np.nanmean(major_or_worse.to_numpy()):.4f}")
+    print(f"  P(at least Major)     {np.nanmean(nlm_major_or_worse.to_numpy()):.4f}")
+    if major_or_worse is not nlm_major_or_worse:
+        print(
+            f"  P(at least Major)     {np.nanmean(major_or_worse.to_numpy()):.4f}"
+            "  after lateral spreading, which is what is expanded"
+        )
 
     print("Mean probability of each state, after differencing and subdividing:")
     total = 0.0
@@ -227,12 +246,83 @@ def describe_expansion(moderate_or_worse, major_or_worse, probabilities):
     print(f"  {'total':<12} {total:.4f}  (one, or the subdivision lost mass)")
 
 
-def main(*, extent):
+def ls_zones_path(*, extent):
+    """Return the file a run writes its lateral spreading zones to, for viewing."""
+    suffix = extent_suffix(extent)
+    return WORK_DIR / f"ls-zones{suffix}.gpkg"
+
+
+def describe_lateral_spreading(grid, before, after, capped):
+    """Print the mean P(at least Major) per zone, before and after the correction.
+
+    A cell is counted in the zone its centre falls in, though the correction
+    weights it by the share of it in each zone, so a near zone's mean is diluted
+    by the part of its cells that lies further out. With the count of cells the
+    cap at P(at least Moderate) bound in.
+    """
+    zone_values = grid.to_numpy()
+    before_values = before.to_numpy()
+    after_values = after.to_numpy()
+    print(f"  {'zone':<8} {'cells':>10} {'P(>=Major) before':>18} {'after':>8}")
+    for code, name in ZONES.items():
+        in_zone = (zone_values == code) & np.isfinite(before_values)
+        if not in_zone.any():
+            print(f"  {name:<8} {0:>10,}")
+            continue
+        print(
+            f"  {name:<8} {int(in_zone.sum()):>10,} "
+            f"{float(before_values[in_zone].mean()):>18.4f} "
+            f"{float(after_values[in_zone].mean()):>8.4f}"
+        )
+    print(f"  Capped at P(at least Moderate) in {int(capped.to_numpy().sum()):,} cells")
+
+
+def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, extent):
+    """Correct P(at least Major) for lateral spreading, by zone.
+
+    Reads the free faces step 1 wrote for this extent, buffers them into zones,
+    writes the zones out for viewing, and applies
+    :func:`landloss.hazard.liquefaction.lateral_spreading.apply_lateral_spreading`.
+
+    Returns:
+        The corrected P(at least Major).
+
+    Raises:
+        FileNotFoundError: If step 1 has not been run for this extent.
+    """
+    free_faces_extent = "pilot" if extent == "wlg-pilot" else "study"
+    path = free_faces_path(free_faces_extent)
+    if not path.exists():
+        msg = (
+            f"No free faces at {path}. Run s1_free_faces with EXTENT = "
+            f"{free_faces_extent!r} first, or set LATERAL_SPREADING to False."
+        )
+        raise FileNotFoundError(msg)
+    free_faces = gpd.read_file(path).to_crs(constants.DEFAULT_CRS)
+    zones = lateral_spreading_zones(free_faces)
+    zones_path = ls_zones_path(extent=extent)
+    zones.to_file(zones_path, driver="GPKG")
+
+    corrected, capped = apply_lateral_spreading(
+        moderate_or_worse, major_or_worse, far_weight_grid(zones, major_or_worse)
+    )
+    grid = zone_grid(zones, major_or_worse)
+
+    print(RULE)
+    print(f"Lateral spreading, from {len(free_faces):,} free faces in {path.name}:")
+    describe_lateral_spreading(grid, major_or_worse, corrected, capped)
+    print(f"Wrote {zones_path}")
+    return corrected
+
+
+def main(*, extent, lateral_spreading):
     """Expand the NLM land damage grids into six state probabilities and write them out.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
+        lateral_spreading: Whether to correct P(at least Major) for lateral
+            spreading before the expansion.
     """
     study_areas = get_study_areas(constants.DEFAULT_CRS)
     bbox, extent_name = resolve_extent(study_areas, extent=extent)
@@ -256,8 +346,16 @@ def main(*, extent):
     resolution = cell_size(moderate_or_worse)
     describe_extent(extent_name, moderate_or_worse, resolution)
 
+    nlm_major_or_worse = major_or_worse
+    if lateral_spreading:
+        major_or_worse = correct_for_lateral_spreading(
+            moderate_or_worse, major_or_worse, extent=extent
+        )
+
     probabilities = beta_expand_ld_probabilities(moderate_or_worse, major_or_worse)
-    describe_expansion(moderate_or_worse, major_or_worse, probabilities)
+    describe_expansion(
+        moderate_or_worse, nlm_major_or_worse, major_or_worse, probabilities
+    )
 
     print(RULE)
     for state in LD_STATES:
@@ -272,4 +370,4 @@ def main(*, extent):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT)
+    main(extent=config.EXTENT, lateral_spreading=config.LATERAL_SPREADING)

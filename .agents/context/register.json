@@ -450,7 +450,7 @@
     },
     {
       "ID": "T-57",
-      "Task": "Set repair rates for inundated and evacuated liquefied land, chosen so the modelled costs roughly reproduce the Canterbury cost table, with a no-SVA flag that raises the inundated rate.",
+      "Task": "Set repair rates for inundated and evacuated liquefied land, chosen so the modelled costs roughly reproduce the Canterbury cost table, with a no-SVA flag that raises the inundated rate. Machinery built 2026-10-02 (vul liquefaction land step 3); the fitted rates are provisional until refitted against claimant-only costs (T-66).",
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Land Model Catch Up 2026-09-30",
@@ -826,7 +826,7 @@
     },
     {
       "ID": "L-43",
-      "Limitation": "Until claimant-only costs arrive (T-65), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
+      "Limitation": "Until claimant-only costs arrive (T-66), every damaged flat land property is charged the Canterbury rate diluted with non-claimants' $0s, rather than a share of them being charged the full rate. The expected repair cost per state is right, but the excess takes more out of many small costs than a few large ones, so settlements come out somewhat low.",
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Open"
@@ -834,6 +834,13 @@
     {
       "ID": "L-44",
       "Limitation": "The liquefied damaged area takes 30% of the evacuated land as lying under the inundated land (no more than the inundated area itself), so damaged = evacuated + inundated - 0.3 x evacuated, capped at the insured area. This is an assumption about how the 30% overlap agreed on 2026-09-30 is measured, held as EVACUATED_OVERLAP_SHARE in the s2_liq_land_damage config, and is to be verified.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Perrie Gilbert 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-45",
+      "Limitation": "The liquefied land repair rates -- $10.39 per m2 inundated, $19.66 per m2 evacuated and $995 per claim, 2010/2011 dollars excluding GST -- are fitted to Canterbury means estimated from the 50th and 85th percentiles through a lognormal, over Wellington section sizes, and to costs diluted with non-claimants' $0s. They reproduce each state's mean only to within 0.83 (Minor) to 1.24 (Moderate), and price a None claim at the fixed cost alone. To be refitted against claimant-only means (T-66).",
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Open"
@@ -1101,9 +1108,25 @@
       "ID": "Q-17",
       "Question": "Are the Canterbury land damage costs per state (Dec 2016 ILVR rates table) averaged over properties that claimed only, or do they include properties in that state that never claimed as $0? If they include them, the drop-out is already inside the rates and applying the Q-16 drop-out rates as well would count it twice; the T-57 repair rate calibration has to take the same basis.",
       "Asked of": "Virginie Lacrosse",
-      "Answer": "They include them. The rates average over all damaged properties, not just those that lodged a claim -- 'watered down' with $0s, as Virginie Lacrosse described them. She is to supply rates over claimants only (T-65). Until then the drop-out is switched off, since these rates already carry it.",
+      "Answer": "They include them. The rates average over all damaged properties, not just those that lodged a claim -- 'watered down' with $0s, as Virginie Lacrosse described them. She is to supply rates over claimants only (T-66). Until then the drop-out is switched off, since these rates already carry it.",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Closed"
+    },
+    {
+      "ID": "Q-18",
+      "Question": "How much more does clearing liquefaction ejecta cost without the Student Volunteer Army's unpaid labour? The model raises the inundated repair rate by NO_SVA_INUNDATED_MULTIPLIER when NO_SVA is set in the s2_liq_land_damage config, with a placeholder of 1.5.",
+      "Asked of": "Virginie Lacrosse, John Leeves",
+      "Answer": "",
+      "Source": "Perrie Gilbert 2026-10-02; follows T-57 and L-40",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-19",
+      "Question": "Should the Waiwhetū Stream count as a lateral spreading free face? It is not named a river, so the NLM's rule leaves it out, but it crosses the liquefiable lower Hutt Valley floor to the harbour at Seaview. Perrie Gilbert has included it by ID (river sections 6818507 and 7212609) provisionally, as the NLM did for the watercourses around Bottle Lake (T-48).",
+      "Asked of": "Maxim Millen",
+      "Answer": "",
+      "Source": "Perrie Gilbert, QGIS review of the lower Hutt free faces 2026-10-02",
+      "Status": "Open"
     }
   ]
 }

@@ -132,9 +132,9 @@ The settlement core is built and is the only part that needed no upstream data.
    polygon. Over the pilot it cut the land value the cap compares against from
    $1,520M to $445M across 1,767 liquefied claims; the cap now binds on 3, all
    Minor, where 1 m² evacuated is worth less than the $575 repair.
-8. Price inundated and evacuated liquefied land at rates set to roughly
-   reproduce the Canterbury table, with a no-SVA flag on the inundated rate
-   (**T-57**).
+8. Decide whether to settle liquefaction on `vul`'s cost from the ground
+   lost (**T-57**, priced in vul step 2 as `area_cost_nzd` and not yet in the
+   land table) rather than on the Canterbury lookup, `Liq_LD_cost_excl_gst_nzd`.
 9. Connect the loss steps to a full end-to-end run of the pipeline, rather than
    the pilot's cached `vul` outputs (**T-51**).
 10. Settle the land excess rule with NHC (**Q-14**): the module defaults to the

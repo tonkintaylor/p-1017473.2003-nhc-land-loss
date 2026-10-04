@@ -416,7 +416,7 @@ def main(*, extent, use_cached_extent):
     )
     print(RULE)
     print(f"Roads: {len(roads):,}")
-    print(describe_driveways(driveways, len(parts)).to_string())
+    print(describe_driveways(driveways, parts[CLAIM_ID_COLUMN].nunique()).to_string())
     describe_extent(extent, occupied, addresses, dwellings)
 
     # The rate rides along with the polygon so that the vulnerability step reads

@@ -24,6 +24,7 @@ from landloss.io.readers import (
     get_nz_land_cover,
     get_nz_rail_stations,
     get_nz_river_name_lines,
+    get_nz_topo50_water,
     get_slide_genesis,
     get_slide_interpreted_materials,
     get_wcc_cut_areas,
@@ -485,6 +486,27 @@ def test_get_nz_coastline_polygons_requests_the_linz_layer(
 
     assert fake_koordinates["layer_id"] == constants.NZ_COASTLINE_POLYGONS_LAYER_ID
     assert fake_koordinates["layer_id"] == 51153
+    assert fake_koordinates["conn"].domain == constants.LINZ_DOMAIN
+    assert fake_koordinates["conn"].api_key == "linz-key"
+
+
+@pytest.mark.parametrize(
+    ("kind", "layer_id"),
+    [
+        ("river", constants.NZ_RIVER_POLYGONS_TOPO50_LAYER_ID),
+        ("lake", constants.NZ_LAKE_POLYGONS_TOPO50_LAYER_ID),
+        ("lagoon", constants.NZ_LAGOON_POLYGONS_TOPO50_LAYER_ID),
+        ("swamp", constants.NZ_SWAMP_POLYGONS_TOPO50_LAYER_ID),
+        ("coast", constants.NZ_COASTLINES_TOPO50_LAYER_ID),
+    ],
+)
+def test_get_nz_topo50_water_requests_the_linz_layer(
+    fake_koordinates: dict[str, object], kind: str, layer_id: int
+) -> None:
+    """Each topo50 water helper points at the layer for its kind."""
+    get_nz_topo50_water(kind, bbox=BBOX)
+
+    assert fake_koordinates["layer_id"] == layer_id
     assert fake_koordinates["conn"].domain == constants.LINZ_DOMAIN
     assert fake_koordinates["conn"].api_key == "linz-key"
 
