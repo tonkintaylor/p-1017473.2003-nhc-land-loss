@@ -86,3 +86,46 @@ share of most established suburbs, so the choice moves few walls.
   Roll gives a decade per rating unit. Count the 1990s in `p_1992_2004`, which
   puts 1990 and 1991 in the wrong bin, a small error. Split the 2000s at 2005
   using annual consent counts for the territorial authority.
+
+## Literature review (2026-10-02)
+
+Part C of the second review (`temp/handoff-remaining-review.md`) read these
+bins against `temp/gns_review/` (finding ids in backticks). Every point is a
+**proposal for the lead**.
+
+- **The 1970 break is supported as the end of the gravity masonry era.** In
+  Canterbury, wall type tracked era: historic walls were dressed stone
+  masonry, dry stacked or mortared, while crib, gabion, concrete block, timber
+  pole and MSE walls are more modern [anderson_2015] (`anderson2015-F07`).
+  Stone masonry was the worst performer, about 18% Very Poor against 2.8% for
+  timber pole (`F11`). So `pre_1970` is where the poor condition belongs most.
+- **Two other dates are in the literature, and neither is a bin edge.**
+  - 1960: non-engineered fills and cuts built before 1960 are flagged as a
+    sign of future landslides [nzgs_2025_recognition] (`nzgs2025-u2-F09`).
+  - The mid-1970s: New Zealand earthfill standards did not exist until then
+    [monteith_2020] (`sr2019-051-F06`). Suburb-scale earthworks followed the
+    earth-moving machinery of the 1950s [lyndsell_2019] (`sr2019-040-F28`).
+
+  Both concern the ground behind a wall, the cut or fill, rather than the
+  wall. **Proposal:** keep the four bins for the wall, and read 1960 and the
+  mid-1970s into the fill's engineered or uncontrolled class in the ground
+  map and the faces, not into `p_poor`.
+- **Age is not monotone for fills.** Wellington's oldest and largest fills
+  (Kelburn and Anderson Parks, about 1885 to 1910) survived a century of
+  storms and earthquakes without obvious damage, while houses on 1970s and
+  1980s fills at Kelson were seriously damaged by fill failures in rain
+  [hancox_2013_slope_types] (`sr2013-058-F26`, checked against the page). So
+  do not let a fill's age alone raise its failure rate.
+- **Code and bins disagree at the Building Act.** `wall_probability` splits
+  `p_poor` at 1990 (`BETA_PRE_1990_POOR_SHARE`, `BETA_POST_1990_POOR_SHARE`),
+  where the bins and the Act split at July 1992. With a decade-coded roll the
+  difference is the same small error the section above describes, but the
+  constant names should follow the bins.
+- **The bins also give the wall type** (the lead, 2026-10-02): `pre_1970`
+  mostly stone and mass concrete gravity walls and untreated timber,
+  `1970_1991` treated timber pole and concrete block cantilevers, and the
+  later bins engineered walls, with the claim reports (**T-50**) giving the
+  type where a wall was described and the mix per bin. The type then sets the
+  condition the Koutsoupaki curves read. Their modern-to-poor median ratio,
+  1.65, matches Anderson's stone masonry against timber pole and concrete
+  block at one PGA.

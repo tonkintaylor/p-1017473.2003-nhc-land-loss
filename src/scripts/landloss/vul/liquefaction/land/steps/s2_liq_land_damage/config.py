@@ -6,9 +6,12 @@ their own, so what a run did can be established by reading this file and the git
 history of it, rather than by remembering which flags were typed.
 """
 
-# Whether to run over the small Wellington pilot box. Must match the runs of the
-# liquefaction hazard and the insured land extent this reads.
-PILOT = True
+# The extent to run over: "wlg-pilot" (the small Wellington pilot box),
+# "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
+# territorial authorities). Must match the runs of the liquefaction hazard and
+# the insured land extent this reads.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to price.
 REALISATION_IDS = [0]
@@ -33,7 +36,7 @@ COST_PERCENTILE = 50
 # property, non-claimants at $0, so they already carry the drop-out (Q-17);
 # drawing it again would count it twice. The step leaves the draw off while
 # landloss.vul.liquefaction.costs.COSTS_INCLUDE_NON_CLAIMANTS is True, and it
-# comes on when claimant-only rates replace them (T-66). Virginie Lacrosse's
+# comes on when claimant-only rates replace them (T-65). Virginie Lacrosse's
 # counts of damaged properties and claimants per band will validate these.
 DROP_OUT_RATES = {
     1: 0.95,  # None
@@ -92,7 +95,7 @@ EVACUATED_OVERLAP_SHARE = 0.3
 # overlap or the cost table, and copy its values here; it says when these are
 # out of date. The current table includes non-claimants at $0, so these rates
 # are only consistent with the drop-out off, and are to be refitted against
-# claimant-only costs (T-66).
+# claimant-only costs (T-65).
 REPAIR_RATES = {
     "inundated_nzd_per_m2": 10.39,
     "evacuated_nzd_per_m2": 19.66,

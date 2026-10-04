@@ -23,7 +23,7 @@ no ground lost, and would be priced at the fixed cost alone.
 the 15th, 50th and 85th percentiles, not the mean. :func:`lognormal_mean` fits
 a lognormal through the 50th and 85th and returns its mean. The 15th is left
 out: it is $0 for state 1, and it is where the non-claimants' $0s pull the
-table down. Mean costs from the source would replace the estimate (**T-66**).
+table down. Mean costs from the source would replace the estimate (**T-65**).
 
 **The basis is whatever the target's is.** Fitted against the current table the
 rates are 2010/2011 dollars excluding GST, averaged over damaged properties with

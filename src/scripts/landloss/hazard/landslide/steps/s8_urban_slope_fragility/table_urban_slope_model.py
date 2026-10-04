@@ -22,6 +22,7 @@ import geopandas as gpd
 
 from landloss.hazard.landslide import susceptibility
 from landloss.hazard.landslide.urban import fragility
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import config
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
     urban_slope_model_path,
@@ -54,17 +55,18 @@ TABLE_COLUMNS = (
 RULE = "-" * 72
 
 
-def table_path(world_id, *, pilot):
+def table_path(world_id, *, extent):
     """Return the CSV a run writes one world's medians to.
 
     Args:
         world_id: The exposure world the model was built for.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The table path, under ``report/hazard/landslide/urban-slope-model/tab/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return TAB_DIR / f"{TAB_STEM}-w{world_id:03d}{suffix}.csv"
 
 
@@ -101,22 +103,22 @@ def medians_by_zone_and_state(model):
     return table[list(TABLE_COLUMNS)]
 
 
-def main(*, pilot, world_ids):
+def main(*, extent, world_ids):
     """Write the medians table for each world's model file.
 
     Args:
-        pilot: Whether the model was built over the pilot box. Must match the
-            setting the generation was run with, which is why both read it
-            from the same ``config.py``.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
+            Must match the setting the generation was run with.
         world_ids: Which worlds' model files to summarise.
     """
     for world_id in world_ids:
-        model_path = urban_slope_model_path(world_id, pilot=pilot)
+        model_path = urban_slope_model_path(world_id, extent=extent)
         print(f"Reading the model from {model_path} ...")
         model = gpd.read_parquet(model_path)
         table = medians_by_zone_and_state(model)
 
-        out_path = table_path(world_id, pilot=pilot)
+        out_path = table_path(world_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         table.to_csv(out_path, index=False, float_format="%.4f")
         print(RULE)
@@ -126,4 +128,4 @@ def main(*, pilot, world_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, world_ids=config.WORLD_IDS)
+    main(extent=config.EXTENT, world_ids=config.WORLD_IDS)

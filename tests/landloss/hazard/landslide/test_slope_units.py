@@ -407,27 +407,29 @@ def step_inputs(tmp_path, monkeypatch):
         crs=constants.DEFAULT_CRS,
     )
     ground_map.to_parquet(paths["ground_map"])
-    monkeypatch.setattr(step, "input_paths", lambda *, pilot: paths)
+    monkeypatch.setattr(step, "input_paths", lambda *, extent: paths)
     monkeypatch.setattr(step, "WORK_DIR", tmp_path)
     return dem
 
 
 def test_the_path_names_the_extent():
-    assert step.slope_units_path(pilot=True).name == "slope-units-pilot.geoparquet"
-    assert step.slope_units_path(pilot=False).name == "slope-units.geoparquet"
-    assert step.slope_units_path(pilot=True).parent == step.WORK_DIR
+    assert (
+        step.slope_units_path(extent="wlg-pilot").name == "slope-units-pilot.geoparquet"
+    )
+    assert step.slope_units_path(extent="full").name == "slope-units.geoparquet"
+    assert step.slope_units_path(extent="wlg-pilot").parent == step.WORK_DIR
 
 
 def test_the_step_writes_the_contract_columns(step_inputs, capsys):
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         channel_threshold_ha=1.0,
         channel_thresholds_tried_ha=(0.5, 1.0, 20.0),
         aspect_merge_tolerance_deg=45.0,
         min_unit_area_ha=1.0,
         max_unit_area_ha=5.0,
     )
-    written = gpd.read_parquet(step.slope_units_path(pilot=True))
+    written = gpd.read_parquet(step.slope_units_path(extent="wlg-pilot"))
 
     assert list(written.columns) == STEP_COLUMNS
     assert written.crs == constants.DEFAULT_CRS

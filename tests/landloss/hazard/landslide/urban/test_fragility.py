@@ -771,21 +771,23 @@ def work_dirs(tmp_path, monkeypatch):
 def write_inputs(monkeypatch):
     """Write the polygons, the walls and the three grids where the step reads them."""
     three_polygons().to_parquet(
-        gen_urban_slope_polygons.urban_slope_polygons_path(pilot=True)
+        gen_urban_slope_polygons.urban_slope_polygons_path(extent="wlg-pilot")
     )
     one_uninsured_wall().to_parquet(
-        gen_wall_population.drawn_walls_path(WORLD, pilot=True)
+        gen_wall_population.drawn_walls_path(WORLD, extent="wlg-pilot")
     )
     # Two rows of three 100 m cells: the three polygons sit in the bottom row
     # left to right (a one-row grid has no y resolution to write).
     site_class = make_grid([[2.0, 2.0, 2.0], [1.0, 3.0, 5.0]])
     write_raster(
-        site_class.astype("float32"), gen_site_class.site_class_path(pilot=True)
+        site_class.astype("float32"), gen_site_class.site_class_path(extent="wlg-pilot")
     )
     pgv = make_grid([[1.0, 1.0, 1.0], [0.6, 1.2, 2.0]]).rename("pgv_m_s")
     write_raster(
         pgv.astype("float32"),
-        gen_pgv.output_path("pgv", return_period_yr=RETURN_PERIOD_YR, pilot=True),
+        gen_pgv.output_path(
+            "pgv", return_period_yr=RETURN_PERIOD_YR, extent="wlg-pilot"
+        ),
     )
     pga = make_grid([[1.0, 1.0, 1.0], [0.5, 1.0, 1.0]])
     monkeypatch.setattr(
@@ -809,10 +811,10 @@ def test_the_step_prints_the_flat_land_walls_it_skips(capsys):
 
 
 def test_the_path_names_the_world_and_the_extent():
-    assert step.urban_slope_model_path(3, pilot=True).name == (
+    assert step.urban_slope_model_path(3, extent="wlg-pilot").name == (
         "urban-slope-model-w003-pilot.geoparquet"
     )
-    assert step.urban_slope_model_path(12, pilot=False).name == (
+    assert step.urban_slope_model_path(12, extent="full").name == (
         "urban-slope-model-w012.geoparquet"
     )
 
@@ -821,13 +823,13 @@ def test_the_path_names_the_world_and_the_extent():
 def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypatch):
     write_inputs(monkeypatch)
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[WORLD],
         urban_rate="medium",
         return_period_yr=RETURN_PERIOD_YR,
     )
 
-    written = gpd.read_parquet(step.urban_slope_model_path(WORLD, pilot=True))
+    written = gpd.read_parquet(step.urban_slope_model_path(WORLD, extent="wlg-pilot"))
     assert list(written.columns) == list(step.MODEL_COLUMNS)
     assert list(written.columns[:2]) == ["slope_id", "world_id"]
     assert written.crs == constants.DEFAULT_CRS
@@ -867,14 +869,14 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
 def test_the_table_and_the_figure_read_the_model_the_step_wrote(work_dirs, monkeypatch):
     write_inputs(monkeypatch)
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         world_ids=[WORLD],
         urban_rate="high",
         return_period_yr=RETURN_PERIOD_YR,
     )
 
-    table_urban_slope_model.main(pilot=True, world_ids=[WORLD])
-    table_path = table_urban_slope_model.table_path(WORLD, pilot=True)
+    table_urban_slope_model.main(extent="wlg-pilot", world_ids=[WORLD])
+    table_path = table_urban_slope_model.table_path(WORLD, extent="wlg-pilot")
     assert table_path.name == "urban-slope-model-medians-w000-pilot.csv"
     table = pd.read_csv(table_path)
     assert list(table.columns) == list(table_urban_slope_model.TABLE_COLUMNS)
@@ -884,7 +886,7 @@ def test_the_table_and_the_figure_read_the_model_the_step_wrote(work_dirs, monke
         table["rate_factor"], constants.URBAN_RATE_FACTORS["high"], atol=1e-4
     )
 
-    fig_urban_slope_model.main(pilot=True, world_ids=[WORLD])
+    fig_urban_slope_model.main(extent="wlg-pilot", world_ids=[WORLD])
     assert (work_dirs / "fig" / "urban-slope-model-w000-pilot.png").exists()
 
 

@@ -195,3 +195,18 @@ def test_the_path_resolves_through_source_material_and_caches_by_default(
         )
     ]
     assert result == tmp_path / "resolved.txt"
+
+
+def test_the_valuation_number_is_written_as_linz_writes_it() -> None:
+    roll = pd.DataFrame(
+        {
+            "valuation_no_roll": ["17110", "17110", "15421"],
+            "valuation_no_assessment": ["100", "302", "12345"],
+            "valuation_no_suffix": pd.array([pd.NA, "A", pd.NA], dtype="string"),
+        },
+        dtype="string",
+    )
+
+    references = qv_rating_roll.linz_valuation_reference(roll)
+
+    assert references.tolist() == ["17110-00100", "17110-00302-A", "15421-12345"]

@@ -1067,7 +1067,7 @@ def repair_letters() -> dict[str, str]:
     return {key: get_column_letter(number) for key, number in repair_columns().items()}
 
 
-def land_areas_by_claim(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
+def land_areas_by_claim(realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return the landslide extents `vul` sends, summed onto the claim.
 
     The evacuated and inundated footprints **overlap**, so they are carried
@@ -1077,12 +1077,13 @@ def land_areas_by_claim(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
 
     Args:
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The evacuated, inundated and total insured areas per claim.
     """
-    land = gpd.read_parquet(loss_input_path("land", realisation_id, pilot=pilot))
+    land = gpd.read_parquet(loss_input_path("land", realisation_id, extent=extent))
     state = land[LIQ_LD_STATE_COLUMN]
     # vul's liquefied area per polygon, summed over the claim, which is what
     # `claims.damaged_area_m2` takes for liquefaction, one polygon at a time.
@@ -1426,7 +1427,7 @@ def wall_damage_cause(damaged: pd.DataFrame) -> pd.Series:
     return causes
 
 
-def wall_shape(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
+def wall_shape(realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return the size, length and rate of each claim's damaged walls.
 
     One wall per property today, so these are that wall's. Where a claim carries
@@ -1435,12 +1436,13 @@ def wall_shape(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
 
     Args:
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         A frame indexed by ``claim_id``.
     """
-    rw = gpd.read_parquet(loss_input_path("rw", realisation_id, pilot=pilot))
+    rw = gpd.read_parquet(loss_input_path("rw", realisation_id, extent=extent))
     damaged = loss_claims.damaged_walls(rw)
     order = pd.Categorical(
         damaged[RW_SIZE_COLUMN], categories=list(BETA_SIZE_CLASS_HEIGHT_M), ordered=True
@@ -1471,14 +1473,14 @@ def wall_shape(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
     return out
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Write the walkthrough for the first realisation asked for."""
     policy = PolicySettings()
     realisation_id = realisation_ids[0]
-    claims = pd.read_parquet(settlement_path(realisation_id, pilot=pilot))
+    claims = pd.read_parquet(settlement_path(realisation_id, extent=extent))
     claims = claims.set_index("claim_id")
 
-    walls = wall_shape(realisation_id, pilot=pilot).reindex(claims.index)
+    walls = wall_shape(realisation_id, extent=extent).reindex(claims.index)
     claims["wall_size"] = walls["wall_size"].fillna("none")
     claims["wall_length_m"] = walls["wall_length_m"].fillna(0.0)
     claims["wall_rate_excl_gst"] = walls["wall_rate_excl_gst"].fillna(0.0)
@@ -1488,7 +1490,7 @@ def main(*, pilot, realisation_ids):
     claims["wall_height_m"] = (
         claims["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     )
-    areas = land_areas_by_claim(realisation_id, pilot=pilot).reindex(claims.index)
+    areas = land_areas_by_claim(realisation_id, extent=extent).reindex(claims.index)
     for column in areas.columns:
         claims[column] = areas[column].fillna(0.0)
     chosen = pick_claims(claims)
@@ -1522,4 +1524,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

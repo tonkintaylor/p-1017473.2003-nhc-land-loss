@@ -33,6 +33,7 @@ from landloss.domain import constants
 from landloss.hazard.realisation import realisation_seed
 from landloss.hazard.shaking.pga import BETA_PGA_COV
 from landloss.hazard.shaking.pgv import beta_pgv_realisation
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.shaking.steps.s3_pgv.gen_pgv import output_path
 from scripts.landloss.hazard.shaking.steps.s4_pga_realisation.gen_pga_realisations import (
     RNG_STREAM,
@@ -51,31 +52,33 @@ OUT_STEM = "pgv"
 RULE = "-" * 72
 
 
-def pgv_path(realisation_id, *, pilot):
+def pgv_path(realisation_id, *, extent):
     """Return the file a run writes one realisation's PGV field to.
 
     Args:
         realisation_id: Which modelled earthquake this is.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/shaking/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.tif"
 
 
-def read_pgv(*, return_period_yr, pilot):
+def read_pgv(*, return_period_yr, extent):
     """Read the PGV grid step 3 wrote, at the return period and over the extent.
 
     Args:
         return_period_yr: The return period of the TS1170.5 demand, in years.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The grid, in m/s, with nodata masked to NaN.
     """
-    path = output_path("pgv", return_period_yr=return_period_yr, pilot=pilot)
+    path = output_path("pgv", return_period_yr=return_period_yr, extent=extent)
     with rioxarray.open_rasterio(path, masked=True) as raster:
         return raster.squeeze("band", drop=True).load()
 
@@ -94,16 +97,17 @@ def describe_field(pgv, return_period_yr):
     print(f"Spread put on it: {BETA_PGA_COV:.0%} coefficient of variation")
 
 
-def main(*, pilot, realisation_ids, return_period_yr):
+def main(*, extent, realisation_ids, return_period_yr):
     """Write a PGV field per realisation.
 
     Args:
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to draw.
         return_period_yr: The return period of the TS1170.5 demand, in years.
     """
     print(f"Reading the PGV grid step 3 wrote at {return_period_yr} years ...")
-    supplied = read_pgv(return_period_yr=return_period_yr, pilot=pilot)
+    supplied = read_pgv(return_period_yr=return_period_yr, extent=extent)
     describe_field(supplied, return_period_yr)
 
     for realisation_id in realisation_ids:
@@ -120,7 +124,7 @@ def main(*, pilot, realisation_ids, return_period_yr):
                 f"  median PGV {np.median(finite):.3f} m/s, max {finite.max():.3f} m/s"
             )
 
-        out_path = pgv_path(realisation_id, pilot=pilot)
+        out_path = pgv_path(realisation_id, extent=extent)
         write_raster(field.astype("float32"), out_path)
         print(f"Wrote {out_path}")
 
@@ -134,7 +138,7 @@ def main(*, pilot, realisation_ids, return_period_yr):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
         return_period_yr=config.RETURN_PERIOD_YR,
     )

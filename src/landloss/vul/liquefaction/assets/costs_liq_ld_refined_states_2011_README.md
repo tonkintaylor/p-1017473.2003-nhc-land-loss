@@ -39,7 +39,7 @@ This file is keyed on **states**. Confirmed by Virginie Lacrosse.
   so they are "watered down" with zeros, as Virginie Lacrosse put it (Q-17).
   The drop-out from damage to claim is therefore already inside them, and
   `COSTS_INCLUDE_NON_CLAIMANTS` in `costs.py` records it. Rates over claimants
-  only are to come from Virginie Lacrosse (T-66).
+  only are to come from Virginie Lacrosse (T-65).
 - The three cost columns are the **15th, 50th and 85th percentiles** of cost for
   a given maximum land damage index value, so the spread within a state is
   carried rather than a single point estimate.

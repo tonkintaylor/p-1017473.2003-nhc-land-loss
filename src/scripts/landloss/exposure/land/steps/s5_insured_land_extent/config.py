@@ -13,11 +13,14 @@ rather than a setting of this run, so it lives with the code that applies it, as
 `landloss.exposure.land.extent.INSURED_LAND_BUFFER_M`.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Leave this True while the model is being changed: the
-# building outline layer is 3.2 million polygons nationally, and the first run
-# over a new extent downloads and clips it.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Leave this on "wlg-pilot" while the model is being changed: the building
+# outline layer is 3.2 million polygons nationally, and the first run over a new
+# extent downloads and clips it.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Whether to reuse the already-clipped building outlines for this extent. Set
 # False to clip them again from the downloaded layer.

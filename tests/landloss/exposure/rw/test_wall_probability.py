@@ -328,14 +328,14 @@ def redirected_script(tmp_path, monkeypatch):
     lines_file = tmp_path / "wall-lines-pilot.geoparquet"
     lines.to_parquet(lines_file)
     monkeypatch.setattr(script, "WORK_DIR", tmp_path / "exposure")
-    monkeypatch.setattr(script, "wall_lines_path", lambda *, pilot: lines_file)
+    monkeypatch.setattr(script, "wall_lines_path", lambda *, extent: lines_file)
     return lines
 
 
 def test_gen_wall_probability_main_writes_one_row_per_line(tmp_path, redirected_script):
-    script.main(pilot=True)
+    script.main(extent="wlg-pilot")
 
-    out_path = script.wall_probability_path(pilot=True)
+    out_path = script.wall_probability_path(extent="wlg-pilot")
     assert out_path == tmp_path / "exposure" / "wall-probability-pilot.geoparquet"
     written = gpd.read_parquet(out_path)
     assert len(written) == len(redirected_script)

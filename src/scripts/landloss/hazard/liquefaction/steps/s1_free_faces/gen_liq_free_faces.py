@@ -26,9 +26,11 @@ from landloss.domain import constants
 from landloss.hazard.liquefaction.lateral_spreading import FAR_FIELD_M
 from landloss.hazard.liquefaction.waterways import FREE_FACE_TYPES, get_free_faces
 from landloss.io.area_of_interest import (
+    EXTENTS,
     LOWER_HUTT_PILOT,
-    SMALL_WLG_PILOT,
+    extent_suffix,
     get_study_areas,
+    is_full_extent,
 )
 from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import config
 from scripts.landloss.paths import TEMP_DIR
@@ -36,10 +38,10 @@ from scripts.landloss.paths import TEMP_DIR
 # temp/ is gitignored: the layer is rebuildable from LINZ in minutes.
 WORK_DIR = TEMP_DIR / "hazard" / "liquefaction"
 
-# The pilot boxes, by the name config.EXTENT uses, and the suffix their output
-# carries so that no run overwrites another's.
-PILOTS = {"lower hutt": LOWER_HUTT_PILOT, "pilot": SMALL_WLG_PILOT}
-SUFFIXES = {"lower hutt": "-lower-hutt", "pilot": "-pilot", "study": ""}
+# The lower Hutt Valley pilot box, which only this step runs over, for checking
+# the layer: the small Wellington pilot box holds no waterways, only coast. Every
+# other extent is one of landloss.io.area_of_interest.EXTENTS or "full".
+LOWER_HUTT = "lower-hutt"
 
 RULE = "-" * 72
 
@@ -48,12 +50,14 @@ def free_faces_path(extent: str):
     """Return the file a run over ``extent`` writes, and the buffer step reads.
 
     Args:
-        extent: One of the keys of :data:`SUFFIXES`.
+        extent: ``"full"``, a key of landloss.io.area_of_interest.EXTENTS, or
+            :data:`LOWER_HUTT`.
 
     Returns:
         The output path, under ``temp/hazard/liquefaction/``.
     """
-    return WORK_DIR / f"free-faces{SUFFIXES[extent]}.gpkg"
+    suffix = "-lower-hutt" if extent == LOWER_HUTT else extent_suffix(extent)
+    return WORK_DIR / f"free-faces{suffix}.gpkg"
 
 
 def resolve_extent(extent: str):
@@ -66,24 +70,25 @@ def resolve_extent(extent: str):
     its own boundary, so it is not clipped again.
 
     Args:
-        extent: One of the keys of :data:`SUFFIXES`.
+        extent: ``"full"``, a key of landloss.io.area_of_interest.EXTENTS, or
+            :data:`LOWER_HUTT`.
 
     Returns:
         ``(bbox, clip_to, name)``.
 
     Raises:
-        ValueError: If ``extent`` is not a known extent.
+        KeyError: If ``extent`` is not a known extent.
     """
-    if extent in PILOTS:
-        area = PILOTS[extent]
-        return pad(area.bbox(constants.DEFAULT_CRS)), None, area.name
-    if extent == "study":
+    if extent == LOWER_HUTT:
+        area = LOWER_HUTT_PILOT
+    elif is_full_extent(extent):
         study_areas = get_study_areas(constants.DEFAULT_CRS)
         bbox = tuple(float(value) for value in study_areas.total_bounds)
         boundary = study_areas.geometry.union_all().buffer(FAR_FIELD_M)
         return pad(bbox), boundary, "the four territorial authorities"
-    msg = f"EXTENT must be one of {sorted(SUFFIXES)}, not {extent!r}"
-    raise ValueError(msg)
+    else:
+        area = EXTENTS[extent]
+    return pad(area.bbox(constants.DEFAULT_CRS)), None, area.name
 
 
 def pad(bbox):
@@ -126,7 +131,8 @@ def main(*, extent: str) -> None:
     """Build the free faces over ``extent`` and write them out.
 
     Args:
-        extent: One of the keys of :data:`SUFFIXES`, from ``config.EXTENT``.
+        extent: ``"full"``, a key of landloss.io.area_of_interest.EXTENTS, or
+            :data:`LOWER_HUTT`, from ``config.EXTENT``.
     """
     # LINZ names carry macrons (Waiwhetū), which the Windows console's code page
     # cannot print.

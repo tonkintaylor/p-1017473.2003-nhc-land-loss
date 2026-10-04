@@ -66,18 +66,18 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.15 and 7.14.
 
 Contract `.agents/plans/urban-slope-build-contract.md` section 3.15, decision 37.
 The loss module, owned elsewhere and not edited here, calls
-`loss_input_path(name, realisation_id, pilot=pilot)` five times; against the
+`loss_input_path(name, realisation_id, extent=extent)` five times; against the
 world signature of Phase 1b each call raised `TypeError`.
 
 - [x] Rename the writer to `world_loss_input_path(table, world_id,
-      realisation_id, *, pilot)` and move every vul caller and test to it.
-- [x] Keep `loss_input_path(table, realisation_id, *, pilot)`, deprecated,
+      realisation_id, *, extent)` and move every vul caller and test to it.
+- [x] Keep `loss_input_path(table, realisation_id, *, extent)`, deprecated,
       returning the world 0 path, with a docstring naming the five loss callers.
 - [x] Confirm, by reading without editing, that the five loss calls use the
       three-argument form the kept function takes.
 - [x] Pin in `tests/landloss/vul/test_property_damage_step.py` that
-      `loss_input_path(t, r, pilot=p)` equals
-      `world_loss_input_path(t, 0, r, pilot=p)` and reads the file the step
+      `loss_input_path(t, r, extent=e)` equals
+      `world_loss_input_path(t, 0, r, extent=e)` and reads the file the step
       writes for world 0.
 - [ ] Delete `loss_input_path()` once the loss owner moves the five calls to
       `world_loss_input_path()` with a `WORLD_IDS` setting.

@@ -43,6 +43,7 @@ from landloss.exposure.culverts_bridges.crossings import (
     sample_structures,
 )
 from landloss.hazard.realisation import realisation_seed
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_river_name_lines, get_nz_river_name_polygons
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population import (
     config,
@@ -72,17 +73,18 @@ FETCH_MARGIN_M = 50.0
 RULE = "-" * 72
 
 
-def crossing_population_path(realisation_id, *, pilot):
+def crossing_population_path(realisation_id, *, extent):
     """Return the file a run writes one realisation's crossings to.
 
     Args:
         realisation_id: Which modelled earthquake this is.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.geoparquet"
 
 
@@ -139,18 +141,19 @@ def describe_coverage(detected, kept):
         )
 
 
-def main(*, pilot, realisation_ids, use_cached_extent):
+def main(*, extent, realisation_ids, use_cached_extent):
     """Draw a crossing population per realisation and write each one out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to draw for.
         use_cached_extent: Whether to reuse the already-clipped river layers.
     """
-    in_path = driveway_path(pilot=pilot)
+    in_path = driveway_path(extent=extent)
     print(f"Reading the accessways from {in_path} ...", flush=True)
     accessways = gpd.read_parquet(in_path)
-    insured_path = insured_land_path(pilot=pilot)
+    insured_path = insured_land_path(extent=extent)
     print(f"Reading the insured land from {insured_path} ...", flush=True)
     insured = gpd.read_parquet(insured_path)
 
@@ -182,7 +185,7 @@ def main(*, pilot, realisation_ids, use_cached_extent):
         drawn = sample_structures(kept, rng)
         print(describe_crossings(drawn, len(accessways)).to_string())
 
-        out_path = crossing_population_path(realisation_id, pilot=pilot)
+        out_path = crossing_population_path(realisation_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         drawn.to_parquet(out_path)
         print(f"Wrote {len(drawn):,} crossings to {out_path}")
@@ -197,7 +200,7 @@ def main(*, pilot, realisation_ids, use_cached_extent):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
         use_cached_extent=config.USE_CACHED_EXTENT,
     )

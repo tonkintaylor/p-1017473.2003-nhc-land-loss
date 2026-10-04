@@ -11,9 +11,9 @@
   `check_contract_columns()` before returning.
 - It reads eight files per world and earthquake, each through its own step's
   path function:
-  - the insured land (exposure step 5, `insured_land_path(pilot=...)`);
+  - the insured land (exposure step 5, `insured_land_path(extent=...)`);
   - the world's wall population (exposure rw step 6,
-    `wall_population_path(world_id, pilot=...)`);
+    `wall_population_path(world_id, extent=...)`);
   - the liquefaction land damage (vul step 2, `liq_land_damage_path(r)`, per
     earthquake only) and the landslide land damage (vul step 3,
     `landslide_land_damage_path(w, r)`), both keyed on `land_id`;
@@ -83,10 +83,10 @@
   module, which this step does not touch.
 - Output is `temp/vul/loss-input-<table>-w<NNN>-r<NNN>[-pilot].geoparquet`,
   one file per table (`land`, `rw`, `culverts`, `bridges`), from
-  `world_loss_input_path(table, world_id, realisation_id, pilot=...)`. The step
+  `world_loss_input_path(table, world_id, realisation_id, extent=...)`. The step
   writes through it and every vul caller and test uses it; `world_id` is
   positional with no default.
-- `loss_input_path(table, realisation_id, pilot=...)`, the old signature, is
+- `loss_input_path(table, realisation_id, extent=...)`, the old signature, is
   kept **deprecated** for the loss module's five callers
   (`s0_gen_land_cover_cap.py`, `s1_gen_settlement.py`,
   `gen_calc_walkthrough.py` twice and `gen_viewer_data.py`), which pass no

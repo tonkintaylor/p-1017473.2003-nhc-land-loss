@@ -4,13 +4,13 @@
   grids into one probability grid per land damage state, over the study extent.
   It is run by `gen_liq_ld_probabilities.py`, whose module docstring states the
   three stages and which of them is a shortcut.
-- What a run does is set by `config.py` in the step folder — `PILOT` — read in
+- What a run does is set by `config.py` in the step folder — `EXTENT` — read in
   the script's `if __name__ == "__main__":` block and passed into `main()` as a
   keyword argument. The script takes no command line arguments and `main()`
   carries no default, so a run can be accounted for from the tracked source
-  alone. `PILOT` is `True`, meaning runs go over `SMALL_WLG_PILOT` rather than
-  the four territorial authorities. Step 3's `config.py` imports `PILOT` from
-  this one rather than repeating it.
+  alone. `EXTENT` is `"wlg-pilot"`, meaning runs go over `SMALL_WLG_PILOT`
+  rather than the four territorial authorities. Step 3's `config.py` imports
+  `EXTENT` from this one rather than repeating it.
 - The inputs are the RP2500y, median groundwater grids read by
   `landloss.io.nlm.get_nlm_scenario_rp2500y_gwd_med_p_ld_moderate_fu` and
   `…_p_ld_major_fu`, at the release `CORE_NLM_VERSION` in
@@ -54,8 +54,9 @@
   than the clip having failed. Hill ground is the landslide module's concern.
 - The six grids are written to `temp/hazard/liquefaction/` at the paths
   `beta_probability_path()` returns —
-  `beta-ld-probability-<state>-pilot.tif` when `PILOT` is set and without the
-  suffix otherwise, so a pilot run cannot overwrite a full one. `temp/` is
+  `beta-ld-probability-<state>-pilot.tif` when `EXTENT` is `"wlg-pilot"`,
+  with `extent_suffix(EXTENT)` for any other named extent and without a suffix
+  for `"full"`, so a pilot run cannot overwrite a full one. `temp/` is
   gitignored and the directory comes from `TEMP_DIR` in
   `scripts.landloss.paths`. The projection is written back onto each grid
   before `landloss.common.utils.terrain.write_raster` is called, because that

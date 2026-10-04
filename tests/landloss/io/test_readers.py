@@ -20,6 +20,7 @@ from landloss.io.readers import (
     get_gwrc_slope_failure,
     get_koordinates_layer_extent,
     get_nz_addresses,
+    get_nz_coastline_polygons,
     get_nz_land_cover,
     get_nz_rail_stations,
     get_nz_river_name_lines,
@@ -472,6 +473,18 @@ def test_get_nz_river_name_lines_requests_the_linz_layer(
     get_nz_river_name_lines(bbox=BBOX)
 
     assert fake_koordinates["layer_id"] == constants.NZ_RIVER_NAME_LINES_LAYER_ID
+    assert fake_koordinates["conn"].domain == constants.LINZ_DOMAIN
+    assert fake_koordinates["conn"].api_key == "linz-key"
+
+
+def test_get_nz_coastline_polygons_requests_the_linz_layer(
+    fake_koordinates: dict[str, object],
+) -> None:
+    """The water mask reads the LINZ Topo50 land polygons with the LINZ key."""
+    get_nz_coastline_polygons(bbox=BBOX)
+
+    assert fake_koordinates["layer_id"] == constants.NZ_COASTLINE_POLYGONS_LAYER_ID
+    assert fake_koordinates["layer_id"] == 51153
     assert fake_koordinates["conn"].domain == constants.LINZ_DOMAIN
     assert fake_koordinates["conn"].api_key == "linz-key"
 

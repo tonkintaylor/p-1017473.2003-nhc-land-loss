@@ -11,9 +11,12 @@ and is a property of the wall and the shaking rather than a setting of the run.
 
 from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
 
-# Whether to run over the small Wellington pilot box. Must match the runs of the
-# shaking hazard and the wall population this reads.
-PILOT = True
+# The extent to run over: "wlg-pilot" (the small Wellington pilot box),
+# "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
+# territorial authorities). Must match the runs of the shaking hazard and the
+# wall population this reads.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to read the wall population of. A world is one draw of
 # which candidate lines carry a wall; the earthquake does not decide it.

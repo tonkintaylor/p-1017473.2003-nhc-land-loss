@@ -12,9 +12,12 @@ method rather than by a run, so they live in
 
 from landloss.domain import constants
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Steps 3 and 4 must have been run over the same extent.
-PILOT = True
+# The extent to run over: "wlg-pilot" for the small Wellington pilot box,
+# "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
+# the four territorial authorities.
+# Steps 3 and 4 must have been run over the same extent.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Whether to reuse the cached building outlines, roads and property boundaries
 # for this extent. Set False to fetch them again.

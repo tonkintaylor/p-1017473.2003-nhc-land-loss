@@ -233,18 +233,18 @@ def redirected_script(tmp_path, monkeypatch):
     table.to_parquet(table_file)
     insured.to_parquet(insured_file)
     monkeypatch.setattr(script, "WORK_DIR", tmp_path / "exposure")
-    monkeypatch.setattr(script, "wall_probability_path", lambda *, pilot: table_file)
-    monkeypatch.setattr(script, "insured_land_path", lambda *, pilot: insured_file)
+    monkeypatch.setattr(script, "wall_probability_path", lambda *, extent: table_file)
+    monkeypatch.setattr(script, "insured_land_path", lambda *, extent: insured_file)
     return table
 
 
 def test_gen_wall_population_main_writes_one_file_per_world(
     tmp_path, redirected_script
 ):
-    script.main(pilot=True, world_ids=[0, 1])
+    script.main(extent="wlg-pilot", world_ids=[0, 1])
 
     for world_id in (0, 1):
-        out_path = script.wall_population_path(world_id, pilot=True)
+        out_path = script.wall_population_path(world_id, extent="wlg-pilot")
         assert (
             out_path
             == tmp_path
@@ -263,19 +263,19 @@ def test_gen_wall_population_main_writes_one_file_per_world(
 
 
 def test_gen_wall_population_main_reproduces_a_world(redirected_script):
-    script.main(pilot=True, world_ids=[0])
-    one = gpd.read_parquet(script.wall_population_path(0, pilot=True))
-    script.main(pilot=True, world_ids=[0])
-    again = gpd.read_parquet(script.wall_population_path(0, pilot=True))
+    script.main(extent="wlg-pilot", world_ids=[0])
+    one = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
+    script.main(extent="wlg-pilot", world_ids=[0])
+    again = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
     assert one["initial_condition"].tolist() == again["initial_condition"].tolist()
     assert one["rw_id"].tolist() == again["rw_id"].tolist()
 
 
 def test_drawn_walls_path_names_the_world_and_the_extent():
-    assert script.drawn_walls_path(3, pilot=True).name == (
+    assert script.drawn_walls_path(3, extent="wlg-pilot").name == (
         "drawn-walls-w003-pilot.geoparquet"
     )
-    assert script.drawn_walls_path(12, pilot=False).name == (
+    assert script.drawn_walls_path(12, extent="full").name == (
         "drawn-walls-w012.geoparquet"
     )
 
@@ -283,15 +283,17 @@ def test_drawn_walls_path_names_the_world_and_the_extent():
 def test_gen_wall_population_main_writes_every_drawn_wall_before_the_filters(
     tmp_path, redirected_script
 ):
-    script.main(pilot=True, world_ids=[0, 1])
+    script.main(extent="wlg-pilot", world_ids=[0, 1])
 
     for world_id in (0, 1):
-        drawn_path = script.drawn_walls_path(world_id, pilot=True)
+        drawn_path = script.drawn_walls_path(world_id, extent="wlg-pilot")
         assert drawn_path == (
             tmp_path / "exposure" / f"drawn-walls-w{world_id:03d}-pilot.geoparquet"
         )
         drawn = gpd.read_parquet(drawn_path)
-        insured = gpd.read_parquet(script.wall_population_path(world_id, pilot=True))
+        insured = gpd.read_parquet(
+            script.wall_population_path(world_id, extent="wlg-pilot")
+        )
         assert drawn.columns.tolist() == list(OUTPUT_COLUMNS)
         # Every certain line drew, in line order, one row per line.
         assert (

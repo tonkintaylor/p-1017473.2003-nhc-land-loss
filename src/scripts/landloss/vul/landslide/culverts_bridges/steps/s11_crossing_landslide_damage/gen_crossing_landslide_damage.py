@@ -31,6 +31,7 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     REALISATION_ID_COLUMN,
 )
+from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.landslide.flags import landslide_flags
 from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population.gen_crossing_population import (
@@ -52,19 +53,20 @@ OUT_STEM = "crossing-landslide-damage"
 RULE = "-" * 72
 
 
-def crossing_landslide_damage_path(world_id, realisation_id, *, pilot):
+def crossing_landslide_damage_path(world_id, realisation_id, *, extent):
     """Return the file a run writes one world and earthquake's crossing flags to.
 
     Args:
         world_id: The exposure world (one draw of the wall population) the file holds.
         realisation_id: The earthquake realisation the file holds.
-        pilot: Whether the run covers the pilot area only, which adds a
-            ``-pilot`` suffix to the file name.
+        extent: The extent the run covers, a name from
+            landloss.io.area_of_interest.EXTENTS or "full". It sets the
+            file name suffix through ``extent_suffix``.
 
     Returns:
         The parquet path under the vul work directory.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return (
         WORK_DIR / f"{OUT_STEM}-w{world_id:03d}-r{realisation_id:03d}{suffix}.parquet"
     )
@@ -84,18 +86,19 @@ def describe_damage(damaged, landslides):
     print(f"  both: {int(both.sum()):,}")
 
 
-def main(*, pilot, world_ids, realisation_ids):
+def main(*, extent, world_ids, realisation_ids):
     """Write the landslide flags per crossing, per world and earthquake.
 
     Args:
-        pilot: Whether to run over the pilot area only.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: The exposure worlds to run, each one draw of the wall population.
         realisation_ids: The earthquake realisations to run in every world.
     """
     for realisation_id in realisation_ids:
         # The crossing population is drawn per earthquake, not per world: which
         # structure sits at a crossing does not depend on which walls exist.
-        crossings_path = crossing_population_path(realisation_id, pilot=pilot)
+        crossings_path = crossing_population_path(realisation_id, extent=extent)
         print(f"Reading the crossings from {crossings_path} ...", flush=True)
         crossings = gpd.read_parquet(crossings_path)
         if CROSSING_ID_COLUMN not in crossings.columns:
@@ -109,7 +112,7 @@ def main(*, pilot, world_ids, realisation_ids):
             print(RULE)
             print(f"World {world_id}, realisation {realisation_id}")
             slides_path = combined_realisation_path(
-                world_id, realisation_id, pilot=pilot
+                world_id, realisation_id, extent=extent
             )
             print(f"Reading the landslides from {slides_path} ...", flush=True)
             landslides = gpd.read_parquet(slides_path)
@@ -123,7 +126,7 @@ def main(*, pilot, world_ids, realisation_ids):
             describe_damage(damaged, landslides)
 
             out_path = crossing_landslide_damage_path(
-                world_id, realisation_id, pilot=pilot
+                world_id, realisation_id, extent=extent
             )
             out_path.parent.mkdir(parents=True, exist_ok=True)
             damaged.to_parquet(out_path)
@@ -132,7 +135,7 @@ def main(*, pilot, world_ids, realisation_ids):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         realisation_ids=config.REALISATION_IDS,
     )

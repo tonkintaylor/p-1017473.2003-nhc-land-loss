@@ -9,10 +9,11 @@ to check.
     uv run --frozen python src/scripts/landloss/hazard/liquefaction/report/fig_waterway_map.py
 
 The first run downloads the national river name lines layer from LINZ, which is
-slow; later runs read it from the cache. Pass --pilot to work over the small
-Wellington box instead of all four territorial authorities -- though note that
-this layer holds no features there, central Wellington's streams having long
-since been piped, so --pilot reports an empty extent rather than drawing a map.
+slow; later runs read it from the cache. Pass --extent wlg-pilot to work over
+the small Wellington box instead of all four territorial authorities -- though
+note that this layer holds no features there, central Wellington's streams having
+long since been piped, so --extent wlg-pilot reports an empty extent rather than
+drawing a map.
 
 Requires LINZ_API_KEY in .env.
 """
@@ -39,7 +40,12 @@ from matplotlib.lines import Line2D
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
 from landloss.hazard.liquefaction.waterways import get_waterways
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    EXTENTS,
+    FULL_EXTENT,
+    get_area_of_interest,
+    get_study_areas,
+)
 from scripts.landloss.paths import REPORT_DIR
 
 FIG_DIR = REPORT_DIR / "hazard" / "liquefaction" / "fig"
@@ -123,9 +129,10 @@ def plot_waterways(waterways, extent, study_areas=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--pilot",
-        action="store_true",
-        help="Use the small Wellington pilot box instead of the full study area.",
+        "--extent",
+        default=FULL_EXTENT,
+        choices=[FULL_EXTENT, *EXTENTS],
+        help="The extent to draw: the full study area, or a named pilot box.",
     )
     parser.add_argument(
         "--fresh",
@@ -142,13 +149,12 @@ def main():
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
 
-    if args.pilot:
-        extent = SMALL_WLG_PILOT.to_geoseries(constants.DEFAULT_CRS).to_frame(
-            "geometry"
-        )
+    aoi = get_area_of_interest(args.extent)
+    if aoi is not None:
+        extent = aoi.to_geoseries(constants.DEFAULT_CRS).to_frame("geometry")
         extent = extent.set_geometry("geometry")
-        bbox = SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS)
-        print(f"Extent: {SMALL_WLG_PILOT.name}")
+        bbox = aoi.bbox(constants.DEFAULT_CRS)
+        print(f"Extent: {aoi.name}")
     else:
         extent = study_areas
         bbox = tuple(float(value) for value in study_areas.total_bounds)
@@ -164,7 +170,7 @@ def main():
         # bounding box, which would also take in much of the Wairarapa.
         waterways = get_waterways(
             bbox=bbox,
-            clip_to=None if args.pilot else study_areas,
+            clip_to=None if aoi is not None else study_areas,
             use_cache=not args.fresh,
         )
     except ValueError as exc:
@@ -187,7 +193,7 @@ def main():
 
     describe(waterways)
 
-    fig = plot_waterways(waterways, extent, study_areas if not args.pilot else None)
+    fig = plot_waterways(waterways, extent, study_areas if aoi is None else None)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, dpi=DPI, bbox_inches="tight")

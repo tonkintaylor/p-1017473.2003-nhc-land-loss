@@ -31,6 +31,7 @@ from shapely.geometry import box
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
 from landloss.hazard.landslide.slope_units import M2_PER_HA
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     resolve_extent,
 )
@@ -51,15 +52,16 @@ ASPECT_CMAP = "twilight"
 LAYER_ALPHA = 0.7
 
 
-def main(*, pilot, channel_threshold_ha):
+def main(*, extent, channel_threshold_ha):
     """Draw the slope units coloured by aspect over the extent last run.
 
     Args:
-        pilot: Whether the run being drawn was over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         channel_threshold_ha: The channel threshold of the run, for the title.
     """
-    units = gpd.read_parquet(slope_units_path(pilot=pilot))
-    bbox, extent_name = resolve_extent(pilot=pilot)
+    units = gpd.read_parquet(slope_units_path(extent=extent))
+    bbox, extent_name = resolve_extent(extent=extent)
     extent = gpd.GeoDataFrame(geometry=[box(*bbox)], crs=constants.DEFAULT_CRS)
 
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -89,7 +91,7 @@ def main(*, pilot, channel_threshold_ha):
     fig.suptitle(extent_name, fontsize=10)
     fig.tight_layout()
 
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     path = FIG_DIR / f"slope-units{suffix}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=DPI)
@@ -98,4 +100,4 @@ def main(*, pilot, channel_threshold_ha):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, channel_threshold_ha=config.CHANNEL_THRESHOLD_HA)
+    main(extent=config.EXTENT, channel_threshold_ha=config.CHANNEL_THRESHOLD_HA)

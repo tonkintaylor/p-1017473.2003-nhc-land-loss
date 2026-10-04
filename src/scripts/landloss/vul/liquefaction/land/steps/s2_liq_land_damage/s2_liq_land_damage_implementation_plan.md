@@ -45,7 +45,7 @@ include non-claimants, and its rates are placeholders.
       (**Q-17**), keyed on `COSTS_INCLUDE_NON_CLAIMANTS` in the costs module.
 - [ ] Replace the costs with claimant-only rates from Virginie Lacrosse and set
       `COSTS_INCLUDE_NON_CLAIMANTS` False, which switches the draw on
-      (**T-66**).
+      (**T-65**).
 - [ ] Validate the rates against her counts of damaged properties and
       claimants per band, which give the drop-out directly, and tune them on
       her and John Leeves' feedback (**T-64**, **Q-16**). The existing diluted

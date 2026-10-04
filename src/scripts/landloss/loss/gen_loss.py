@@ -23,14 +23,15 @@ from scripts.landloss.loss.steps.s1_settlement import s1_gen_settlement
 from scripts.landloss.pipeline import run_steps
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Run the loss steps in order.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to run.
     """
-    ids = {"pilot": pilot, "realisation_ids": realisation_ids}
+    ids = {"extent": extent, "realisation_ids": realisation_ids}
     run_steps(
         "loss",
         [
@@ -47,4 +48,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

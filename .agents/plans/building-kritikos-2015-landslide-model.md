@@ -42,7 +42,7 @@ Two facts about the paper shape this plan:
 | DEM | LINZ elevation, aggregated to 60 m | Local and current; the paper used 60 m ASTER |
 | Active faults | NZ Active Faults Database 1:250,000 (GNS Science 2016, doi:10.21420/R1QN-BM52), horizontal distance to mapped traces | Held in the cross-project data library as `R:\DataLibrary\210.20_active_faults_NZ_NZAFD_AF250\` (V1, downloaded 2026-09-30 from the GNS WFS layer `gns:af250_download`), read by a reader in `landloss.io` in the same way as `landloss.io.gfdb`. Licence CC BY 3.0 NZ, as the GNS WFS service states it; attribute GNS Science |
 | Shaking | MM intensity per cell from the study's own PGV (the shaking module's `s2_pgv` step), converted with the PGV form of Worden et al. (2012), without its distance and magnitude terms. With log = log10 PGV (cm/s): MMI = 3.78 + 1.47 log for log ≤ 0.53, and MMI = 2.89 + 3.16 log above it. Capped at MM X; the memberships are flat beyond IX | Decided (see below) |
-| Output | Relative hazard H (0–1), then coverage through the model 3 calibration | The paper gives no coverage; the portfolio needs one |
+| Output | Relative hazard H (0–1), then coverage through a transfer function fitted on its own training events, Northridge and Wenchuan (phase 6) | The paper gives no coverage; the portfolio needs one, and it must not come from the shared test events (the lead, 2026-10-02) |
 | Size population | Large only (above the split) | Agreed split |
 
 **Forward-use scenario.** The study works at a return period, not a scenario, so
@@ -59,49 +59,57 @@ to the rupture. The scenario enters model 2 only through the calibration.
 
 ### Phase 1 — Digitise the memberships
 
-- [ ] Render Figure 5 (journal p. 721) from the PDF at high resolution into
+- [x] Render Figure 5 (journal p. 721) from the PDF at high resolution into
       `context/lit/landslide/kritikos_2015/figures/`, as was done for Hancox.
-- [ ] Digitise the five average (dashed) curves: MM (V to IX), slope angle
+- [x] Digitise the five average (dashed) curves: MM (V to IX), slope angle
       (0–5° to >50°, 5° classes), distance to active faults (0–5 km to >50 km),
       distance to streams (for the record; not used), and the four slope
-      position values (flat, valley, midslope, ridge).
-- [ ] Hold them in `landloss.hazard.landslide.models.kritikos_2015.memberships`
+      position values (flat, valley, midslope, ridge). Done programmatically
+      from the embedded image, points in
+      `figures/figure-5-average-membership-points.csv`; reading error about
+      0.02, and the fault classes are unequal in width, so the curve is placed
+      at class centres. Unchecked until phase 4.
+- [x] Hold them in `landloss.hazard.landslide.models.kritikos_2015.memberships`
       as tabulated points with linear interpolation between them, each table
       commented with where it was read from. Extrapolation is flat beyond the
       plotted range.
-- [ ] Unit tests: every membership lies in 0–1, rises (MM, slope) or falls
+- [x] Unit tests: every membership lies in 0–1, rises (MM, slope) or falls
       (fault distance) as the figure shows, and the four slope position values
       are in the published order (ridge > midslope > valley > flat).
 
 ### Phase 2 — Inputs
 
-- [ ] `inputs.py`: slope angle on the 60 m grid, from LINZ elevation aggregated
+- [x] `inputs.py`: slope angle on the 60 m grid, from LINZ elevation aggregated
       to 60 m, reusing `landloss.common.utils.terrain`.
-- [ ] Slope position: TPI classified into four classes following Jenness et al.
+- [x] Slope position: TPI classified into four classes following Jenness et al.
       (2013), as the paper does. The paper does not state its TPI neighbourhood;
       choose one, record it as a judgement, and test a smaller and a larger
-      radius.
-- [ ] Distance to mapped active faults: a reader in `landloss.io` for the NZ
+      radius. Built with the window as an argument (600 m in the step's
+      `config.py`); the class thresholds are from the Weiss (2001) scheme, written from memory and marked `verify`; the sensitivity runs are open (step 11 plan).
+- [x] Distance to mapped active faults: a reader in `landloss.io` for the NZ
       Active Faults Database in the data library
       (`210.20_active_faults_NZ_NZAFD_AF250`, V1), following `landloss.io.gfdb`,
       and horizontal distance to the nearest trace on the 60 m grid. R: is read
-      by the project lead's runs, not Claude's.
-- [ ] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
+      by the project lead's runs, not Claude's. The reader finds the single
+      vector file in the data folder and is tested on a temporary file; the real
+      folder's layout is unconfirmed.
+- [x] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
       PGV form (`landloss.hazard.shaking` gains a `mmi_from_pgv`). For the validation events, read MM directly from the
       ShakeMap `grid.xml` (`landloss.io.shakemap` already carries `mmi`).
 
 ### Phase 3 — The model
 
-- [ ] `model.py`: memberships applied per factor, combined by fuzzy gamma
+- [x] `model.py`: memberships applied per factor, combined by fuzzy gamma
       (paper eq. 4) with γ = 0.9, returning H on the 60 m grid. Cells below
       slope 5° are reported but flagged, as the paper scores both with and
       without them.
-- [ ] Unit tests: fuzzy gamma against a hand-computed case; γ = 0 reduces to the
+- [x] Unit tests: fuzzy gamma against a hand-computed case; γ = 0 reduces to the
       fuzzy product, γ = 1 to the fuzzy sum.
 
 ### Phase 4 — Reproduce the paper (the check that the digitisation is right)
 
-- [ ] Rebuild the success-rate AUC for the paper's events with our digitised
+- [ ] Rebuild the success-rate AUC for the paper's events (the AUC itself is
+      built: `evaluation.success_rate_auc`) with our digitised
       curves: Northridge 0.904 and Wenchuan 0.839 (average memberships, whole
       study area), and the blind Chi-Chi test, 0.921. Inventories from the USGS
       Ground Failure Database (`landloss.io.gfdb`), ShakeMap MMI from the USGS
@@ -129,23 +137,37 @@ to the rupture. The scenario enters model 2 only through the calibration.
 
 ### Phase 6 — From relative hazard to coverage
 
-- [ ] Fit a transfer function from H to areal coverage on Kaikōura: bin cells by
-      H, take the observed coverage in each bin (source areas, and source plus
-      trail, kept separate), and fit a monotone curve, as Nowicki Jessee fitted
-      their equation 9. This is New Zealand's own conversion, from New Zealand's
-      only complete coseismic inventory.
-- [ ] Apply the model 3 calibration: scale the total to the Marc et al. (2016)
-      amount and zero it outside the Hancox extent
-      (`landloss.hazard.landslide.calibration`, built in the model 3 plan).
+The paper fully specifies the relative hazard H (the average memberships and
+γ = 0.9), so nothing in H is calibrated. What it does not give is an amount:
+H is relative, "an order-of-magnitude estimate only" (p. 726). One map from H
+to coverage is needed, and under the lead's decision of 2026-10-02 (rebuild
+note, "How they combine") it comes from the model's own training events, not
+from Kaikōura, so that model 2 stays an independent estimate.
+
+- [ ] Fit (the tool, `evaluation.fit_transfer_function`, is built and tested; the
+      fit needs the inventories) a transfer function from H to areal coverage on **Northridge 1994
+      and Wenchuan 2008**, the two events the memberships were derived from:
+      bin cells by H, take the observed coverage in each bin, and fit a
+      monotone curve (`fit_transfer_function`), as Nowicki Jessee fitted their
+      equation 9. Pool the two events, and report each one's curve as the
+      spread. The inventories are in the USGS Ground Failure Database
+      (`landloss.io.gfdb`), on `R:`, so the lead runs this step.
+- [ ] Test, do not scale: run the Kaikōura check of phase 5 through the
+      transfer function and report its total against the inventory, against
+      Marc et al. (2016) and against the Hancox extent
+      (`landloss.hazard.landslide.calibration.calibrate` as a report). No
+      rescaling to any of them.
 
 ### Phase 7 — Wellington forward run
 
-- [ ] A step under `src/scripts/landloss/hazard/landslide/steps/` (next free
+- [~] Built as step 11 (`steps/s11_kritikos_2015/`), writing the relative hazard H on
+      the 60 m grid; the coverage and the hand-off to step 1 wait for phase 6.
+      A step under `src/scripts/landloss/hazard/landslide/steps/` (next free
       number), following the `adding-steps-scripts` skill: coverage on the 60 m
       grid over the study area, from the study's MM, then handed to the
       realisation machinery with the size distribution truncated below at the
       split.
-- [ ] Method and plan files for the step; `status.md` updated.
+- [x] Method and plan files for the step; `status.md` updated.
 
 ## Files
 
@@ -164,8 +186,9 @@ to the rupture. The scenario enters model 2 only through the calibration.
 
 - The digitised curves reproduce the paper's three AUCs within about 0.02.
 - The Kaikōura AUC is reported, with and without the greywacke shift.
-- After calibration, total landslide area matches the Marc target and nothing
-  lies outside the Hancox extent.
+- The Northridge and Wenchuan transfer curves agree with each other within a
+  stated factor, and Kaikōura's total, Marc's and the Hancox extent are
+  reported beside model 2's own Wellington total.
 
 ## Risks and open items
 
@@ -190,6 +213,29 @@ to the rupture. The scenario enters model 2 only through the calibration.
   it is kept.
 - **TPI scale** is not stated in the paper and is scale-dependent (the paper's
   own discussion); it is a sensitivity, not a fixed value.
+- **From the literature review of 2026-10-02** (part B; proposals for the
+  lead):
+  - **The fault term under an interface scenario.** At Kaikōura, landslide
+    density within 200 m of a *ruptured* fault was up to three times the
+    background, decaying over 2.5 to 3 km, and seven of the eight largest
+    landslides were crossed by rupture [massey_2018] (`massey2018-F18`,
+    `F21`). Under the Hikurangi interface scenario no mapped fault in the
+    study area ruptures. So the mapped-fault distance credits Wellington's
+    dense fault map with an effect the scenario does not produce. **Proposal:**
+    run the base case with the fault membership at its far-field value, and
+    the mapped-fault distance as a sensitivity. The sheared rock along the
+    Wellington Fault is carried by the ground map's crushed rock instead
+    [grant_taylor_1964].
+  - **The greywacke shift.** The phase 5 test of shifting the MM membership
+    one intensity level on greywacke has support beyond Hancox et al.
+    (1997): the revised MM scale first describes significant landsliding at
+    MM8 [dowrick_2008] (`dowrick2008-F05`), and the 2013 events were
+    threshold events for Wellington (`sr2013-042-F07`).
+  - **MM above IX.** GNS pairs MM9 with a PGA of 0.7 to 0.8 g and MM10+ with
+    0.8 g or more (SR2025/01, Table 3.2, checked against the text), so the
+    whole study area sits on the flat top of the MM membership at the
+    2,500-year demand. The model's spatial pattern then comes from slope and
+    position alone, which the Wellington run should state.
 
 ## Sources
 

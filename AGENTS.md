@@ -31,6 +31,28 @@ deriving the study area boundaries from that layer is a `gen_`.
 `gen_` and `get_` apply to functions as well as to filenames, so a function that
 retrieves a layer is `get_`, not `load_` or `fetch_`.
 
+## Build extents
+
+A model build runs over a named extent, not a pilot flag, so builds over
+different extents sit side by side instead of overwriting each other. The
+`PILOT = True` run setting and the `pilot` argument have been replaced (Oct
+2026). When writing or changing a step:
+
+- Run settings say `EXTENT = "wlg-pilot"` or `EXTENT = "full"`, not `PILOT`.
+- Steps take a keyword-only `extent` argument and pass `extent=extent` on, not
+  `pilot`. Path functions such as `ground_map_path(*, extent)` follow suit.
+- Choose the ground with `get_area_of_interest(extent)` from
+  `landloss.io.area_of_interest`; `None` means the four territorial authorities.
+- Name every output with `extent_suffix(extent)`. Never write
+  `"-pilot" if pilot else ""`. The full study keeps plain names and
+  `wlg-pilot` keeps the old `-pilot` suffix, so existing builds stay valid.
+- To add an extent, define an `AreaOfInterest` and add it to `EXTENTS` in
+  `landloss.io.area_of_interest`.
+
+The loss module (`src/landloss/loss`, `src/scripts/landloss/loss`) still uses
+its own `pilot` flag. It reads the `-pilot` vul tables by name, which is
+unchanged for `wlg-pilot`; it needs its owner's sign-off before it changes.
+
 ## Changelog fragments
 
 Changelog fragments in `doc/whatsnew/` are named

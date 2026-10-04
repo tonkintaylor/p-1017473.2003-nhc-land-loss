@@ -40,6 +40,7 @@ from shapely.geometry import box
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.exposure.rw.beta_population import SIZE_CLASSES
 from landloss.exposure.rw.lines import SOURCES
+from landloss.io.area_of_interest import extent_suffix, is_full_extent
 from scripts.landloss.exposure.rw.steps.s6_wall_population import config
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_lines import (
     wall_lines_path,
@@ -144,32 +145,33 @@ def draw_length_by_source(ax, lines):
     ax.set_title("How much", fontsize=9)
 
 
-def main(*, pilot):
+def main(*, extent):
     """Draw the figure for the last run and write it out.
 
     Args:
-        pilot: Whether the run was over the small Wellington pilot box.
+        extent: The extent the run was over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
     """
-    in_path = wall_lines_path(pilot=pilot)
+    in_path = wall_lines_path(extent=extent)
     print(f"Reading {in_path} ...")
     lines = gpd.read_parquet(in_path)
-    extent = gpd.GeoDataFrame(geometry=[box(*lines.total_bounds)], crs=lines.crs)
+    frame = gpd.GeoDataFrame(geometry=[box(*lines.total_bounds)], crs=lines.crs)
 
     fig, (ax_map, ax_bars) = plt.subplots(
         1, 2, figsize=(11, 6), gridspec_kw={"width_ratios": (1.6, 1.0)}
     )
-    draw_lines(ax_map, lines, extent)
+    draw_lines(ax_map, lines, frame)
     draw_length_by_source(ax_bars, lines)
-    suffix = " (pilot)" if pilot else ""
-    fig.suptitle(f"Candidate retaining wall lines by source{suffix}", fontsize=11)
+    label = "" if is_full_extent(extent) else f" ({extent})"
+    fig.suptitle(f"Candidate retaining wall lines by source{label}", fontsize=11)
     fig.tight_layout()
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = FIG_DIR / f"wall-lines{'-pilot' if pilot else ''}.png"
+    out_path = FIG_DIR / f"wall-lines{extent_suffix(extent)}.png"
     fig.savefig(out_path, dpi=DPI)
     plt.close(fig)
     print(f"Wrote {out_path}")
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

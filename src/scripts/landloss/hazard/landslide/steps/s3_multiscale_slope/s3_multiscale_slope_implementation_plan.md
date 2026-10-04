@@ -2,10 +2,12 @@
 
 **Status:** Phase 1 complete over the pilot: `dem-<n>m-pilot.tif`,
 `slope-<n>m-pilot.tif` and `aspect-<n>m-pilot.tif` at every cell size are on
-disk under `temp/hazard/landslide/`. Phase 4 is built and tested but has not
-been run over the pilot: `temp/hazard/landslide/terrain/` does not exist and
-neither figure has been drawn. The full study area has not been run, and cannot
-be at 1 m without tiling (phase 2).
+disk under `temp/hazard/landslide/`. Phase 4 ran over the pilot in the
+whole-chain run of 2026-10-02: the eight layers are under
+`temp/hazard/landslide/terrain/`, but neither figure has been drawn, and the
+vegetation height predates the building mask. Phase 5 is what the faces plan
+needs from this step. The full study area has not been run, and cannot be at
+1 m without tiling (phase 2).
 
 ## Background
 
@@ -44,7 +46,7 @@ handful of points per 100 m cell rather than the ground under it.
 
 ## Phase 2 — Full study area
 
-- [ ] Run with `PILOT = False` over the four territorial authorities. At 1 m
+- [ ] Run with `EXTENT = "full"` over the four territorial authorities. At 1 m
       the study area bounding box is about 3.2 billion cells, which neither the
       fetch nor the Horn kernel can carry in memory; the step has to be tiled
       over the snapped 300 m grid, with each tile fetched padded by one cell
@@ -78,11 +80,12 @@ handful of points per 100 m cell rather than the ground under it.
       `TERRAIN_LAYERS` under `temp/hazard/landslide/terrain/`, with
       `terrain_path()` as the one path function.
 - [x] `fig_terrain_derivatives.py` drawing every layer over the extent.
-- [ ] Run `gen_terrain_derivatives.py` over the pilot so the eight layers of
+- [~] Run `gen_terrain_derivatives.py` over the pilot so the eight layers of
       `TERRAIN_LAYERS` exist under `temp/hazard/landslide/terrain/`, then draw
-      `fig_multiscale_slope.py` and `fig_terrain_derivatives.py`. Tick this
-      only once those files are on disk; steps 4 to 7 and the wall lines read
-      them, so the chain has not been run past phase 1 until it is.
+      `fig_multiscale_slope.py` and `fig_terrain_derivatives.py`. The layers
+      were written in the whole-chain run of 2026-10-02; the figures are not
+      drawn, and the vegetation height is rewritten with the building mask on
+      the next run.
 - [ ] The border of each derivative is NaN by half its window (two and five
       1 m cells for the face heights, one 3 m cell for the curvature, three
       3 m cells and five 10 m cells for the topographic positions), because
@@ -93,6 +96,31 @@ handful of points per 100 m cell rather than the ground under it.
 - [x] Mask the building outlines out of the vegetation height, so a roof is
       not read as canopy (2026-10-02). Tested on a synthetic roof; the pilot
       layer is rebuilt on the next run of `gen_terrain_derivatives.py`.
+
+## Phase 5 — What the faces layer needs (from the literature review, 2026-10-02)
+
+`.agents/plans/building-face-based-urban-slope-polygons.md` builds the faces
+from this step's 1 m DEM. Reviewed against `temp/gns_review/` on 2026-10-02.
+
+- [ ] **DEM source and survey year per cell.** `get_dem` mosaics LiDAR where
+      flown and the 8 m contour model elsewhere (L-12). Write a source raster
+      beside the 1 m DEM, LiDAR or contour, and the survey year, so the faces
+      are found only on LiDAR and a wall built after the flight is known to be
+      missing. The 1 m LiDAR model is already coarse for site work
+      [nzgs_2025_recognition] (`nzgs2025-u2-F23`), and a map should not be
+      shown at a scale markedly finer than its data [de_vilder_2024]
+      (`devilder2024-F28`); a face drawn on the contour model would be both.
+      LiDAR slope maps do pick up most of Wellington City's cut slopes
+      [hancox_2013_slope_types] (`sr2013-058-F03`), which is the case for the
+      approach where LiDAR exists.
+- [ ] **One extent**, from `run_extent(name)` (faces plan, phase 0), so steps
+      3 and 4 cover the same ground.
+- [ ] **Retire `face-height-5m` and `face-height-10m`** once the wall lines
+      read the faces: local relief reads high on any hillside, wall or not,
+      and the faces' step height replaces it.
+- [ ] Keep the 20 m and 100 m topographic position: a landform proxy for the
+      weathering grade (step 4 plan, phase 3) would read them
+      [nzgs_2025_torlesse] (`nzgs2025-u7c2-F01`).
 
 ## Potential future improvements
 

@@ -598,17 +598,17 @@ def synthetic_step(tmp_path, monkeypatch):
     minx, miny, maxx, maxy = dem_1m.rio.bounds()
     bbox = (minx, miny, maxx, maxy)
 
-    def raster_path(kind, resolution_m, *, pilot):
+    def raster_path(kind, resolution_m, *, extent):
         return tmp_path / f"{kind}-{resolution_m}m.tif"
 
     for scale_m in STEP_SCALES_M:
         dem = dem_1m if scale_m == 1 else block_mean(dem_1m, scale_m)
         slope, aspect = slope_and_aspect(dem, scale_m)
-        write_raster(dem, raster_path("dem", scale_m, pilot=True))
-        write_raster(slope, raster_path("slope", scale_m, pilot=True))
-        write_raster(aspect, raster_path("aspect", scale_m, pilot=True))
+        write_raster(dem, raster_path("dem", scale_m, extent="wlg-pilot"))
+        write_raster(slope, raster_path("slope", scale_m, extent="wlg-pilot"))
+        write_raster(aspect, raster_path("aspect", scale_m, extent="wlg-pilot"))
 
-    def terrain_layer(layer, *, pilot):
+    def terrain_layer(layer, *, extent):
         return tmp_path / f"{layer}.tif"
 
     for position, layer in enumerate(step.TERRAIN_ATTRIBUTES):
@@ -617,7 +617,7 @@ def synthetic_step(tmp_path, monkeypatch):
             values[:] = np.nan
         write_raster(
             make_dem(values, resolution=1.0).rename(layer),
-            terrain_layer(layer, pilot=True),
+            terrain_layer(layer, extent="wlg-pilot"),
         )
 
     ground_map = gpd.GeoDataFrame(
@@ -653,24 +653,28 @@ def synthetic_step(tmp_path, monkeypatch):
     )
 
     monkeypatch.setattr(step, "WORK_DIR", tmp_path)
-    monkeypatch.setattr(step, "resolve_extent", lambda *, pilot: (bbox, "synthetic"))
+    monkeypatch.setattr(step, "resolve_extent", lambda *, extent: (bbox, "synthetic"))
     monkeypatch.setattr(
         step,
         "dem_path",
-        lambda resolution_m, *, pilot: raster_path("dem", resolution_m, pilot=pilot),
+        lambda resolution_m, *, extent: raster_path("dem", resolution_m, extent=extent),
     )
     monkeypatch.setattr(
         step,
         "slope_path",
-        lambda resolution_m, *, pilot: raster_path("slope", resolution_m, pilot=pilot),
+        lambda resolution_m, *, extent: raster_path(
+            "slope", resolution_m, extent=extent
+        ),
     )
     monkeypatch.setattr(
         step,
         "aspect_path",
-        lambda resolution_m, *, pilot: raster_path("aspect", resolution_m, pilot=pilot),
+        lambda resolution_m, *, extent: raster_path(
+            "aspect", resolution_m, extent=extent
+        ),
     )
     monkeypatch.setattr(step, "terrain_path", terrain_layer)
-    monkeypatch.setattr(step, "ground_map_path", lambda *, pilot: ground_path)
+    monkeypatch.setattr(step, "ground_map_path", lambda *, extent: ground_path)
     monkeypatch.setattr(
         step, "get_nz_building_outlines", lambda bbox, **kwargs: buildings
     )
@@ -684,24 +688,24 @@ def synthetic_step(tmp_path, monkeypatch):
 
 def run_step():
     step.main(
-        pilot=True,
+        extent="wlg-pilot",
         use_cached_layers=True,
         scales_m=STEP_SCALES_M,
         building_distance_m=100.0,
         min_patch_cells=MIN_PATCH_CELLS,
         max_patch_length_m=25.0,
     )
-    return gpd.read_parquet(step.urban_slope_candidates_path(pilot=True))
+    return gpd.read_parquet(step.urban_slope_candidates_path(extent="wlg-pilot"))
 
 
 @needs_upstream
 def test_the_path_names_the_extent():
     assert (
-        step.urban_slope_candidates_path(pilot=True).name
+        step.urban_slope_candidates_path(extent="wlg-pilot").name
         == "urban-slope-candidates-pilot.geoparquet"
     )
     assert (
-        step.urban_slope_candidates_path(pilot=False).name
+        step.urban_slope_candidates_path(extent="full").name
         == "urban-slope-candidates.geoparquet"
     )
 

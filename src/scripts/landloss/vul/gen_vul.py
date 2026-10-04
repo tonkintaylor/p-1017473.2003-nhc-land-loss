@@ -7,7 +7,8 @@ the hazard module's urban pass (``gen_hazard.main_urban``), which reads the
 exposure module's wall population. The damage steps per hazard and asset come
 first, in any order, since none reads another; step 10 then assembles them into
 the four tables the loss module reads,
-``temp/vul/loss-input-<table>-w<nnn>-r<nnn>[-pilot].geoparquet``.
+``temp/vul/loss-input-<table>-w<nnn>-r<nnn><suffix>.geoparquet``, with the
+suffix from ``extent_suffix`` (``-pilot`` for the small Wellington pilot).
 
 The extent, worlds and realisations come from ``config.py`` beside this;
 anything else a step reads comes from that step's own ``config.py``. The
@@ -48,16 +49,17 @@ from scripts.landloss.vul.shaking.rw.steps.s9_wall_damage_state import (
 from scripts.landloss.vul.steps.s10_property_damage import gen_property_damage
 
 
-def main(*, pilot, world_ids, realisation_ids):
+def main(*, extent, world_ids, realisation_ids):
     """Run the vulnerability steps in order.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: Which exposure worlds to run, for the steps that read a
             wall population or the combined landslide realisation.
         realisation_ids: Which modelled earthquakes to run.
     """
-    ids = {"pilot": pilot, "realisation_ids": realisation_ids}
+    ids = {"extent": extent, "realisation_ids": realisation_ids}
     worlds = {**ids, "world_ids": world_ids}
     run_steps(
         "vul",
@@ -108,7 +110,7 @@ def main(*, pilot, world_ids, realisation_ids):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         realisation_ids=config.REALISATION_IDS,
     )

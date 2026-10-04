@@ -4,9 +4,9 @@
   intersected against. `gen_insured_land.py` reads
   `temp/exposure/land-value-by-address.geoparquet` from step 2, fetches the
   property boundaries, building outlines and roads over its extent, builds the
-  insured land and writes `temp/exposure/insured-land.geoparquet`. Both take a
-  `-pilot` suffix when `config.PILOT` is set, so a pilot run cannot overwrite
-  the full outputs.
+  insured land and writes `temp/exposure/insured-land.geoparquet`. Both take the
+  `extent_suffix(config.EXTENT)` suffix (`-pilot` for `"wlg-pilot"`), so a run
+  over one extent cannot overwrite another's outputs.
 - **The claim is the property, not the address.** That is the decision the step
   is built around and it replaces an earlier model keyed on address points, in
   which 40% of addresses found no building near enough to buffer and so carried

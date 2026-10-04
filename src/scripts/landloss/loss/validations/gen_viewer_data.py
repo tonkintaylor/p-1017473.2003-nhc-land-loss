@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN
+from landloss.io.area_of_interest import extent_suffix
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
@@ -67,7 +68,7 @@ VIEWER = "loss_viewer.html"
 HERE = __import__("pathlib").Path(__file__).resolve().parent
 
 
-def claim_points(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
+def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return each claim's position in degrees, for the map.
 
     The insured land is a polygon; the viewer wants a dot, so this takes a
@@ -76,12 +77,13 @@ def claim_points(realisation_id: int, *, pilot: bool) -> pd.DataFrame:
 
     Args:
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         ``lon`` and ``lat`` per claim.
     """
-    land = gpd.read_parquet(loss_input_path("land", realisation_id, pilot=pilot))
+    land = gpd.read_parquet(loss_input_path("land", realisation_id, extent=extent))
     inside = land.geometry.representative_point()
     degrees = gpd.GeoSeries(inside, crs=land.crs).to_crs(4326)
     return (
@@ -240,21 +242,21 @@ def check_viewer_against_the_model(rows, claims, policy) -> float:
     return worst
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Write the viewer's CSV and copy the page beside it."""
     policy = PolicySettings()
     realisation_id = realisation_ids[0]
-    claims = pd.read_parquet(settlement_path(realisation_id, pilot=pilot)).set_index(
+    claims = pd.read_parquet(settlement_path(realisation_id, extent=extent)).set_index(
         CLAIM_ID_COLUMN
     )
-    walls = wall_shape(realisation_id, pilot=pilot).reindex(claims.index)
+    walls = wall_shape(realisation_id, extent=extent).reindex(claims.index)
     rows = viewer_rows(claims, walls)
-    rows = rows.join(claim_points(realisation_id, pilot=pilot)).reset_index()
+    rows = rows.join(claim_points(realisation_id, extent=extent)).reset_index()
 
     check_viewer_against_the_model(rows.set_index(CLAIM_ID_COLUMN), claims, policy)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     csv_path = OUT_DIR / f"loss-viewer-r{realisation_id:03d}{suffix}.csv"
     rows.to_csv(csv_path, index=False)
     shutil.copy(HERE / VIEWER, OUT_DIR / VIEWER)
@@ -265,4 +267,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

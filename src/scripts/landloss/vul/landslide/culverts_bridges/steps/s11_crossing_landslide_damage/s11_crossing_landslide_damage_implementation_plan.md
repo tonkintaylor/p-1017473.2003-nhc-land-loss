@@ -20,11 +20,11 @@ population or the combined realisation.
 Contract `.agents/plans/urban-slope-build-contract.md` section 3.14.
 
 - [x] Read landslide step 9's combined realisation
-      (`combined_realisation_path(world_id, realisation_id, pilot=...)`) in
+      (`combined_realisation_path(world_id, realisation_id, extent=...)`) in
       place of step 1's large-model file, so urban failures reach crossings
       too.
 - [x] Keep the crossing population keyed on the earthquake alone
-      (`crossing_population_path(realisation_id, pilot=...)`); moving it to
+      (`crossing_population_path(realisation_id, extent=...)`); moving it to
       worlds is a later item (contract decision 17).
 - [x] Loop over `WORLD_IDS` as well as `REALISATION_IDS`, and name the output
       on both, `crossing-landslide-damage-w<NNN>-r<NNN>[-pilot].parquet`, with

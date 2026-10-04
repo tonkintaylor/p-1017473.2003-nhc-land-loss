@@ -49,6 +49,7 @@ from landloss.domain.loss_contract import (
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
 )
+from landloss.io.area_of_interest import extent_suffix
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
@@ -96,17 +97,18 @@ RW_SUB_CAP_BOUND_COLUMN = "retaining_wall_sub_cap_bound"
 HAS_CROSSING_COLUMN = "has_damaged_crossing"
 
 
-def land_cover_cap_path(realisation_id: int, *, pilot: bool) -> Path:
+def land_cover_cap_path(realisation_id: int, *, extent: str) -> Path:
     """Return the file a run writes one realisation's caps to.
 
     Args:
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The path, under ``temp/loss``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.parquet"
 
 
@@ -253,11 +255,12 @@ def describe_caps(caps):
     )
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Build and write the land cover cap per claim, per realisation.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to cap.
     """
     policy = PolicySettings()
@@ -265,7 +268,7 @@ def main(*, pilot, realisation_ids):
     for realisation_id in realisation_ids:
         print(f"\nCapping realisation {realisation_id} ...", flush=True)
         tables = {
-            name: gpd.read_parquet(loss_input_path(name, realisation_id, pilot=pilot))
+            name: gpd.read_parquet(loss_input_path(name, realisation_id, extent=extent))
             for name in LOSS_TABLES
         }
 
@@ -320,7 +323,7 @@ def main(*, pilot, realisation_ids):
 
         out = caps.reset_index()
         out.insert(0, REALISATION_ID_COLUMN, realisation_id)
-        out_path = land_cover_cap_path(realisation_id, pilot=pilot)
+        out_path = land_cover_cap_path(realisation_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out.to_parquet(out_path)
         print(RULE)
@@ -328,4 +331,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

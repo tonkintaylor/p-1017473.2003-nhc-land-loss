@@ -21,11 +21,12 @@
   because clipping to a boundary is what produces the empty geometry being
   looked for; the comment in `filter_addresses` records why.
 - The spine is written to `temp/exposure/address-spine.geoparquet`, or to
-  `address-spine-pilot.geoparquet` when `PILOT` is True, so a pilot run cannot
-  overwrite the full spine. `temp/` is gitignored, and the directory comes from
+  `address-spine<suffix>.geoparquet` with `extent_suffix(EXTENT)` as the suffix
+  (`address-spine-pilot.geoparquet` for `"wlg-pilot"`), so a run over one
+  extent cannot overwrite another's spine. `temp/` is gitignored, and the directory comes from
   `TEMP_DIR` in `scripts.landloss.paths` rather than from a `parents[N]` count in
   the script; the repository root it resolves to is printed by every run.
-- The run settings — `PILOT`, `FRESH` and the `OUT` path override — are read
+- The run settings — `EXTENT`, `FRESH` and the `OUT` path override — are read
   from `config.py` beside the script and passed into `main()` as keyword
   arguments; the script takes no command-line arguments.
 - The run prints each authority's address count beside the rating unit count

@@ -79,9 +79,28 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - Modelled wall damage against observed retaining wall damage in Canterbury and
   Kaikōura, once a comparable population is available.
 
+## Literature review (2026-10-02)
+
+Part C of the second review read the wall curves against the 2,991
+Canterbury walls of Anderson et al. (2015) [anderson_2015]. The detail is in
+`.agents/context/retaining-wall-fragility.md`, "Literature review: the curves against Canterbury". What it proposes, all for the lead:
+
+- **The Koutsoupaki curves are kept** (the lead, 2026-10-02). They
+  overpredict against Christchurch: at the study's 1.0 to 1.7 g they fail 30
+  to 93% of walls, where about 10% of Port Hills walls were Very Poor at the
+  same PGA over the whole sequence. The report states this as a known
+  conservatism.
+- **"Replace" is Very Poor** in the comparison (collapse, or failure of more
+  than 5 m² of face). Average and Poor, about a third of walls, are "none".
+- **Name the six classes after Anderson's wall types**, whose Very Poor
+  shares run from 18% (stone masonry) to 0% (MSE). Infer each wall's type
+  from its age and the claim reports (the lead, 2026-10-02).
+
 ## Open decisions
 
-- **The wall classes the curves are defined for are still unnamed.** This is the
+- **The wall classes the curves are defined for are still unnamed.** The
+  review proposes Anderson's six types (above).
+  Before that review: This is the
   same open decision the retaining wall exposure module carries, and it blocks
   indexing the fragility by wall type; until then every wall takes the one
   `unnamed` class's curve for its size and condition.

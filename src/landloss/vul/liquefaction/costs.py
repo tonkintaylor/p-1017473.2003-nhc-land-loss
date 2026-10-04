@@ -31,7 +31,7 @@ every damaged property in a state, not just those that lodged a claim (Q-17), so
 the drop-out is already inside them. :data:`COSTS_INCLUDE_NON_CLAIMANTS` records
 that, and the liquefaction land damage step reads it to leave its own drop-out
 draw off rather than count it twice. Claimant-only rates are to replace these
-(T-66).
+(T-65).
 
 The rates are 2010/2011 dollars excluding GST (**L-23**, **L-24**), cover
 categories 1 to 7 and so exclude ILV and IFV (**L-25**), and apply to flat land
@@ -64,7 +64,7 @@ COST_YEAR = 2011
 # Whether the packaged rates average over all damaged properties, non-claimants
 # counted at $0, rather than over claimants only. A fact about the file, not a
 # run choice: set it False only when the CSV is replaced with claimant-only
-# rates (T-66), which is what switches the drop-out draw back on.
+# rates (T-65), which is what switches the drop-out draw back on.
 COSTS_INCLUDE_NON_CLAIMANTS = True
 
 # What the cost is a quantity of. Named so a reader of the vul output can tell

@@ -41,7 +41,7 @@
     already inside them. `COSTS_INCLUDE_NON_CLAIMANTS` in
     `landloss.vul.liquefaction.costs` records that, and while it is True every
     property on the grid claims at the diluted cost. Replacing the CSV with
-    claimant-only rates and setting it False switches the draw on (**T-66**).
+    claimant-only rates and setting it False switches the draw on (**T-65**).
     In the meantime many small costs meet the excess where a few full ones
     would, so settlements come out somewhat low (**L-43**).
 - **Each claim carries the ground it lost** (**T-55**): an evacuated area in

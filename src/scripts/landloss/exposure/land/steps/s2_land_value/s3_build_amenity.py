@@ -7,12 +7,12 @@ distance to the nearest sea cell along any of them:
 
     uv run --frozen python src/scripts/landloss/exposure/land/steps/s2_land_value/s3_build_amenity.py
 
-The run settings -- the pilot box or the full study area, whether to ignore the
-caches, and the input and output paths -- come from config.py beside this script
-rather than from the command line. How the view is measured -- the eye height,
-the casting distance, how many directions and what counts as sea -- are rows of
-the land value factors asset, because they decide what a share means and so
-belong beside the premium that is paid on it.
+The run settings -- the extent (a pilot box or the full study area), whether to
+ignore the caches, and the input and output paths -- come from config.py beside
+this script rather than from the command line. How the view is measured -- the
+eye height, the casting distance, how many directions and what counts as sea --
+are rows of the land value factors asset, because they decide what a share means
+and so belong beside the premium that is paid on it.
 
 This is s3 of the land value step: amenity is the third of the attributes the
 step attaches before s4 values the addresses, after terrain (s1) and
@@ -49,7 +49,7 @@ from landloss.exposure.land.amenity import (
     sea_mask,
 )
 from landloss.exposure.land.land_value import load_factors
-from landloss.io.area_of_interest import get_study_areas
+from landloss.io.area_of_interest import extent_suffix, get_study_areas
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.exposure.land.steps.s2_land_value.s1_build_terrain_attributes import (
     describe_extent,
@@ -69,10 +69,10 @@ if hasattr(sys.stdout, "reconfigure"):
 # temp/ is gitignored. These are working layers, rebuildable from the source and
 # the packaged assets, so they have no business in a diff.
 WORK_DIR = TEMP_DIR / "exposure"
-SPINE_NAME = "address-spine.geoparquet"
-PILOT_SPINE_NAME = "address-spine-pilot.geoparquet"
-OUT_NAME = "amenity-by-address.geoparquet"
-PILOT_OUT_NAME = "amenity-by-address-pilot.geoparquet"
+# Each name carries extent_suffix(extent), so runs over different extents sit
+# side by side.
+SPINE_STEM = "address-spine"
+OUT_STEM = "amenity-by-address"
 
 # The rows of the land value factors asset that say how the view is measured.
 EYE_HEIGHT_PARAMETER = "sea_view_eye_height_m"
@@ -97,14 +97,15 @@ SUBURB_LIMIT = 15
 RULE = "-" * 72
 
 
-def resolve_paths(*, pilot, spine, out):
+def resolve_paths(*, extent, spine, out):
     """Return where the spine is read from and where the attributes are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
     overwrite the full outputs.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         spine: The address spine path from config.py, or None for the default.
         out: The amenity attributes path from config.py, or None for the
             default.
@@ -112,15 +113,14 @@ def resolve_paths(*, pilot, spine, out):
     Returns:
         The spine path and the output path.
     """
+    suffix = extent_suffix(extent)
     spine_path = (
         Path(spine)
         if spine is not None
-        else WORK_DIR / (PILOT_SPINE_NAME if pilot else SPINE_NAME)
+        else WORK_DIR / f"{SPINE_STEM}{suffix}.geoparquet"
     )
     out_path = (
-        Path(out)
-        if out is not None
-        else WORK_DIR / (PILOT_OUT_NAME if pilot else OUT_NAME)
+        Path(out) if out is not None else WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
     )
     return spine_path, out_path
 
@@ -222,27 +222,28 @@ def write_outputs(measured, out):
     print(f"  Columns : {', '.join(measured.columns)}")
 
 
-def main(*, pilot, fresh, spine, out):
+def main(*, extent, fresh, spine, out):
     """Measure the sea view share of every address and write it out.
 
     Args:
-        pilot: Use the small Wellington pilot box instead of the full study area.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         fresh: Ignore the caches and re-fetch the DEM and the address spine.
         spine: The address spine from step 1. None reads the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
         out: Where to write the attributes. None writes to the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
 
     Raises:
         ValueError: If the address spine is empty.
     """
-    spine_path, out = resolve_paths(pilot=pilot, spine=spine, out=out)
+    spine_path, out = resolve_paths(extent=extent, spine=spine, out=out)
     factors = load_factors()
     max_distance_m = factors[MAX_DISTANCE_PARAMETER]
     resolution = constants.DEM_RESOLUTION_M
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
-    bbox, clip_to, extent_name = resolve_extent(study_areas, pilot=pilot)
+    bbox, clip_to, extent_name = resolve_extent(study_areas, extent=extent)
     describe_extent(extent_name, bbox)
 
     addresses = get_spine(spine_path, bbox, clip_to, use_cache=not fresh)
@@ -300,4 +301,6 @@ def main(*, pilot, fresh, spine, out):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, fresh=config.FRESH, spine=config.SPINE, out=config.AMENITY)
+    main(
+        extent=config.EXTENT, fresh=config.FRESH, spine=config.SPINE, out=config.AMENITY
+    )

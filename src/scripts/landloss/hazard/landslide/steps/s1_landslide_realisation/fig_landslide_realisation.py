@@ -255,23 +255,24 @@ def build_figure(polygons, units, *, min_area_m2):
     return fig
 
 
-def main(*, pilot, realisation_id, large_min_source_area_m2):
+def main(*, extent, realisation_id, large_min_source_area_m2):
     """Draw the realisation the simulation wrote for this extent.
 
     Args:
-        pilot: Whether to draw the pilot box realisation rather than the full
-            study area one. Must match the setting the simulation was run with,
-            which is why both read it from the same ``config.py``.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full". Must match the
+            setting the simulation was run with, which is why both read it
+            from the same ``config.py``.
         realisation_id: Which modelled earthquake to draw.
         large_min_source_area_m2: The lower bound of the size law the run
             used, drawn on the size panel.
     """
-    realisation = realisation_path(pilot=pilot, realisation_id=realisation_id)
+    realisation = realisation_path(extent=extent, realisation_id=realisation_id)
     figure_path = FIG_DIR / f"{realisation.stem}.png"
 
     print(f"Reading the realisation from {realisation} ...")
     polygons = gpd.read_parquet(realisation)
-    units = gpd.read_parquet(input_paths(pilot=pilot)["units"])
+    units = gpd.read_parquet(input_paths(extent=extent)["units"])
 
     print(RULE)
     for land_class in (EVACUATED, INUNDATED):
@@ -289,7 +290,7 @@ def main(*, pilot, realisation_id, large_min_source_area_m2):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_id=config.REALISATION_IDS[0],
         large_min_source_area_m2=config.LARGE_MIN_SOURCE_AREA_M2,
     )

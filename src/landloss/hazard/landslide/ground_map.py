@@ -31,10 +31,30 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import shapely
+import xarray as xr
+from rasterio import features
 
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
 from landloss.io import ASSETS_DIR
+
+
+def flatland_cell_mask(
+    ground_map: gpd.GeoDataFrame, template: xr.DataArray
+) -> np.ndarray:
+    """Return true where a raster cell centre lies on NLM flatland."""
+    flat = ground_map.loc[ground_map["is_flatland"].astype(bool), "geometry"]
+    if flat.empty:
+        return np.zeros(template.shape, dtype=bool)
+    burned = features.rasterize(
+        ((geometry, 1) for geometry in flat),
+        out_shape=template.shape,
+        transform=template.rio.transform(),
+        fill=0,
+        dtype="uint8",
+    )
+    return burned.astype(bool)
+
 
 # ---------------------------------------------------------------------------
 # Vocabulary (contract section 9.1)
@@ -117,6 +137,15 @@ MATERIAL_STRENGTH_GRADE: dict[str, str] = {
 
 STRENGTH_TABLE_PATH = ASSETS_DIR / "wellington-greywacke-strength.csv"
 
+# The strength row a grade reads where the pick rule's file order is not the
+# choice. FILL reads S52, the set GNS supplied for modelling the Priscilla and
+# Orchy Crescent greywacke-derived fills (22 kN/m3, c' 2 kPa, phi' 42 deg)
+# [monteith_2020], rather than S48, one Orchy Crescent sample's first shear
+# stage, a maximum on a densifying sample with no clear peak [lyndsell_2019].
+# Brown and Larkin's compacted Wellington fill, phi' 32 deg and c' 5 kPa
+# [brown_larkin_2005], is the low case. Accepted by the lead on 2026-10-02.
+STRENGTH_GRADE_PICKS: dict[str, str] = {"FILL": "S52"}
+
 # The three strength columns a row has to carry in full to be a usable set.
 STRENGTH_VALUE_COLUMNS = ("c_eff_kpa", "phi_eff_deg", "unit_weight_kn_m3")
 
@@ -126,10 +155,18 @@ STRENGTH_VALUE_COLUMNS = ("c_eff_kpa", "phi_eff_deg", "unit_weight_kn_m3")
 
 # The fourteen ``Type`` classes of the SLIDE interpreted materials layer
 # (``landloss.io.readers.get_slide_interpreted_materials``; [townsend_2020]).
-# "Fill" carries no statement of whether it was engineered, so it and every
-# mixed fill class take the uncontrolled class; talus and boulders are
-# material that has moved downslope, which is colluvium in Kingsbury's
-# vocabulary. Water is not ground.
+# "Fill" carries no statement of whether it was engineered, so it takes the
+# uncontrolled class; talus and boulders are material that has moved
+# downslope, which is colluvium in Kingsbury's vocabulary. Water is not ground.
+#
+# A mixed fill class is a map unit, not a statement that the whole polygon is
+# fill [townsend_2020], and most gully fills in greater Wellington are too
+# small to map at all [begg_2000]. So a mixed class takes its natural material
+# as the material and records the fill as the modification
+# (SLIDE_FILL_TYPES), and where it names colluvium and rock, colluvium wins:
+# Wellington fills fail on the buried colluvium at their base, which is weaker
+# than the fill above it [brown_larkin_2005; lyndsell_2019; monteith_2020].
+# Accepted by the lead on 2026-10-02 (step 4 plan, phase 2).
 SLIDE_MATERIALS: dict[str, str] = {
     "Rock at/near surface": "rock",
     "Colluvium (anything that has moved downslope)": "colluvium",
@@ -139,13 +176,26 @@ SLIDE_MATERIALS: dict[str, str] = {
     "Alluvium": "alluvium",
     "Sand and gravel": "alluvium",
     "Fill": "fill_uncontrolled",
-    "Mixed fill/rock": "fill_uncontrolled",
-    "Mixed fill/colluvium": "fill_uncontrolled",
-    "Mixed fill/colluvium/rock": "fill_uncontrolled",
-    "Mixed fill/talus": "fill_uncontrolled",
-    "Old alluvium (mixed fill)": "fill_uncontrolled",
+    "Mixed fill/rock": "rock",
+    "Mixed fill/colluvium": "colluvium",
+    "Mixed fill/colluvium/rock": "colluvium",
+    "Mixed fill/talus": "colluvium",
+    "Old alluvium (mixed fill)": "alluvium",
     "Water body": WATER,
 }
+
+# The SLIDE material types that say the ground has been filled, and so claim
+# the modification as well as the material; every other type claims the
+# material only.
+SLIDE_FILL_TYPES = (
+    "Fill",
+    "Mixed fill/rock",
+    "Mixed fill/colluvium",
+    "Mixed fill/colluvium/rock",
+    "Mixed fill/talus",
+    "Old alluvium (mixed fill)",
+)
+SLIDE_MODIFICATIONS: dict[str, str] = dict.fromkeys(SLIDE_FILL_TYPES, "fill")
 
 # Every ``unit_code`` of the 1:50,000 geology layer
 # (``landloss.io.readers.get_wellington_urban_geology``; [begg_mazengarb_1996]),
@@ -368,6 +418,26 @@ def material_from_slide(types: pd.Series) -> pd.Series:
     return _map_classes(types, SLIDE_MATERIALS, "SLIDE material type(s)")
 
 
+def modification_from_slide(types: pd.Series) -> pd.Series:
+    """Map a SLIDE interpreted materials ``Type`` that names fill to ``fill``.
+
+    Only the fill types in :data:`SLIDE_FILL_TYPES` have a rule; the caller
+    filters the materials frame to them first.
+
+    Args:
+        types: The ``Type`` column of
+            :func:`landloss.io.readers.get_slide_interpreted_materials`,
+            filtered.
+
+    Returns:
+        ``fill`` for each polygon, on the caller's index.
+
+    Raises:
+        ValueError: If a type does not name fill.
+    """
+    return _map_classes(types, SLIDE_MODIFICATIONS, "SLIDE material type(s)")
+
+
 def material_from_geology(unit_codes: pd.Series) -> pd.Series:
     """Map the 1:50,000 geology ``unit_code`` onto the material vocabulary.
 
@@ -566,12 +636,25 @@ def _as_bool(values: pd.Series) -> pd.Series:
 def _pick_strength_row(strength_table: pd.DataFrame, grade: str) -> pd.Series:
     """Choose the one strength row a grade reads.
 
-    Among the rows of ``grade`` carrying all three of
-    :data:`STRENGTH_VALUE_COLUMNS`: ``check`` false before true, then
-    ``source_type == "published"`` before the rest, then file order.
+    A grade in :data:`STRENGTH_GRADE_PICKS` reads the row it names, which has
+    to be of that grade and carry all three of :data:`STRENGTH_VALUE_COLUMNS`.
+    Otherwise, among the rows of ``grade`` carrying all three: ``check`` false
+    before true, then ``source_type == "published"`` before the rest, then
+    file order.
     """
     rows = strength_table.loc[strength_table["grade"] == grade]
     complete = rows.dropna(subset=list(STRENGTH_VALUE_COLUMNS))
+    if grade in STRENGTH_GRADE_PICKS:
+        record_id = STRENGTH_GRADE_PICKS[grade]
+        picked = complete.loc[complete["record_id"] == record_id]
+        if picked.empty:
+            msg = (
+                f"The strength pick for grade {grade!r} is {record_id!r}, but no "
+                f"row {record_id!r} of that grade carries all of "
+                f"{', '.join(STRENGTH_VALUE_COLUMNS)}."
+            )
+            raise ValueError(msg)
+        return picked.iloc[0]
     if complete.empty:
         msg = (
             f"No row of grade {grade!r} in the strength table carries all of "

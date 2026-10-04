@@ -62,7 +62,11 @@ from landloss.hazard.liquefaction.lateral_spreading import (
     lateral_spreading_zones,
     zone_grid,
 )
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.nlm import (
     get_nlm_scenario_rp2500y_gwd_med_p_ld_major_fu,
     get_nlm_scenario_rp2500y_gwd_med_p_ld_moderate_fu,
@@ -82,9 +86,6 @@ WORK_DIR = TEMP_DIR / "hazard" / "liquefaction"
 # file to delete when the NLM supplies the full scale.
 OUT_PREFIX = "beta-ld-probability"
 
-# Separate names, so a pilot run cannot overwrite a full one.
-PILOT_SUFFIX = "-pilot"
-
 RULE = "-" * 72
 
 
@@ -100,7 +101,7 @@ def state_slug(state: str) -> str:
     return state.lower().replace(" ", "-")
 
 
-def beta_probability_path(state, *, pilot):
+def beta_probability_path(state, *, extent):
     """Return the file a run writes one state's probability grid to.
 
     A function rather than six constants because the name depends on the extent,
@@ -113,28 +114,31 @@ def beta_probability_path(state, *, pilot):
 
     Args:
         state: One of :data:`landloss.hazard.liquefaction.land_damage.LD_STATES`.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/liquefaction/``.
     """
-    suffix = PILOT_SUFFIX if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_PREFIX}-{state_slug(state)}{suffix}.tif"
 
 
-def resolve_extent(study_areas, *, pilot):
+def resolve_extent(study_areas, *, extent):
     """Choose the extent to run over, and say which one it is.
 
     Args:
         study_areas: The four territorial authorities.
-        pilot: Whether to use the small Wellington pilot box instead.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         ``(bbox, name)``: the extent in the study's own projection, and a label
         for the run output.
     """
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), SMALL_WLG_PILOT.name
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), aoi.name
 
     west, south, east, north = (float(value) for value in study_areas.total_bounds)
     return (west, south, east, north), "the four territorial authorities"
@@ -242,10 +246,9 @@ def describe_expansion(
     print(f"  {'total':<12} {total:.4f}  (one, or the subdivision lost mass)")
 
 
-def ls_zones_path(*, pilot):
+def ls_zones_path(*, extent):
     """Return the file a run writes its lateral spreading zones to, for viewing."""
-    suffix = PILOT_SUFFIX if pilot else ""
-    return WORK_DIR / f"ls-zones{suffix}.gpkg"
+    return WORK_DIR / f"ls-zones{extent_suffix(extent)}.gpkg"
 
 
 def describe_lateral_spreading(grid, before, after, capped):
@@ -273,7 +276,7 @@ def describe_lateral_spreading(grid, before, after, capped):
     print(f"  Capped at P(at least Moderate) in {int(capped.to_numpy().sum()):,} cells")
 
 
-def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, pilot):
+def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, extent):
     """Correct P(at least Major) for lateral spreading, by zone.
 
     Reads the free faces step 1 wrote for this extent, buffers them into zones,
@@ -286,7 +289,6 @@ def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, pilot):
     Raises:
         FileNotFoundError: If step 1 has not been run for this extent.
     """
-    extent = "pilot" if pilot else "study"
     path = free_faces_path(extent)
     if not path.exists():
         msg = (
@@ -296,7 +298,7 @@ def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, pilot):
         raise FileNotFoundError(msg)
     free_faces = gpd.read_file(path).to_crs(constants.DEFAULT_CRS)
     zones = lateral_spreading_zones(free_faces)
-    zones_path = ls_zones_path(pilot=pilot)
+    zones_path = ls_zones_path(extent=extent)
     zones.to_file(zones_path, driver="GPKG")
 
     corrected, capped = apply_lateral_spreading(
@@ -311,17 +313,17 @@ def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, pilot):
     return corrected
 
 
-def main(*, pilot, lateral_spreading):
+def main(*, extent, lateral_spreading):
     """Expand the NLM land damage grids into six state probabilities and write them out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box rather than
-            the four territorial authorities.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         lateral_spreading: Whether to correct P(at least Major) for lateral
             spreading before the expansion.
     """
     study_areas = get_study_areas(constants.DEFAULT_CRS)
-    bbox, extent_name = resolve_extent(study_areas, pilot=pilot)
+    bbox, extent_name = resolve_extent(study_areas, extent=extent)
 
     print("Reading the NLM land damage exceedance grids ...", flush=True)
     moderate_or_worse = clip_to_extent(
@@ -345,7 +347,7 @@ def main(*, pilot, lateral_spreading):
     nlm_major_or_worse = major_or_worse
     if lateral_spreading:
         major_or_worse = correct_for_lateral_spreading(
-            moderate_or_worse, major_or_worse, pilot=pilot
+            moderate_or_worse, major_or_worse, extent=extent
         )
 
     probabilities = beta_expand_ld_probabilities(moderate_or_worse, major_or_worse)
@@ -360,10 +362,10 @@ def main(*, pilot, lateral_spreading):
         # one and a refusal here would come after the expensive part.
         grid = probabilities[state].rio.write_crs(constants.DEFAULT_CRS)
         path = write_raster(
-            grid.rename(state_slug(state)), beta_probability_path(state, pilot=pilot)
+            grid.rename(state_slug(state)), beta_probability_path(state, extent=extent)
         )
         print(f"Wrote {path}")
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, lateral_spreading=config.LATERAL_SPREADING)
+    main(extent=config.EXTENT, lateral_spreading=config.LATERAL_SPREADING)

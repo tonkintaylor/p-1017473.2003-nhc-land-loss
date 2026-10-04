@@ -4,11 +4,11 @@
   `s1_build_terrain_attributes.py` and `s4_estimate_land_value.py` read
   `temp/exposure/address-spine.geoparquet` and rebuild it from LINZ in their own
   `get_spine()` if it is not there, so either script runs on a clean checkout.
-- The run settings of the scripts — `PILOT`, `FRESH`, the `SPINE`,
+- The run settings of the scripts — `EXTENT`, `FRESH`, the `SPINE`,
   `TERRAIN`, `ACCESSIBILITY`, `LAND_VALUE_OUT` and `COHORTS_OUT` path overrides
   and the `WINDOW_M` override — are read from the one `config.py` in this folder
   and passed into each `main()` as keyword arguments; `s1`, `s2`, `s4` and
-  `fig_town_centres.py` take no command-line arguments. Sharing `PILOT`,
+  `fig_town_centres.py` take no command-line arguments. Sharing `EXTENT`,
   `TERRAIN` and `ACCESSIBILITY` keeps s4 reading what s1 and s2 wrote.
 - Each address is tagged flat or hill by
   `landloss.exposure.land.landform.classify_landform`, against the National
@@ -61,8 +61,9 @@
   `landloss.common.utils.terrain.write_raster`, sampled at every address point
   by `sample_at_points`, and the sampled values written to
   `temp/exposure/terrain-by-address.geoparquet` carrying `address_id`,
-  `slope_deg`, `topographic_position_m` and the geometry. All four take a
-  `-pilot` suffix when `PILOT` is True.
+  `slope_deg`, `topographic_position_m` and the geometry. All four take
+  the `extent_suffix(EXTENT)` suffix (`-pilot` for `"wlg-pilot"`, none for
+  `"full"`).
 - Nodata is masked to NaN before either derivative is computed, by
   `mask_nodata()` in `s1_build_terrain_attributes.py`, and the run names which
   of the three nodata cases the DEM presented. Addresses that still sampled no
@@ -95,7 +96,8 @@
 - Accessibility is measured by `s2_build_accessibility.py`, which reads the
   same spine and writes `temp/exposure/accessibility-by-address.geoparquet`
   carrying `address_id`, `gravity_accessibility`, `nearest_station_m` and the
-  geometry, with a `-pilot` suffix when `PILOT` is True.
+  geometry, with the `extent_suffix(EXTENT)` suffix (`-pilot` for `"wlg-pilot"`, none for
+  `"full"`).
 - `gravity_accessibility` is the straight-line gravity sum computed by
   `landloss.exposure.land.accessibility.gravity_accessibility` over the centres
   in `src/landloss/io/assets/land-value-centres.csv`, one row per centre with its
@@ -128,8 +130,9 @@
   the terrain modifier's.
 - The view of the sea is measured by `s3_build_amenity.py`, which writes
   `temp/exposure/amenity-by-address.geoparquet` carrying `address_id`,
-  `sea_view_share`, `coast_distance_m`, `winter_sun_share` and the geometry, with a `-pilot` suffix when `PILOT` is
-  True. It fetches the DEM through `landloss.io.readers.get_dem` over the
+  `sea_view_share`, `coast_distance_m`, `winter_sun_share` and the geometry, with
+  the `extent_suffix(EXTENT)` suffix (`-pilot` for `"wlg-pilot"`, none for
+  `"full"`). It fetches the DEM through `landloss.io.readers.get_dem` over the
   spine's extent buffered by the casting distance, and masks nodata with
   `mask_nodata()` from `s1_build_terrain_attributes.py`.
 - `landloss.exposure.land.amenity.sea_mask` takes a DEM cell as sea when it lies
@@ -229,8 +232,9 @@
   `temp/exposure/land-value-by-address.geoparquet`, and the cohort table from
   `landloss.exposure.land.land_value.summarise_by_suburb`, one row per territorial
   authority, suburb and landform class, to `temp/exposure/land-value-by-suburb.csv`.
-  Both take a `-pilot` suffix when `PILOT` is True, so a pilot run cannot overwrite
-  the full outputs.
+  Both take the `extent_suffix(EXTENT)` suffix (`-pilot` for `"wlg-pilot"`, none for
+  `"full"`), so a run over one extent cannot
+  overwrite another's outputs.
 - The distribution of the modelled rate across the study area is shown in the
   figure produced by `fig_land_value_map.py`, written to
   `report/exposure/land/land-value/fig/`. It draws one colour per distinct modelled
@@ -242,7 +246,7 @@
   `fig_terrain_attributes.py`, also written to
   `report/exposure/land/land-value/fig/`: slope on a sequential ramp pinned at zero,
   topographic position on a diverging ramp held symmetric about zero. It takes
-  the same `--pilot`, `--ta <name>` and `--ta all` arguments as
+  the same `--extent`, `--ta <name>` and `--ta all` arguments as
   `fig_land_value_map.py`, and reads the s1 output rather than rebuilding it,
   refusing with the command to run when the file is absent.
 - `fig_land_value_map.py --ta "<name>"` draws a single territorial authority
@@ -325,7 +329,8 @@
   `src/scripts/landloss/exposure/land/validations/check_land_value_totals.py`.
 - Two of those checks are reported rather than enforced while the model is this
   coarse, and both say so in the run output. The address count per rating unit
-  is reported under `--pilot`, because a pilot box covers part of one authority.
+  is reported under any `--extent` other than `full`, because a pilot box
+  covers part of one authority.
   The right-skew test is reported whenever the run produces fewer than
   `SKEW_MIN_DISTINCT_RATES` distinct rates, because on landform class alone every
   address takes one of three values per authority and the sign of the skew is

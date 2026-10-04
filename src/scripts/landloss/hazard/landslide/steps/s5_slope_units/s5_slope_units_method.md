@@ -5,7 +5,7 @@
   and is run by `gen_slope_units.py`. The script takes no command line
   arguments; `config.py` is read in its `if __name__ == "__main__":` block and
   passed into `main()`.
-- `PILOT` is `True`, so runs go over `SMALL_WLG_PILOT`, the extent steps 3 and
+- `EXTENT` is `"wlg-pilot"`, so runs go over `SMALL_WLG_PILOT`, the extent steps 3 and
   4 wrote. The inputs are the 10 m DEM, slope and downhill azimuth step 3
   wrote (`gen_multiscale_slope.dem_path(10, ...)`, `slope_path(10, ...)`,
   `aspect_path(10, ...)`) and the step 4 ground map

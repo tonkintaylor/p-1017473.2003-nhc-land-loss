@@ -6,14 +6,15 @@
   `config.py` beside the scripts, read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments; neither script takes command line arguments and neither `main()`
-  carries a default. `PILOT` is `True`, so runs go over `SMALL_WLG_PILOT`; the
-  full extent is the bounding box of the four territorial authorities, resolved
+  carries a default. `EXTENT` is `"wlg-pilot"`, so runs go over `SMALL_WLG_PILOT`;
+  the full extent (`"full"`) is the bounding box of the four territorial authorities, resolved
   by step 3's `gen_multiscale_slope.resolve_extent()`.
 - The vocabulary of the map — `MATERIALS`, `MODIFICATIONS`, `PRIOR_FAILURES`,
   `GW_DEPTH_CLASSES` and `CONFIDENCES` — and the mapping of each source's
   classes onto it live in `landloss.hazard.landslide.ground_map`. Each mapper
   (`material_from_slide()`, `material_from_geology()`, `material_from_nlm()`,
-  `modification_from_genesis()`, `modification_from_wcc()`,
+  `modification_from_slide()`, `modification_from_genesis()`,
+  `modification_from_wcc()`,
   `modification_from_residual()`, `prior_failure_from_genesis()`) lists every
   class of its source and raises on one it has no rule for, so a source that
   gains a class stops the run rather than being defaulted. The source classes
@@ -22,14 +23,18 @@
   susceptibility already scores, and fifteen genesis types.
 - SLIDE's five mixed fill classes ("Mixed fill/rock", "Mixed fill/colluvium",
   "Mixed fill/colluvium/rock", "Mixed fill/talus" and "Old alluvium (mixed
-  fill)") are all mapped to `fill_uncontrolled`, like "Fill", because the layer
-  does not say which part of a mixed polygon is fill or whether it was
-  engineered. Over the pilot the three largest of them cover 65% of the SLIDE
-  area, so 71% of the pilot's mapped ground is fill and Kingsbury's geology
-  value sits at its top over most hillsides. The mapping is left as it is (the
-  lead, 2026-10-02). **Reviewer: a mapping is invited**, for example the
-  dominant natural material with fill recorded as the modification, so that
-  the material and the cut-or-fill state are read separately.
+  fill)") take their natural material as the material and record the fill as
+  the modification, so the two are read separately: "Mixed fill/rock" is
+  `rock`, the two colluvium classes and "Mixed fill/talus" are `colluvium`,
+  and "Old alluvium (mixed fill)" is `alluvium`; colluvium wins where a class
+  names both colluvium and rock, because Wellington fills fail on the buried
+  colluvium at their base [brown_larkin_2005; lyndsell_2019; monteith_2020].
+  "Fill" stays `fill_uncontrolled`, since the layer does not say whether it
+  was engineered. A mixed class is a map unit, not a statement that the whole
+  polygon is fill [townsend_2020]. Accepted by the lead on 2026-10-02 and
+  built the same day; before it, every mixed class was `fill_uncontrolled`,
+  which made 71% of the pilot's mapped ground fill in the 2026-10-02 run. The
+  pilot has not yet been rerun with the new mapping.
 - The sources are read in `gen_ground_map.main()`: `get_slide_interpreted_materials`,
   `get_wellington_urban_geology`, `get_nlm_geomorphology`, `get_slide_genesis`,
   `get_wcc_cut_areas` and `get_wcc_fill_areas` from `landloss.io.readers`, the
@@ -47,7 +52,10 @@
   before each source is built (`genesis_sources()`): cut slope, fill body and
   landfill claim the modification at high confidence, dams at low, and the
   landslide and rockfall polygons claim the prior failure at low. The two WCC
-  layers claim the modification at medium (`wcc_sources()`).
+  layers claim the modification at medium (`wcc_sources()`). The SLIDE
+  materials polygons of a fill type (`SLIDE_FILL_TYPES`: "Fill" and the five
+  mixed classes) claim the modification `fill` as well, split by their own
+  confidence as the material sources are (`slide_modification_sources()`).
 - The two rasters become polygon sources before the overlay. `polygonise_groundwater()`
   cuts the national groundwater grid to the extent and polygonises it with
   `rasterio.features.shapes`, one polygon per run of equal-valued cells, then
@@ -57,7 +65,7 @@
   only; natural is the default anyway.
 - `build_ground_map()` takes the sources in precedence order — SLIDE materials,
   1:50,000 geology, NLM `l3_yp` for the material; SLIDE genesis, WCC areas,
-  residual for the modification; SLIDE genesis for the prior failure; NLM
+  SLIDE materials fill types, residual for the modification; SLIDE genesis for the prior failure; NLM
   groundwater for the depth — unions every source's boundaries and the
   flatland into one planar partition of the extent with `shapely.polygonize`,
   and attributes each piece from the first source whose polygon contains the
@@ -78,8 +86,13 @@
   that grade from `wellington-greywacke-strength.csv` (read through
   `ASSETS_DIR` at `STRENGTH_TABLE_PATH`): among the rows carrying all of
   `c_eff_kpa`, `phi_eff_deg` and `unit_weight_kn_m3`, `check` false before
-  true, then published before the rest, then file order. The picks on the
-  committed table are asserted in `tests/landloss/hazard/landslide/test_ground_map.py`.
+  true, then published before the rest, then file order, unless
+  `STRENGTH_GRADE_PICKS` names the row. `FILL` is named: it reads S52, the set
+  GNS supplied for modelling the Priscilla and Orchy Crescent fills (22 kN/m³,
+  c′ 2 kPa, φ′ 42°) [monteith_2020], rather than S48, which the rule would
+  pick, a maximum from one densifying Orchy Crescent sample [lyndsell_2019]
+  (the lead, 2026-10-02). The picks on the committed table are asserted in
+  `tests/landloss/hazard/landslide/test_ground_map.py`.
 - Fill thickness is the mean of the positive 100 m residual over each piece
   whose modification is `fill`, computed by `mean_positive_residual()` in
   `gen_ground_map.py`, which burns the fill pieces onto the residual grid and

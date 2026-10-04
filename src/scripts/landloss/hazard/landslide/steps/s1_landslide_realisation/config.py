@@ -11,10 +11,12 @@ actually wrote. The placement settings are the contract's (section 3.9 of
 `.agents/plans/urban-slope-build-contract.md`).
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Steps 3 and 5 must have been run over the same
-# extent: this step reads their 10 m rasters and slope units and fetches nothing.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a name
+# from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" is the small Wellington
+# pilot box). Steps 3 and 5 must have been run over the same extent: this step
+# reads their 10 m rasters and slope units and fetches nothing.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to draw. A realisation id is the whole event: the
 # same id in the shaking, liquefaction and landslide layers is the same
@@ -23,6 +25,12 @@ PILOT = True
 # not carry one of its own, because two hazards seeded separately could not be
 # paired.
 REALISATION_IDS = [0]
+
+# The large-landslide coverage model handed to the placement machinery.
+# ``hancox_1997`` reads the coverage raster written by step 10. ``esnz`` keeps
+# the supplied probability-grid route available as the other built portfolio
+# member.
+COVERAGE_MODEL = "hancox_1997"
 
 # The smallest source a large-model failure can have, in square metres: the top
 # of the urban size range (plan section 10.3). Failures below it belong to the

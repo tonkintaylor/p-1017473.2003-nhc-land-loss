@@ -167,24 +167,25 @@ def build_figure(extent, buildings, window):
     return fig
 
 
-def main(*, pilot, close_up_m, use_cached_extent):
+def main(*, extent, close_up_m, use_cached_extent):
     """Draw the insured land extent this run wrote.
 
     Args:
-        pilot: Whether to draw the pilot box extent rather than the full study
-            area one. Must match the setting the generation was run with, which
-            is why both read it from the same ``config.py``.
+        extent: The extent to draw, a name from
+            landloss.io.area_of_interest.EXTENTS or "full". Must match the
+            setting the generation was run with, which is why both read it from
+            the same ``config.py``.
         close_up_m: How wide the close-up panel is, in metres.
         use_cached_extent: Whether to reuse the already-clipped building
             outlines for the close-up window.
     """
-    in_path = insured_land_path(pilot=pilot)
+    in_path = insured_land_path(extent=extent)
     figure_path = FIG_DIR / f"{in_path.stem}.png"
 
     print(f"Reading the insured land extent from {in_path} ...", flush=True)
-    extent = gpd.read_parquet(in_path)
+    insured = gpd.read_parquet(in_path)
 
-    window = busiest_window(extent, close_up_m)
+    window = busiest_window(insured, close_up_m)
     print("Fetching the building outlines over the close-up window ...", flush=True)
     buildings = get_nz_building_outlines(
         bbox=tuple(float(value) for value in window.total_bounds),
@@ -196,7 +197,7 @@ def main(*, pilot, close_up_m, use_cached_extent):
     buildings = drop_non_residential_buildings(buildings)
 
     print(f"Buffer: {INSURED_LAND_BUFFER_M:,.0f} m from every building outline")
-    fig = build_figure(extent, buildings, window)
+    fig = build_figure(insured, buildings, window)
     figure_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(figure_path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
@@ -206,7 +207,7 @@ def main(*, pilot, close_up_m, use_cached_extent):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         close_up_m=config.CLOSE_UP_M,
         use_cached_extent=config.USE_CACHED_EXTENT,
     )

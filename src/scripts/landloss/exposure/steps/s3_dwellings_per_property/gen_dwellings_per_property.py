@@ -42,6 +42,7 @@ from landloss.exposure.land.extent import (
     build_claim_properties,
     count_dwellings,
 )
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     fetch_extent,
@@ -64,15 +65,15 @@ SHARES = [0.5, 0.9, 0.99, 1.0]
 RULE = "-" * 72
 
 
-def dwellings_per_property_path(*, pilot):
+def dwellings_per_property_path(*, extent):
     """Return the file a run writes the count per property to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.parquet"
 
 
-def address_to_claim_path(*, pilot):
+def address_to_claim_path(*, extent):
     """Return the file a run writes the address-to-claim mapping to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{ADDRESS_MAP_STEM}{suffix}.parquet"
 
 
@@ -113,14 +114,15 @@ def describe_counts(counts, addresses, properties):
             print(f"    {title}: {count:,}")
 
 
-def main(*, pilot, use_cached_extent):
+def main(*, extent, use_cached_extent):
     """Write the dwelling count per claim property, and the address mapping.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_extent: Whether to reuse already-fetched LINZ layers.
     """
-    value_path = land_value_path(pilot=pilot)
+    value_path = land_value_path(extent=extent)
     print(f"Reading the addresses from {value_path} ...", flush=True)
     addresses = gpd.read_parquet(value_path)
 
@@ -150,16 +152,16 @@ def main(*, pilot, use_cached_extent):
     )
     describe_counts(counts, addresses, properties)
 
-    out_path = dwellings_per_property_path(pilot=pilot)
+    out_path = dwellings_per_property_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     counts.to_parquet(out_path)
     print(RULE)
     print(f"Wrote {len(counts):,} properties to {out_path}")
 
-    map_path = address_to_claim_path(pilot=pilot)
+    map_path = address_to_claim_path(extent=extent)
     dwellings.to_parquet(map_path)
     print(f"Wrote {len(dwellings):,} address-to-claim rows to {map_path}")
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, use_cached_extent=config.USE_CACHED_EXTENT)
+    main(extent=config.EXTENT, use_cached_extent=config.USE_CACHED_EXTENT)

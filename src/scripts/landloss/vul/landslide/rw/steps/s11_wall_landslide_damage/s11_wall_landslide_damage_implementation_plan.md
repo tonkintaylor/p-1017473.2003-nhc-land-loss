@@ -19,7 +19,7 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.12, 5.2 and
 7.13; plan section 5.2.
 
 - [x] Read the wall population per exposure world
-      (`wall_population_path(world_id, pilot=...)`) and the combined
+      (`wall_population_path(world_id, extent=...)`) and the combined
       realisation and urban wall outcome table per world and earthquake from
       landslide step 9.
 - [x] Map each sloping wall's outcome onto a flag by the one dict

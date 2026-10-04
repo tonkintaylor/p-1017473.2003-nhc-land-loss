@@ -36,6 +36,7 @@ from landloss.domain.loss_contract import (
     RW_ID_COLUMN,
 )
 from landloss.hazard.landslide.land_class import LAND_CLASS_COLUMN
+from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.landslide.flags import (
     OUTCOME_COLUMN,
     SLOPE_ID_COLUMN,
@@ -63,19 +64,20 @@ IS_FLATLAND_COLUMN = "is_flatland"
 RULE = "-" * 72
 
 
-def wall_landslide_damage_path(world_id, realisation_id, *, pilot):
+def wall_landslide_damage_path(world_id, realisation_id, *, extent):
     """Return the file a run writes one world and earthquake's wall flags to.
 
     Args:
         world_id: The exposure world (one draw of the wall population) the file holds.
         realisation_id: The earthquake realisation the file holds.
-        pilot: Whether the run covers the pilot area only, which adds a
-            ``-pilot`` suffix to the file name.
+        extent: The extent the run covers, a name from
+            landloss.io.area_of_interest.EXTENTS or "full". It sets the
+            file name suffix through ``extent_suffix``.
 
     Returns:
         The parquet path under the vul work directory.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return (
         WORK_DIR / f"{OUT_STEM}-w{world_id:03d}-r{realisation_id:03d}{suffix}.parquet"
     )
@@ -119,16 +121,17 @@ def describe_flags(flags, walls, outcomes):
     print(f"  any flag, so one replacement in loss: {int(any_flag.sum()):,}")
 
 
-def main(*, pilot, world_ids, realisation_ids):
+def main(*, extent, world_ids, realisation_ids):
     """Write the three contract flags per wall, per world and earthquake.
 
     Args:
-        pilot: Whether to run over the pilot area only.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: The exposure worlds to run, each one draw of the wall population.
         realisation_ids: The earthquake realisations to run in every world.
     """
     for world_id in world_ids:
-        walls_path = wall_population_path(world_id, pilot=pilot)
+        walls_path = wall_population_path(world_id, extent=extent)
         print(f"Reading the walls of world {world_id} from {walls_path} ...")
         walls = gpd.read_parquet(walls_path)
         claims = walls.set_index(RW_ID_COLUMN)[CLAIM_ID_COLUMN]
@@ -137,12 +140,12 @@ def main(*, pilot, world_ids, realisation_ids):
             print(RULE)
             print(f"World {world_id}, realisation {realisation_id}")
             slides_path = combined_realisation_path(
-                world_id, realisation_id, pilot=pilot
+                world_id, realisation_id, extent=extent
             )
             print(f"Reading the landslides from {slides_path} ...", flush=True)
             landslides = gpd.read_parquet(slides_path)
             outcomes_path = urban_wall_outcome_path(
-                world_id, realisation_id, pilot=pilot
+                world_id, realisation_id, extent=extent
             )
             print(f"Reading the wall outcomes from {outcomes_path} ...", flush=True)
             outcomes = pd.read_parquet(outcomes_path)
@@ -154,7 +157,9 @@ def main(*, pilot, world_ids, realisation_ids):
             describe_landslides(landslides)
             describe_flags(flags, walls, outcomes)
 
-            out_path = wall_landslide_damage_path(world_id, realisation_id, pilot=pilot)
+            out_path = wall_landslide_damage_path(
+                world_id, realisation_id, extent=extent
+            )
             out_path.parent.mkdir(parents=True, exist_ok=True)
             flags.to_parquet(out_path)
             print(f"Wrote {len(flags):,} rows to {out_path}")
@@ -165,7 +170,7 @@ def main(*, pilot, world_ids, realisation_ids):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         realisation_ids=config.REALISATION_IDS,
     )

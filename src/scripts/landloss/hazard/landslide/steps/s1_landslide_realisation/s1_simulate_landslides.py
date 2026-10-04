@@ -1,12 +1,12 @@
 """Draw one realisation of the large landslides, placed one slope unit at a time.
 
-A probability grid says how likely each cell is to fail -- 32 m cells in the file
-supplied so far, though the cell size is read off the grid rather than assumed
-anywhere here. It cannot say how much land a claim covers, or whose land the
-debris lands on, because it holds no landslides, only a chance of one. This
-script draws a set of them, the **large** population of plan section 10: the
-failures above the urban size range, placed in the slope units step 5 cut. The
-urban failures on the slopes beside buildings are drawn by landslide step 9
+A model grid gives each cell's expected large-landslide coverage: the Hancox
+model 3 grid written by step 10 on the committed settings, or the supplied ESNZ
+probability grid when `COVERAGE_MODEL` selects it. It cannot say how much land a
+claim covers, or whose land the debris lands on, because it holds no landslides.
+This script draws a set of them, the **large** population of plan section 10:
+the failures above the urban size range, placed in the slope units step 5 cut.
+The urban failures on the slopes beside buildings are drawn by landslide step 9
 against their own fragilities, and the two are combined there.
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s1_landslide_realisation/s1_simulate_landslides.py
@@ -15,10 +15,10 @@ What it runs over, and with what settings, comes from ``config.py`` beside it,
 read at the bottom of this file and passed into :func:`main`. Change it there
 rather than passing flags, so that what a run did can be read off the source.
 
-The step reads only hazard outputs: the slope units from step 5
+The step reads only hazard outputs: the selected coverage, the slope units from step 5
 (``slope_units_path``), the 10 m DEM, slope and aspect from step 3 and its 100 m
 topographic position, the step 4 ground map, and the supplied probability grid,
-resampled onto the 10 m DEM grid so every per-cell product below is cell
+or the step 10 Hancox coverage, on the 10 m DEM grid so every per-cell product below is cell
 aligned. It fetches nothing.
 
 **No large landslide starts on flat land** (the project lead, 2026-10-02). The
@@ -30,10 +30,9 @@ and its runout may well end there.
 
 Nine stages, each of which is a stated assumption rather than a measurement.
 
-1. **Expected failed area per unit.** The sum over the unit's cells of the cell
-   probability times the cell area, times :data:`BETA_SOURCE_AREA_FRACTION`
-   (the calibrated share of a failing cell's area that becomes source, which
-   keeps the areal coverage at the phase 1 calibration of 0.99%), times one
+1. **Expected failed area per unit.** The sum over the unit's cells of model
+   coverage times cell area, times the model's source-area fraction (1 for
+   Hancox coverage; :data:`BETA_SOURCE_AREA_FRACTION` for ESNZ), times one
    minus ``URBAN_AREA_SHARE`` (the share of the inventory's area the urban
    model draws instead).
 2. **A count per unit**, a Poisson draw with mean the expected area over the
@@ -44,7 +43,7 @@ Nine stages, each of which is a stated assumption rather than a measurement.
    :data:`SIZE_EXPONENT`, the published Kaikōura exponent [massey_2020], which
    holds above a cutoff near 500 m² and so over this range.
 4. **A seed cell per failure**: a weighted choice over the unit's top
-   :data:`SEED_CANDIDATE_CELLS` cells by probability times a crest lift from
+   :data:`SEED_CANDIDATE_CELLS` cells by model coverage times a crest lift from
    the 100 m topographic position, because earthquake sources favour crests.
 5. **An ellipse for the source**, of the sampled area, long axis along the
    downhill azimuth at the seed with ``SOURCE_ASPECT_RATIO``, centred half a
@@ -61,8 +60,8 @@ Nine stages, each of which is a stated assumption rather than a measurement.
    material left, and **inundated land**, where it came to rest, in the land
    classes of :mod:`landloss.hazard.landslide.land_class`.
 
-Leave ``PILOT`` set in ``config.py`` while the model is being changed; steps 3
-and 5 must have been run over the same extent.
+Leave ``EXTENT = "wlg-pilot"`` in ``config.py`` while the model is being
+changed; steps 3 and 5 must have been run over the same extent.
 """
 
 import sys
@@ -79,13 +78,18 @@ from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.common.utils.terrain import azimuth_offsets, cell_size
 from landloss.domain import constants
 from landloss.hazard.landslide.geometry import landslide_volume_m3, mean_depth_m
+from landloss.hazard.landslide.ground_map import flatland_cell_mask
 from landloss.hazard.landslide.land_class import (
     EVACUATED,
     INUNDATED,
     LAND_CLASS_COLUMN,
 )
 from landloss.hazard.realisation import realisation_seed
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.source_material import get_eil_landslide_probability
 from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
@@ -97,6 +101,9 @@ from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import
 )
 from scripts.landloss.hazard.landslide.steps.s5_slope_units.gen_slope_units import (
     slope_units_path,
+)
+from scripts.landloss.hazard.landslide.steps.s10_hancox_1997.gen_hancox_1997_coverage import (
+    coverage_path as hancox_coverage_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 
@@ -122,9 +129,9 @@ RNG_STREAM = "landslide"
 # liquefaction layers of the same modelled earthquake.
 REALISATION_ID_COLUMN = "realisation_id"
 
-# The working grid: the 10 m DEM grid the slope units were cut on. The
-# probability grid is resampled onto it so the units, the topographic position
-# and the probability share cells.
+# The working grid: the 10 m DEM grid the slope units were cut on. The selected
+# model grid is put onto it so the units, topographic position and coverage
+# share cells.
 RESOLUTION_M = 10
 TOPOGRAPHIC_POSITION_LAYER = "topographic-position-100m"
 
@@ -151,7 +158,15 @@ LANDSLIDE_ID_COLUMN = "landslide_id"
 # controlling total area; neither holds now. The exponent sets the shape of the
 # sizes and nothing else: the count per unit is drawn to deliver an expected
 # area, so the total area does not move with it.
-MAX_SOURCE_AREA_M2 = 3000.0
+#
+# The upper bound is at least the largest Wellington earthquake landslide on
+# record: Gold's slide on the Hutt Road in 1855, about 300,000 m³
+# [brabhaharan_2018] (the project lead, 2026-10-02, raised from 3,000 m²). It
+# is set at 35,000 m² of source, about what the volume-area law gives for
+# 300,000 m³ (34,000 m²). The mean source area on these settings is about
+# 2,500 m², and about 60% of the large-failure area is in failures above
+# 3,000 m².
+MAX_SOURCE_AREA_M2 = 35_000.0
 SIZE_EXPONENT = 2.1
 
 # The share of a failing cell's area that becomes source. The supplied grid
@@ -165,6 +180,8 @@ SIZE_EXPONENT = 2.1
 # calibration delivered. A beta placeholder: the calibration against the
 # Kaikōura inventory (phase 2 of the plan) sets it.
 BETA_SOURCE_AREA_FRACTION = 0.252
+
+LARGE_MODELS = ("esnz", "hancox_1997")
 
 # How many of a unit's highest-weight cells a failure's seed is chosen among.
 # A single best cell would seed every failure in the unit at the same place; a
@@ -244,7 +261,7 @@ MIN_REPORTED_OVERLAP_PERCENT = 0.05
 RULE = "-" * 72
 
 
-def realisation_path(*, pilot, realisation_id):
+def realisation_path(*, extent, realisation_id):
     """Return the file a run writes one realisation to.
 
     A function rather than a constant because the name depends on the extent and
@@ -253,34 +270,36 @@ def realisation_path(*, pilot, realisation_id):
     actually wrote.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_id: Which modelled earthquake this is.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.geoparquet"
 
 
-def input_paths(*, pilot):
+def input_paths(*, extent):
     """Return the step 5 slope units, the step 4 ground map and the step 3 rasters."""
     return {
-        "units": slope_units_path(pilot=pilot),
-        "ground_map": ground_map_path(pilot=pilot),
-        "dem": gen_multiscale_slope.dem_path(RESOLUTION_M, pilot=pilot),
-        "slope": gen_multiscale_slope.slope_path(RESOLUTION_M, pilot=pilot),
-        "aspect": gen_multiscale_slope.aspect_path(RESOLUTION_M, pilot=pilot),
+        "units": slope_units_path(extent=extent),
+        "ground_map": ground_map_path(extent=extent),
+        "dem": gen_multiscale_slope.dem_path(RESOLUTION_M, extent=extent),
+        "slope": gen_multiscale_slope.slope_path(RESOLUTION_M, extent=extent),
+        "aspect": gen_multiscale_slope.aspect_path(RESOLUTION_M, extent=extent),
         "topographic_position": gen_terrain_derivatives.terrain_path(
-            TOPOGRAPHIC_POSITION_LAYER, pilot=pilot
+            TOPOGRAPHIC_POSITION_LAYER, extent=extent
         ),
     }
 
 
-def resolve_extent(*, pilot):
+def resolve_extent(*, extent):
     """Return the bounding box and name of the extent to run over."""
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), SMALL_WLG_PILOT.name
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), aoi.name
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
     bbox = tuple(float(value) for value in study_areas.total_bounds)
@@ -298,6 +317,27 @@ def read_grid(path):
 def read_probability(bbox):
     """Read the supplied probability grid over the extent, in the study's projection."""
     return get_eil_landslide_probability(bbox=bbox, crs=constants.DEFAULT_CRS)
+
+
+def coverage_source_area_fraction(coverage_model):
+    """Return the conversion from a model grid to expected source coverage."""
+    if coverage_model == "esnz":
+        return BETA_SOURCE_AREA_FRACTION
+    if coverage_model == "hancox_1997":
+        return 1.0
+    msg = f"large model must be one of {LARGE_MODELS}, not {coverage_model!r}"
+    raise ValueError(msg)
+
+
+def read_model_coverage(*, coverage_model, bbox, extent, realisation_id, template):
+    """Read one large model's grid and align it to the placement grid."""
+    if coverage_model == "esnz":
+        supplied = read_probability(bbox)
+    elif coverage_model == "hancox_1997":
+        supplied = read_grid(hancox_coverage_path(realisation_id, extent=extent))
+    else:
+        coverage_source_area_fraction(coverage_model)
+    return align_probability(supplied, template)
 
 
 def check_probabilities(probability):
@@ -378,17 +418,7 @@ def flatland_mask(ground_map, template):
     Returns:
         A boolean array of the template's shape.
     """
-    flat = ground_map.loc[ground_map["is_flatland"].astype(bool), "geometry"]
-    if flat.empty:
-        return np.zeros(template.shape, dtype=bool)
-    burned = features.rasterize(
-        ((geometry, 1) for geometry in flat),
-        out_shape=template.shape,
-        transform=template.rio.transform(),
-        fill=0,
-        dtype="uint8",
-    )
-    return burned.astype(bool)
+    return flatland_cell_mask(ground_map, template)
 
 
 def mask_flatland(probability, on_flatland):
@@ -703,6 +733,7 @@ def build_failures(
     rng,
     *,
     min_source_area_m2,
+    source_area_fraction,
     urban_area_share,
     source_aspect_ratio,
     crest_weight,
@@ -723,6 +754,8 @@ def build_failures(
             and ``mean_aspect_degrees``.
         rng: The random number generator.
         min_source_area_m2: The lower bound of the size law.
+        source_area_fraction: The share of the model value that is expected
+            source coverage.
         urban_area_share: The share of the failed area the urban model draws.
         source_aspect_ratio: The long axis over the short axis of a source.
         crest_weight: How much the topographic position lifts the seeding.
@@ -741,7 +774,7 @@ def build_failures(
         labels,
         len(units),
         cell_area_m2=cell_area_m2,
-        source_area_fraction=BETA_SOURCE_AREA_FRACTION,
+        source_area_fraction=source_area_fraction,
         urban_area_share=urban_area_share,
     )
     mean_area_m2 = truncated_power_law_mean_m2(
@@ -948,7 +981,12 @@ def describe_probabilities(finite, resolution, cells):
 
 
 def describe_settings(
-    *, min_source_area_m2, urban_area_share, source_aspect_ratio, crest_weight
+    *,
+    min_source_area_m2,
+    source_area_fraction,
+    urban_area_share,
+    source_aspect_ratio,
+    crest_weight,
 ):
     """Print the placement settings the run used, and the size law they imply."""
     mean_area_m2 = truncated_power_law_mean_m2(
@@ -960,7 +998,7 @@ def describe_settings(
         f"  size law: area^-{SIZE_EXPONENT:g} on [{min_source_area_m2:,.0f}, "
         f"{MAX_SOURCE_AREA_M2:,.0f}] m2, mean {mean_area_m2:,.0f} m2"
     )
-    print(f"  source area fraction of a failing cell: {BETA_SOURCE_AREA_FRACTION:g}")
+    print(f"  source area fraction of a failing cell: {source_area_fraction:g}")
     print(f"  urban area share taken off: {urban_area_share:g}")
     print(f"  source aspect ratio: {source_aspect_ratio:g}")
     print(f"  crest weight: {crest_weight:g}")
@@ -1058,8 +1096,9 @@ def describe_result(polygons):
 
 def main(
     *,
-    pilot,
+    extent,
     realisation_ids,
+    coverage_model,
     large_min_source_area_m2,
     urban_area_share,
     source_aspect_ratio,
@@ -1068,9 +1107,10 @@ def main(
     """Draw a realisation of large landslides per id and write each one out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box rather than
-            the four territorial authorities.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to draw.
+        coverage_model: Which large-landslide coverage grid to place.
         large_min_source_area_m2: The smallest source the large population
             draws; the top of the urban range.
         urban_area_share: The share of the failed area the urban model draws,
@@ -1079,8 +1119,8 @@ def main(
         crest_weight: How much the 100 m topographic position lifts a cell's
             seeding weight.
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
-    paths = input_paths(pilot=pilot)
+    bbox, extent_name = resolve_extent(extent=extent)
+    paths = input_paths(extent=extent)
     print(RULE)
     print(f"Extent    : {extent_name}")
     for name, path in paths.items():
@@ -1093,34 +1133,44 @@ def main(
     aspect = read_grid(paths["aspect"])
     topographic_position = read_grid(paths["topographic_position"])
 
-    print("Reading the landslide probability grid ...", flush=True)
-    supplied = read_probability(bbox)
-    check_probabilities(supplied)
-    probability = align_probability(supplied, dem)
-    finite = check_probabilities(probability)
-    on_flatland = flatland_mask(ground_map, probability)
-    describe_flatland_mask(probability, on_flatland)
-    probability = mask_flatland(probability, on_flatland)
-
-    describe_extent(extent_name, probability)
-    describe_probabilities(finite, cell_size(probability), probability.size)
+    source_area_fraction = coverage_source_area_fraction(coverage_model)
+    on_flatland = flatland_mask(ground_map, dem)
+    describe_extent(extent_name, dem)
     describe_settings(
         min_source_area_m2=large_min_source_area_m2,
+        source_area_fraction=source_area_fraction,
         urban_area_share=urban_area_share,
         source_aspect_ratio=source_aspect_ratio,
         crest_weight=crest_weight,
     )
 
     for realisation_id in realisation_ids:
+        print(
+            f"Reading {coverage_model} large-landslide coverage for "
+            f"realisation {realisation_id} ...",
+            flush=True,
+        )
+        probability = read_model_coverage(
+            coverage_model=coverage_model,
+            bbox=bbox,
+            extent=extent,
+            realisation_id=realisation_id,
+            template=dem,
+        )
+        finite = check_probabilities(probability)
+        describe_flatland_mask(probability, on_flatland)
+        probability = mask_flatland(probability, on_flatland)
+        describe_probabilities(finite, cell_size(probability), probability.size)
         draw_realisation(
             probability,
             slope,
             aspect,
             topographic_position,
             units,
-            pilot=pilot,
+            extent=extent,
             realisation_id=realisation_id,
             large_min_source_area_m2=large_min_source_area_m2,
+            source_area_fraction=source_area_fraction,
             urban_area_share=urban_area_share,
             source_aspect_ratio=source_aspect_ratio,
             crest_weight=crest_weight,
@@ -1134,9 +1184,10 @@ def draw_realisation(
     topographic_position,
     units,
     *,
-    pilot,
+    extent,
     realisation_id,
     large_min_source_area_m2,
+    source_area_fraction,
     urban_area_share,
     source_aspect_ratio,
     crest_weight,
@@ -1153,14 +1204,16 @@ def draw_realisation(
         aspect: Downhill azimuth in degrees, on the same grid.
         topographic_position: The 100 m topographic position, on the same grid.
         units: The slope units.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_id: Which modelled earthquake this is.
         large_min_source_area_m2: The lower bound of the size law.
+        source_area_fraction: The share of the model value that is source area.
         urban_area_share: The share of the failed area the urban model draws.
         source_aspect_ratio: The long axis over the short axis of a source.
         crest_weight: How much the topographic position lifts the seeding.
     """
-    out_path = realisation_path(pilot=pilot, realisation_id=realisation_id)
+    out_path = realisation_path(extent=extent, realisation_id=realisation_id)
     print(RULE)
     print(f"Realisation {realisation_id}")
 
@@ -1173,6 +1226,7 @@ def draw_realisation(
         units,
         rng,
         min_source_area_m2=large_min_source_area_m2,
+        source_area_fraction=source_area_fraction,
         urban_area_share=urban_area_share,
         source_aspect_ratio=source_aspect_ratio,
         crest_weight=crest_weight,
@@ -1212,8 +1266,9 @@ def draw_realisation(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         realisation_ids=config.REALISATION_IDS,
+        coverage_model=config.COVERAGE_MODEL,
         large_min_source_area_m2=config.LARGE_MIN_SOURCE_AREA_M2,
         urban_area_share=config.URBAN_AREA_SHARE,
         source_aspect_ratio=config.SOURCE_ASPECT_RATIO,

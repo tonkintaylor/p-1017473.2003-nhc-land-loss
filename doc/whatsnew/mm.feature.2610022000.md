@@ -1,0 +1,1 @@
+Raised the largest source area of a large landslide in step 1 from 3,000 m² to 35,000 m², about the source area of Gold's 1855 slide on the Hutt Road, which moves the mean source area from about 1,300 m² to about 2,500 m² and roughly halves the count of large failures for the same expected area.

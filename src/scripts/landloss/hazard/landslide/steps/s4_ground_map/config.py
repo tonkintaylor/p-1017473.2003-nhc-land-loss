@@ -7,9 +7,11 @@ reading this file and the git history of it rather than by remembering which
 flags were typed.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a name
+# from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" is the small Wellington
+# pilot box).
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Whether to reuse the on-disk cache of every polygon layer read. Set False to
 # fetch them again.

@@ -23,8 +23,9 @@ one of those DEMs:
 - **Vegetation height**, the surface model minus the 1 m DEM. NaN wherever no
   surface model survey covers a cell.
 
-Writes one GeoTIFF per layer under temp/hazard/landslide/terrain/, with a
-``-pilot`` suffix for a pilot run. The file names and band names are in
+Writes one GeoTIFF per layer under temp/hazard/landslide/terrain/, with the
+extent's ``extent_suffix`` (``-pilot`` for the small Wellington pilot) on a run
+that is not over the full study area. The file names and band names are in
 ``TERRAIN_LAYERS``; every consumer asks ``terrain_path()`` for a file rather
 than spelling a name.
 """
@@ -47,6 +48,7 @@ from landloss.common.utils.terrain import (
     write_raster,
 )
 from landloss.domain import constants
+from landloss.io.area_of_interest import extent_suffix, is_full_extent
 from landloss.io.readers import get_dsm, get_nz_building_outlines
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
@@ -84,12 +86,13 @@ TERRAIN_FILE_STEMS = {
 }
 
 
-def terrain_path(layer, *, pilot):
+def terrain_path(layer, *, extent):
     """Return the file one terrain derivative is written to.
 
     Args:
         layer: A key of ``TERRAIN_LAYERS``.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The GeoTIFF path under ``temp/hazard/landslide/terrain/``.
@@ -100,7 +103,7 @@ def terrain_path(layer, *, pilot):
     if layer not in TERRAIN_LAYERS:
         msg = f"{layer!r} is not a terrain layer; choose one of {list(TERRAIN_LAYERS)}."
         raise KeyError(msg)
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     stem = TERRAIN_FILE_STEMS.get(layer, layer)
     return TERRAIN_DIR / f"{stem}{suffix}.tif"
 
@@ -126,16 +129,16 @@ def describe_layer(key, layer):
     )
 
 
-def write_layer(key, layer, *, pilot):
+def write_layer(key, layer, *, extent):
     """Check a layer carries the band name promised for its key, then write it."""
     assert layer.name == TERRAIN_LAYERS[key], (key, layer.name)
     describe_layer(key, layer)
-    return write_raster(layer.astype("float32"), terrain_path(key, pilot=pilot))
+    return write_raster(layer.astype("float32"), terrain_path(key, extent=extent))
 
 
 def main(
     *,
-    pilot,
+    extent,
     use_cached_dsm,
     face_height_windows_m,
     residual_base_resolutions_m,
@@ -145,7 +148,8 @@ def main(
     """Derive every terrain layer from step 3's DEMs and the LINZ surface model.
 
     Args:
-        pilot: Whether the DEMs were built over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_dsm: Whether to reuse an already-fetched surface model.
         face_height_windows_m: The windows the face height is measured over,
             in metres, on the 1 m DEM.
@@ -157,31 +161,31 @@ def main(
             computed on.
     """
     print(RULE)
-    print(f"Extent    : {'pilot' if pilot else 'full study area'}")
-    print(f"Reading   : {dem_path(1, pilot=pilot)}")
-    dem_1m = read_layer(dem_path(1, pilot=pilot))
+    print(f"Extent    : {'full study area' if is_full_extent(extent) else extent}")
+    print(f"Reading   : {dem_path(1, extent=extent)}")
+    dem_1m = read_layer(dem_path(1, extent=extent))
 
     written = []
     for window_m in face_height_windows_m:
         layer = local_relief(dem_1m, 1, window_m)
-        written.append(write_layer(f"face-height-{window_m:g}m", layer, pilot=pilot))
+        written.append(write_layer(f"face-height-{window_m:g}m", layer, extent=extent))
 
     for resolution_m in residual_base_resolutions_m:
-        base = read_layer(dem_path(resolution_m, pilot=pilot))
+        base = read_layer(dem_path(resolution_m, extent=extent))
         layer = cut_fill_residual(dem_1m, base)
         written.append(
-            write_layer(f"cut-fill-residual-{resolution_m:g}m", layer, pilot=pilot)
+            write_layer(f"cut-fill-residual-{resolution_m:g}m", layer, extent=extent)
         )
 
-    dem = read_layer(dem_path(curvature_resolution_m, pilot=pilot))
+    dem = read_layer(dem_path(curvature_resolution_m, extent=extent))
     layer = profile_curvature(dem, curvature_resolution_m)
-    written.append(write_layer("profile-curvature", layer, pilot=pilot))
+    written.append(write_layer("profile-curvature", layer, extent=extent))
 
     for window_m, resolution_m in topographic_position_windows_m.items():
-        dem = read_layer(dem_path(resolution_m, pilot=pilot))
+        dem = read_layer(dem_path(resolution_m, extent=extent))
         layer = topographic_position(dem, resolution_m, window_m)
         written.append(
-            write_layer(f"topographic-position-{window_m:g}m", layer, pilot=pilot)
+            write_layer(f"topographic-position-{window_m:g}m", layer, extent=extent)
         )
 
     bbox = tuple(float(value) for value in dem_1m.rio.bounds())
@@ -191,7 +195,7 @@ def main(
     print("Reading the LINZ building outlines, masked out of the vegetation ...")
     buildings = get_nz_building_outlines(bbox, constants.DEFAULT_CRS).geometry
     layer = vegetation_height(dsm, dem_1m, buildings)
-    written.append(write_layer("vegetation-height", layer, pilot=pilot))
+    written.append(write_layer("vegetation-height", layer, extent=extent))
 
     print(RULE)
     for path in written:
@@ -200,7 +204,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         use_cached_dsm=config.USE_CACHED_DSM,
         face_height_windows_m=config.FACE_HEIGHT_WINDOWS_M,
         residual_base_resolutions_m=config.RESIDUAL_BASE_RESOLUTIONS_M,

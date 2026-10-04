@@ -72,6 +72,12 @@ from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
 from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
     gen_urban_slope_realisation,
 )
+from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+    config as hancox_config,
+)
+from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+    gen_hancox_1997_coverage,
+)
 from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
     gen_liq_free_faces,
 )
@@ -102,29 +108,30 @@ from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation import (
 from scripts.landloss.pipeline import run_steps
 
 
-def main(*, pilot, realisation_ids, world_ids):
+def main(*, extent, realisation_ids, world_ids):
     """Run the hazard steps that read no exposure, in order.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to run.
         world_ids: Which exposure worlds to run. Unused by this pass, which
             draws nothing per world; carried so the two passes take the same
             arguments and ``gen_all.py`` passes one setting to both.
     """
     del world_ids
-    ids = {"pilot": pilot, "realisation_ids": realisation_ids}
+    ids = {"extent": extent, "realisation_ids": realisation_ids}
     run_steps(
         "hazard",
         [
             (
                 "shaking s2, site class",
-                lambda: gen_site_class.main(pilot=pilot),
+                lambda: gen_site_class.main(extent=extent),
             ),
             (
                 "shaking s3, PGV",
                 lambda: gen_pgv.main(
-                    pilot=pilot, return_period_yr=pgv_config.RETURN_PERIOD_YR
+                    extent=extent, return_period_yr=pgv_config.RETURN_PERIOD_YR
                 ),
             ),
             (
@@ -141,12 +148,12 @@ def main(*, pilot, realisation_ids, world_ids):
             ),
             (
                 "liquefaction s1, free faces",
-                lambda: gen_liq_free_faces.main(extent="pilot" if pilot else "study"),
+                lambda: gen_liq_free_faces.main(extent=extent),
             ),
             (
                 "liquefaction s2, land damage probabilities",
                 lambda: gen_liq_ld_probabilities.main(
-                    pilot=pilot,
+                    extent=extent,
                     lateral_spreading=ld_probabilities_config.LATERAL_SPREADING,
                 ),
             ),
@@ -157,7 +164,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s3, multiscale slope and aspect",
                 lambda: gen_multiscale_slope.main(
-                    pilot=pilot,
+                    extent=extent,
                     resolutions_m=slope_config.RESOLUTIONS_M,
                     use_cached_dem=slope_config.USE_CACHED_DEM,
                 ),
@@ -165,7 +172,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s3, terrain derivatives",
                 lambda: gen_terrain_derivatives.main(
-                    pilot=pilot,
+                    extent=extent,
                     use_cached_dsm=slope_config.USE_CACHED_DSM,
                     face_height_windows_m=slope_config.FACE_HEIGHT_WINDOWS_M,
                     residual_base_resolutions_m=slope_config.RESIDUAL_BASE_RESOLUTIONS_M,
@@ -176,7 +183,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s4, ground map",
                 lambda: gen_ground_map.main(
-                    pilot=pilot,
+                    extent=extent,
                     use_cached_layers=ground_map_config.USE_CACHED_LAYERS,
                     default_gw_depth_m=ground_map_config.DEFAULT_GROUNDWATER_DEPTH_M,
                     residual_modification_threshold_m=ground_map_config.RESIDUAL_MODIFICATION_THRESHOLD_M,
@@ -185,7 +192,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s5, slope units",
                 lambda: gen_slope_units.main(
-                    pilot=pilot,
+                    extent=extent,
                     channel_threshold_ha=slope_units_config.CHANNEL_THRESHOLD_HA,
                     channel_thresholds_tried_ha=slope_units_config.CHANNEL_THRESHOLDS_TRIED_HA,
                     aspect_merge_tolerance_deg=slope_units_config.ASPECT_MERGE_TOLERANCE_DEG,
@@ -196,7 +203,7 @@ def main(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s6, urban slope candidates",
                 lambda: gen_urban_slope_candidates.main(
-                    pilot=pilot,
+                    extent=extent,
                     use_cached_layers=candidates_config.USE_CACHED_LAYERS,
                     scales_m=candidates_config.SCALES_M,
                     building_distance_m=candidates_config.BUILDING_DISTANCE_M,
@@ -205,9 +212,24 @@ def main(*, pilot, realisation_ids, world_ids):
                 ),
             ),
             (
+                "landslide s10, Hancox 1997 coverage",
+                lambda: gen_hancox_1997_coverage.main(
+                    extent=extent,
+                    realisation_ids=realisation_ids,
+                    scenario_mw=hancox_config.SCENARIO_MW,
+                    site_distance_km=hancox_config.SITE_DISTANCE_KM,
+                    marc_r0_km=hancox_config.MARC_R0_KM,
+                    marc_fault_type=hancox_config.MARC_FAULT_TYPE,
+                    marc_onshore_fraction=hancox_config.MARC_ONSHORE_FRACTION,
+                    marc_modal_slope_deg=hancox_config.MARC_MODAL_SLOPE_DEG,
+                    marc_a_topo=hancox_config.MARC_A_TOPO,
+                ),
+            ),
+            (
                 "landslide s1, large-model landslide realisations",
                 lambda: s1_simulate_landslides.main(
                     **ids,
+                    coverage_model=large_config.COVERAGE_MODEL,
                     large_min_source_area_m2=large_config.LARGE_MIN_SOURCE_AREA_M2,
                     urban_area_share=large_config.URBAN_AREA_SHARE,
                     source_aspect_ratio=large_config.SOURCE_ASPECT_RATIO,
@@ -218,11 +240,12 @@ def main(*, pilot, realisation_ids, world_ids):
     )
 
 
-def main_urban(*, pilot, realisation_ids, world_ids):
+def main_urban(*, extent, realisation_ids, world_ids):
     """Run the urban slope chain, landslide steps 7 to 9, after exposure.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to run.
         world_ids: Which exposure worlds to run.
     """
@@ -232,7 +255,7 @@ def main_urban(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s7, urban slope polygons",
                 lambda: gen_urban_slope_polygons.main(
-                    pilot=pilot,
+                    extent=extent,
                     use_cached_layers=polygons_config.USE_CACHED_LAYERS,
                     road_half_width_m=polygons_config.ROAD_HALF_WIDTH_M,
                 ),
@@ -240,7 +263,7 @@ def main_urban(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s8, urban slope fragility",
                 lambda: gen_urban_slope_fragility.main(
-                    pilot=pilot,
+                    extent=extent,
                     world_ids=world_ids,
                     urban_rate=fragility_config.URBAN_RATE,
                     return_period_yr=fragility_config.RETURN_PERIOD_YR,
@@ -249,7 +272,7 @@ def main_urban(*, pilot, realisation_ids, world_ids):
             (
                 "landslide s9, urban slope realisations",
                 lambda: gen_urban_slope_realisation.main(
-                    pilot=pilot,
+                    extent=extent,
                     world_ids=world_ids,
                     realisation_ids=realisation_ids,
                 ),
@@ -260,7 +283,7 @@ def main_urban(*, pilot, realisation_ids, world_ids):
 
 if __name__ == "__main__":
     settings = {
-        "pilot": config.PILOT,
+        "extent": config.EXTENT,
         "realisation_ids": config.REALISATION_IDS,
         "world_ids": config.WORLD_IDS,
     }

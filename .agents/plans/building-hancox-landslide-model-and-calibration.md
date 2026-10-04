@@ -11,8 +11,12 @@ and this plan builds both, because they share the same code:
 1. **A model in its own right.** Where landsliding occurs (an envelope from
    magnitude, distance and intensity) and how it is distributed within that
    envelope (by slope class).
-2. **The calibration of every large model** (1, 2, 5 and 7). Every one of them
-   is checked against two independent constraints:
+2. **Two tests reported beside every large model** (1, 2, 4, 5 and 7), not a
+   calibration of them. The project lead decided on 2026-10-02 that each
+   large model keeps its own published calibration, because scaling every
+   model to one target would make them agree whatever their structure, and
+   the portfolio would then measure no model uncertainty (rebuild note, "How
+   they combine"). The two constraints are:
    - **Extent**, from Hancox: the area affected by landsliding against
      magnitude, the maximum distance at which each size of landslide occurs,
      and the intensity threshold below which there is none.
@@ -23,8 +27,10 @@ and this plan builds both, because they share the same code:
 
 Hancox's area affected is the area **within which** landslides occurred, not the
 area that slid (about 20,000 km² for 1855 Wairarapa), so it constrains extent
-only. Marc supplies the amount. The two are complementary, which is why they are
-built together.
+only. **Model 3 takes its amount from Marc** (the lead, 2026-10-02): Marc's
+total for the scenario earthquake, apportioned over the Hancox area affected
+by slope class, gives the study area its share. Marc is the one shared
+relationship that sets a number, and it sets it for model 3 alone.
 
 The papers are in `context/lit/landslide/`: `hancox_1997/` (the scan, with a
 searchable markdown version and the key figures as page images),
@@ -163,7 +169,11 @@ density forward.
 ### Phase 3 — The calibration interface
 
 - [x] `landloss.hazard.landslide.calibration` (`constraints.py`, exported from
-      the package), used by every large model:
+      the package). Since the lead's decision of 2026-10-02 its scaling is
+      applied to model 3 only (to Marc's total); for every other model
+      `calibrate(...)` is run as a report, its `CalibrationReport` giving the
+      total and footprint against Marc and Hancox, and the scaled grid is not
+      used:
   - `scale_to_total(coverage, cell_area, target_km2)` scales a coverage grid so
     its landslide area equals a target, capped at full coverage per cell.
   - `extent_mask(epicentral_distance_km, mw, mm)` removes cells beyond
@@ -200,15 +210,16 @@ density forward.
       post-dates the paper, so this is an out-of-sample test of Marc itself.
 - [ ] Hancox for Kaikōura: A(7.8) ≈ 6,100 km² against the observed extent, and
       the maximum distances against the inventory.
-- [ ] The first consumer: model 1 (Nowicki Jessee) run on Kaikōura, before and
-      after calibration, which also closes the "overall scaling" modification
-      in the rebuild note.
+- [ ] The first consumer: model 1 (Nowicki Jessee) run on Kaikōura as
+      published, its total and footprint reported against the observations
+      (no rescaling; a scaled run is a diagnostic only). This replaces the
+      "overall scaling" modification in the rebuild note.
 - [ ] Findings file beside the validation scripts
       (`src/scripts/landloss/hazard/landslide/validations/calibration/`).
 
 ### Phase 5 — Model 3 as a model
 
-- [ ] `landloss.hazard.landslide.models.hancox_1997.model`: coverage over the
+- [x] `landloss.hazard.landslide.models.hancox_1997.model`: coverage over the
       study area as
   - zero where the study's MM is below MM7 (Wellington Region threshold),
   - zero outside the extent (under the forward scenario, nowhere in the study
@@ -216,18 +227,32 @@ density forward.
   - elsewhere, a density per slope class proportional to Table 2's share
     divided by that class's share of the area, so that the landslides fall on
     slopes in the proportions Hancox observed,
-  - scaled so the total matches the amount (phase 3).
-- [ ] Slope at 10 m from the multiscale stack (`s3_multiscale_slope`), stated as
+  - scaled so the total matches the amount, Marc's total for the scenario
+    apportioned to the study area (phase 6; model 3 is the one model scaled
+    to Marc).
+- [x] Slope at 10 m from the multiscale stack (`s3_multiscale_slope`), stated as
       a judgement: Hancox measured slope angles of individual failures, not of a
       coarse grid.
-- [ ] Wellington forward step under `src/scripts/landloss/hazard/landslide/steps/`
-      (next free number), with method and plan files, handing coverage to the
-      realisation machinery above the size split.
+- [x] Wellington forward step
+      (`steps/s10_hancox_1997/gen_hancox_1997_coverage.py`), with method and
+      plan files, handing coverage to the realisation machinery above the size
+      split. Its committed Marc settings are the central interface sensitivity
+      in this plan (`R0 = 22.5 km`, modal slope 22°, `A_topo = 1`, all
+      asperities onshore), explicitly a beta until NSHM geometry replaces it.
+      That replacement affects only Marc's amount: the Hancox MM threshold
+      already reads each realisation's TS1170.5-derived PGV.
 
 ### Phase 6 — Where the Wellington amount comes from
 
-- [ ] Decide how the forward total is set, and record it in the rebuild note.
-      Options, given the caution above:
+- [x] Decide how the forward total is set (the lead, 2026-10-02): **each
+      model sets its own** ("How they combine" in the rebuild note), and
+      **model 3 takes Marc's total for the scenario earthquake** (option 2
+      below), apportioned to the study area over the Hancox area affected and
+      the slope-class shares. Option 1 is withdrawn for the models that have
+      their own amount. For the interface scenario Marc needs the real
+      interface depth ("Marc for the Hikurangi interface", option A), because
+      the total moves from about 90 km² to nothing between 15 and 29 km.
+      The options as first set out, given the caution above:
   1. **The models' own shaking-driven totals, after calibration on events.** The
      scaling constants are fitted on Kaikōura and GFDB events against Marc and
      the observations, then applied with the study's 2500-year shaking.
@@ -236,7 +261,7 @@ density forward.
   2. **Marc's total for the scenario earthquake**, apportioned to the study
      area. It needs a rupture model, which the scenario lacks, and it inherits
      the shaking mismatch.
-- [ ] The constants `BETA_SCENARIO_MW` and `BETA_SITE_DISTANCE_KM` in
+- [x] The constants `BETA_SCENARIO_MW` and `BETA_SITE_DISTANCE_KM` in
       `landloss.domain.constants`, with a comment naming each term that reads
       them.
 
@@ -287,10 +312,12 @@ Options, cheapest first:
   there are too few onshore subduction inventories to fit two parameters.
 
 Recommendation: **A as the base, with B and C as reported sensitivities.**
-Phase 6 option 1 is unchanged: Marc calibrates the models on crustal events and
-does not set the Wellington total. A needs two inputs: the interface depth
-beneath the study area (a download of the NSHM 2022 geometry), and Marc's
-estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
+The lead's phase 6 decision makes model 3 the exception: Marc sets its
+Wellington total, while it remains a reported test beside the other large
+models. The built step uses the central `R0 = 22.5 km`, all-onshore sensitivity
+until A supplies the interface depth beneath the study area and its onshore
+fraction. A also needs Marc's estimated volumes for Tohoku and Pisco (read from
+Figure 1 or its sources).
 
 ## Files
 
@@ -312,7 +339,7 @@ estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
 - Marc reproduces its own Table S1 predictions (once obtained).
 - At Kaikōura: Marc's predicted total area against the GNS inventory's, and
   Hancox's A(7.8) against the observed extent, each reported as a ratio.
-- Model 1 at Kaikōura before and after calibration.
+- Model 1 at Kaikōura as published, against the observations.
 
 ## Risks and open items
 
@@ -324,9 +351,10 @@ estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
   because deep offshore ruptures deliver only moderate onshore shaking. Beneath
   Wellington that reasoning does not hold, since the interface lies about 20–25 km
   under the city. Hancox's historical events are all crustal too. Consequences:
-  - Marc and Hancox **calibrate the models on crustal events** (Kaikōura, the
-    Table S1 events, GFDB), which they are fitted for. They are not used to set
-    the Wellington total directly (phase 6, option 1).
+  - Marc and Hancox **test the portfolio on crustal events** (Kaikōura, the
+    Table S1 events, GFDB), which they are fitted for. Marc also sets model 3's
+    Wellington total under the lead's phase 6 decision; the other models keep
+    their own published amounts.
   - **Duration** is the physical difference. A subduction rupture shakes for
     much longer, which none of models 1–3 represents (Nowicki Jessee's
     cross-validation was worst on Tohoku). Carry this as a stated limitation,
@@ -343,6 +371,28 @@ estimated volumes for Tohoku and Pisco (read from Figure 1 or its sources).
   inventory; draw it the way Hancox describes, and report the sensitivity.
 - **GFDB** is read off `R:`, which Claude may not access; runs using it are made
   by the project lead.
+- **From the literature review of 2026-10-02** (part B; proposals for the lead,
+  detail in the rebuild note, "What the literature review says about the
+  route"):
+  - **The area-affected relationship is likely a minimum.** June 1942
+    landsliding was reported over about 6,500 km², against the 3,700 km² the
+    1997 study used for it [downes_2001] (`downes2001-F21`, `F22`). Read the
+    Kaikōura extent test with that in mind: an observed extent above A(7.8)
+    is expected, not a failure of the relation.
+  - **The Wellington MM7 threshold sits one level below the revised MM
+    scale**, which first describes significant landsliding at MM8
+    [dowrick_2008] (`dowrick2008-F05`). The 2013 Cook Strait events were
+    judged threshold events for Wellington (`sr2013-042-F07`). Test both
+    thresholds in the Kaikōura run.
+  - **Kaikōura is a low case for the amount**: two to six times fewer
+    landslides than magnitude-only relations predict (`massey2018-F06`), and
+    fewer large ones than Murchison (`F07`). Carry Murchison (wet) and
+    Inangahua as high cases. Season changes the area affected by 2 to 2.5
+    times [dellow_hancox_2006] (`dellow2006-F05`), so state the season of
+    every calibration event.
+  - **Interface events landslide less for their magnitude**
+    (`brabhaharan2018-F36`; Dusky Sound 2009, `sr2015-016-F22`), which
+    supports phase 6 option 1. No evidence in the set quantifies duration.
 
 ## Sources
 

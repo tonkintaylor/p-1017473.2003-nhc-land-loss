@@ -18,6 +18,10 @@ first and only draw :func:`~landloss.hazard.shaking.pga.beta_pga_realisation`
 makes on the shaking stream), so one modelled earthquake's two measures agree:
 :func:`beta_pgv_realisation` draws that factor from a generator seeded exactly
 as the PGA step seeds it.
+
+:func:`mmi_from_pgv` converts those realisations to instrumental Modified
+Mercalli intensity for landslide models with the PGV-only relation of Worden
+et al. (2012).
 """
 
 import numpy as np
@@ -30,6 +34,15 @@ PGV_MM_S_PER_G_SA_1S = 750.0
 
 # The name the PGV rasters carry, in the unit the shaking layers are written in.
 PGV_NAME = "pgv_m_s"
+
+# Worden et al. (2012), equation 4 and Table 1, PGV-only instrumental
+# intensity relation. PGV is in cm/s and the breakpoint is log10(PGV) = 0.53.
+MMI_PGV_LOG10_BREAK = 0.53
+MMI_PGV_LOW_INTERCEPT = 3.78
+MMI_PGV_LOW_SLOPE = 1.47
+MMI_PGV_HIGH_INTERCEPT = 2.89
+MMI_PGV_HIGH_SLOPE = 3.16
+MMI_MAX = 10.0
 
 
 def pgv_cm_s_from_sa_1s(sa_1s_g: np.ndarray) -> np.ndarray:
@@ -56,6 +69,41 @@ def pgv_m_s_from_sa_1s(sa_1s_g: np.ndarray) -> np.ndarray:
         PGV in m/s.
     """
     return sa_1s_g * PGV_MM_S_PER_G_SA_1S / 1000.0
+
+
+def mmi_from_pgv(pgv_cm_s: np.ndarray) -> np.ndarray:
+    """Convert PGV to instrumental Modified Mercalli intensity.
+
+    Uses the PGV-only form of Worden et al. (2012), without its residual
+    magnitude and distance terms, and caps the result at MM X. Zero shaking is
+    MM 0 rather than the negative infinity produced by ``log10(0)``.
+
+    Args:
+        pgv_cm_s: Peak ground velocity in cm/s.
+
+    Returns:
+        Modified Mercalli intensity, shaped like ``pgv_cm_s``.
+
+    Raises:
+        ValueError: If a finite PGV is negative.
+    """
+    pgv = np.asarray(pgv_cm_s, dtype=float)
+    finite = pgv[np.isfinite(pgv)]
+    if np.any(finite < 0):
+        msg = "PGV cannot be negative"
+        raise ValueError(msg)
+
+    result = np.full(pgv.shape, np.nan, dtype=float)
+    no_shaking = pgv == 0
+    result[no_shaking] = 0.0
+    shaking = pgv > 0
+    log_pgv = np.log10(pgv[shaking])
+    result[shaking] = np.where(
+        log_pgv <= MMI_PGV_LOG10_BREAK,
+        MMI_PGV_LOW_INTERCEPT + MMI_PGV_LOW_SLOPE * log_pgv,
+        MMI_PGV_HIGH_INTERCEPT + MMI_PGV_HIGH_SLOPE * log_pgv,
+    )
+    return np.minimum(result, MMI_MAX)
 
 
 def beta_pgv_realisation(

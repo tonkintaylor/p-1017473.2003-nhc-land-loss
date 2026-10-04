@@ -77,6 +77,7 @@ from landloss.domain.loss_contract import (
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
 )
+from landloss.io.area_of_interest import extent_suffix
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
@@ -165,29 +166,30 @@ REPLACEMENT_WALL_RATE_COLUMN = "replacement_wall_rate_excl_gst_nzd_per_m2"
 WALL_ENLARGED_COLUMN = "wall_enlarged_for_landslide"
 
 
-def settlement_path(realisation_id: int, *, pilot: bool) -> Path:
+def settlement_path(realisation_id: int, *, extent: str) -> Path:
     """Return the file a run writes one realisation's settlements to.
 
     Args:
         realisation_id: The modelled earthquake.
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The path, under ``temp/loss``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.parquet"
 
 
-def _exposure(stem: str, *, pilot: bool, geo: bool) -> pd.DataFrame:
+def _exposure(stem: str, *, extent: str, geo: bool) -> pd.DataFrame:
     """Read one exposure layer, geoparquet or plain."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     extension = "geoparquet" if geo else "parquet"
     path = EXPOSURE_DIR / f"{stem}{suffix}.{extension}"
     return gpd.read_parquet(path) if geo else pd.read_parquet(path)
 
 
-def site_ratings_by_claim(land: pd.DataFrame, *, pilot: bool) -> pd.DataFrame:
+def site_ratings_by_claim(land: pd.DataFrame, *, extent: str) -> pd.DataFrame:
     """Return the three site ratings for every claim, from the proxies.
 
     Construction access comes from the **longest** driveway on the claim and
@@ -202,18 +204,19 @@ def site_ratings_by_claim(land: pd.DataFrame, *, pilot: bool) -> pd.DataFrame:
 
     Args:
         land: The contract's land table.
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         A frame indexed by ``claim_id`` carrying the three ratings.
     """
     claim_ids = pd.Index(land[CLAIM_ID_COLUMN].unique(), name=CLAIM_ID_COLUMN)
 
-    driveways = _exposure(DRIVEWAYS_STEM, pilot=pilot, geo=True)
+    driveways = _exposure(DRIVEWAYS_STEM, extent=extent, geo=True)
     longest = driveways.groupby(CLAIM_ID_COLUMN)[DRIVEWAY_LENGTH_COLUMN].max()
 
-    terrain = _exposure(TERRAIN_STEM, pilot=pilot, geo=True)
-    to_claim = _exposure(ADDRESS_TO_CLAIM_STEM, pilot=pilot, geo=False)
+    terrain = _exposure(TERRAIN_STEM, extent=extent, geo=True)
+    to_claim = _exposure(ADDRESS_TO_CLAIM_STEM, extent=extent, geo=False)
     steepest = (
         terrain[[ADDRESS_ID_COLUMN, SLOPE_COLUMN]]
         .merge(to_claim, on=ADDRESS_ID_COLUMN)
@@ -686,9 +689,9 @@ def describe_settlement(claims, policy):
     )
 
 
-def check_cap_against_step_0(claims, realisation_id, *, pilot):
+def check_cap_against_step_0(claims, realisation_id, *, extent):
     """Compare this step's cap with step 0's, which built it independently."""
-    path = land_cover_cap_path(realisation_id, pilot=pilot)
+    path = land_cover_cap_path(realisation_id, extent=extent)
     if not path.exists():
         print(f"  Step 0's caps are not on disk at {path}; cap not cross-checked")
         return
@@ -698,11 +701,12 @@ def check_cap_against_step_0(claims, realisation_id, *, pilot):
     print(f"  Cap agrees with step 0 to {gap:,.6f} NZD at worst")
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Settle every claim and write the result, per realisation.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to settle.
     """
     policy = PolicySettings()
@@ -710,13 +714,13 @@ def main(*, pilot, realisation_ids):
     for realisation_id in realisation_ids:
         print(f"\nSettling realisation {realisation_id} ...", flush=True)
         tables = {
-            name: gpd.read_parquet(loss_input_path(name, realisation_id, pilot=pilot))
+            name: gpd.read_parquet(loss_input_path(name, realisation_id, extent=extent))
             for name in LOSS_TABLES
         }
         land, rw = tables["land"], tables["rw"]
 
         claims = loss_claims.land_by_claim(land)
-        ratings = site_ratings_by_claim(land, pilot=pilot)
+        ratings = site_ratings_by_claim(land, extent=extent)
         claims = claims.join(ratings)
 
         ground = landslide_ground_by_claim(land)
@@ -768,7 +772,7 @@ def main(*, pilot, realisation_ids):
         # A damaged crossing is settled at its sub-cap limit by adding that
         # figure to both sides: it contributes the limit to the cap, and the
         # same amount to the repair cost so the comparison does not reduce it.
-        caps = pd.read_parquet(land_cover_cap_path(realisation_id, pilot=pilot))
+        caps = pd.read_parquet(land_cover_cap_path(realisation_id, extent=extent))
         has_crossing = (
             caps.set_index(CLAIM_ID_COLUMN)[HAS_CROSSING_COLUMN]
             .reindex(claims.index)
@@ -837,11 +841,11 @@ def main(*, pilot, realisation_ids):
         describe_ratings(claims)
         describe_repair(claims)
         describe_settlement(claims, policy)
-        check_cap_against_step_0(claims, realisation_id, pilot=pilot)
+        check_cap_against_step_0(claims, realisation_id, extent=extent)
 
         out = claims.reset_index()
         out.insert(0, REALISATION_ID_COLUMN, realisation_id)
-        out_path = settlement_path(realisation_id, pilot=pilot)
+        out_path = settlement_path(realisation_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out.to_parquet(out_path)
         print(RULE)
@@ -849,4 +853,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

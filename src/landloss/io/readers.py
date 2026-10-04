@@ -776,6 +776,48 @@ def get_nz_topo50_water(
     )
 
 
+def get_nz_coastline_polygons(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load the LINZ NZ Coastlines and Islands Polygons (Topo 1:50k) layer.
+
+    The land of the mainland and the islands as polygons,
+    https://data.linz.govt.nz/layer/51153-nz-coastlines-and-islands-polygons-topo-150k/,
+    from the Topo50 coastline. Anything outside the polygons within the extent is
+    sea, which is how the landslide model masks the water that a DEM carries as a
+    flat surface. The line is a 1:50,000 map line, so it is only as exact as that
+    scale, a few metres to tens of metres on the ground.
+
+    Licence:
+        Creative Commons Attribution 4.0 International (CC BY 4.0),
+        https://data.linz.govt.nz/license/attribution-4-0-international/. That
+        obliges us to credit LINZ in anything published that is derived from it,
+        which here means any figure or layer whose water has been masked with it.
+
+    Source:
+        Land Information New Zealand, data.linz.govt.nz. No DOI is published for
+        the layer.
+
+    Args:
+        bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``.
+        crs: The coordinate reference system to return the polygons in.
+        use_cache: Whether to read and write the clipped extent cache.
+
+    Returns:
+        A GeoDataFrame of land polygons.
+    """
+    return get_koordinates_layer_extent(
+        layer=constants.NZ_COASTLINE_POLYGONS_LAYER_ID,
+        crs=crs,
+        bbox=bbox,
+        domain=constants.LINZ_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
 def get_gwrc_slope_failure(
     bbox: tuple[float, float, float, float] | None = None,
     crs: int | str = constants.DEFAULT_CRS,

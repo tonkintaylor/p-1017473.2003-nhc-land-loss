@@ -7,8 +7,8 @@
   by `gen_multiscale_slope.py`. The script takes no command line arguments;
   `config.py` is read in its `if __name__ == "__main__":` block and passed into
   `main()`.
-- `PILOT` is `True`, so runs go over `SMALL_WLG_PILOT` from
-  `landloss.io.area_of_interest`. With it `False` the extent is the bounding box
+- `EXTENT` is `"wlg-pilot"`, so runs go over `SMALL_WLG_PILOT` from
+  `landloss.io.area_of_interest`. With it `"full"` the extent is the bounding box
   of the four territorial authorities from `get_study_areas()`.
 - The extent is snapped outward in `snap_outward()` to a whole multiple of the
   least common multiple of the cell sizes — 300 m for 1, 3, 10, 30, 50 and 100
@@ -48,8 +48,8 @@
   octant (`OCTANT_NAMES`).
 - Outputs are `dem-<n>m.tif` (`dem_path()`), `slope-<n>m.tif` (`slope_path()`,
   band `slope_degrees`) and `aspect-<n>m.tif` (`aspect_path()`, band
-  `downhill_azimuth_degrees`) under `temp/hazard/landslide/`, with a `-pilot`
-  suffix for pilot runs. They are working layers and are not committed.
+  `downhill_azimuth_degrees`) under `temp/hazard/landslide/`, with the extent's
+  `extent_suffix` (`-pilot` for `"wlg-pilot"`). They are working layers and are not committed.
 - The slopes and aspects at every cell size are drawn side by side by
   `fig_multiscale_slope.py`, written to
   `report/hazard/landslide/multiscale-slope/fig/`.
@@ -62,10 +62,10 @@
   `FACE_HEIGHT_WINDOWS_M`, `RESIDUAL_BASE_RESOLUTIONS_M`,
   `TOPOGRAPHIC_POSITION_WINDOWS_M` and `CURVATURE_RESOLUTION_M`.
 - Every layer, its file and its band name are listed in `TERRAIN_LAYERS`, and
-  `terrain_path(layer, pilot=...)` is the one function that names a file; the
+  `terrain_path(layer, extent=...)` is the one function that names a file; the
   curvature file carries the cell size it was computed on, from `config.py`.
-  Outputs go under `temp/hazard/landslide/terrain/` with a `-pilot` suffix for
-  pilot runs, as float32, and are not committed.
+  Outputs go under `temp/hazard/landslide/terrain/` with the extent's
+  `extent_suffix`, as float32, and are not committed.
 - Face height is the local relief of the 1 m DEM in a 5 m and a 10 m window,
   `landloss.common.utils.terrain.local_relief()` (`face-height-5m`,
   `face-height-10m`, band `local_relief_m`).

@@ -4,7 +4,7 @@
 to the current, diluted Canterbury costs with the drop-out off, they only
 re-express the Canterbury means per m², and are not validated. They ride beside
 the lookup in step 2 and nothing settles on them. They become a result when
-refitted against claimant-only costs (**T-66**).
+refitted against claimant-only costs (**T-65**).
 
 ## Phase 1 — Rates that reproduce Canterbury (complete)
 
@@ -23,7 +23,7 @@ refitted against claimant-only costs (**T-66**).
       repair cost the loss module settles on. Its total is about 1.8 times the
       lookup's at the 50th percentile, because it reproduces means.
 - [ ] Refit against claimant-only Canterbury costs, preferably means rather
-      than percentiles, with the drop-out on (**T-66**).
+      than percentiles, with the drop-out on (**T-65**).
 - [ ] Set the no-SVA multiplier on feedback (**Q-18**).
 - [ ] Decide whether None should carry the fixed cost when it claims. With the
       drop-out off every None property claims and is priced at $995 against a

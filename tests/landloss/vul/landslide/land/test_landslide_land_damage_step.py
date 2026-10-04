@@ -108,7 +108,7 @@ def synthetic_run(tmp_path, monkeypatch):
     monkeypatch.setattr(gen_urban_slope_realisation, "WORK_DIR", tmp_path / "hazard")
     monkeypatch.setattr(step, "WORK_DIR", tmp_path / "vul")
 
-    land_path = gen_insured_land.insured_land_path(pilot=True)
+    land_path = gen_insured_land.insured_land_path(extent="wlg-pilot")
     land_path.parent.mkdir(parents=True)
     insured_land().to_parquet(land_path)
 
@@ -120,7 +120,7 @@ def synthetic_run(tmp_path, monkeypatch):
             # any insured land.
             slides = slides.iloc[:2]
         path = gen_urban_slope_realisation.combined_realisation_path(
-            world_id, 0, pilot=True
+            world_id, 0, extent="wlg-pilot"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         slides.to_parquet(path)
@@ -129,7 +129,7 @@ def synthetic_run(tmp_path, monkeypatch):
 
 def read_damage(world_id, realisation_id):
     return pd.read_parquet(
-        step.landslide_land_damage_path(world_id, realisation_id, pilot=True)
+        step.landslide_land_damage_path(world_id, realisation_id, extent="wlg-pilot")
     )
 
 
@@ -138,14 +138,17 @@ def read_damage(world_id, realisation_id):
 
 def test_the_path_names_the_world_the_realisation_and_the_extent():
     assert (
-        step.landslide_land_damage_path(0, 3, pilot=True).name
+        step.landslide_land_damage_path(0, 3, extent="wlg-pilot").name
         == "landslide-land-damage-w000-r003-pilot.parquet"
     )
     assert (
-        step.landslide_land_damage_path(12, 1, pilot=False).name
+        step.landslide_land_damage_path(12, 1, extent="full").name
         == "landslide-land-damage-w012-r001.parquet"
     )
-    assert step.landslide_land_damage_path(0, 0, pilot=True).parent == step.WORK_DIR
+    assert (
+        step.landslide_land_damage_path(0, 0, extent="wlg-pilot").parent
+        == step.WORK_DIR
+    )
 
 
 # --- end to end ------------------------------------------------------------------
@@ -154,7 +157,7 @@ def test_the_path_names_the_world_the_realisation_and_the_extent():
 def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
     synthetic_run,
 ):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     damaged = read_damage(0, 0)
 
     assert list(damaged.columns) == [
@@ -181,7 +184,7 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
 
 
 def test_both_populations_are_measured_and_imminent_ground_is_not(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     damaged = read_damage(0, 0).set_index("land_id")
 
     # The third polygon, under imminent ground only, is absent.
@@ -205,7 +208,7 @@ def test_both_populations_are_measured_and_imminent_ground_is_not(synthetic_run)
 
 
 def test_each_world_is_measured_against_its_own_realisation(synthetic_run):
-    step.main(pilot=True, world_ids=[0, 1], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0, 1], realisation_ids=[0])
 
     quiet = read_damage(1, 0)
     assert (quiet["world_id"] == 1).all()
@@ -214,8 +217,8 @@ def test_each_world_is_measured_against_its_own_realisation(synthetic_run):
 
 
 def test_a_run_reproduces_exactly(synthetic_run):
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     first = read_damage(0, 0)
-    step.main(pilot=True, world_ids=[0], realisation_ids=[0])
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     second = read_damage(0, 0)
     pd.testing.assert_frame_equal(first, second)

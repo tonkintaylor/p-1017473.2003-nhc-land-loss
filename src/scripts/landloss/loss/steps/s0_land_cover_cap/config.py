@@ -10,9 +10,10 @@ process and a comparison is a loop rather than two edits to a file. This step
 runs the Act as it stands, which is that class's own default.
 """
 
-# Whether to run over the small Wellington pilot box. Must match the run of vul
-# step 10, whose four tables this reads.
-PILOT = True
+# The extent to run over: "full", or a name from
+# landloss.io.area_of_interest.EXTENTS. Must match the run of vul step 10, whose
+# four tables this reads.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to cap.
 REALISATION_IDS = [0]

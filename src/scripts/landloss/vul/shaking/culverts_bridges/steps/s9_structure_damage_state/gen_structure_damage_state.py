@@ -37,6 +37,7 @@ from landloss.domain.loss_contract import (
     REALISATION_ID_COLUMN,
 )
 from landloss.hazard.realisation import realisation_seed
+from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.shaking.fragility import (
     BETA_FAILURE_PROBABILITY,
     DAMAGE_STATE_COLUMN,
@@ -84,9 +85,9 @@ OUT_COLUMNS = [
 RULE = "-" * 72
 
 
-def structure_damage_state_path(realisation_id, *, pilot):
+def structure_damage_state_path(realisation_id, *, extent):
     """Return the file a run writes one realisation's structure states to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.geoparquet"
 
 
@@ -122,13 +123,13 @@ def describe_states(states):
     )
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Write a damage state per culvert and bridge, per realisation."""
     for realisation_id in realisation_ids:
         crossings = gpd.read_parquet(
-            crossing_population_path(realisation_id, pilot=pilot)
+            crossing_population_path(realisation_id, extent=extent)
         )
-        raster = pga_path(realisation_id, pilot=pilot)
+        raster = pga_path(realisation_id, extent=extent)
         print(f"Reading the PGA field from {raster} ...", flush=True)
 
         rng = realisation_seed(constants.BASE_SEED, realisation_id, RNG_STREAM)
@@ -159,7 +160,7 @@ def main(*, pilot, realisation_ids):
         )[OUT_COLUMNS]
         describe_states(states)
 
-        out_path = structure_damage_state_path(realisation_id, pilot=pilot)
+        out_path = structure_damage_state_path(realisation_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         states.to_parquet(out_path)
         print(f"Wrote {len(states):,} rows to {out_path}")
@@ -172,4 +173,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

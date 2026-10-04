@@ -50,7 +50,7 @@ def called(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 def test_every_step_binds_to_its_main(called: list[str]) -> None:
     """Every lambda's keywords bind to its step's ``main`` signature."""
-    gen_exposure.main(pilot=True, realisation_ids=[0], world_ids=[0])
+    gen_exposure.main(extent="wlg-pilot", realisation_ids=[0], world_ids=[0])
 
     assert sorted(called) == sorted(_step_modules())
 
@@ -59,7 +59,7 @@ def test_accessibility_runs_between_terrain_and_land_value(
     called: list[str],
 ) -> None:
     """Land value reads the terrain, accessibility and amenity files written first."""
-    gen_exposure.main(pilot=True, realisation_ids=[0], world_ids=[0])
+    gen_exposure.main(extent="wlg-pilot", realisation_ids=[0], world_ids=[0])
 
     terrain = called.index("s1_build_terrain_attributes")
     accessibility = called.index("s2_build_accessibility")
@@ -70,7 +70,7 @@ def test_accessibility_runs_between_terrain_and_land_value(
 
 def test_wall_steps_run_in_contract_order(called: list[str]) -> None:
     """The wall lines, probability and population run after the insured land."""
-    gen_exposure.main(pilot=True, realisation_ids=[0], world_ids=[0])
+    gen_exposure.main(extent="wlg-pilot", realisation_ids=[0], world_ids=[0])
 
     positions = [
         called.index(name)

@@ -82,24 +82,25 @@ LARGE_EDGE_COLOUR = "#1a1a1a"
 RULE = "-" * 72
 
 
-def read_outputs(world_id, realisation_id, *, pilot):
+def read_outputs(world_id, realisation_id, *, extent):
     """Read what the run wrote for the pair, and the world's model file.
 
     Args:
         world_id: The exposure world.
         realisation_id: The modelled earthquake.
-        pilot: Whether the run was over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         ``(model, combined, outcomes)``: the model file, the combined
         realisation and the wall outcome table.
     """
-    model = gpd.read_parquet(urban_slope_model_path(world_id, pilot=pilot))
+    model = gpd.read_parquet(urban_slope_model_path(world_id, extent=extent))
     combined = gpd.read_parquet(
-        combined_realisation_path(world_id, realisation_id, pilot=pilot)
+        combined_realisation_path(world_id, realisation_id, extent=extent)
     )
     outcomes = pd.read_parquet(
-        urban_wall_outcome_path(world_id, realisation_id, pilot=pilot)
+        urban_wall_outcome_path(world_id, realisation_id, extent=extent)
     )
     return model, combined, outcomes
 
@@ -221,21 +222,22 @@ def build_figure(model, layers, large_evacuated, *, title):
     return fig
 
 
-def main(*, pilot, world_id, realisation_id):
+def main(*, extent, world_id, realisation_id):
     """Draw what the run wrote for one pair over the extent it was run for.
 
     Args:
-        pilot: Whether to draw the pilot box run. Must match the setting the
-            run was made with, which is why both read the same ``config.py``.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
+            Must match the setting the generation was run with.
         world_id: The exposure world.
         realisation_id: The modelled earthquake.
     """
-    combined_path = combined_realisation_path(world_id, realisation_id, pilot=pilot)
+    combined_path = combined_realisation_path(world_id, realisation_id, extent=extent)
     figure_path = FIG_DIR / f"{combined_path.stem}.png"
     print(
         f"Reading what the run wrote for world {world_id}, earthquake {realisation_id}"
     )
-    model, combined, outcomes = read_outputs(world_id, realisation_id, pilot=pilot)
+    model, combined, outcomes = read_outputs(world_id, realisation_id, extent=extent)
     layers, large_evacuated = outcome_layers(model, combined, outcomes)
 
     print(RULE)
@@ -262,7 +264,7 @@ def main(*, pilot, world_id, realisation_id):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_id=config.WORLD_IDS[0],
         realisation_id=config.REALISATION_IDS[0],
     )

@@ -18,9 +18,12 @@ never wrote, or read a stale one.
 
 from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Step 3 must have been run over the same extent.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+# Step 3 must have been run over the same extent.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to draw. A realisation id is the whole event: the
 # same id in the shaking, liquefaction and landslide layers is the same

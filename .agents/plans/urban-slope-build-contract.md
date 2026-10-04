@@ -348,10 +348,12 @@ The strength row for a grade is the one `strength_from_material` picks
 false before true, then `source_type == "published"` before the rest, then
 file order. **[decided here]**: the unit weight is required because the
 Kingsbury and strength readers downstream take the three together, and a row
-missing one is not a set. On the CSV as committed this picks `S30` (RS),
-`S17` (HW), `S10` (MW), `S20` (CW, the only CW row with a unit weight, `check`
-true), `S08` (COL) and `S48` (FILL); the test asserts them so a CSV edit that
-moves a pick is seen.
+missing one is not a set. A grade named in `STRENGTH_GRADE_PICKS` reads the
+row it names instead: `FILL` reads `S52` (the lead, 2026-10-02; step 4 plan,
+phase 2). On the CSV as committed this picks `S30` (RS), `S17` (HW), `S10`
+(MW), `S20` (CW, the only CW row with a unit weight, `check` true), `S08`
+(COL) and `S52` (FILL); the test asserts them so a CSV edit that moves a pick
+is seen.
 
 Prints: area share by material, by modification, by prior failure, and by
 source for each attribute; the strength row chosen per grade.
@@ -1303,7 +1305,7 @@ The reviewer's form, `world_id` as a keyword with no default on
 As built (decision 37, K): as specified. The deprecated function says so in
 its docstring and raises no runtime `DeprecationWarning`; the step's plan
 carries an open box for deleting it, and the request to the loss owner is
-register task **T-65**. Not run over the pilot.
+register task **T-66**. Not run over the pilot.
 
 ### 3.16 Validation — `hazard/landslide/validations/urban/` (new)
 
@@ -2324,7 +2326,7 @@ sections written; section 3.8's note gives the rows.
 | `loess` | | 10 |
 | `alluvium` | Alluvium, fan, beach and foreshore deposits | 10 |
 | `fill_engineered` | Engineered fill | 10 |
-| `fill_uncontrolled` | Uncontrolled fill, mixed fill and rock, landfill | 10 |
+| `fill_uncontrolled` | Uncontrolled fill, landfill | 10 |
 | `reclamation` | Harbour reclamation | 10 |
 | `unknown` | No source reaches | NaN |
 
@@ -2342,7 +2344,12 @@ dropped from the map.
 
 - SLIDE interpreted materials `Type` → material (the 14 classes; the mapper
   lists each, and `confidence` low/medium/high maps straight to
-  `material_confidence`).
+  `material_confidence`). The mixed fill classes take their natural material
+  (`Mixed fill/rock` → `rock`; `Mixed fill/colluvium`,
+  `Mixed fill/colluvium/rock`, `Mixed fill/talus` → `colluvium`;
+  `Old alluvium (mixed fill)` → `alluvium`), and `Fill` and the five mixed
+  classes (`SLIDE_FILL_TYPES`) also claim the modification `fill` at the
+  polygon's own confidence (the lead, 2026-10-02; step 4 plan, phase 2).
 - 1:50,000 geology `unit_code` → material: `Tt`, `Te`, `Ttm`, `Teb` → `rock`;
   `Q1nc` → `fill_uncontrolled`; `Q1af` → `colluvium`; alluvial gravel codes →
   `alluvium`; loess codes → `loess`; the mapper lists every code in the layer
@@ -2385,7 +2392,7 @@ dropped from the map.
 | Attribute | Order |
 | --- | --- |
 | `material` | SLIDE interpreted materials → 1:50,000 geology → NLM `l3_yp` → `unknown` |
-| `modification` | SLIDE genesis (cut slope, fill body, landfill, dam) → WCC cut and fill areas → residual → `natural` |
+| `modification` | SLIDE genesis (cut slope, fill body, landfill, dam) → WCC cut and fill areas → SLIDE materials fill and mixed fill classes → residual → `natural` |
 | `prior_failure` | SLIDE genesis landslide polygons → `none` |
 | `gw_depth_class` | NLM groundwater on flatland → assumed default |
 | `fill_thickness_m` | residual on fill pieces → NaN |
@@ -2664,7 +2671,7 @@ inputs and not run over the pilot:
     realisation_id, *, pilot)`; `loss_input_path(table, realisation_id, *,
     pilot)` is kept, deprecated, resolving world 0, for the loss module until
     its owner moves to worlds (section 3.15). Built (K); the move is register
-    task **T-65**.
+    task **T-66**.
 
 ## As built, close-out review (2026-10-02)
 

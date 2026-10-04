@@ -7,7 +7,7 @@
   `report/hazard/landslide/urban-slope-model/tab/`, and mapped by
   `fig_urban_slope_model.py`, written to
   `report/hazard/landslide/urban-slope-model/fig/`.
-- What a run does is set by `config.py` in the step folder — `PILOT`,
+- What a run does is set by `config.py` in the step folder — `EXTENT`,
   `WORLD_IDS`, `URBAN_RATE` and `RETURN_PERIOD_YR` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments. No script takes command line arguments and no `main()` carries a
@@ -87,7 +87,7 @@
   are written on every row, and the run prints them.
 - The output is written under `temp/hazard/landslide/` to the path
   `urban_slope_model_path()` returns, `urban-slope-model-wNNN-pilot.geoparquet`
-  when `PILOT` is set and `urban-slope-model-wNNN.geoparquet` otherwise, with
+  when `EXTENT` is `"wlg-pilot"` and `urban-slope-model-wNNN.geoparquet` when it is `"full"`, with
   the contract's columns in order, `wall_line_ids` after `wall_line_id`, and
   `world_id` inserted after `slope_id` (`add_world_id()`), sorted by `slope_id` with a fresh index, which step 9
   relies on. Every run prints the rate setting and factor, the counts by wall

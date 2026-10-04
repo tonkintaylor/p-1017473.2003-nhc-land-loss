@@ -7,9 +7,11 @@ Everything else a step reads, such as whether to reuse a cached download, still
 comes from that step's own `config.py`.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to draw the retaining wall population for. A world is
 # one draw of which candidate lines are walls, seeded on EXPOSURE_BASE_SEED and

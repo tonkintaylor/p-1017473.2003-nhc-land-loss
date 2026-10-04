@@ -7,9 +7,12 @@ extent, one set of exposure worlds and one set of realisations and ends at the
 tables the loss module reads.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities.
-PILOT = True
+# The extent to run over: "wlg-pilot" for the small Wellington pilot box,
+# "full" for the four territorial authorities, or any other name in
+# landloss.io.area_of_interest.EXTENTS. Each extent's outputs carry it in their
+# file names, so a pilot build and a full build sit side by side.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to run. A world is one draw of the wall population,
 # seeded apart from the earthquakes because whether a wall exists is not

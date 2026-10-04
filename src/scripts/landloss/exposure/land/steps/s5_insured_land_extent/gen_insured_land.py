@@ -76,6 +76,7 @@ from landloss.exposure.land.extent import (
     count_dwellings,
     drop_non_residential_buildings,
 )
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import (
     get_nz_address_roads,
     get_nz_building_outlines,
@@ -95,12 +96,10 @@ if hasattr(sys.stdout, "reconfigure"):
 # output and the LINZ layers, so it has no business in a diff.
 WORK_DIR = TEMP_DIR / "exposure"
 
-# The step 2 output this reads, and the layer this writes. Separate names under
-# the pilot, so a pilot run cannot overwrite a full one.
-LAND_VALUE_NAME = "land-value-by-address.geoparquet"
-PILOT_LAND_VALUE_NAME = "land-value-by-address-pilot.geoparquet"
-OUT_NAME = "insured-land.geoparquet"
-PILOT_OUT_NAME = "insured-land-pilot.geoparquet"
+# The step 2 output this reads, and the layer this writes. Each name carries
+# extent_suffix(extent), so a run over one extent cannot overwrite another's.
+LAND_VALUE_STEM = "land-value-by-address"
+OUT_STEM = "insured-land"
 
 # Step 2's rate per address, which the extent carries forward, and the lot size assumption it is there
 # to be checked against.
@@ -120,19 +119,20 @@ HECTARE_M2 = 10_000.0
 RULE = "-" * 72
 
 
-def land_value_path(*, pilot):
+def land_value_path(*, extent):
     """Return the step 2 output this step reads.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The path to the valued addresses, under ``temp/exposure/``.
     """
-    return WORK_DIR / (PILOT_LAND_VALUE_NAME if pilot else LAND_VALUE_NAME)
+    return WORK_DIR / f"{LAND_VALUE_STEM}{extent_suffix(extent)}.geoparquet"
 
 
-def driveway_path(*, pilot):
+def driveway_path(*, extent):
     """Return the file a run writes the driveway corridors to.
 
     The driveways are unioned into the insured land extent, but step 7 tests
@@ -140,16 +140,17 @@ def driveway_path(*, pilot):
     whole property, so they are also written out on their own.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"driveways{suffix}.geoparquet"
 
 
-def insured_land_path(*, pilot):
+def insured_land_path(*, extent):
     """Return the file a run writes the insured land extent to.
 
     A function rather than a constant because the name depends on the extent,
@@ -157,12 +158,13 @@ def insured_land_path(*, pilot):
     is what keeps the figure drawing the layer this script actually wrote.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    return WORK_DIR / (PILOT_OUT_NAME if pilot else OUT_NAME)
+    return WORK_DIR / f"{OUT_STEM}{extent_suffix(extent)}.geoparquet"
 
 
 def fetch_extent(addresses):
@@ -356,15 +358,16 @@ def describe_extent(extent, occupied, addresses, dwellings):
     )
 
 
-def main(*, pilot, use_cached_extent):
+def main(*, extent, use_cached_extent):
     """Build the insured land extent per claim and write it out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_extent: Whether to reuse already-fetched LINZ layers.
     """
-    out_path = insured_land_path(pilot=pilot)
-    value_path = land_value_path(pilot=pilot)
+    out_path = insured_land_path(extent=extent)
+    value_path = land_value_path(extent=extent)
     print(f"Reading the valued addresses from {value_path} ...", flush=True)
     addresses = gpd.read_parquet(value_path)
     bbox = fetch_extent(addresses)
@@ -464,10 +467,10 @@ def main(*, pilot, use_cached_extent):
     print(RULE)
     print(f"Wrote {len(insured):,} insured land polygons to {out_path}")
 
-    driveway_out = driveway_path(pilot=pilot)
+    driveway_out = driveway_path(extent=extent)
     driveways.to_parquet(driveway_out)
     print(f"Wrote {len(driveways):,} driveway corridors to {driveway_out}")
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, use_cached_extent=config.USE_CACHED_EXTENT)
+    main(extent=config.EXTENT, use_cached_extent=config.USE_CACHED_EXTENT)

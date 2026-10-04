@@ -28,6 +28,7 @@ from shapely.geometry import box
 
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
+from landloss.io.area_of_interest import extent_suffix, is_full_extent
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import config
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     read_layer,
@@ -118,15 +119,18 @@ def draw_layer(ax, key, layer, extent):
     ax.set_title(f"{key} ({nan_share:.0%} NaN)", fontsize=9)
 
 
-def main(*, pilot):
+def main(*, extent):
     """Draw every terrain derivative over the extent it was built on.
 
     Args:
-        pilot: Whether the run being drawn was over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
     """
-    layers = {key: read_layer(terrain_path(key, pilot=pilot)) for key in TERRAIN_LAYERS}
+    layers = {
+        key: read_layer(terrain_path(key, extent=extent)) for key in TERRAIN_LAYERS
+    }
     first = next(iter(layers.values()))
-    extent = gpd.GeoDataFrame(
+    frame = gpd.GeoDataFrame(
         geometry=[box(*first.rio.bounds())], crs=constants.DEFAULT_CRS
     )
 
@@ -136,13 +140,16 @@ def main(*, pilot):
     )
     axes = np.atleast_1d(axes).ravel()
     for ax, (key, layer) in zip(axes, layers.items(), strict=False):
-        draw_layer(ax, key, layer, extent)
+        draw_layer(ax, key, layer, frame)
     for ax in axes[len(layers) :]:
         ax.set_axis_off()
-    fig.suptitle("Terrain derivatives" + (" (pilot)" if pilot else ""), fontsize=11)
+    fig.suptitle(
+        "Terrain derivatives" + ("" if is_full_extent(extent) else f" ({extent})"),
+        fontsize=11,
+    )
     fig.tight_layout()
 
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     path = FIG_DIR / f"terrain-derivatives{suffix}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=DPI)
@@ -151,4 +158,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

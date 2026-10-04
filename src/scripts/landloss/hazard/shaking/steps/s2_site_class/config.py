@@ -6,6 +6,8 @@ their own, so what a run did can be established by reading this file and its git
 history.
 """
 
-# Whether to clip to the small Wellington pilot box rather than the four
-# territorial authorities.
-PILOT = True
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"

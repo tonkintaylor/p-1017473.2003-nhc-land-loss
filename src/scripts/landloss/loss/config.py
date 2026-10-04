@@ -11,10 +11,11 @@ a scenario in this file would make comparing two of them a pair of edits rather
 than a loop. A step runs the Act as it stands unless it is handed otherwise.
 """
 
-# Whether to run over the small Wellington pilot box rather than the four
-# territorial authorities. Must match the run of vul step 10, whose four tables
+# The extent to run over: "full" for the four territorial authorities, or a
+# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
+# Wellington pilot box). Must match the run of vul step 10, whose four tables
 # this module reads.
-PILOT = True
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to run. Each must already have been run through the
 # exposure, hazard and vulnerability modules.

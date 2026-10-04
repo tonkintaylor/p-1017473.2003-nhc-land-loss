@@ -6,9 +6,9 @@ nearest railway station -- and writes one row per address.
 
     uv run --frozen python src/scripts/landloss/exposure/land/steps/s2_land_value/s2_build_accessibility.py
 
-The run settings -- the pilot box or the full study area, whether to ignore the
-caches, and the input and output paths -- come from config.py beside this script
-rather than from the command line.
+The run settings -- the extent (a pilot box or the full study area), whether to
+ignore the caches, and the input and output paths -- come from config.py beside
+this script rather than from the command line.
 
 This is s2 of the land value step: accessibility is the second of the attributes
 the step attaches before s4 values the addresses. As with terrain, s4 runs
@@ -51,7 +51,7 @@ from landloss.exposure.land.accessibility import (
     load_centres,
     load_extra_stations,
 )
-from landloss.io.area_of_interest import get_study_areas
+from landloss.io.area_of_interest import extent_suffix, get_study_areas
 from landloss.io.readers import get_nz_rail_stations
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.exposure.land.steps.s2_land_value.s1_build_terrain_attributes import (
@@ -70,10 +70,10 @@ if hasattr(sys.stdout, "reconfigure"):
 # temp/ is gitignored. These are working layers, rebuildable from the source and
 # the packaged assets, so they have no business in a diff.
 WORK_DIR = TEMP_DIR / "exposure"
-SPINE_NAME = "address-spine.geoparquet"
-PILOT_SPINE_NAME = "address-spine-pilot.geoparquet"
-OUT_NAME = "accessibility-by-address.geoparquet"
-PILOT_OUT_NAME = "accessibility-by-address-pilot.geoparquet"
+# Each name carries extent_suffix(extent), so runs over different extents sit
+# side by side.
+SPINE_STEM = "address-spine"
+OUT_STEM = "accessibility-by-address"
 
 # How far beyond the spine's extent stations are fetched. Five of the plan's
 # 400 m decay lengths, beyond which the station premium is under one percent of
@@ -94,7 +94,7 @@ WALK_BANDS_M = (400, 800, 1600)
 RULE = "-" * 72
 
 
-def resolve_paths(*, pilot, spine, out):
+def resolve_paths(*, extent, spine, out):
     """Return where the spine is read from and where the attributes are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
@@ -102,7 +102,8 @@ def resolve_paths(*, pilot, spine, out):
     draws what this script wrote.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         spine: The address spine path from config.py, or None for the default.
         out: The accessibility attributes path from config.py, or None for the
             default.
@@ -110,15 +111,14 @@ def resolve_paths(*, pilot, spine, out):
     Returns:
         The spine path and the output path.
     """
+    suffix = extent_suffix(extent)
     spine_path = (
         Path(spine)
         if spine is not None
-        else WORK_DIR / (PILOT_SPINE_NAME if pilot else SPINE_NAME)
+        else WORK_DIR / f"{SPINE_STEM}{suffix}.geoparquet"
     )
     out_path = (
-        Path(out)
-        if out is not None
-        else WORK_DIR / (PILOT_OUT_NAME if pilot else OUT_NAME)
+        Path(out) if out is not None else WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
     )
     return spine_path, out_path
 
@@ -198,25 +198,26 @@ def write_outputs(measured, out):
     print(f"  Columns : {', '.join(measured.columns)}")
 
 
-def main(*, pilot, fresh, spine, out):
+def main(*, extent, fresh, spine, out):
     """Measure gravity accessibility and station distance for every address.
 
     Args:
-        pilot: Use the small Wellington pilot box instead of the full study area.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         fresh: Ignore the caches and re-fetch the stations and the address spine.
         spine: The address spine from step 1. None reads the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
             Rebuilt from LINZ if it is not there.
         out: Where to write the attributes. None writes to the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
 
     Raises:
         ValueError: If the address spine is empty, or LINZ_API_KEY is not set.
     """
-    spine_path, out = resolve_paths(pilot=pilot, spine=spine, out=out)
+    spine_path, out = resolve_paths(extent=extent, spine=spine, out=out)
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
-    bbox, clip_to, extent_name = resolve_extent(study_areas, pilot=pilot)
+    bbox, clip_to, extent_name = resolve_extent(study_areas, extent=extent)
     describe_extent(extent_name, bbox)
 
     addresses = get_spine(spine_path, bbox, clip_to, use_cache=not fresh)
@@ -261,7 +262,7 @@ def main(*, pilot, fresh, spine, out):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         fresh=config.FRESH,
         spine=config.SPINE,
         out=config.ACCESSIBILITY,

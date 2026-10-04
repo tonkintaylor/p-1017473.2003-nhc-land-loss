@@ -2,7 +2,7 @@
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s4_ground_map/gen_ground_map.py
 
-The run settings -- the pilot box or the full study area, whether to reuse the
+The run settings -- the extent, whether to reuse the
 cached layers, the groundwater depth assumed off the NLM footprint and the
 residual threshold -- come from ``config.py`` beside this script rather than
 from the command line.
@@ -22,7 +22,8 @@ and each piece takes its attributes by precedence, finest source first:
 - material: SLIDE interpreted materials, then the 1:50,000 geology, then the
   NLM ``l3_yp`` class, then ``unknown``;
 - modification: SLIDE genesis cut slopes, fill bodies, landfills and dams, then
-  the WCC cut and fill areas, then the thresholded 30 m residual, then
+  the WCC cut and fill areas, then the SLIDE materials that name fill (its fill
+  and mixed fill classes), then the thresholded 30 m residual, then
   ``natural``;
 - prior failure: SLIDE genesis landslides and rockfall, then ``none``;
 - groundwater depth: the NLM median depth polygonised over the flat land, then
@@ -32,7 +33,7 @@ Fill thickness is the mean of the positive 100 m residual over each fill piece.
 The Kingsbury geology value and the effective strength set follow from the
 material by lookup. No probability anywhere.
 
-Writes ``ground-map[-pilot].geoparquet`` under temp/hazard/landslide/, one row
+Writes ``ground-map<extent_suffix>.geoparquet`` under temp/hazard/landslide/, one row
 per ``ground_id``.
 """
 
@@ -49,6 +50,7 @@ from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.hazard.landslide import ground_map
 from landloss.hazard.landslide.ground_map import GroundSource
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.nlm import get_nlm_flatland
 from landloss.io.readers import (
     get_gwd_median_depth,
@@ -120,15 +122,15 @@ RESIDUAL_CODES = {"cut": 1, "fill": 2}
 RULE = "-" * 72
 
 
-def ground_map_path(*, pilot):
+def ground_map_path(*, extent):
     """Return the file a run writes the ground map to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
-def residual_path(base_resolution_m, *, pilot):
+def residual_path(base_resolution_m, *, extent):
     """Return the cut-and-fill residual raster step 3 wrote against one base."""
-    return terrain_path(f"cut-fill-residual-{base_resolution_m:g}m", pilot=pilot)
+    return terrain_path(f"cut-fill-residual-{base_resolution_m:g}m", extent=extent)
 
 
 def read_raster(path):
@@ -170,6 +172,31 @@ def slide_material_sources(materials):
             frame.loc[frame["confidence"] == level],
             "material",
             "material",
+            level,
+        )
+        for level in ground_map.CONFIDENCES
+    ]
+
+
+def slide_modification_sources(materials):
+    """Build one fill modification source per SLIDE confidence level, highest first.
+
+    The SLIDE fill and mixed fill classes give the natural material as the
+    material and record the fill here, as the modification, so the two are
+    read separately. The frame is filtered to the fill types first, and split
+    by confidence as :func:`slide_material_sources` is.
+    """
+    filled = materials.loc[materials["Type"].isin(ground_map.SLIDE_FILL_TYPES)]
+    frame = filled.assign(
+        modification=ground_map.modification_from_slide(filled["Type"]),
+        confidence=slide_confidence(filled["confidence"]),
+    )
+    return [
+        GroundSource(
+            "slide_materials",
+            frame.loc[frame["confidence"] == level],
+            "modification",
+            "modification",
             level,
         )
         for level in ground_map.CONFIDENCES
@@ -417,22 +444,22 @@ def describe_strength(ground):
 
 
 def main(
-    *, pilot, use_cached_layers, default_gw_depth_m, residual_modification_threshold_m
+    *, extent, use_cached_layers, default_gw_depth_m, residual_modification_threshold_m
 ):
     """Build the ground map over the extent and write it out.
 
     Args:
-        pilot: Whether to run over ``SMALL_WLG_PILOT`` rather than the four
-            territorial authorities.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_layers: Whether to reuse the cached polygon layers.
         default_gw_depth_m: The depth to groundwater assumed off the NLM
             footprint, in metres.
         residual_modification_threshold_m: The magnitude of 30 m residual
             beyond which the ground is cut or fill where no mapping reaches.
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
-    extent = box(*bbox)
-    describe_extent(extent_name, extent)
+    bbox, extent_name = resolve_extent(extent=extent)
+    area = box(*bbox)
+    describe_extent(extent_name, area)
 
     print("\nReading the polygon sources ...", flush=True)
     materials = get_slide_interpreted_materials(bbox=bbox, use_cache=use_cached_layers)
@@ -441,7 +468,7 @@ def main(
     genesis = get_slide_genesis(bbox=bbox, use_cache=use_cached_layers)
     cut = get_wcc_cut_areas(bbox=bbox, use_cache=use_cached_layers)
     fill = get_wcc_fill_areas(bbox=bbox, use_cache=use_cached_layers)
-    flatland = read_flatland(extent)
+    flatland = read_flatland(area)
     for name, frame in (
         ("SLIDE materials", materials),
         ("1:50,000 geology", geology),
@@ -454,8 +481,8 @@ def main(
         print(f"  {name:<20} {len(frame):>6,} polygons")
 
     print("\nPolygonising the groundwater depth and the 30 m residual ...", flush=True)
-    groundwater = polygonise_groundwater(get_gwd_median_depth(), extent, flatland)
-    residual_30m = read_raster(residual_path(MODIFICATION_RESIDUAL_M, pilot=pilot))
+    groundwater = polygonise_groundwater(get_gwd_median_depth(), area, flatland)
+    residual_30m = read_raster(residual_path(MODIFICATION_RESIDUAL_M, extent=extent))
     residual = polygonise_residual(
         residual_30m, threshold_m=residual_modification_threshold_m
     )
@@ -482,6 +509,7 @@ def main(
         ),
         *genesis_sources(genesis),
         *wcc_sources(cut, fill),
+        *slide_modification_sources(materials),
         GroundSource("residual_30m", residual, "modification", "modification", "low"),
         GroundSource(
             ground_map.NLM_GWD_SOURCE, groundwater, "gw_depth_m", "gw_depth_m", "medium"
@@ -490,16 +518,16 @@ def main(
 
     print("\nBuilding the planar partition and attributing it ...", flush=True)
     ground = ground_map.build_ground_map(
-        extent,
+        area,
         sources,
         flatland=flatland,
         default_gw_depth_m=default_gw_depth_m,
         crs=constants.DEFAULT_CRS,
     )
-    residual_100m = read_raster(residual_path(THICKNESS_RESIDUAL_M, pilot=pilot))
+    residual_100m = read_raster(residual_path(THICKNESS_RESIDUAL_M, extent=extent))
     ground = finish(ground, residual_100m)
 
-    out_path = ground_map_path(pilot=pilot)
+    out_path = ground_map_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     ground.to_parquet(out_path)
 
@@ -521,7 +549,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         default_gw_depth_m=config.DEFAULT_GROUNDWATER_DEPTH_M,
         residual_modification_threshold_m=config.RESIDUAL_MODIFICATION_THRESHOLD_M,

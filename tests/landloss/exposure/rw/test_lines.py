@@ -798,15 +798,15 @@ def redirected_script(
     monkeypatch.setattr(
         script,
         "urban_slope_candidates_path",
-        lambda *, pilot: tmp_path / "candidates.geoparquet",
+        lambda *, extent: tmp_path / "candidates.geoparquet",
     )
     monkeypatch.setattr(
-        script, "ground_map_path", lambda *, pilot: tmp_path / "ground-map.geoparquet"
+        script, "ground_map_path", lambda *, extent: tmp_path / "ground-map.geoparquet"
     )
     monkeypatch.setattr(
         script,
         "terrain_path",
-        lambda layer, *, pilot: {
+        lambda layer, *, extent: {
             "face-height-5m": rasters["face"],
             "cut-fill-residual-30m": rasters["residual"],
         }[layer],
@@ -814,23 +814,23 @@ def redirected_script(
     monkeypatch.setattr(
         script,
         "slope_path",
-        lambda resolution_m, *, pilot: {
+        lambda resolution_m, *, extent: {
             3: rasters["slope_3m"],
             10: rasters["slope_10m"],
         }[resolution_m],
     )
     monkeypatch.setattr(
-        script, "aspect_path", lambda resolution_m, *, pilot: rasters["aspect"]
+        script, "aspect_path", lambda resolution_m, *, extent: rasters["aspect"]
     )
     monkeypatch.setattr(
-        script, "dem_path", lambda resolution_m, *, pilot: rasters["dem"]
+        script, "dem_path", lambda resolution_m, *, extent: rasters["dem"]
     )
     return script
 
 
 def extent_of(x0, y0, x1, y1):
     """Build a resolve_extent stand-in returning a local box as the extent."""
-    return lambda *, pilot: ((*local(x0, y0), *local(x1, y1)), "test")
+    return lambda *, extent: ((*local(x0, y0), *local(x1, y1)), "test")
 
 
 @ignore_affine_matmul
@@ -838,9 +838,11 @@ def test_gen_wall_lines_main_writes_the_file(tmp_path, monkeypatch, redirected_s
     """Run the step's main() over the whole block, every read redirected."""
     monkeypatch.setattr(script, "resolve_extent", extent_of(0, 0, 200, 200))
 
-    script.main(pilot=True, use_cached_layers=True, road_distance_m=ROAD_DISTANCE_M)
+    script.main(
+        extent="wlg-pilot", use_cached_layers=True, road_distance_m=ROAD_DISTANCE_M
+    )
 
-    out_path = script.wall_lines_path(pilot=True)
+    out_path = script.wall_lines_path(extent="wlg-pilot")
     assert out_path == tmp_path / "exposure" / "wall-lines-pilot.geoparquet"
     written = gpd.read_parquet(out_path)
     assert written.columns.tolist() == ["wall_line_id", *wl.COLUMNS]
@@ -862,9 +864,11 @@ def test_gen_wall_lines_main_drops_the_lines_in_the_margin(
     """
     monkeypatch.setattr(script, "resolve_extent", extent_of(0, 0, 100, 200))
 
-    script.main(pilot=True, use_cached_layers=True, road_distance_m=ROAD_DISTANCE_M)
+    script.main(
+        extent="wlg-pilot", use_cached_layers=True, road_distance_m=ROAD_DISTANCE_M
+    )
 
-    written = gpd.read_parquet(script.wall_lines_path(pilot=True))
+    written = gpd.read_parquet(script.wall_lines_path(extent="wlg-pilot"))
     assert not written.empty
     midpoints = written.geometry.interpolate(0.5, normalized=True)
     assert (midpoints.x - ORIGIN_EASTING <= 100.0).all()

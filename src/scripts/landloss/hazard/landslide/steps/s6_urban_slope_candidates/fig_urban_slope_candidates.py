@@ -31,6 +31,7 @@ from shapely.geometry import box
 
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.hazard.landslide.urban.delineation import SLOPE_BAND_LABELS
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.landslide.steps.s6_urban_slope_candidates import config
 from scripts.landloss.hazard.landslide.steps.s6_urban_slope_candidates.gen_urban_slope_candidates import (
     urban_slope_candidates_path,
@@ -65,9 +66,9 @@ def band_colours():
     }
 
 
-def figure_path(*, pilot):
+def figure_path(*, extent):
     """Return the file the figure is written to."""
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return FIG_DIR / f"urban-slope-candidates{suffix}.png"
 
 
@@ -94,14 +95,15 @@ def draw_panel(ax, candidates, extent, colours, *, scale_m):
     )
 
 
-def main(*, pilot, scales_m):
+def main(*, extent, scales_m):
     """Draw the candidates of every scale, one panel each.
 
     Args:
-        pilot: Whether the run to draw was over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         scales_m: The scales to draw, one panel each.
     """
-    path = urban_slope_candidates_path(pilot=pilot)
+    path = urban_slope_candidates_path(extent=extent)
     print(f"Reading {path} ...")
     candidates = gpd.read_parquet(path)
     extent = gpd.GeoDataFrame(
@@ -146,7 +148,7 @@ def main(*, pilot, scales_m):
     )
     fig.tight_layout(rect=(0, 0.05, 1, 0.98))
 
-    out_path = figure_path(pilot=pilot)
+    out_path = figure_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=DPI)
     plt.close(fig)
@@ -155,4 +157,4 @@ def main(*, pilot, scales_m):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, scales_m=config.SCALES_M)
+    main(extent=config.EXTENT, scales_m=config.SCALES_M)

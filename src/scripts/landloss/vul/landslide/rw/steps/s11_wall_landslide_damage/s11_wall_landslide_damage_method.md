@@ -7,13 +7,13 @@
   `wall_flags()` in `landloss.vul.landslide.flags`.
 - It reads three files, each through its own step's path function:
   - the world's wall population, exposure rw step 6's
-    `wall_population_path(world_id, pilot=...)`, which is the spine: every
+    `wall_population_path(world_id, extent=...)`, which is the spine: every
     wall in it, on flat land or on a slope, gets one row;
   - the combined landslide realisation of the world and earthquake, landslide
-    step 9's `combined_realisation_path(world_id, realisation_id, pilot=...)`,
+    step 9's `combined_realisation_path(world_id, realisation_id, extent=...)`,
     the large model's polygons and the urban slope model's together;
   - the urban wall outcome table of the same pair, landslide step 9's
-    `urban_wall_outcome_path(world_id, realisation_id, pilot=...)`, one row
+    `urban_wall_outcome_path(world_id, realisation_id, extent=...)`, one row
     per wall on sloping ground with its `slope_id` and `outcome`.
 - A sloping wall has **two routes to a flag**, and the two are OR-ed
   (`wall_flags()`):
@@ -47,7 +47,7 @@
   attached.** Any flag true means one replacement in the loss module; which
   flag is set only attributes the cause.
 - Output is `temp/vul/wall-landslide-damage-w<NNN>-r<NNN>[-pilot].parquet`,
-  built by `wall_landslide_damage_path(world_id, realisation_id, pilot=...)`,
+  built by `wall_landslide_damage_path(world_id, realisation_id, extent=...)`,
   one row per wall in population order with the columns `realisation_id`,
   `world_id`, `rw_id`, `claim_id`, `slope_id`, `outcome`,
   `is_damaged_by_shaking`, `is_evacuated` and `is_inundated`. `claim_id` is

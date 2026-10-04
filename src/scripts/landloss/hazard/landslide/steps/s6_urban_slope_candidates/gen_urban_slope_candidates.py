@@ -33,7 +33,7 @@ kept; nothing here chooses between scales.
    from the polygon under the representative point.
 4. ``candidate_id`` is minted by scale descending and then location.
 
-Writes ``urban-slope-candidates[-pilot].geoparquet`` under
+Writes ``urban-slope-candidates{extent_suffix}.geoparquet`` under
 ``temp/hazard/landslide/``, one row per candidate.
 """
 
@@ -52,6 +52,7 @@ from landloss.hazard.landslide.urban.delineation import (
     delineate_candidates,
     urban_domain,
 )
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.nlm import get_nlm_flatland
 from landloss.io.readers import (
     get_nz_address_roads,
@@ -151,16 +152,17 @@ OUTPUT_COLUMNS = (
 RULE = "-" * 72
 
 
-def urban_slope_candidates_path(*, pilot):
+def urban_slope_candidates_path(*, extent):
     """Return the file a run writes the candidates to.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The output path, under ``temp/hazard/landslide/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}{suffix}.geoparquet"
 
 
@@ -196,14 +198,15 @@ def read_zonal(path, polygons, *, statistic):
 
 
 def delineate_at_scales(
-    domain, *, scales_m, pilot, min_patch_cells, max_patch_length_m
+    domain, *, scales_m, extent, min_patch_cells, max_patch_length_m
 ):
     """Delineate the candidates at each scale and stack them.
 
     Args:
         domain: The urban domain, from `urban_domain`.
         scales_m: The cell sizes to delineate at, in metres.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         min_patch_cells: The smallest patch kept unmerged, in cells.
         max_patch_length_m: The longest contour length kept uncut, in metres.
 
@@ -214,8 +217,8 @@ def delineate_at_scales(
     frames = []
     for scale_m in scales_m:
         print(f"\nDelineating at {scale_m} m ...", flush=True)
-        slope = read_raster(slope_path(scale_m, pilot=pilot))
-        aspect = read_raster(aspect_path(scale_m, pilot=pilot))
+        slope = read_raster(slope_path(scale_m, extent=extent))
+        aspect = read_raster(aspect_path(scale_m, extent=extent))
         candidates = delineate_candidates(
             slope,
             aspect,
@@ -229,13 +232,14 @@ def delineate_at_scales(
     return pd.concat(frames, ignore_index=True)
 
 
-def read_terrain_attributes(candidates, *, scales_m, pilot):
+def read_terrain_attributes(candidates, *, scales_m, extent):
     """Read the slope at every scale, the derivatives and the relief onto each row.
 
     Args:
         candidates: The candidates, in the rasters' system.
         scales_m: The scales whose slope rasters are read, in metres.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         The candidates with the terrain columns added.
@@ -244,13 +248,13 @@ def read_terrain_attributes(candidates, *, scales_m, pilot):
     polygons = candidates.geometry
     for scale_m in scales_m:
         candidates[f"slope_{scale_m}m"] = read_zonal(
-            slope_path(scale_m, pilot=pilot), polygons, statistic="mean"
+            slope_path(scale_m, extent=extent), polygons, statistic="mean"
         )
     for layer, (column, statistic) in TERRAIN_ATTRIBUTES.items():
         candidates[column] = read_zonal(
-            terrain_path(layer, pilot=pilot), polygons, statistic=statistic
+            terrain_path(layer, extent=extent), polygons, statistic=statistic
         )
-    dem = dem_path(FINE_RESOLUTION_M, pilot=pilot)
+    dem = dem_path(FINE_RESOLUTION_M, extent=extent)
     highest = read_zonal(dem, polygons, statistic="max")
     lowest = read_zonal(dem, polygons, statistic="min")
     candidates["relief_m"] = highest - lowest
@@ -286,7 +290,7 @@ def nearest(candidates, targets):
     )
 
 
-def building_position(candidates, buildings, nearest_building, *, pilot):
+def building_position(candidates, buildings, nearest_building, *, extent):
     """Place each candidate above, below or beside its nearest building.
 
     The candidate centroid's elevation against the nearest outline's centroid
@@ -297,13 +301,14 @@ def building_position(candidates, buildings, nearest_building, *, pilot):
         candidates: The candidates.
         buildings: The building outlines.
         nearest_building: The index label of each candidate's nearest outline.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
         ``above``, ``below`` or ``beside`` per candidate, on the candidates'
         index; None where either elevation is unknown.
     """
-    dem = dem_path(FINE_RESOLUTION_M, pilot=pilot)
+    dem = dem_path(FINE_RESOLUTION_M, extent=extent)
     candidate_elevation = terrain.sample_at_points(dem, candidates.geometry.centroid)
     building_elevation = terrain.sample_at_points(dem, buildings.geometry.centroid)
     matched = nearest_building.map(building_elevation)
@@ -403,7 +408,7 @@ def describe(candidates):
 
 def main(
     *,
-    pilot,
+    extent,
     use_cached_layers,
     scales_m,
     building_distance_m,
@@ -413,14 +418,15 @@ def main(
     """Delineate the candidates at every scale, attribute them and write them.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         use_cached_layers: Whether to reuse the cached LINZ layers.
         scales_m: The cell sizes to delineate at, in metres.
         building_distance_m: How far from a building the domain reaches.
         min_patch_cells: The smallest patch kept unmerged, in cells.
         max_patch_length_m: The longest contour length kept uncut, in metres.
     """
-    bbox, extent_name = resolve_extent(pilot=pilot)
+    bbox, extent_name = resolve_extent(extent=extent)
     minx, miny, maxx, maxy = bbox
     print(f"Extent: {extent_name}")
     print(
@@ -436,7 +442,7 @@ def main(
     roads = get_nz_address_roads(bbox, use_cache=use_cached_layers)
     boundaries = get_nz_property_boundaries(bbox, use_cache=use_cached_layers)
     flatland = get_nlm_flatland().to_crs(constants.DEFAULT_CRS).cx[minx:maxx, miny:maxy]
-    ground_map = gpd.read_parquet(ground_map_path(pilot=pilot))
+    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
     print(
         f"  {len(buildings):,} buildings, {len(roads):,} roads, "
         f"{len(boundaries):,} properties, {len(flatland):,} flatland polygons, "
@@ -449,19 +455,19 @@ def main(
     candidates = delineate_at_scales(
         domain,
         scales_m=scales_m,
-        pilot=pilot,
+        extent=extent,
         min_patch_cells=min_patch_cells,
         max_patch_length_m=max_patch_length_m,
     )
 
     print("\nReading the terrain onto the candidates ...", flush=True)
-    candidates = read_terrain_attributes(candidates, scales_m=scales_m, pilot=pilot)
+    candidates = read_terrain_attributes(candidates, scales_m=scales_m, extent=extent)
 
     print("Measuring to the buildings, roads and boundaries ...", flush=True)
     to_building = nearest(candidates, buildings)
     candidates["building_distance_m"] = to_building["distance"]
     candidates["building_position"] = building_position(
-        candidates, buildings, to_building["target"], pilot=pilot
+        candidates, buildings, to_building["target"], extent=extent
     )
     candidates["road_distance_m"] = nearest(candidates, roads)["distance"]
     edges = gpd.GeoDataFrame(geometry=boundaries.geometry.boundary, crs=boundaries.crs)
@@ -477,7 +483,7 @@ def main(
     candidates = candidates[list(OUTPUT_COLUMNS)]
     describe(candidates)
 
-    out_path = urban_slope_candidates_path(pilot=pilot)
+    out_path = urban_slope_candidates_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     candidates.to_parquet(out_path)
     print(RULE)
@@ -486,7 +492,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         scales_m=config.SCALES_M,
         building_distance_m=config.BUILDING_DISTANCE_M,

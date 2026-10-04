@@ -27,6 +27,7 @@ import numpy as np
 from landloss.common.utils.terrain import write_raster
 from landloss.hazard.shaking.pgv import pgv_m_s_from_sa_1s
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.ts1170 import get_ts1170_sa_t1
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
     read_site_class,
@@ -48,13 +49,14 @@ LAYERS = {
 RULE = "-" * 72
 
 
-def output_path(layer, *, return_period_yr, pilot):
+def output_path(layer, *, return_period_yr, extent):
     """Return the file a run writes one layer to.
 
     Args:
         layer: One of :data:`LAYERS`.
         return_period_yr: The return period of the demand.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/hazard/shaking/``.
@@ -65,7 +67,7 @@ def output_path(layer, *, return_period_yr, pilot):
     if layer not in LAYERS:
         msg = f"No layer {layer!r}; expected one of {sorted(LAYERS)}."
         raise ValueError(msg)
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{layer}-{return_period_yr}yr-100m{suffix}.tif"
 
 
@@ -79,14 +81,15 @@ def describe(name, values, unit):
         )
 
 
-def main(*, pilot, return_period_yr):
+def main(*, extent, return_period_yr):
     """Write the Sa(1.0 s) and PGV grids over the extent.
 
     Args:
-        pilot: Whether the run is over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         return_period_yr: The return period of the TS1170.5 demand, in years.
     """
-    site_class = read_site_class(pilot=pilot)
+    site_class = read_site_class(extent=extent)
 
     print(f"Reading the TS1170.5 Sa(1.0 s) grids at {return_period_yr} years ...")
     sa_t1 = demand_on_site_class_grid(
@@ -101,10 +104,10 @@ def main(*, pilot, return_period_yr):
 
     print(RULE)
     for layer, raster in (("sa-t1", sa_t1), ("pgv", pgv)):
-        path = output_path(layer, return_period_yr=return_period_yr, pilot=pilot)
+        path = output_path(layer, return_period_yr=return_period_yr, extent=extent)
         write_raster(raster.astype("float32").rename(LAYERS[layer]), path)
         print(f"Wrote {path}")
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, return_period_yr=config.RETURN_PERIOD_YR)
+    main(extent=config.EXTENT, return_period_yr=config.RETURN_PERIOD_YR)

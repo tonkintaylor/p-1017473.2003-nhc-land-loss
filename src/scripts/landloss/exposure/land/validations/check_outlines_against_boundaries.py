@@ -247,9 +247,9 @@ def describe_effect_on_extent(crossing_ids, parts):
     )
 
 
-def main(*, pilot):
+def main(*, extent):
     """Report the building outlines that straddle a property boundary."""
-    addresses = gpd.read_parquet(land_value_path(pilot=pilot))
+    addresses = gpd.read_parquet(land_value_path(extent=extent))
     bbox = fetch_extent(addresses)
 
     print("Fetching the building outlines ...", flush=True)
@@ -294,4 +294,4 @@ def main(*, pilot):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT)
+    main(extent=config.EXTENT)

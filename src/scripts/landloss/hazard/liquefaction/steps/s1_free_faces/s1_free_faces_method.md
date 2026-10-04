@@ -28,11 +28,12 @@
 - The area filter runs on what the bounding box read left, so a lake cut by the
   edge of the box is measured by its part inside. The NLM filters after its clip
   the same way.
-- What a run covers is set by `EXTENT` in `config.py`: the small Wellington
-  pilot box, the four territorial authorities, clipped to their own boundary, or
-  the lower Hutt pilot box, for checking. Each writes its own file,
-  `temp/hazard/liquefaction/free-faces{-pilot,,-lower-hutt}.gpkg`, and step 2
-  reads the pilot or study one to match its `PILOT`.
+- What a run covers is set by `EXTENT` in `config.py`: one of the study's
+  extents (`"wlg-pilot"`, `"full"` for the four territorial authorities, clipped
+  to their own boundary, and so on), or `"lower-hutt"`, the lower Hutt pilot box,
+  for checking. Each writes its own file, named with `extent_suffix` --
+  `temp/hazard/liquefaction/free-faces{-pilot,,-lower-hutt}.gpkg` -- and step 2
+  reads the one for its own `EXTENT`.
 - Every extent is read 200 m wider than itself (`FAR_FIELD_M`), so a free face
   just outside it still puts the ground inside it in the near or middle zone.
 

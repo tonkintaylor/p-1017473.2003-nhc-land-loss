@@ -49,6 +49,7 @@ from landloss.exposure.rw.population import (
     draw_wall_population,
 )
 from landloss.hazard.realisation import realisation_seed
+from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
@@ -75,21 +76,22 @@ WORLD_ID_COLUMN = "world_id"
 RULE = "-" * 72
 
 
-def wall_population_path(world_id, *, pilot):
+def wall_population_path(world_id, *, extent):
     """Return the file a run writes one world's walls to.
 
     Args:
         world_id: Which exposure world this is.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-w{world_id:03d}{suffix}.geoparquet"
 
 
-def drawn_walls_path(world_id, *, pilot):
+def drawn_walls_path(world_id, *, extent):
     """Return the file a run writes every wall one world drew to.
 
     The walls before the claim and coverage filters, with ``rw_id`` null on
@@ -98,12 +100,13 @@ def drawn_walls_path(world_id, *, pilot):
 
     Args:
         world_id: Which exposure world this is.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/exposure/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return WORK_DIR / f"{DRAWN_STEM}-w{world_id:03d}{suffix}.geoparquet"
 
 
@@ -185,17 +188,18 @@ def describe_walls(walls):
         print(f"  {size}: {low:.2f}  {mid:.2f}  {high:.2f}  ({height.size:,} walls)")
 
 
-def main(*, pilot, world_ids):
+def main(*, extent, world_ids):
     """Draw a wall population per exposure world and write each one out.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: Which exposure worlds to draw.
     """
-    probability_path = wall_probability_path(pilot=pilot)
+    probability_path = wall_probability_path(extent=extent)
     print(f"Reading the wall probabilities from {probability_path} ...")
     probabilities = gpd.read_parquet(probability_path)
-    insured = gpd.read_parquet(insured_land_path(pilot=pilot))
+    insured = gpd.read_parquet(insured_land_path(extent=extent))
 
     for world_id in world_ids:
         print(RULE)
@@ -217,7 +221,7 @@ def main(*, pilot, world_ids):
         kept = insert_world_id(kept, world_id)
         describe_walls(kept)
 
-        out_path = wall_population_path(world_id, pilot=pilot)
+        out_path = wall_population_path(world_id, extent=extent)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         kept.to_parquet(out_path)
         print(f"Wrote {len(kept):,} walls to {out_path}")
@@ -225,7 +229,7 @@ def main(*, pilot, world_ids):
         # Every drawn wall, insured or not, for the urban slope model.
         every_wall = insert_world_id(attach_rw_ids(drawn, kept), world_id)
         describe_drawn_walls(every_wall)
-        drawn_path = drawn_walls_path(world_id, pilot=pilot)
+        drawn_path = drawn_walls_path(world_id, extent=extent)
         every_wall.to_parquet(drawn_path)
         print(f"Wrote {len(every_wall):,} drawn walls to {drawn_path}")
 
@@ -238,4 +242,4 @@ def main(*, pilot, world_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, world_ids=config.WORLD_IDS)
+    main(extent=config.EXTENT, world_ids=config.WORLD_IDS)

@@ -10,8 +10,8 @@ That is what the per-TA table this run prints is there to show.
 
     uv run --frozen python src/scripts/landloss/exposure/land/steps/s2_land_value/s4_estimate_land_value.py
 
-The run settings -- the pilot box or the full study area, whether to ignore the
-caches, and the input and output paths -- come from config.py beside this
+The run settings -- the extent (a pilot box or the full study area), whether to
+ignore the caches, and the input and output paths -- come from config.py beside this
 script rather than from the command line.
 
 The script is numbered s4 within this step, not s1, because terrain,
@@ -44,8 +44,8 @@ landform class by closeness to the main centres and to a railway station. It is
 optional for the same reason, and the run says when it goes without.
 
 The address spine is rebuilt from LINZ if it is not already on disk, so this can
-be run on its own. Set PILOT in config.py to work over the small Wellington
-box.
+be run on its own. Set EXTENT = "wlg-pilot" in config.py to work over the
+small Wellington box.
 
 Requires TNT_KOORDINATES_API_KEY in .env for the flatland layer, and LINZ_API_KEY
 for the property boundaries and if the address spine has to be rebuilt. The
@@ -98,7 +98,11 @@ from landloss.exposure.land.landform import (
     classify_landform,
     get_flatland,
 )
-from landloss.io.area_of_interest import SMALL_WLG_PILOT, get_study_areas
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.land.steps.s2_land_value import config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
@@ -114,18 +118,14 @@ if hasattr(sys.stdout, "reconfigure"):
 # temp/ is gitignored. These are working layers, rebuildable from the source and
 # the packaged assets, so they have no business in a diff.
 WORK_DIR = TEMP_DIR / "exposure"
-SPINE_NAME = "address-spine.geoparquet"
-PILOT_SPINE_NAME = "address-spine-pilot.geoparquet"
-TERRAIN_NAME = "terrain-by-address.geoparquet"
-PILOT_TERRAIN_NAME = "terrain-by-address-pilot.geoparquet"
-ACCESSIBILITY_NAME = "accessibility-by-address.geoparquet"
-PILOT_ACCESSIBILITY_NAME = "accessibility-by-address-pilot.geoparquet"
-AMENITY_NAME = "amenity-by-address.geoparquet"
-PILOT_AMENITY_NAME = "amenity-by-address-pilot.geoparquet"
-OUT_NAME = "land-value-by-address.geoparquet"
-PILOT_OUT_NAME = "land-value-by-address-pilot.geoparquet"
-COHORTS_NAME = "land-value-by-suburb.csv"
-PILOT_COHORTS_NAME = "land-value-by-suburb-pilot.csv"
+# Each name carries extent_suffix(extent), so runs over different extents sit
+# side by side.
+SPINE_STEM = "address-spine"
+TERRAIN_STEM = "terrain-by-address"
+ACCESSIBILITY_STEM = "accessibility-by-address"
+AMENITY_STEM = "amenity-by-address"
+OUT_STEM = "land-value-by-address"
+COHORTS_STEM = "land-value-by-suburb"
 
 # The join key the terrain attributes come back on, and the three columns that
 # have to be there before the join is worth making.
@@ -594,14 +594,14 @@ def describe_suburbs(cohorts, limit=SUBURB_LIMIT):
             )
 
 
-def _default(path, pilot_name, name, *, pilot):
+def _default(path, stem, file_type, *, extent):
     """Return ``path`` as a Path, or the standard location under temp/exposure/."""
     if path is not None:
         return Path(path)
-    return WORK_DIR / (pilot_name if pilot else name)
+    return WORK_DIR / f"{stem}{extent_suffix(extent)}.{file_type}"
 
 
-def resolve_outputs(*, pilot, spine, terrain, accessibility, amenity, out, cohorts):
+def resolve_outputs(*, extent, spine, terrain, accessibility, amenity, out, cohorts):
     """Choose where the spine is read from and where the two outputs are written.
 
     Resolved here rather than as config defaults, so that a pilot run cannot
@@ -609,7 +609,8 @@ def resolve_outputs(*, pilot, spine, terrain, accessibility, amenity, out, cohor
     everything downstream reading them without noticing.
 
     Args:
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         spine: The address spine path from config.py, or None for the default.
         terrain: The terrain attributes path, or None for the default.
         accessibility: The accessibility attributes path, or None for the
@@ -623,26 +624,25 @@ def resolve_outputs(*, pilot, spine, terrain, accessibility, amenity, out, cohor
         path, the valued address path and the cohort table path.
     """
     return (
-        _default(spine, PILOT_SPINE_NAME, SPINE_NAME, pilot=pilot),
-        _default(terrain, PILOT_TERRAIN_NAME, TERRAIN_NAME, pilot=pilot),
-        _default(
-            accessibility, PILOT_ACCESSIBILITY_NAME, ACCESSIBILITY_NAME, pilot=pilot
-        ),
-        _default(amenity, PILOT_AMENITY_NAME, AMENITY_NAME, pilot=pilot),
-        _default(out, PILOT_OUT_NAME, OUT_NAME, pilot=pilot),
-        _default(cohorts, PILOT_COHORTS_NAME, COHORTS_NAME, pilot=pilot),
+        _default(spine, SPINE_STEM, "geoparquet", extent=extent),
+        _default(terrain, TERRAIN_STEM, "geoparquet", extent=extent),
+        _default(accessibility, ACCESSIBILITY_STEM, "geoparquet", extent=extent),
+        _default(amenity, AMENITY_STEM, "geoparquet", extent=extent),
+        _default(out, OUT_STEM, "geoparquet", extent=extent),
+        _default(cohorts, COHORTS_STEM, "csv", extent=extent),
     )
 
 
-def resolve_extent(study_areas, *, pilot):
+def resolve_extent(study_areas, *, extent):
     """Return the bounding box, clip boundary and name of the extent to run over.
 
     The clip matters as much as the box. The four authorities sit in a rectangle
     that also contains most of the Wairarapa, so the full run is cut back to the
     real boundaries; a pilot is a rectangle already and needs no clip.
     """
-    if pilot:
-        return SMALL_WLG_PILOT.bbox(constants.DEFAULT_CRS), None, SMALL_WLG_PILOT.name
+    aoi = get_area_of_interest(extent)
+    if aoi is not None:
+        return aoi.bbox(constants.DEFAULT_CRS), None, aoi.name
 
     bbox = tuple(float(value) for value in study_areas.total_bounds)
     return bbox, study_areas, ", ".join(study_areas["name"])
@@ -715,14 +715,15 @@ def write_outputs(valued, cohorts, out, cohorts_out):
     print(f"  Rows    : {len(cohorts):,} suburb/landform cohorts")
 
 
-def main(*, pilot, fresh, spine, terrain, accessibility, amenity, out, cohorts):
+def main(*, extent, fresh, spine, terrain, accessibility, amenity, out, cohorts):
     """Estimate a land value for every address in the spine.
 
     Args:
-        pilot: Use the small Wellington pilot box instead of the full study area.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         fresh: Ignore the extent cache and re-read from the source layers.
         spine: The address spine from step 1. None reads the standard location
-            under temp/exposure/, with a pilot name when ``pilot`` is True.
+            under temp/exposure/, named with ``extent_suffix(extent)``.
             Rebuilt from LINZ if it is not there.
         terrain: The terrain attributes from s1. None reads the standard
             location. If the file is not there the run falls back to valuing on
@@ -749,7 +750,7 @@ def main(*, pilot, fresh, spine, terrain, accessibility, amenity, out, cohorts):
         out,
         cohorts_out,
     ) = resolve_outputs(
-        pilot=pilot,
+        extent=extent,
         spine=spine,
         terrain=terrain,
         accessibility=accessibility,
@@ -759,7 +760,7 @@ def main(*, pilot, fresh, spine, terrain, accessibility, amenity, out, cohorts):
     )
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
-    bbox, clip_to, extent_name = resolve_extent(study_areas, pilot=pilot)
+    bbox, clip_to, extent_name = resolve_extent(study_areas, extent=extent)
     describe_extent(extent_name, bbox)
 
     addresses = read_spine(spine_path, bbox, clip_to, use_cache=not fresh)
@@ -812,7 +813,7 @@ def main(*, pilot, fresh, spine, terrain, accessibility, amenity, out, cohorts):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         fresh=config.FRESH,
         spine=config.SPINE,
         terrain=config.TERRAIN,

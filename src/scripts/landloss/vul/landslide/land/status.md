@@ -84,7 +84,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   keeps the deprecated `loss_input_path` resolving world 0 (contract section
   3.15, decision 37, built), so the loss module, which asks per earthquake
   only, reads world 0. Moving its five calls onto worlds is register task
-  **T-65**.
+  **T-66**.
 - Over the Wellington pilot 37 properties of 4,764 are reached. That number is
   not to be quoted: the hazard realisation currently produces about two orders
   of magnitude less damaged ground than the ESNZ grid's own expectation, because

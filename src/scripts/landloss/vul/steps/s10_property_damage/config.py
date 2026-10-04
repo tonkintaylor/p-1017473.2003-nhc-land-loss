@@ -11,9 +11,11 @@ exposure steps 5 and 6, vul steps 2 and 3, both step 9 shaking steps and both
 step 11 landslide steps (retaining walls, and culverts and bridges).
 """
 
-# Whether to run over the small Wellington pilot box. Must match the runs of
-# every step this reads.
-PILOT = True
+# The extent to run over: "wlg-pilot" (the small Wellington pilot box),
+# "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
+# territorial authorities). Must match the runs of every step this reads.
+# Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
+EXTENT = "wlg-pilot"
 
 # Which exposure worlds to assemble. The wall population, the wall damage
 # states, the landslide land damage and both landslide flag files are read per

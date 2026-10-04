@@ -27,7 +27,7 @@ combined realisation landed.
 Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
 
 - [x] Read landslide step 9's combined realisation
-      (`combined_realisation_path(world_id, realisation_id, pilot=...)`), the
+      (`combined_realisation_path(world_id, realisation_id, extent=...)`), the
       large model's polygons and the urban slope model's together, in place of
       step 1's large-model file.
 - [x] Take the land classes from `landloss.hazard.landslide.land_class`

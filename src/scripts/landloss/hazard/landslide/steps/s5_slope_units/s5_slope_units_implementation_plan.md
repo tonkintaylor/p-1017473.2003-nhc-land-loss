@@ -81,14 +81,14 @@ without changing any signature in `landloss.hazard.landslide.slope_units`.
       the split is doing the work on the broad flanks of the pilot. The
       `flatland_share` and the figure await the ground map (next box).
 - [ ] Run `gen_slope_units.py` and `fig_slope_units.py` over the pilot
-      (`PILOT = True`) once step 4 has written `ground-map-pilot.geoparquet`,
+      (`EXTENT = "wlg-pilot"`) once step 4 has written `ground-map-pilot.geoparquet`,
       confirm the table above (the sensitivity reads no ground map, so it
       should not move), and look at the figure: units should run from drainage
       line to ridge with one hue each.
 
 ## Phase 2 — Full study area
 
-- [ ] Run with `PILOT = False`. The full extent is about 32 million 10 m cells
+- [ ] Run with `EXTENT = "full"`. The full extent is about 32 million 10 m cells
       (the pilot is 69,300, and its three thresholds took 5 s), and the pure
       Python loops over every cell are the long jobs: the priority flood and
       the accumulation walk in `hydrology.route_grid()`, the catchment walk in

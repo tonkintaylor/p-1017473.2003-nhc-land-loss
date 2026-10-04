@@ -52,6 +52,7 @@ from landloss.domain.loss_contract import (
 from landloss.hazard.landslide.urban import fragility as urban_fragility
 from landloss.hazard.realisation import realisation_seed
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
+from landloss.io.area_of_interest import extent_suffix
 from landloss.io.ts1170 import get_ts1170_pga
 from landloss.vul.shaking.fragility import (
     DAMAGE_STATE_COLUMN,
@@ -125,18 +126,19 @@ OUT_COLUMNS = [
 RULE = "-" * 72
 
 
-def wall_damage_state_path(world_id, realisation_id, *, pilot):
+def wall_damage_state_path(world_id, realisation_id, *, extent):
     """Return the file a run writes one world's and earthquake's wall states to.
 
     Args:
         world_id: Which exposure world the walls were drawn in.
         realisation_id: Which modelled earthquake this is.
-        pilot: Whether the run is over the pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
         The output path, under ``temp/vul/``.
     """
-    suffix = "-pilot" if pilot else ""
+    suffix = extent_suffix(extent)
     return (
         WORK_DIR
         / f"{OUT_STEM}-w{world_id:03d}-r{realisation_id:03d}{suffix}.geoparquet"
@@ -164,9 +166,9 @@ def midpoints(walls):
     return walls.geometry.interpolate(0.5, normalized=True)
 
 
-def sample_site_class(points, *, pilot):
+def sample_site_class(points, *, extent):
     """Read the TS1170.5 site class at each point, null off the grid."""
-    sampled = sample_at_points(site_class_path(pilot=pilot), points)
+    sampled = sample_at_points(site_class_path(extent=extent), points)
     return sampled.round().astype("Int64")
 
 
@@ -277,11 +279,12 @@ def describe_states(states):
     )
 
 
-def main(*, pilot, world_ids, realisation_ids, return_period_yr):
+def main(*, extent, world_ids, realisation_ids, return_period_yr):
     """Write a damage state per flat-land wall, per world and earthquake.
 
     Args:
-        pilot: Whether to run over the small Wellington pilot box.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: Which exposure worlds to read the wall population of.
         realisation_ids: Which modelled earthquakes to draw states for.
         return_period_yr: The return period of the TS1170.5 demand the PGV/PGA
@@ -291,25 +294,25 @@ def main(*, pilot, world_ids, realisation_ids, return_period_yr):
 
     # The ratio is realisation-free: step 3's PGV over the unscaled PGA, both on
     # the site class grid, so it is built once for every world and earthquake.
-    site_class = read_site_class(pilot=pilot)
+    site_class = read_site_class(extent=extent)
     print(f"Reading the TS1170.5 PGA grids at {return_period_yr} years ...")
     pga = demand_on_site_class_grid(
         get_ts1170_pga, site_class, return_period_yr=return_period_yr
     )
     pgv_grid = read_grid(
-        output_path("pgv", return_period_yr=return_period_yr, pilot=pilot)
+        output_path("pgv", return_period_yr=return_period_yr, extent=extent)
     )
 
     for world_id in world_ids:
-        walls = gpd.read_parquet(wall_population_path(world_id, pilot=pilot))
+        walls = gpd.read_parquet(wall_population_path(world_id, extent=extent))
         flat = flat_land_walls(walls)
         describe_population(walls, flat)
         points = midpoints(flat)
-        site_class_at = sample_site_class(points, pilot=pilot)
+        site_class_at = sample_site_class(points, extent=extent)
         ratio = urban_fragility.pgv_pga_ratio_m_s_per_g(pgv_grid, pga, points)
 
         for realisation_id in realisation_ids:
-            raster = pgv_path(realisation_id, pilot=pilot)
+            raster = pgv_path(realisation_id, extent=extent)
             print(RULE)
             print(
                 f"World {world_id}, realisation {realisation_id}, stream "
@@ -326,7 +329,7 @@ def main(*, pilot, world_ids, realisation_ids, return_period_yr):
             )
             describe_states(states)
 
-            out_path = wall_damage_state_path(world_id, realisation_id, pilot=pilot)
+            out_path = wall_damage_state_path(world_id, realisation_id, extent=extent)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             states.to_parquet(out_path)
             print(f"Wrote {len(states):,} rows to {out_path}")
@@ -341,7 +344,7 @@ def main(*, pilot, world_ids, realisation_ids, return_period_yr):
 
 if __name__ == "__main__":
     main(
-        pilot=config.PILOT,
+        extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         realisation_ids=config.REALISATION_IDS,
         return_period_yr=config.RETURN_PERIOD_YR,
