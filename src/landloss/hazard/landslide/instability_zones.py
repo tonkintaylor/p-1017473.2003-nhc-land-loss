@@ -76,6 +76,10 @@ NEAR_PAIR_M = 3.0
 # degrees runs about 26 m, and the pair count grows with the square of a pif's
 # size (1.4 billion unbounded on the pilot, about 156 million at 30 m).
 MAX_PAIR_M = 30.0
+# Judgement (2026-10-04, after the lead found whole hillsides growing as one
+# element): a pif spanning more than this, in metres, is cut into pieces before
+# growth (:func:`split_pifs`); each piece seeds its own element.
+MAX_PIF_SPAN_M = 20.0
 # Points of a pif compared against the rest at a time, to bound memory.
 _CHUNK = 4000
 
@@ -213,6 +217,61 @@ def cluster_pifs(
     n_pifs, component = connected_components(graph, directed=False)
     labels[rows, cols] = component + 1
     return labels, int(n_pifs)
+
+
+def split_pifs(
+    labels: NDArray[np.int32], cell_size_m: float, *, max_span_m: float
+) -> tuple[NDArray[np.int32], NDArray[np.int64]]:
+    """Cut every pif longer than ``max_span_m`` into pieces no longer than it.
+
+    A pif is chained from pips 2 m apart, so a whole hillside's crest, or a
+    network of gully heads, can be one pif; grown as one seed it becomes one
+    element thousands of square metres across. Each long pif is cut in two at
+    the middle of its span along its principal axis, and each half again, until
+    no piece spans more than ``max_span_m``. The pieces seed their own growth,
+    so the watershed meets them along the ground between (the crests and
+    channels the cost follows) rather than along a line this function draws.
+
+    Args:
+        labels: The pifs on their pips' cells, from 1; 0 elsewhere.
+        cell_size_m: The cell size.
+        max_span_m: The longest a piece may span, in metres, along its
+            principal axis.
+
+    Returns:
+        ``(pieces, parent)``: the pieces on their pips' cells, numbered from 1,
+        and the pif each piece came from, indexed by piece (entry 0 is 0).
+    """
+    rows, cols = np.nonzero(labels)
+    pif = labels[rows, cols]
+    if rows.size == 0:
+        return labels.copy(), np.zeros(1, dtype=np.int64)
+    xy = np.column_stack([rows, cols]).astype(float) * cell_size_m
+    order = np.argsort(pif, kind="stable")
+    starts = np.flatnonzero(np.r_[True, np.diff(pif[order]) != 0])
+    groups = np.split(order, starts[1:])
+    piece = np.zeros(rows.size, dtype=np.int64)
+    parent = [0]
+    for members in groups:
+        stack = [members]
+        while stack:
+            part = stack.pop()
+            points = xy[part]
+            span = 0.0
+            if part.size > 1:
+                centred = points - points.mean(axis=0)
+                axis = np.linalg.svd(centred, full_matrices=False)[2][0]
+                along = centred @ axis
+                span = float(along.max() - along.min())
+            if span <= max_span_m:
+                parent.append(int(pif[part[0]]))
+                piece[part] = len(parent) - 1
+                continue
+            low = along < (along.max() + along.min()) / 2
+            stack.extend((part[low], part[~low]))
+    pieces = np.zeros_like(labels)
+    pieces[rows, cols] = piece
+    return pieces, np.array(parent, dtype=np.int64)
 
 
 def _pair_stats(
@@ -445,15 +504,17 @@ def find_instability_zones(
     band = height_band(np.nan_to_num(layers.step_height_m, nan=0.0))
     threshold = step_angle_deg(groups, band)
     exceedance = layers.slope_coarse_deg - threshold
-    siz_ids = sizs.index[sizs["is_siz"].astype(bool)].to_numpy()
-    n_seeds = int(siz_ids.size)
-    lookup = np.zeros(len(sizs) + 1, dtype=np.int32)
-    lookup[siz_ids] = np.arange(1, n_seeds + 1, dtype=np.int32)
-    seeds = lookup[pif_labels]
+    pieces, parent = split_pifs(pif_labels, cell_size_m, max_span_m=MAX_PIF_SPAN_M)
+    is_siz_piece = sizs["is_siz"].astype(bool).reindex(parent, fill_value=False)
+    siz_pieces = np.flatnonzero(is_siz_piece.to_numpy())
+    n_seeds = int(siz_pieces.size)
+    lookup = np.zeros(parent.size, dtype=np.int32)
+    lookup[siz_pieces] = np.arange(1, n_seeds + 1, dtype=np.int32)
+    seeds = lookup[pieces]
     if n_seeds:
         limit = np.zeros(n_seeds + 1)
         limit[1:] = (
-            sizs.loc[siz_ids, "threshold_angle_deg"].to_numpy()
+            sizs.loc[parent[siz_pieces], "threshold_angle_deg"].to_numpy()
             - BETA_FREE_FACE_GROW_TOL_DEG
         )
         grown = _grow_by_limit(

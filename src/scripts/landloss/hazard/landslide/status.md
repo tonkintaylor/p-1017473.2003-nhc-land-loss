@@ -302,16 +302,25 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   headscarp band, so the pilot is drawn twice, with every siz walled and with
   none (`research/slope_elements/fig_pilot_example_instability_zones.py`). Over
   the whole pilot: 353,740 pips, 12,015 pifs, 8,223 sizs (every one of the 7,709
-  soil pifs; 514 of 4,306 weak-rock pifs) and 5,441 elements in 24.5 s, plus
+  pips, pifs, sizs and 9,204 elements in 24.5 s, plus
   about 7 s for each scenario's polygons (the old pipeline took 27 to 40 s in
-  all, so about the same speed).
-  Site 05's right hand hillside now gives one polygon of about 970 m² and about
-  ten of 50 to 240 m², with some tiny fragments. 28 evacuated polygons in the
-  walled run exceed 2,000 m² (largest 4,694 m²), none of them inside a pilot
-  site, and none in the unwalled run; the lead reviews these before any
-  threshold changes. The old seeding code stays for the toy figures
-  (`fig_toy_slope_elements.py`) and is to be retired; the shared slope table is
-  now the two-band one, so the old pilot and toy figure scripts read it too.
+  all, so about the same speed). A pif is a chain of pips 2 m apart, so a whole
+  hillside was one pif, grown as one element, and up to 4,694 m² (28 evacuated
+  polygons over 2,000 m² in the walled run); the segments cut along the
+  element's mean aspect did not split curved or branching elements. Every pif
+  spanning more than 20 m is now cut in two at the middle of its span along its
+  principal axis, and each half again (`split_pifs`, `MAX_PIF_SPAN_M`), before
+  growth; each piece seeds its own element and the watershed meets the pieces
+  along the ground between. The siz table is still one row per pif. Over the
+  pilot that gives 9,204 elements and 9,204 walled (9,354 unwalled) evacuated
+  polygons, median 56 m², largest 551 m² (461 unwalled), none over 1,000 m²,
+  and the same total area; the old pipeline had 7,093, largest 2,142 m².
+  Site 05's right hand hillside now gives about eight polygons of 50 to 300 m²
+  and a few fragments. Splitting at 40 m or 30 m left the largest at 1,207 m² and
+  709 m²; the asperities of the faces plan were not needed. The old seeding
+  code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
+  deprecated and is to be retired; the shared slope table is now the two-band
+  one, so the old pilot and toy figure scripts read it too.
 
 ## Next
 
@@ -332,7 +341,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
       (done, stage D1) and run over pilot examples (done, stage D2); next,
       the lead reviews whether the weak-rock hillside polygons are
-      acceptable (now the 28 polygons over 2,000 m² the siz run flags, see
+      acceptable (now whether the 20 m pif split gives sensible polygons, see
       above), the old bank code is retired, then stage D3 builds the pipeline
       step, carrying the water mask and writing the siz table;
    5. the wall candidates and their probability on the faces (faces plan,

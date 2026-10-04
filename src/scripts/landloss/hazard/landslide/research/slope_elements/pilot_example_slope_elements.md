@@ -224,7 +224,8 @@ every siz walled and with none walled
   maximum angles above and below 3.5 m, delta_h, the siz flag) is kept for the
   retaining wall workflow.
 - **Counts.** 353,740 pips, 12,015 pifs, 8,223 sizs (7,709 of 7,709 soil, 514
-  of 4,306 weak rock) and 5,441 elements.
+  of 4,306 weak rock) and 9,204 elements (5,441 before the pifs were split, see
+  "Splitting").
 - **Speed.** 24.5 s for pips, pifs, sizs and growth, and 6.5 s (walled) and 7.8 s
   (unwalled) for the polygons, against 27 to 40 s for the old pipeline (same
   machine, different load), so about the same speed.
@@ -236,10 +237,35 @@ every siz walled and with none walled
 - **Site 05.** The hillside on the right gives one polygon of about 970 m², about
   ten of 50 to 240 m² and a scatter of fragments under 35 m², in the walled run
   (the unwalled run is the same shape).
-- **Large polygons.** 28 evacuated polygons in the walled run exceed 2,000 m²
-  (largest 4,694 m², at about 1749712 E 5424518 N), none inside a pilot site; the
-  unwalled run has none. They are in the walled run's printed table for the lead
-  to review before any threshold moves. Sites 07 and 08 read reasonably.
+- **Large polygons (first run).** 28 evacuated polygons in the walled run
+  exceeded 2,000 m² (largest 4,694 m²), none inside a pilot site. Sites 07 and
+  08 read reasonably.
+- **Splitting (same day).** The cause was the pifs: a chain of pips 2 m apart
+  can be a whole hillside (one pif had 13,580 pips and a 560 m length), and
+  each pif seeded one element. The segments cut at 1,000 m³ in
+  `slope_polygons._segments` project onto one mean aspect and, at depths of
+  0.2 to 0.35 m, span 3,000 to 4,700 m², so they did not help. Three fixes were
+  considered: (1) a more sensible split, (2) limits on growth that follow the
+  watershed or the failure, (3) asperities, as a last resort. (1) and (2) are
+  combined: `split_pifs` cuts every pif that spans more than `MAX_PIF_SPAN_M`
+  (20 m) in two at the middle of its span along its principal axis, repeatedly,
+  and each piece seeds its own element, so the straight cuts cross the face
+  and the watershed draws the boundaries between neighbours along it. The
+  limit on growth comes from the piece's parent siz. Asperities were not
+  needed. The siz table is unchanged, one row per pif.
+
+  | Span limit | Elements | Over 2,000 m² | Over 1,000 m² | Largest m² | Median m² |
+  |---|---|---|---|---|---|
+  | none | 5,441 | 28 | 126 | 4,694 | 26 |
+  | 40 m | 6,469 | 0 | 1 | 1,207 | 35 |
+  | 30 m | 7,217 | 0 | 0 | 709 | 45 |
+  | 20 m | 9,204 | 0 | 0 | 551 | 56 |
+
+  (Walled run. Total evacuated area barely moves, 619,000 m² to 641,000 m², and
+  the run time is the same.) Site 05's right hand hillside is about eight
+  polygons of 50 to 300 m² and a few fragments. The 20 m limit is a judgement
+  from Wellington failure widths of about 10 to 30 m; it is the number to
+  change for more or fewer pieces.
 - **Not confirmed by the lead:** the 30 m pair cap, the 1.41 diagonal scaling,
   the support points, and every soil pif being a siz.
 

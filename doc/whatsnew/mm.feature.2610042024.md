@@ -1,0 +1,1 @@
+Added `landloss.hazard.landslide.instability_zones.split_pifs`, which cuts every pif spanning more than `MAX_PIF_SPAN_M` (20 m) into pieces before growth, so a hillside is no longer grown as one element. On the pilot the evacuated polygons over 2,000 m² go from 28 to none.

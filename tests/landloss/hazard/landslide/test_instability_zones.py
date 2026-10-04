@@ -75,6 +75,24 @@ def test_pips_two_metres_apart_share_a_pif_and_three_do_not():
     assert labels[~mask].max() == 0
 
 
+def test_a_long_pif_is_cut_into_pieces_no_longer_than_the_limit():
+    labels = np.zeros((10, 100), dtype=np.int32)
+    labels[5, :70] = 1
+    labels[2, 90:95] = 2
+    pieces, parent = zones.split_pifs(labels, 1.0, max_span_m=20.0)
+    on_pips = labels > 0
+    assert (pieces[on_pips] > 0).all()
+    assert not pieces[~on_pips].any()
+    long_pieces = np.unique(pieces[labels == 1])
+    assert long_pieces.size == 4
+    assert set(parent[long_pieces]) == {1}
+    for piece in long_pieces:
+        cols = np.nonzero(pieces == piece)[1]
+        assert cols.max() - cols.min() <= 20
+    assert parent[pieces[2, 90]] == 2
+    assert np.unique(pieces[labels == 2]).size == 1
+
+
 def test_no_pips_make_no_pifs():
     labels, n = zones.cluster_pifs(np.zeros((5, 5), dtype=bool), 1.0)
     assert n == 0
@@ -154,7 +172,8 @@ def test_a_pif_takes_the_ground_group_of_its_pips():
 # Elements -------------------------------------------------------------------
 
 
-def test_a_soil_cut_makes_one_walled_element_with_its_siz_recorded():
+def test_a_soil_cut_makes_one_walled_element_with_its_siz_recorded(monkeypatch):
+    monkeypatch.setattr(zones, "MAX_PIF_SPAN_M", 100.0)
     result = _zones(_ramp(6.0, 60.0), "soil_like")
     elements = result.found.elements
     assert len(elements) == 1
@@ -164,6 +183,14 @@ def test_a_soil_cut_makes_one_walled_element_with_its_siz_recorded():
     assert row["height_m"] == pytest.approx(6.0, abs=1.0)
     assert row["siz_id"] in result.sizs.index
     assert row["siz_max_delta_h_m"] > 5.0
+
+
+def test_a_cut_longer_than_the_span_limit_makes_several_elements_of_one_siz():
+    result = _zones(_ramp(6.0, 60.0), "soil_like")
+    elements = result.found.elements
+    assert len(elements) == 2
+    assert elements["siz_id"].nunique() == 1
+    assert len(result.sizs) == 1
 
 
 def test_a_rock_wall_of_2_m_makes_no_element():
@@ -179,8 +206,9 @@ def test_with_walls_switches_the_element_type_per_element():
     walled, bare = True, False
     assert (zones.with_walls(found, walled).elements["element_type"] == FREE_FACE).all()
     assert (zones.with_walls(found, bare).elements["element_type"] == BANK).all()
-    mixed = pd.Series([False], index=found.elements.index)
-    assert (zones.with_walls(found, mixed).elements["element_type"] == BANK).all()
+    mixed = pd.Series([False, True], index=found.elements.index)
+    types = zones.with_walls(found, mixed).elements["element_type"]
+    assert types.tolist() == [BANK, FREE_FACE]
 
 
 def test_the_wall_scenarios_set_the_width_rule_behind_the_crest():

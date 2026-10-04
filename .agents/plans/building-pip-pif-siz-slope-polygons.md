@@ -1532,6 +1532,18 @@ Before running, check that `config.PILOT_SITES` entries carry `id` and `name` ke
 - **A step folder** for the siz file (`steps/`, with plan and method files) once the lead settles where the file lives; until then it is written to `temp/`.
 - **Along-contour strips** in `slope_polygons._segments`.
 
+## Addendum: splitting large pifs (2026-10-04)
+
+The first pilot run gave 28 evacuated polygons over 2,000 m² (largest 4,694 m²)
+because a pif chains pips 2 m apart, so a hillside was one pif and one element.
+Considered: more sensible splitting, limits on growth, asperities (last resort).
+Done: `split_pifs` in `instability_zones.py` cuts every pif spanning more than
+`MAX_PIF_SPAN_M` (20 m) at the middle of its principal-axis span, repeatedly,
+before growth; each piece seeds its own element with its parent siz's angle
+limit, and the siz table keeps one row per pif. Pilot: 9,204 elements, none over
+1,000 m², largest 551 m². Asperities were not needed. Open: whether the siz
+table (the wall candidates) should be cut at the same span.
+
 ## Self-Review
 
 - **Spec coverage:** pips (8 directions, 0.7 m at 1/3/5 m, no material or second DEM) Task 3; pifs at 2 m Task 3; siz test over all pairs with the near step (soil 0.7, rock 3.0) and far angle by pair delta_h and the new 35/45/53 and 32/40/48 table Tasks 1 and 4; fill is soil Task 2; max angles above/below 3.5, delta_h and the flag stored, and the file for the RW workflow Tasks 4 and 7; watershed growth kept Task 6; evacuated zone twice (all walled, none) Tasks 6 and 8; speed and the pair cap Design note 4 and the Task 8 gate; flag large polygons without tuning Task 8. Rock walls of 1-2 m are not sizs: `test_a_rock_wall_of_2_m...`.
