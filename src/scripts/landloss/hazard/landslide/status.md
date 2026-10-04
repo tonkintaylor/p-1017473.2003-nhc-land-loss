@@ -14,7 +14,8 @@ wait on the lead (Next, 3 and 10). The portfolio of large models is proposed,
 not agreed; its Hancox model 3 and Wellington step are built but not run. The
 slope elements and polygons library passed its toy-terrain
 proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
-2026-10-03; the pipeline step (stage D3) is next.
+2026-10-03; the pipeline step (stage D3, step 12) ran over the pilot on
+2026-10-04, and the wall probability and per-zone fragility are next.
 
 **Updated:** 2026-10-04
 
@@ -70,7 +71,8 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
 - [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
   superseded, because no published method supports it.
 - [~] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
-  static layer, each with its height and overall angle. **Seeding revised
+  static layer, each with its height and overall angle. **Built as step 12
+  (stage D3, 2026-10-04)**, over the pilot. **Seeding revised
   2026-10-04** (the lead rejected the bank seeds): pips (cells that drop
   0.7 m per metre of distance at 1, 3 and 5 cells in one of eight directions,
   from the DEM alone), joined within 2 m into pifs, each tested over all
@@ -321,6 +323,19 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
   deprecated and is to be retired; the shared slope table is now the two-band
   one, so the old pilot and toy figure scripts read it too.
+- **Step 12, urban slope faces (stage D3, 2026-10-04).**
+  `steps/s12_urban_slope_faces/gen_urban_slope_faces.py` runs the pipeline over
+  an extent and writes the siz table, the elements and the evacuated,
+  imminent and inundated zones for the two wall scenarios to
+  `temp/hazard/landslide/`. It also reads the evidence for a wall onto every
+  pif (`landloss.hazard.landslide.wall_candidates`): a mapped GNS wall, cut/fill
+  line, SLIDE cut or fill body, ground material, nearest building. Over the
+  pilot, 8,223 pifs are sizs and a further 197 carry a GNS wall and are
+  candidates of class `small`; the whole run takes about 40 s. Against the GNS
+  mapping, 63% of mapped wall length has a siz pip within 2 m (67% a pip of any
+  pif) and 59% of sharp breaks in slope within 3 m. The checks are in
+  `table_urban_slope_face_checks.py`. No probability is yet put on a candidate,
+  no fragility on a zone, and steps 6 and 7 are still what steps 8 and 9 read.
 
 ## Next
 
@@ -339,15 +354,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       step 4 over the common extent and review its area shares and strength
       picks;
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
-      (done, stage D1) and run over pilot examples (done, stage D2); next,
-      the lead reviews whether the weak-rock hillside polygons are
-      acceptable (now whether the 20 m pif split gives sensible polygons, see
-      above), the old bank code is retired, then stage D3 builds the pipeline
-      step, carrying the water mask and writing the siz table;
-   5. the wall candidates and their probability on the faces (faces plan,
-      phase 2; exposure rw step 6, phase 2e), and the phase 4 checks that need
-      only the walls: GNS mapped wall recall and the height shape against
-      Anderson et al. [anderson_2015].
+      (done, stage D1), run over pilot examples (done, stage D2) and built as
+      step 12 (done, stage D3); next, the lead reviews the 20 m pif split and
+      the old seeding and bank code is retired (step 12 plan, phase 5);
+   5. the wall probability on the candidates (step 12 plan, phase 4; exposure
+      rw step 6, phase 2e), and then the phase 4 checks that need the
+      walls: the height shape against Anderson et al. [anderson_2015].
 
    Step 5 needs a rerun only for the common extent.
 3. **The lead decides the phase 3 proposals** (faces plan, phase 3, and its

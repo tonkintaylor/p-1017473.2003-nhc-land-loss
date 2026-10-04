@@ -330,12 +330,14 @@ findings document with the reason.
       (`fig_pilot_example_slope_elements.py`, findings in
       `pilot_example_slope_elements.md`). The judgement numbers are tuned
       here, not in stage D3.
-- [ ] **Stage D3 — the full pilot.** `gen_slope_elements.py` over the pilot,
-      then the walls (phase 2), the polygons (phase 3) and the checks
-      (phase 4), with counts and timings in the method files. The share of
-      urban ground in a polygon that fails in a realisation is set against the
-      order of 1% the literature gives, the number the first pilot missed by
-      a factor of about 40.
+- [x] **Stage D3 — the full pilot.** Built as step 12
+      (`steps/s12_urban_slope_faces/`, 2026-10-04) over the pilot: the
+      pipeline, the wall candidates' evidence and the checks that need only
+      those layers, with counts and timings in its method file. The walls'
+      probability, the fragility and the share of urban ground that fails in a
+      realisation (the order of 1% check) are phase 4 of that step's plan. The
+      literature's order of 1% is the number the first pilot missed by a
+      factor of about 40.
 
 ### Phase 1 — The static slope elements layer
 
