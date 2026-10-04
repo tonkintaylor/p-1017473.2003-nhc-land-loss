@@ -67,6 +67,17 @@ PILOT_MAX_CONTOURS = 30
 GNS_WALL_MATCH_M = 2.0
 GNS_BREAK_MATCH_M = 3.0
 
+# The bank seed slope for the pilot figures. The research script defaults to
+# this value for every site unless a site sets its own override.
+PILOT_BANK_SLOPE_DEG = 100.0
+
+# Evacuated polygons over this area, in square metres, are flagged for review
+# (the old pilot's largest was 2,142 m2).
+LARGE_POLYGON_M2 = 2000.0
+
+# Where the siz table is written (under temp/), for the retaining-wall workflow.
+PILOT_SIZ_FILE = "pilot-siz"
+
 # The sites, each a window of 2 * half_size_m metres a side centred on an NZTM
 # point, with the reason it was picked and what it should show. The ground map
 # only covers 1,748,323 to 1,751,191 E and 5,423,605 to 5,425,336 N, so a site
@@ -127,6 +138,8 @@ PILOT_SITES = (
         "GNS wall 17 m away and natural slope above it.",
         "expect": "The free-face in the cut and the bank above it, and the "
         "polygon retrogressing from the cut up into the bank.",
+        "bank_slope_deg": 100.0,
+        "legend_materials": ("weak_rock", "stronger_rock", "colluvium", "fill_uncontrolled", "alluvium"),
     },
     {
         "name": "06-fill-platform",

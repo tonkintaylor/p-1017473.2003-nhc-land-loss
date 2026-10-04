@@ -18,8 +18,8 @@ committed. Nothing here is large enough to belong in a cache.
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
 | `retaining-wall-fragility.csv` | Lognormal fragility (median, dispersion) per retaining wall class, size and initial condition, with the published intensity measure and source | Maintained by hand from `.agents/context/retaining-wall-fragility.md` — see below | `landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility` |
 | `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a fraction of polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
-| `landslide-slope-thresholds.csv` | The steepest overall angle each ground group stands unsupported at, by height band: the slope test of the slope elements | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_slope_thresholds` |
-| `landslide-seed-thresholds.csv` | Per ground group, the smallest step height that makes a free-face seed and the slope that makes a bank seed: the seed tests of the slope elements | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_seed_thresholds` |
+| `landslide-slope-thresholds.csv` | The steepest overall angle each ground group stands unsupported at, in two height bands (under 3.5 m, 3.5 m and over): the far-pair test of the seed instability zones | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_slope_thresholds` |
+| `landslide-seed-thresholds.csv` | Per ground group, the near-pair step that makes a seed instability zone (`adjacent_step_m`), and the old free-face step and bank slope | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_seed_thresholds` |
 
 ## `land-value-base-rates.csv`
 
@@ -365,13 +365,32 @@ prints all three for the project lead to accept or override.
 
 ## `landslide-slope-thresholds.csv` and `landslide-seed-thresholds.csv`
 
-The numbers the slope elements (`landloss.hazard.landslide.slope_elements`) are
-found with, kept here so they can be read and edited in one place. The code reads
-them when it is imported, so a changed value needs the script run again, and
-`slope_elements.py` rejects a table that is malformed. Edit the numbers, not the
-columns or the group names.
+The numbers the slope elements (`landloss.hazard.landslide.slope_elements` and
+`instability_zones`) are found with, kept here so they can be read and edited in
+one place. The code reads them when it is imported, so a changed value needs the
+script run again, and the loaders reject a table that is malformed. Edit the
+numbers, not the columns or the group names.
 
-A cell is eligible as a seed on **either** of two tests:
+**Seed instability zones (the current method).** A pif (a cluster of pips, the
+cells that drop 0.7 m per metre at 1, 3 and 5 cells) is a siz if either:
+
+- **The near step**, `adjacent_step_m` in `landslide-seed-thresholds.csv`: some
+  pair of its points less than 3 m apart differs in height by at least this for
+  its ground group (0.7 m soil, 3.0 m weak and stronger rock, so that a 1 to 2 m
+  rock wall is not a siz).
+- **The far angle**, `landslide-slope-thresholds.csv`: some pair of its points at
+  least 3 m apart is steeper than the group's angle for the pair's height band.
+  The file is one row per band; `height_from_m` is the band's lower edge and
+  there is one column of angles in degrees per ground group. As shipped the bands
+  are under 3.5 m (35, 45, 53 degrees for soil, weak rock and stronger rock) and
+  3.5 m and over (32, 40, 48), and the code requires exactly two. Fill is soil.
+
+`min_step_height_m` and `bank_min_slope_deg` in `landslide-seed-thresholds.csv`
+belong to the old seeding (`find_slope_elements`), which is kept only for the toy
+figures and is to be retired. The rest of this section describes that old
+seeding and the slope table's earlier eight-band form.
+
+A cell was eligible as a seed in the old seeding on **either** of two tests:
 
 - **The step test**, `min_step_height_m` in `landslide-seed-thresholds.csv`: the
   cell's step height is at least this for its ground group. One row for each of

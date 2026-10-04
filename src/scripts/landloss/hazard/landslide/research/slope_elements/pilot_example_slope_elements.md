@@ -33,6 +33,9 @@ Made by the lead on 2026-10-04:
    pilot the result is the same at 2°, 3° and 5° (below), so the toy result decides:
    5° let a cut grow into the bank above it under noise (16 to 30 of 30 seeds, by
    case) and 3° passes 30 of 30.
+4. **Site 05 disables banks for the re-run.** `config.py` sets its bank slope to
+   100°, so the excavated-toe figure shows the free-face and the material legend
+   calls out weak and stronger rock rather than a bank seed class.
 
 | `BETA_FREE_FACE_GROW_TOL_DEG` | Elements | Free-faces | Polygons | Stack polygons | Land evacuated | GNS wall cells with a free-face | Sharp breaks matched |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -60,7 +63,9 @@ Made by the lead on 2026-10-04:
   its own legend. (1) The seeds alone, drawn as dots so the ground map's material
   shows through: free-face seeds, which are the steepest cells (a step of 0.5 m or
   more, or a 3 m slope over the step-test angle, trimmed to the step), and bank
-  seeds, which are the ground left over steeper than 18.4°. (2) The elements grown from those seeds, each outlined. The crest and
+  seeds, which are the ground left over steeper than 18.4° except for site 05, where
+  `config.py` raises the bank slope to 100° for the re-run. The site 05 legend names
+  weak and stronger rock. (2) The elements grown from those seeds, each outlined. The crest and
   toe cells are not drawn: they matter to the polygons (the width is measured behind
   the crest, the runout from the toe), not to showing the elements. (3) The
   free-faces as retaining wall candidates, coloured by whether a GNS wall (within
@@ -196,6 +201,47 @@ model.
 10. **The mapped failure sits inside a polygon.** At site 11, the single SLIDE recent
     landslide (a source area of 3.5 m²) lies on a 5 m free-face and the polygon's crest
     takes the scar. One event is not a test of the model.
+
+## Pips, pifs and sizs (2026-10-04)
+
+The lead rejected the bank seeds, so the seeding above was replaced
+(`.agents/plans/building-pip-pif-siz-slope-polygons.md`;
+`landloss.hazard.landslide.instability_zones`). Everything above this section
+describes the earlier seeding; the figures it quotes were drawn with it. The new
+figures are `pilot_instability_<site>-pilot.png`, four map panels: pips (orange in
+a siz, blue not), the elements grown from the sizs, and the evacuated zones with
+every siz walled and with none walled
+(`fig_pilot_example_instability_zones.py`).
+
+- **Rules.** A pip is a cell that drops more than 0.7 m per metre of distance
+  (scaled by 1.41 on diagonals) to the cell 1, 3 and 5 away in one of eight
+  directions, from the DEM alone. Pips within 2 m form a pif. A pif is a siz if
+  any pair of its points under 3 m apart differs by the group's near step (soil
+  0.7 m, rock 3 m), or any pair 3 m or more apart is steeper than the group's
+  angle for its height (35, 45, 53 degrees under 3.5 m; 32, 40, 48 from 3.5 m;
+  soil, weak rock, stronger rock). Fill is soil. The sizs are grown with the
+  existing watershed growth and the pif table (`temp/pilot-siz-pilot.parquet`:
+  maximum angles above and below 3.5 m, delta_h, the siz flag) is kept for the
+  retaining wall workflow.
+- **Counts.** 353,740 pips, 12,015 pifs, 8,223 sizs (7,709 of 7,709 soil, 514
+  of 4,306 weak rock) and 5,441 elements.
+- **Speed.** 24.5 s for pips, pifs, sizs and growth, and 6.5 s (walled) and 7.8 s
+  (unwalled) for the polygons, against 27 to 40 s for the old pipeline (same
+  machine, different load), so about the same speed.
+- **Against the old pipeline** (banks off at 100°, two-band table): 7,093
+  evacuated polygons, 423,467 m² in total, largest 2,142 m². New walled: 5,513
+  polygons, 619,213 m², 28 over 2,000 m²; new unwalled: 6,298 polygons, 603,495
+  m², largest 1,631 m². There is no minimum pif size (half of the pifs have 3
+  pips or fewer); only the element filters apply.
+- **Site 05.** The hillside on the right gives one polygon of about 970 m², about
+  ten of 50 to 240 m² and a scatter of fragments under 35 m², in the walled run
+  (the unwalled run is the same shape).
+- **Large polygons.** 28 evacuated polygons in the walled run exceed 2,000 m²
+  (largest 4,694 m², at about 1749712 E 5424518 N), none inside a pilot site; the
+  unwalled run has none. They are in the walled run's printed table for the lead
+  to review before any threshold moves. Sites 07 and 08 read reasonably.
+- **Not confirmed by the lead:** the 30 m pair cap, the 1.41 diagonal scaling,
+  the support points, and every soil pif being a siz.
 
 ## What was not done
 

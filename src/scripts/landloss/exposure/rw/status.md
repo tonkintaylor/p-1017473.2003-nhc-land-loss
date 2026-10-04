@@ -4,14 +4,14 @@
 per exposure world are built and ran over the pilot on 2026-10-02. A property
 boundary, road frontage or SLIDE earthwork edge is now a candidate only where
 the 1 m DEM steps across it, and the candidates are to be rebuilt from the
-faces layer. That rebuild was reviewed against the GNS literature review
+landslide model's potential instability faces (pifs). That rebuild was reviewed against the GNS literature review
 (`temp/gns_review/`) on 2026-10-02: the literature gives each piece of
 evidence on a wall its direction, not its size, so every probability is still
 judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-04
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -36,14 +36,19 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   the stretches where the 1 m DEM steps at least 0.5 m across it (the lead,
   2026-10-02), bridging dips of up to 3 m and keeping stretches of at least
   3 m.
-- [>] **Build the wall candidates from the step faces** of the static faces
-  layer, with the mapped walls, boundaries and SLIDE edges as evidence on each
-  rather than as lines of their own (faces plan, phase 2; step 6 plan,
-  phase 2e). A step face is one steeper than its ground stands unsupported at
-  its height, read from one lookup of eight fixed height bands by three ground
-  groups: NZGS Unit 7C.2 Figure 35 for rock, 35° for soil and fill
-  [nzgs_2025_torlesse]. Faces only where the
-  DEM is LiDAR [de_vilder_2024; nzgs_2025_recognition].
+- [>] **Build the wall candidates from the potential instability faces (pifs)**
+  of the landslide model, with the mapped walls, boundaries and SLIDE edges as
+  evidence on each rather than as lines of their own (pips, pifs and sizs plan,
+  `.agents/plans/building-pip-pif-siz-slope-polygons.md`; step 6 plan,
+  phase 2e). A pif is a cluster of DEM points that drop at least 0.7 m at 1, 3
+  and 5 cells in one of eight directions; a pif whose points are steeper than
+  the ground stands unsupported at its height, or step 0.7 m (soil) or 3 m
+  (rock) between close points, is a seed instability zone (siz), and the siz
+  table the landslide model writes is the wall candidate list. The unwalled
+  thresholds are `landslide-slope-thresholds.csv` and
+  `landslide-seed-thresholds.csv`. Pifs only where the DEM is LiDAR
+  [de_vilder_2024; nzgs_2025_recognition]. This replaces the free-face
+  candidates of the earlier faces plan.
 - [~] **Lower the chance of a wall on a rock cut**, from the 1:50,000 geology
   and the SLIDE materials through the ground map; Wellington greywacke cuts
   commonly stand at 55 to 75° and many long-standing ones are unsupported
@@ -269,10 +274,9 @@ What this module owes the retaining wall table `loss` reads
    downstream carry the step-tested wall lines; until then they hold the
    lines from before the step test. Skip this if the faces rebuild (2) is
    starting now: it replaces those lines.
-2. Rebuild the wall candidates on the faces layer (faces plan, phase 2; step 6
-   plan, phase 2e), after the lead settles the ground map and step test
-   proposals and the faces layer is reviewed (landslide status, Next 1 and 2);
-   then rerun the pilot and record the counts, the GNS mapped wall recall and
+2. Rebuild the wall candidates on the sizs (the siz table written by landslide
+   stage D3; step 6 plan, phase 2e), after the lead reviews the large
+   evacuated polygons (landslide status, Next 2); then rerun the pilot and record the counts, the GNS mapped wall recall and
    the drawn height shape against Anderson et al. [anderson_2015] in the
    method file.
 3. Name the six wall classes.

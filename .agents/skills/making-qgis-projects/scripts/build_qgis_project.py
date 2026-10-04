@@ -70,6 +70,18 @@ BASEMAPS = {
         # over this basemap has to credit OpenStreetMap contributors.
         "attribution": "© OpenStreetMap contributors",
     },
+    "esri_imagery": {
+        "name": "Satellite imagery (Esri World Imagery)",
+        "url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/"
+            "MapServer/tile/%7Bz%7D/%7By%7D/%7Bx%7D"
+        ),
+        "zmin": 0,
+        "zmax": 19,
+        # Esri, Maxar, Earthstar Geographics and the GIS User Community. Fine for
+        # looking at; credit Esri and its providers on anything published over it.
+        "attribution": "Esri, Maxar, Earthstar Geographics, GIS User Community",
+    },
 }
 
 
@@ -308,9 +320,19 @@ def _raster_renderer(layer: dict[str, Any]) -> str:
 
     if style == "gray":
         low, high = layer.get("min", 0), layer.get("max", 1)
-        return f"""<rasterrenderer type="singlebandgray" band="1" opacity="1"
+        opacity = layer.get("opacity", 1)
+        return f"""<rasterrenderer type="singlebandgray" band="1" grayBand="1"
+                        opacity="{opacity}"
                         alphaBand="-1" gradient="BlackToWhite" nodataColor="">
         <rasterTransparency/>
+        <minMaxOrigin>
+          <limits>None</limits>
+          <extent>WholeRaster</extent>
+          <statAccuracy>Estimated</statAccuracy>
+          <cumulativeCutLower>0.02</cumulativeCutLower>
+          <cumulativeCutUpper>0.98</cumulativeCutUpper>
+          <stdDevFactor>2</stdDevFactor>
+        </minMaxOrigin>
         <contrastEnhancement>
           <minValue>{low}</minValue>
           <maxValue>{high}</maxValue>

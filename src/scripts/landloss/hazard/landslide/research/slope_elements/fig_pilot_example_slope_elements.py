@@ -1,4 +1,8 @@
-"""Stage D2: the slope elements and failure polygons on real pilot ground.
+"""Stage D2 (deprecated): slope elements from free-face and bank seeds, on the pilot.
+
+Deprecated 2026-10-04: superseded by ``fig_pilot_example_instability_zones.py``
+(pips, pifs and sizs). Kept for the old-versus-new comparison; the new script
+imports its input helpers from here.
 
 Stage D1 (``fig_toy_slope_elements.py``) proved the library on terrain whose
 answer is known. This runs it once over the whole pilot DEM and draws the sites
@@ -40,6 +44,7 @@ layers through the Koordinates readers.
 import sys
 import textwrap
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import matplotlib as mpl
@@ -63,6 +68,7 @@ from rasterio import features
 from scipy import ndimage
 
 from landloss.exposure.rw.lines import CUT_FILL_LINE_TYPE, MAPPED_WALL_TYPE
+import landloss.hazard.landslide.slope_elements as slope_elements
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     BETA_GROW_ANGLE_DEG,
@@ -121,6 +127,8 @@ SHARP_BREAK_COLOUR = "#d62ba3"
 # Muted, so the element markers and the GNS lines stay legible over them.
 MATERIAL_COLOUR = {
     "rock": "#b8b0a2",
+    "weak_rock": "#b8b0a2",
+    "stronger_rock": "#7f786a",
     "colluvium": "#dcc690",
     "fill_uncontrolled": "#d9a3a8",
     "alluvium": "#a3bfd1",
@@ -148,6 +156,22 @@ SEED_DOT_SIZE = 2.5
 LABEL_MIN_HEIGHT_M = 1.5
 
 
+@contextmanager
+def bank_slope_override(bank_slope_deg):
+    """Temporarily set the bank seed slope for a one-off pilot run."""
+    if bank_slope_deg is None:
+        yield
+        return
+    original = slope_elements.BANK_SEED_SLOPE_DEG
+    slope_elements.BANK_SEED_SLOPE_DEG = {
+        group: float(bank_slope_deg) for group in slope_elements.GROUND_GROUPS
+    }
+    try:
+        yield
+    finally:
+        slope_elements.BANK_SEED_SLOPE_DEG = original
+
+
 @dataclass(frozen=True)
 class Pilot:
     """One library run over the whole pilot, with the layers it is judged on."""
@@ -168,8 +192,12 @@ class Pilot:
     seconds: float
 
 
-def get_pilot_run(*, extent):
-    """Run the elements and the polygons once over the whole pilot DEM."""
+def get_pilot_inputs(*, extent, fill_as_soil=False):
+    """The DEM, water mask, ground groups and ground map of the pilot.
+
+    Returns ``(dem, dem_run, water, transform, bbox, ground_map, group,
+    position)``; ``dem_run`` is the DEM with the sea set to NaN.
+    """
     dem_da = rioxarray.open_rasterio(dem_path(1, extent=extent), masked=True).squeeze(
         "band", drop=True
     )
@@ -185,36 +213,57 @@ def get_pilot_run(*, extent):
         dtype="uint8",
     ).astype(bool)
     water = ~on_land
-    dem_run = np.where(water, np.nan, dem)
     ground_map = gpd.read_parquet(ground_map_path(extent=extent))
-    group, position = rasterise_ground_map(ground_map, transform, dem.shape)
-    start = time.perf_counter()
-    found = find_slope_elements(
-        dem_run, group, transform, categories={"ground_row": position}
+    group, position = rasterise_ground_map(
+        ground_map, transform, dem.shape, fill_as_soil=fill_as_soil
     )
-    # The library does not keep the seeds, so the two passes are rerun for them.
-    free_face_grown, free_face_seeds, _ = _free_face_pass(
-        dem_run, group, found.layers, 1.0
+    return (
+        dem,
+        np.where(water, np.nan, dem),
+        water,
+        transform,
+        bbox,
+        ground_map,
+        group,
+        position,
     )
-    _, bank_seeds = _bank_pass(free_face_grown > 0, dem_run, found.layers, group)
-    rows = found.elements["majority_ground_row"].to_numpy()
-    on_map = rows >= 0
-    modification = np.where(
-        on_map, ground_map["modification"].to_numpy()[np.maximum(rows, 0)], ""
+
+
+def get_pilot_run(*, extent, bank_slope_deg=None):
+    """Run the elements and the polygons once over the whole pilot DEM."""
+    dem, dem_run, water, transform, bbox, ground_map, group, position = (
+        get_pilot_inputs(extent=extent)
     )
-    is_fill = pd.Series(modification == FILL_MODIFICATION, index=found.elements.index)
-    thickness = pd.Series(
-        np.where(
-            is_fill,
-            ground_map["fill_thickness_m"].to_numpy()[np.maximum(rows, 0)],
-            np.nan,
-        ),
-        index=found.elements.index,
-    )
-    result = build_slope_polygons(
-        found, dem_run, transform, is_fill=is_fill, fill_thickness_m=thickness
-    )
-    seconds = time.perf_counter() - start
+    with bank_slope_override(bank_slope_deg):
+        start = time.perf_counter()
+        found = find_slope_elements(
+            dem_run, group, transform, categories={"ground_row": position}
+        )
+        # The library does not keep the seeds, so the two passes are rerun for them.
+        free_face_grown, free_face_seeds, _ = _free_face_pass(
+            dem_run, group, found.layers, 1.0
+        )
+        _, bank_seeds = _bank_pass(free_face_grown > 0, dem_run, found.layers, group)
+        rows = found.elements["majority_ground_row"].to_numpy()
+        on_map = rows >= 0
+        modification = np.where(
+            on_map, ground_map["modification"].to_numpy()[np.maximum(rows, 0)], ""
+        )
+        is_fill = pd.Series(
+            modification == FILL_MODIFICATION, index=found.elements.index
+        )
+        thickness = pd.Series(
+            np.where(
+                is_fill,
+                ground_map["fill_thickness_m"].to_numpy()[np.maximum(rows, 0)],
+                np.nan,
+            ),
+            index=found.elements.index,
+        )
+        result = build_slope_polygons(
+            found, dem_run, transform, is_fill=is_fill, fill_thickness_m=thickness
+        )
+        seconds = time.perf_counter() - start
     morphology = get_gns_slide_morphology(bbox=bbox, crs=CRS, use_cache=True)
     genesis = get_slide_genesis(bbox=bbox, crs=CRS, use_cache=True)
     return Pilot(
@@ -768,6 +817,8 @@ def draw_site(pilot, site, *, intervals, max_contours):
     draw_polygons(ax_poly, pilot, windowed)
     table = site_table(pilot, windowed, site, rows, cols, bounds, layers)
 
+    legend_materials = site.get("legend_materials", ax_seed.materials)
+    bank_slope_deg = site.get("bank_slope_deg", BETA_GROW_ANGLE_DEG)
     steps = (
         (
             ax_seed,
@@ -776,10 +827,10 @@ def draw_site(pilot, site, *, intervals, max_contours):
                 "Dots: cells that pass a threshold. Orange: step test (step over the "
                 "minimum) or slope test (3 m slope over the angle for the ground and "
                 "step height). Green: bank slope test (over "
-                f"{BETA_GROW_ANGLE_DEG:g}\u00b0 as shipped), any material. See "
+                f"{bank_slope_deg:g}\u00b0), any material. See "
                 "landslide-slope/seed-thresholds.csv."
             ),
-            seed_handles(seed_counts) + material_handles(ax_seed.materials),
+            seed_handles(seed_counts) + material_handles(legend_materials),
         ),
         (
             ax_grown,
@@ -1065,20 +1116,30 @@ def main(
     pd.set_option("display.width", 250)
     pd.set_option("display.max_columns", 40)
     pd.set_option("display.max_colwidth", 90)
-    pilot = get_pilot_run(extent=extent)
-    print(f"Elements and polygons over the {extent} pilot in {pilot.seconds:.1f} s")
-    print("\n=== Whole pilot")
-    for key, value in whole_pilot_summary(pilot).items():
-        print(f"{key}: {value}")
-    print("\n=== Agreement with the GNS mapping, whole pilot")
-    print(
-        agreement(pilot, wall_match_m=wall_match_m, break_match_m=break_match_m)
-        .round(3)
-        .to_string(index=False)
-    )
     paths = []
     tables = []
+    pilots = {}
     for site in sites:
+        bank_slope_deg = site.get("bank_slope_deg", config.PILOT_BANK_SLOPE_DEG)
+        pilot = pilots.get(bank_slope_deg)
+        if pilot is None:
+            pilot = get_pilot_run(extent=extent, bank_slope_deg=bank_slope_deg)
+            pilots[bank_slope_deg] = pilot
+            label = (
+                f"bank slope {bank_slope_deg:g}°"
+                if bank_slope_deg is not None
+                else "default bank slope"
+            )
+            print(f"Elements and polygons over the {extent} pilot ({label}) in {pilot.seconds:.1f} s")
+            print("\n=== Whole pilot")
+            for key, value in whole_pilot_summary(pilot).items():
+                print(f"{key}: {value}")
+            print("\n=== Agreement with the GNS mapping, whole pilot")
+            print(
+                agreement(pilot, wall_match_m=wall_match_m, break_match_m=break_match_m)
+                .round(3)
+                .to_string(index=False)
+            )
         path, table = draw_site(
             pilot, site, intervals=contour_intervals_m, max_contours=max_contours
         )

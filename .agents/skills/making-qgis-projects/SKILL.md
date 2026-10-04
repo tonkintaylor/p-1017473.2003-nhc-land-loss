@@ -111,7 +111,7 @@ comparing the two should not have to re-learn the legend.
 | `slope` | slope in degrees, on this study's 5/10/20/30/45° bands |
 | `classes` | an integer-coded raster; give `classes` as `{"1": ["#3b0f70", "Label"], ...}` |
 | `cmap` | anything with no house colour map: give `cmap` (matplotlib name), `min`, `max`, `steps` |
-| `gray` | a quick look at an unstyled raster; give `min` and `max` |
+| `gray` | a quick look at an unstyled raster; give `min` and `max`, and optionally `opacity` (0–1) so a hillshade can sit over imagery |
 
 **Vectors** take either a single symbol — `color`, `outline`, `width`, `size` and
 `geometry` (`polygon`/`line`/`point`, auto-detected when the file is readable) — or a

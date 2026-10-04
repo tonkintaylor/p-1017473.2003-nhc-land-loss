@@ -1,5 +1,14 @@
 """Slope elements: free-faces and banks grown from seeds on the 1 m DEM.
 
+.. deprecated:: 2026-10-04
+    The free-face and bank seeding in this module (:func:`find_slope_elements`)
+    is superseded by pips, pifs and sizs in
+    :mod:`landloss.hazard.landslide.instability_zones`
+    (``.agents/plans/building-pip-pif-siz-slope-polygons.md``). It is kept for
+    the toy-terrain figures and for comparison, and will be removed once the
+    new approach is a pipeline step. The growth, the element assembly and the
+    threshold loaders are still used by the new approach.
+
 A slope element is a piece of ground between a crest above it and a toe below
 it, grown from one seed. Every element is either a **free-face**, steeper than
 its ground can stand unsupported at its height (a retaining wall or an
@@ -101,7 +110,7 @@ indexed by its label in :attr:`SlopeElements.labels` (1 to n), with columns:
 - ``touches_nodata``: the element reaches ground with no 1 m slope (nodata,
   its rim or the edge of the grid), so the survey's edge may have cut it;
 - ``ground_group``: the majority ground group, as a :data:`GROUND_GROUPS` name;
-- ``height_band``: 1 to :data:`N_HEIGHT_BANDS` (8 as shipped), from ``height_m``;
+- ``height_band``: 1 to :data:`N_HEIGHT_BANDS` (2 as shipped), from ``height_m``;
 - ``threshold_angle_deg``: ``STEP_ANGLE_DEG`` for the group and band;
 - ``angle_excess_deg``: ``overall_angle_deg`` less the threshold;
 - ``stack_dominant_cut``: steeper than 50 degrees and higher than 3 m, the
@@ -206,6 +215,8 @@ def load_seed_thresholds(
     Args:
         path: The CSV, with columns ``ground_group``, ``min_step_height_m`` and
             ``bank_min_slope_deg`` and one row per :data:`GROUND_GROUPS` name.
+            Other columns (``adjacent_step_m``, read by
+            :mod:`landloss.hazard.landslide.instability_zones`) are ignored.
 
     Returns:
         ``(step_height_m, bank_slope_deg)``, each by group: the smallest step
@@ -221,7 +232,7 @@ def load_seed_thresholds(
     """
     table = pd.read_csv(path)
     columns = {"ground_group", "min_step_height_m", "bank_min_slope_deg"}
-    if set(table.columns) != columns or sorted(table["ground_group"]) != sorted(
+    if not columns <= set(table.columns) or sorted(table["ground_group"]) != sorted(
         GROUND_GROUPS
     ):
         msg = (
@@ -1727,6 +1738,10 @@ def find_slope_elements(
 ) -> SlopeElements:
     """Find the slope elements on a DEM.
 
+    .. deprecated:: 2026-10-04
+        Seeds free-faces and banks. Use
+        :func:`landloss.hazard.landslide.instability_zones.find_instability_zones`.
+
     Args:
         dem: Ground elevation in metres on a north-up grid of square cells,
             NaN for nodata and outside the LiDAR.
@@ -1782,6 +1797,63 @@ def find_slope_elements(
     seed_grid = np.where(labels > OUTSIDE, seed_grid, OUTSIDE).astype(np.int32)
 
     n_labels = int(labels.max())
+    bank_score = layers.slope_coarse_deg - bank_seed_slope_deg(groups)
+    seed_score = np.where(seed_grid > n_free_faces, bank_score, exceedance)
+    return _assemble_elements(
+        elevation,
+        groups,
+        transform,
+        layers,
+        labels,
+        seed_grid,
+        seed_score,
+        np.where(np.arange(n_labels + 1) <= n_free_faces, FREE_FACE_PASS, BANK_PASS),
+        None,
+        core_grid,
+        categories,
+    )
+
+
+def _assemble_elements(
+    elevation: NDArray[np.float64],
+    groups: NDArray[np.int8],
+    transform: Affine,
+    layers: TerrainLayers,
+    labels: NDArray[np.int32],
+    seed_grid: NDArray[np.int32],
+    seed_score: NDArray[np.float64],
+    grown_in_by_label: NDArray[np.str_],
+    element_type_by_label: NDArray[np.str_] | None,
+    core_grid: NDArray[np.bool_],
+    categories: Mapping[str, ArrayLike] | None,
+) -> SlopeElements:
+    """Measure grown regions, keep the ones that are elements, and build the table.
+
+    The half of :func:`find_slope_elements` after the seeds have grown, shared
+    with :mod:`landloss.hazard.landslide.instability_zones`: the regions in
+    ``labels`` are measured, the ones that are not elements are dropped, and the
+    element table, catchments and stack links are built.
+
+    Args:
+        elevation: The DEM, NaN for nodata.
+        groups: The ground group code of every cell.
+        transform: The grid's affine transform.
+        layers: The terrain layers of ``elevation``.
+        labels: The grown regions, numbered from 1.
+        seed_grid: The seed cells, carrying their region's label.
+        seed_score: A grid, each seed cell's priority; the highest in a region
+            is its seed peak.
+        grown_in_by_label: ``grown_in`` for each label (index 0 unused).
+        element_type_by_label: ``element_type`` for each label, or None to read
+            it from the measured region.
+        core_grid: A tile's core.
+        categories: Integer grids to take the majority of over each element.
+
+    Returns:
+        The elements and their links.
+    """
+    cell_size_m = _cell_size(transform)
+    n_labels = int(labels.max())
     measured, _ = _measure(labels, n_labels, elevation, groups, layers, cell_size_m)
     # A region under the smallest element's height is not an element, nor is
     # one gentler overall than the grow angle: ground under it is a bench or a
@@ -1807,12 +1879,10 @@ def find_slope_elements(
     seed_rows = np.full(n_labels + 1, -1, dtype=np.intp)
     seed_cols = np.full(n_labels + 1, -1, dtype=np.intp)
     if n_labels:
-        bank_score = layers.slope_coarse_deg - bank_seed_slope_deg(groups)
-        score = np.where(seed_grid > n_free_faces, bank_score, exceedance)
         # Rounded to a micro-degree, so cells that tie on even ground tie
         # exactly whatever the floating point of a tile's filters, and ties go
         # to the first cell in row order: the same cell on every tile.
-        score = np.round(np.nan_to_num(score, nan=-np.inf), _SCORE_DECIMALS)
+        score = np.round(np.nan_to_num(seed_score, nan=-np.inf), _SCORE_DECIMALS)
         rows, cols = np.nonzero(seed_grid > OUTSIDE)
         owner = seed_grid[rows, cols]
         order = np.lexsort((cols, rows, -score[rows, cols], owner))
@@ -1827,16 +1897,19 @@ def find_slope_elements(
     kept = np.nonzero(keep)[0]
     labels = _relabel(labels, keep)
     n_labels = int(kept.size)
-    grown_in = np.where(kept <= n_free_faces, FREE_FACE_PASS, BANK_PASS)
+    grown_in = grown_in_by_label[kept]
 
     measured, roles = _measure(labels, n_labels, elevation, groups, layers, cell_size_m)
     elements = measured.drop(
         columns=["ground_group_code", "is_free_face", "length_m", "aspect_deg"]
     )
     elements.insert(0, "grown_in", grown_in)
-    elements.insert(
-        1, "element_type", np.where(measured["is_free_face"], FREE_FACE, BANK)
+    element_type = (
+        np.where(measured["is_free_face"], FREE_FACE, BANK)
+        if element_type_by_label is None
+        else element_type_by_label[kept]
     )
+    elements.insert(1, "element_type", element_type)
     elements.insert(3, "area_m2", elements["n_cells"] * cell_size_m**2)
 
     inside = labels > OUTSIDE
@@ -1920,7 +1993,11 @@ def find_slope_elements(
 
 
 def rasterise_ground_map(
-    ground_map: gpd.GeoDataFrame, transform: Affine, shape: tuple[int, int]
+    ground_map: gpd.GeoDataFrame,
+    transform: Affine,
+    shape: tuple[int, int],
+    *,
+    fill_as_soil: bool = False,
 ) -> tuple[NDArray[np.int8], NDArray[np.int32]]:
     """Burn the ground map onto a grid as ground groups and row positions.
 
@@ -1929,6 +2006,9 @@ def rasterise_ground_map(
             coordinate reference system.
         transform: The grid's affine transform.
         shape: The grid's ``(rows, columns)``.
+        fill_as_soil: Whether ground mapped as fill (``modification`` is
+            ``"fill"``, so the map needs that column) is soil-like whatever its
+            material: fill is soil, not rock.
 
     Returns:
         ``(ground_group, row)``: the ground group code of every cell, off-map
@@ -1952,6 +2032,9 @@ def rasterise_ground_map(
         if len(ground_map)
         else np.array([], dtype=np.int8)
     )
+    if fill_as_soil and len(ground_map):
+        is_fill = ground_map["modification"].to_numpy() == "fill"
+        codes = np.where(is_fill, GROUND_GROUPS.index(SOIL_LIKE), codes).astype(np.int8)
     group = np.full(shape, GROUND_GROUPS.index(OFF_MAP_GROUND_GROUP), dtype=np.int8)
     on_map = position >= 0
     group[on_map] = codes[position[on_map]]

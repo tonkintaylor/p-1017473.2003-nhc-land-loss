@@ -70,12 +70,16 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
 - [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
   superseded, because no published method supports it.
 - [~] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
-  static layer, grown from seeds strongest first (revised 2026-10-02 in place
-  of geomorphons), each with its height and overall angle. An element is a
-  free-face, and a wall candidate, where it is steeper
-  than its ground stands unsupported at that height, from one lookup of eight
-  fixed height bands by three ground groups: NZGS Unit 7C.2 Figure 35 for
-  rock, 35° for soil and fill [nzgs_2025_torlesse]; a bank otherwise. Build
+  static layer, each with its height and overall angle. **Seeding revised
+  2026-10-04** (the lead rejected the bank seeds): pips (cells that drop
+  0.7 m per metre of distance at 1, 3 and 5 cells in one of eight directions,
+  from the DEM alone), joined within 2 m into pifs, each tested over all
+  pairs of its points into a siz (seed instability zone) with the two-band
+  slope table (below 3.5 m: 35°, 45°, 53°; from 3.5 m: 32°, 40°, 48° for soil,
+  weak and stronger rock) and a near step (0.7 m soil, 3 m rock). Fill is
+  soil. The sizs are grown by the existing watershed growth, and the siz table
+  is the input to the retaining wall workflow
+  (`.agents/plans/building-pip-pif-siz-slope-polygons.md`). Build
   one polygon per element: a trial wedge on the real profile behind the
   crest [nzgs_mbie_2017], running to the top of the slope above an excavated
   toe [kingsbury_1995], the runout below the toe [de_vilder_2022;
@@ -139,17 +143,24 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   TS1170.5-derived PGV; its separate Marc amount uses the plan's central
   interface sensitivity rather than final NSHM source geometry.
 - **Kritikos model 2** (`.agents/plans/building-kritikos-2015-landslide-model.md`)
-  has its library and forward step built and unit tested, not run. The paper's
+  has its library and forward step built and unit tested; step 11 has run over
+  `wlg-pilot` with the real AF250 traces. The paper's
   average memberships are digitised from Figure 5 to about 0.02
   (`context/lit/landslide/kritikos_2015/figures/`); the fuzzy gamma model, the
   60 m inputs, the AF250 fault reader, the success-rate AUC and the monotone
   transfer-function fit are in `landloss.hazard.landslide.models.kritikos_2015`
   and `landloss.io.active_faults`. Step 11 writes the relative hazard H per
   realisation; it stops there, because the hazard-to-coverage transfer function
-  needs Northridge and Wenchuan from the GFDB on `R:`, and step 1 does not yet
-  read it. The digitisation is unchecked until the paper's AUCs are
-  reproduced (plan, phase 4), the AF250 file layout is unconfirmed, and the TPI
-  window and class thresholds are judgements.
+  still has to be fitted on Northridge and Wenchuan from the GFDB, and step 1
+  does not yet read it. The digitisation reproduces the paper's Wenchuan AUC (0.831 against
+  0.839) and brackets its Northridge value (0.867 to 0.927 by study area
+  against 0.904) with Copernicus 30 m and GEM faults as stand-ins
+  (`validations/kritikos_2015/`); Chi-Chi cannot be reproduced, as the GFDB
+  lacks its landslides. The TPI
+  window and class thresholds are judgements, though the AUC does not depend on
+  the window. The fault term lowers Wenchuan's AUC with the GEM faults, which
+  bears on the lead's `FAULT_TERM` decision. The fault term lowers Wenchuan's AUC with the GEM faults, which
+  bears on the lead's `FAULT_TERM` decision.
 - **Literature review of the first part, 2026-10-02.** Steps 3 to 5 and the
   faces plan's phases 0 to 2 were read against the 991 findings of
   `temp/gns_review/`, and the plans edited in place with citations: the faces
@@ -284,6 +295,23 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   `assets/README.md` says what each column means. Raising `bank_min_slope_deg`
   for a group is the lever for pilot 5's rock hillside reading as one bank. The
   other `BETA_` settings are still constants.
+- **Pips, pifs and sizs replace the free-face and bank seeding (2026-10-04).**
+  `landloss.hazard.landslide.instability_zones` finds them, grows the sizs with
+  the existing watershed growth and hands the elements to the unchanged polygon
+  builder; `with_walls` switches an element between a wall wedge and a
+  headscarp band, so the pilot is drawn twice, with every siz walled and with
+  none (`research/slope_elements/fig_pilot_example_instability_zones.py`). Over
+  the whole pilot: 353,740 pips, 12,015 pifs, 8,223 sizs (every one of the 7,709
+  soil pifs; 514 of 4,306 weak-rock pifs) and 5,441 elements in 24.5 s, plus
+  about 7 s for each scenario's polygons (the old pipeline took 27 to 40 s in
+  all, so about the same speed).
+  Site 05's right hand hillside now gives one polygon of about 970 m² and about
+  ten of 50 to 240 m², with some tiny fragments. 28 evacuated polygons in the
+  walled run exceed 2,000 m² (largest 4,694 m²), none of them inside a pilot
+  site, and none in the unwalled run; the lead reviews these before any
+  threshold changes. The old seeding code stays for the toy figures
+  (`fig_toy_slope_elements.py`) and is to be retired; the shared slope table is
+  now the two-band one, so the old pilot and toy figure scripts read it too.
 
 ## Next
 
@@ -304,8 +332,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
       (done, stage D1) and run over pilot examples (done, stage D2); next,
       the lead reviews whether the weak-rock hillside polygons are
-      acceptable, then stage D3 builds the pipeline step, carrying the water
-      mask;
+      acceptable (now the 28 polygons over 2,000 m² the siz run flags, see
+      above), the old bank code is retired, then stage D3 builds the pipeline
+      step, carrying the water mask and writing the siz table;
    5. the wall candidates and their probability on the faces (faces plan,
       phase 2; exposure rw step 6, phase 2e), and the phase 4 checks that need
       only the walls: GNS mapped wall recall and the height shape against
@@ -329,9 +358,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 7. Choose the large-model route. Run Hancox model 3 over the pilot and review
    its total and slope distribution, then run Nowicki Jessee over Wellington
    as the USGS runs it, with both models' Kaikōura tests reported.
-   Kritikos model 2 waits on the lead running its phases 4 to 6 (reproduce the
-   paper's AUCs, score Kaikōura, fit the transfer function), all of which read
-   `R:`.
+   Kritikos model 2 waits on the lead running its phases 5 and 6 (score
+   Kaikōura, fit the transfer function); phase 4, reproducing the paper's AUCs,
+   is done.
 8. Replace the large-model runout rule with the de Vilder et al. (2022) reach
    angles; the urban rule is in the faces plan, phase 3.
 9. Add imminent-risk land to each large landslide (**T-45**), with the same
@@ -348,8 +377,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   step 1 handoff in `tests/landloss/hazard/landslide/`.
 - Kritikos memberships, fuzzy gamma, inputs, AUC and transfer fit in
   `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`; the paper's
-  AUCs (Northridge 0.904, Wenchuan 0.839, Chi-Chi 0.921) are the check on the
-  digitisation and are not yet reproduced.
+  AUCs are reproduced on Northridge and Wenchuan
+  (`validations/kritikos_2015/kritikos_2015_findings.md`), not on Chi-Chi.
 - Large-model density against the Greater Wellington `SEVERITY` zonation, as a
   rank correlation (`validations/fig_landslide_vulnerability_model_gwrc.py`).
 - Sizes and reach angles against the Kaikōura inventory (`landloss.io.kaikoura`).
@@ -391,6 +420,11 @@ otherwise.
   (`research/slope_elements/pilot_example_slope_elements.md`). The step test is proposed from NZGS
   Figure 35 [nzgs_2025_torlesse]; which Figure 35 row each rock class reads
   waits on a weathering grade the ground map does not yet carry.
+- **Siz test choices not yet confirmed by the lead:** the 30 m cap on the pair
+  distance, the 1.41 scaling of the 0.7 m drop on diagonals, and the support
+  points (the cells 1, 3 and 5 cells below each pip) that give a vertical wall a
+  height; and that every soil pif is a siz, because a pip already stands
+  steeper than the soil angle.
 - **Converting the PGA wall curves to PGV** at each site's ratio, as built.
 - **SLIDE's mixed fill classes.** "Mixed fill/rock", "Mixed fill/colluvium"
   and "Mixed fill/colluvium/rock", 65% of the SLIDE area over the pilot, are

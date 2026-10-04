@@ -73,9 +73,10 @@ from landloss.hazard.landslide.synthetic_terrain import (
     build_toy_case,
 )
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:Use `@` matmul:PendingDeprecationWarning"
-)
+pytestmark = [
+    pytest.mark.filterwarnings("ignore:Use `@` matmul:PendingDeprecationWarning"),
+    pytest.mark.usefixtures("legacy_step_table"),
+]
 
 NOISE_LEVELS = (0.0, BETA_LIDAR_NOISE_SD_M)
 SEED = int(os.environ.get("SLOPE_ELEMENTS_TEST_SEED", "7"))

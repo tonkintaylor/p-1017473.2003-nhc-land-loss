@@ -1,5 +1,8 @@
 # Plan: free-face based urban slope polygons and retaining wall candidates
 
+> **Phase 1 (seeds, free-face and bank) is superseded by
+> `building-pip-pif-siz-slope-polygons.md`; phases 2-5 stand.**
+
 ## Context
 
 The first pilot run of the urban slope chain (2 October 2026) built and ran end

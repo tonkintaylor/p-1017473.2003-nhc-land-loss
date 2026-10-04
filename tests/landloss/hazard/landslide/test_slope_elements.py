@@ -72,9 +72,10 @@ from landloss.hazard.landslide.synthetic_terrain import (
     rotate_toy_case,
 )
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:Use `@` matmul:PendingDeprecationWarning"
-)
+pytestmark = [
+    pytest.mark.filterwarnings("ignore:Use `@` matmul:PendingDeprecationWarning"),
+    pytest.mark.usefixtures("legacy_step_table"),
+]
 
 TRANSFORM = Affine(1.0, 0.0, ORIGIN_EASTING, 0.0, -1.0, ORIGIN_NORTHING)
 NOISE_LEVELS = (0.0, BETA_LIDAR_NOISE_SD_M)
@@ -143,19 +144,47 @@ def test_ground_group_codes_reject_an_unknown_material():
         ground_group_codes(["granite"])
 
 
-def test_the_step_test_table_has_24_entries():
-    assert len(HEIGHT_BANDS_M) == 8
+def test_the_step_test_table_has_the_two_siz_bands():
+    assert len(HEIGHT_BANDS_M) == 2
     assert sorted(STEP_ANGLE_DEG) == sorted(GROUND_GROUPS)
-    assert all(len(row) == 8 for row in STEP_ANGLE_DEG.values())
+    assert all(len(row) == 2 for row in STEP_ANGLE_DEG.values())
 
 
-def test_the_shipped_threshold_files_hold_the_plans_numbers():
-    assert HEIGHT_BANDS_M == (MIN_WALL_HEIGHT_M, 1.0, 1.5, 2.5, 3.5, 6.0, 10.0, 16.0)
-    assert STEP_ANGLE_DEG["soil_like"] == (35.0,) * 8
-    assert STEP_ANGLE_DEG["weak_rock"] == (45.0,) * 6 + (34.0,) * 2
-    assert STEP_ANGLE_DEG["stronger_rock"] == (53.0,) * 5 + (45.0, 34.0, 34.0)
+def test_the_shipped_threshold_files_hold_the_siz_numbers():
+    assert HEIGHT_BANDS_M == (MIN_WALL_HEIGHT_M, 3.5)
+    assert STEP_ANGLE_DEG["soil_like"] == (35.0, 32.0)
+    assert STEP_ANGLE_DEG["weak_rock"] == (45.0, 40.0)
+    assert STEP_ANGLE_DEG["stronger_rock"] == (53.0, 48.0)
     assert dict.fromkeys(GROUND_GROUPS, MIN_WALL_HEIGHT_M) == STEP_SEED_HEIGHT_M
     assert dict.fromkeys(GROUND_GROUPS, BETA_GROW_ANGLE_DEG) == BANK_SEED_SLOPE_DEG
+
+
+def test_seed_loader_accepts_the_adjacent_step_column(tmp_path):
+    path = tmp_path / "seed.csv"
+    path.write_text(
+        "ground_group,min_step_height_m,bank_min_slope_deg,adjacent_step_m\n"
+        "soil_like,0.5,18.4,0.7\n"
+        "weak_rock,0.5,18.4,3.0\n"
+        "stronger_rock,0.5,18.4,3.0\n"
+    )
+    steps, _ = load_seed_thresholds(path)
+    assert steps["soil_like"] == 0.5
+
+
+def test_fill_as_soil_overrides_rock_material():
+    ground_map = gpd.GeoDataFrame(
+        {"material": ["rock", "rock"], "modification": ["fill", "none"]},
+        geometry=[box(0, 0, 5, 10), box(5, 0, 10, 10)],
+        crs=2193,
+    )
+    transform = Affine(1, 0, 0, 0, -1, 10)
+    plain, _ = rasterise_ground_map(ground_map, transform, (10, 10))
+    soil, _ = rasterise_ground_map(ground_map, transform, (10, 10), fill_as_soil=True)
+    weak = GROUND_GROUPS.index("weak_rock")
+    soil_like = GROUND_GROUPS.index("soil_like")
+    assert (plain == weak).all()
+    assert (soil[:, :5] == soil_like).all()
+    assert (soil[:, 5:] == weak).all()
 
 
 def test_seed_lookups_read_the_group(monkeypatch):
