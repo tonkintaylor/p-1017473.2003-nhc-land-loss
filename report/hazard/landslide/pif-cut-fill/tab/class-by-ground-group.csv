@@ -1,0 +1,5 @@
+ground_group,pifs,n,cut,cut_and_fill,fill,uncertain,natural,unknown
+soil_like,all,7709,0.188,0.135,0.060,0.082,0.535,0.000
+weak_rock,all,4306,0.173,0.100,0.071,0.108,0.547,0.001
+soil_like,10+ pips,2121,0.366,0.232,0.075,0.190,0.136,0.000
+weak_rock,10+ pips,1220,0.315,0.139,0.089,0.239,0.219,0.000

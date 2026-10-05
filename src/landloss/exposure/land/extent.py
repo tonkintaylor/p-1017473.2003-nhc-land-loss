@@ -262,6 +262,42 @@ def drop_non_residential_buildings(
     return buildings[keep].reset_index(drop=True)
 
 
+def stack_representatives(boundaries: gpd.GeoDataFrame) -> pd.Series:
+    """Return the row that stands for each boundary's stack of titles.
+
+    A unit-titled block carries one boundary per unit on a single footprint.
+    Boundaries with exactly the same geometry are one stack, and the one with
+    the lowest :data:`SOURCE_ID_COLUMN` (compared in the column's own dtype)
+    represents it, so which title stands for a block does not depend on the
+    order the rows arrived in. Near duplicates are not caught. This is the one
+    rule every reader of the stacks uses: the claim properties, the claim and
+    NZMM records and the property a retaining wall candidate lies on.
+
+    Args:
+        boundaries: LINZ property boundaries carrying :data:`SOURCE_ID_COLUMN`,
+            on a unique index.
+
+    Returns:
+        Indexed like ``boundaries``: the index label of the row representing
+        each row's stack (its own label where it represents itself).
+
+    Raises:
+        ValueError: If the index is not unique.
+    """
+    if not boundaries.index.is_unique:
+        msg = "stack_representatives needs the boundaries on a unique index"
+        raise ValueError(msg)
+    ordered = pd.DataFrame(
+        {
+            "footprint": boundaries.geometry.to_wkb().to_numpy(),
+            "row": boundaries.index.to_numpy(),
+        },
+        index=boundaries.index,
+    ).loc[boundaries[SOURCE_ID_COLUMN].sort_values(kind="stable").index]
+    first = ordered.groupby("footprint", sort=False)["row"].transform("first")
+    return first.reindex(boundaries.index).rename("stack_row")
+
+
 def build_claim_properties(
     boundaries: gpd.GeoDataFrame,
     *,
@@ -309,19 +345,14 @@ def build_claim_properties(
             **{id_column: [], PROPERTY_AREA_COLUMN: [], BOUNDARY_ROW_COLUMN: []}
         )
 
-    # Exact geometric equality, which is what stacked unit titles are. Near
-    # duplicates are not caught, and the run reports what is left overlapping.
-    # The lowest source identifier represents its footprint, so which title
-    # stands for a block does not depend on the order the rows arrived in.
-    ordered = claimable.assign(_footprint=claimable.geometry.to_wkb()).sort_values(
-        SOURCE_ID_COLUMN, kind="stable"
-    )
-    rows = ordered.groupby("_footprint")[SOURCE_ID_COLUMN].transform("size")
-    kept = ordered.assign(**{BOUNDARY_ROW_COLUMN: rows}).drop_duplicates(
-        subset="_footprint", keep="first"
-    )
-
-    properties = kept.drop(columns="_footprint").sort_index()
+    # Exact geometric equality, which is what stacked unit titles are
+    # (stack_representatives). Near duplicates are not caught, and the run
+    # reports what is left overlapping.
+    stack = stack_representatives(claimable)
+    rows = stack.map(stack.value_counts())
+    properties = claimable.assign(**{BOUNDARY_ROW_COLUMN: rows.to_numpy()})[
+        stack.to_numpy() == claimable.index.to_numpy()
+    ].copy()
     properties[id_column] = properties[SOURCE_ID_COLUMN].to_numpy()
     properties[PROPERTY_AREA_COLUMN] = properties.geometry.area
     return properties.reset_index(drop=True)

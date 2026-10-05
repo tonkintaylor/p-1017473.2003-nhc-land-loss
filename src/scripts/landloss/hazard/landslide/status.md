@@ -15,7 +15,8 @@ not agreed; its Hancox model 3 and Wellington step are built but not run. The
 slope elements and polygons library passed its toy-terrain
 proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-03; the pipeline step (stage D3, step 12) ran over the pilot on
-2026-10-04, and the wall probability and per-zone fragility are next.
+2026-10-04, and its wall units, their probability and a draw per exposure
+world on 2026-10-05; the per-zone fragility is next.
 
 **Updated:** 2026-10-05
 
@@ -89,6 +90,24 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
   the SLIDE breaks in slope [townsend_2020] and the Wellington slope profiles
   [hancox_2013_slope_types]
   (`.agents/plans/building-face-based-urban-slope-polygons.md`).
+- [x] **Class every pif as cut, fill, cut and fill, uncertain or natural
+  ground (step 13, 2026-10-05)**, before the wall probability reads the pifs.
+  Each pip is walked down its fall direction to the foot of its face. The
+  crest and the foot are then compared against a robust quadratic fitted only
+  to the ground off the faces (`landloss.hazard.landslide.pif_cut_fill`).
+  - The class says whether a face is cut back into the slope or stands proud
+    of it, against the platforms around it.
+  - A large fill is invisible, because the surface is today's ground.
+  - Faces within the fit's own scatter are `uncertain`.
+  - The method was chosen over a 30 m rolling mean and a plain quadratic in
+    `research/cut_fill/pif_cut_fill.md`.
+- [x] **Place the retaining walls on the pifs (step 12, 2026-10-05)**: join
+  the candidate pifs and GNS-only pieces of a property into wall units, put a
+  `BETA_` prior and the GNS floor on each, update on the claim reports and
+  NZMM per property (NZMM at 0.3 of its update), and draw each unit walled
+  per exposure world, so the hazard and the exposure share one draw
+  (`.agents/plans/placing-retaining-walls-on-pifs.md`). The every-siz-walled
+  and none-walled runs stay as bounds; `gen_hazard.main` runs it.
 - [~] Attach a fragility per polygon (step 8); built, with placeholder medians,
   dispersion and rate factors until the anchoring
   (`.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, a
@@ -343,10 +362,34 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   `table_urban_slope_face_checks.py`. Every pif is also tied to its LINZ
   property (2026-10-05; 2,440 straddle two or more properties, 832 are on road
   parcels), and the 979 stretches of GNS mapped wall with no pip near them
-  (8.9 km of 30.7 km) are written as `gns_only` line candidates. No probability
-  is yet put on a candidate (the plan is a prior, a 0.95 floor for a GNS wall
-  on a pif, 0.8 for GNS-only, then the databases' update; exposure rw step 6),
-  no fragility on a zone, and steps 6 and 7 are still what steps 8 and 9 read.
+  (8.9 km of 30.7 km) are written as `gns_only` line candidates. The wall
+  placement (2026-10-05; step 12 method file) joins them into 7,248 wall
+  units with 3,458 expected walls (3,336 before the claim and NZMM update);
+  97% of the mapped wall length is within 2 m of a unit member. In world 0,
+  47% of the sizs are walled and the evacuated area is 631,176 m², between
+  the all-walled 640,878 m² and the bare 612,654 m². No fragility is on a
+  zone yet, and steps 6 and 7 are still what steps 8 and 9 read. These counts
+  predate the review fixes of 2026-10-05 (spine, corner rule, GNS-only and
+  stacked title property, NZMM weight); step 12 must be rerun.
+- **Step 13, pif cut and fill (2026-10-05).**
+  `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
+  It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
+  table on `pif_id`, and the pips with their feet.
+  - **Pilot classes (all 12,015 pifs):** 2,198 cut, 1,472 cut and fill, 768
+    fill, 1,093 uncertain, 6,481 natural and 3 with too little ground to fit.
+  - **Speed:** 9.6 s, against about 45 s for the research code.
+  - **Against the SLIDE mapping** (`table_pif_cut_fill_checks.py`, pifs of 10
+    pips or more):
+    - SLIDE cut slopes read as cut 33% of the time and uncertain 39%, against
+      34% and 19% on unmapped ground.
+    - SLIDE fill bodies read as fill only 6% of the time.
+    - The class is a local reading, not a map of the large earthworks; the
+      SLIDE and WCC polygons stay the source for those.
+  - **By ground:** weak rock pifs are 31% cut against 37% in soil-like
+    ground.
+  - **For the wall probability:** the plan is to lower the prior on a cut,
+    and further on a cut in rock (exposure rw status). The numbers are for the
+    lead to set.
 
 ## Next
 
@@ -369,8 +412,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       step 12 (done, stage D3); next, the lead reviews the 20 m pif split and
       the old seeding and bank code is retired (step 12 plan, phase 5);
    5. the wall probability on the candidates (step 12 plan, phase 4; exposure
-      rw step 6, phase 2e), and then the phase 4 checks that need the
-      walls: the height shape against Anderson et al. [anderson_2015].
+      rw step 6, phase 2e; built 2026-10-05 with its checks, the height shape
+      against Anderson et al. [anderson_2015] included); next, reading each
+      pif's cut and fill class from step 13 into the prior once step 13 is
+      settled (step 13 plan, phase 3, for the prior's weights).
 
    Step 5 needs a rerun only for the common extent.
 3. **The lead decides the phase 3 proposals** (faces plan, phase 3, and its
@@ -401,6 +446,18 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 10. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
     phase 3), after the lead decides the review's proposals for the exponent,
     the cap, the urban share and the source fraction.
+11. Read step 13's cut and fill class into the wall units' prior, as the
+    "cut" of the rock cut rule and as the retaining wall `wall_position`.
+12. Settle the ground map's fill for the wall prior: its `modification` is
+    fill on 88% of the pilot's candidate pifs, rock included, so the prior
+    reads fill from the material and the SLIDE fill bodies only.
+13. Repair or retire step 8's wall edge join: the drawn walls now carry wall
+    unit ids, so it matches none of step 7's lines, and step 8 stops with an
+    error rather than build every polygon `no_wall` (steps 8 and 9 reading
+    step 12's zones resolves it; step 12 plan, phase 5).
+14. Add walls on the flat land, where no wall unit is today, and a rule for
+    a wall on a property boundary (one unit each side: count it on both, or
+    tie the two to one draw).
 
 ## Validation
 

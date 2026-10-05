@@ -1,7 +1,8 @@
 # Step 12 — Urban slope faces: implementation plan
 
-**Status:** Phases 1 to 3 complete, phase 4 started (the parcel join and the
-GNS-only candidates are built; stage D3 of
+**Status:** Phases 1 to 3 complete, phase 4 mostly built (the wall units,
+their probability and the draws per world ran over the pilot on 2026-10-05;
+the fragility per element is not started; stage D3 of
 `.agents/plans/building-face-based-urban-slope-polygons.md`).
 
 The step runs the pips, pifs and sizs pipeline
@@ -50,26 +51,52 @@ checks them against held-out claims.
 - [x] Parcel join: each pif is tied to a property, with how cleanly it sits
       (`property_share`, `n_properties`).
 - [x] GNS-only candidates: mapped wall with no pip near it, as lines.
-- [ ] Wall units: join adjacent candidate pifs within a property (and the
-      GNS-only pieces) into walls, so one wall is not counted as several pifs.
-      Decide the rule for the 2,440 pifs that straddle properties (about a fifth,
-      mostly a property against a road parcel): give the wall to the property
-      holding most of its pips, or to the one whose building is nearer.
-- [ ] Prior probability per wall unit from slope (height band), height and the
-      ground map. Needs the ground map settled (fill and rock grade).
-- [ ] The GNS floor: a wall unit with a GNS mapped wall on it is at least 0.95,
+- [x] Pif spines, end falls and the rateable property written on the siz
+      table, and the GNS-only file indexed by `gns_only_id`.
+- [x] Wall units: join adjacent candidate pifs within a property (and the
+      GNS-only pieces) into walls, so one wall is not counted as several pifs
+      (`gen_urban_slope_wall_units.py`). A pif that straddles properties goes
+      to the property holding most of its pips, or the rateable one with the
+      next most where that is a road parcel.
+- [x] Prior probability per wall unit from the height band, a rock cut over
+      2.5 m and fill (ground map material or a SLIDE fill body). The ground map
+      is not settled (fill and rock grade), so the prior moves when it is.
+- [ ] Read landslide step 13's cut and fill class into the prior (lower on a
+      cut, lower again on a cut in rock), as the "cut" of the rock cut rule
+      and as the rw `wall_position`, once step 13 is settled.
+- [x] The GNS floor: a wall unit with a GNS mapped wall on it is at least 0.95,
       and a `gns_only` candidate is 0.8.
-- [ ] Update from the property databases, keeping the Poisson-binomial update
-      already written in `exposure/rw/status.md`: an NZMM flag raises the
-      expected minimum to about 2 walls on the property (modestly, as NZMM
-      agrees with GNS no better than chance), and the claim reports give a
-      per-property count with a 30% hold-out.
-- [ ] Not taken from the five-round proposal: the 20% allocation rounds, because
-      the per-property update is exact and has no order effect. They return only
-      if a global wall target is set.
-- [ ] Walls from the probability replace the two scenarios: each wall unit is
-      walled by a draw, through `with_walls` with a Series.
-- [ ] Cross-validation of the probabilities on the held-out claims.
+- [x] Update from the property databases with the Poisson-binomial update in
+      `exposure/rw/status.md`: an NZMM flag raises the expected minimum to 2
+      walls on the property, applied modestly (`BETA_NZMM_UPDATE_WEIGHT`, 0.3
+      of the full update) and flagged unreliable, as NZMM agrees with GNS no
+      better than chance; the claim reports give a per-property count with a
+      30% hold-out.
+- [x] Review fixes (2026-10-05): the spine is the geodesic diameter of the
+      pif (a spanning tree's longest path folded back on thick faces); a
+      corner needs the falls to turn, so stacked terraces stay apart; a
+      GNS-only piece takes its property by the pif's rateable rule; one
+      stacked title rule (`stack_representatives`) for pifs, records and
+      claims; step 8 stops on drawn walls that name no polygon line; the
+      zones read the found elements the faces script keeps. The pilot numbers
+      in the method file predate them; rerun the step.
+- Dropped: the 20% allocation rounds of the five-round proposal, because the
+  per-property update is exact and has no order effect. They return only if a
+  global wall target is set.
+- [x] Walls from the probability replace the two scenarios: each wall unit is
+      walled by a draw per exposure world, and the zones of each draw are
+      built through `with_walls` with a Series
+      (`gen_urban_slope_wall_zones.py`). The two scenarios stay as bounds.
+- [~] Cross-validation of the probabilities on the held-out claims, GNS and
+      the strata (`table_urban_slope_wall_checks.py`): the tables are written;
+      nothing is calibrated until **T-50**, and on the pilot most claim values
+      fall under the suppression limit.
+- [x] Run step 12 from an orchestrator: `gen_hazard.main` runs the faces,
+      wall units and wall zones, and step 12's `WORLD_IDS` is read from
+      exposure rw step 6's config.
+- [ ] A rule for a wall on a property boundary, which is one unit on each
+      side (count it on both, or tie the two units to one draw).
+- [ ] Wall units on the flat land: every unit is a face of sloping ground.
 - [ ] A fragility per element, and the share of urban ground in a polygon that
       fails in a realisation, against the order of 1% the literature gives (the
       check the first pilot missed by a factor of about 40).

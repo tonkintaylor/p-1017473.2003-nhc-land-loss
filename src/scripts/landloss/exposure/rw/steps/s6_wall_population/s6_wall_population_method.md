@@ -1,8 +1,11 @@
 # Step 6 — Retaining wall population: method
 
-The step is three scripts run in order: `gen_wall_lines.py` writes the
-candidate wall lines, `gen_wall_probability.py` puts a probability on each,
-and `gen_wall_population.py` draws one population per exposure world.
+The step is three scripts. `gen_wall_lines.py` writes the candidate wall
+lines, which landslide step 7 reads. `gen_wall_probability.py` reads the wall
+units landslide step 12 builds on the pifs, with their probability, and puts a
+claim and a condition probability on each; `gen_wall_population.py` draws one
+population per exposure world from them, taking which units are walls from
+step 12's draw for that world.
 
 ## The candidate lines (`gen_wall_lines.py`)
 
@@ -107,16 +110,37 @@ and `gen_wall_population.py` draws one population per exposure world.
   `fig_wall_lines.py` draws the lines by source with the length per source by
   size class, to `report/exposure/rw/wall-lines/fig/`.
 
-## The probability on each line (`gen_wall_probability.py`)
+## The probability on each wall unit (`gen_wall_probability.py`)
 
-- `gen_wall_probability.py` reads the lines from `wall_lines_path()` and
-  nothing else: no elevation model, no GNS layer, no dwelling age parquet (none
-  is held) and no count bounds (**T-50**, not yet held). It writes every line
-  column plus `p_wall`, `p_wall_basis`, `p_poor` and `p_poor_basis`
-  (`wall_probability.PROBABILITY_COLUMNS`) to
-  `temp/exposure/wall-probability[-pilot].geoparquet` from
-  `wall_probability_path()`, one row per `wall_line_id`, through
-  `landloss.exposure.rw.wall_probability.wall_probability_table`.
+- `gen_wall_probability.py` reads the wall unit table landslide step 12 wrote
+  (`gen_urban_slope_wall_units.wall_units_path()`) and stops, saying to run
+  that step's `gen_urban_slope_faces.py` and `gen_urban_slope_wall_units.py`
+  first, where it is missing. No orchestrator runs step 12. It reads the LINZ
+  property boundaries on the bbox of step 12's DEM
+  (`gen_urban_slope_wall_units.dem_bbox()`), so their cache is shared, and
+  writes one row per unit to `temp/exposure/wall-probability[-pilot].geoparquet`
+  from `wall_probability_path()` through
+  `landloss.exposure.rw.wall_probability.gen_unit_probability_table`.
+- A unit's `p_wall` and `p_wall_basis` are step 12's: the prior, the GNS floor
+  and the claim and NZMM update (the step 12 method file). Its `wall_line_id`
+  is its `wall_unit_id`. Its `claim_id` comes from `claim_of_properties`: the
+  property's boundary maps to the claim of `build_claim_properties` with
+  exactly its geometry, so every title of a stacked unit-title block maps to
+  the block's claim, and a unit with no rateable property, or on a road or
+  hydro parcel, has none.
+- `face_height_m` is the unit's `height_m` (the highest face of a pif member,
+  or the step the DEM makes across a GNS-only piece) and `size_class` is
+  `classify_wall_size` of it, except that a unit with no height is `small`.
+  `wall_position` is `fill` where the unit is on fill (`is_fill`: a fill
+  material on the ground map or a SLIDE fill body), else `cut`. `is_flatland`
+  is False throughout, `source` is the `unit_source` (`pif` or `gns_only`) and
+  `material` the ground map material of its longest member.
+- Over the pilot on 2026-10-05: 7,248 units, 3,458 expected walls, 6,821
+  units (3,203 expected walls) on a claim; 713 small, 2,483 medium and 4,052
+  large; 6,578 cut and 670 fill.
+- The probability on the earlier candidate lines stays in the library
+  (`wall_probability_table`), read by the urban slope chain test and by no
+  script:
 - `p_wall` is set by `line_wall_probability` in this order: the prior of the
   line's source, `BETA_SOURCE_PROBABILITY`, highest for a mapped wall and
   lowest for a property boundary; multiplied by `BETA_ROCK_CUT_FACTOR` where
@@ -138,23 +162,22 @@ and `gen_wall_population.py` draws one population per exposure world.
   `BUILDING_ACT_DECADE` and `BETA_POST_1990_POOR_SHARE` from it on (`age`).
   No age is held in this build, so every line's basis is `default` or
   `height`. Wall type is not known on a line and does not enter.
-- The count bounds hook is `apply_count_bounds`: given a minimum and maximum
-  number of walls per claim, it scales the probabilities inside each claim by
-  one factor so the expected count sits within the bounds, never above 1 per
-  line, with lines at zero sharing the minimum equally. No bounds file is read,
-  so the script does not call it.
-- Every number in `wall_probability.py` carries a `BETA_` prefix because it is
-  judgement standing in for the claim report extraction. The run prints the
-  expected number of walls, `p_wall` quantiles, and the line count and
-  expected walls by source, by `p_wall_basis`, by size class and by
-  `p_poor_basis`, and ends by saying plainly that the result is not evidence
-  about Wellington.
+- The count bounds hook was removed on 2026-10-05: the walls a claim report
+  lists update the wall units' probabilities in landslide step 12 instead.
+- Every number in `wall_probability.py` and `wall_units.py` carries a `BETA_`
+  prefix because it is judgement standing in for the claim report extraction.
+  The run prints the expected number of walls, `p_wall` quantiles, the units
+  and expected walls on a claim, and the unit count and expected walls by
+  source, by `p_wall_basis` and by size class, the count by wall position and
+  by `p_poor_basis`, and ends by saying plainly that the result is not
+  evidence about Wellington.
 
 ## The draw per exposure world (`gen_wall_population.py`)
 
 - `gen_wall_population.py` reads the probabilities from
-  `wall_probability_path()` and the insured land from step 5's
-  `insured_land_path()`, and writes one file per world,
+  `wall_probability_path()`, landslide step 12's per-world draws of which units
+  are walled (`gen_urban_slope_wall_units.wall_draws_path()`) and the insured
+  land from step 5's `insured_land_path()`, and writes one file per world,
   `temp/exposure/wall-population-wNNN[-pilot].geoparquet` from
   `wall_population_path(world_id, extent=...)`. The worlds come from
   `config.WORLD_IDS`.
@@ -166,8 +189,12 @@ and `gen_wall_population.py` draws one population per exposure world.
 - `landloss.exposure.rw.population.draw_wall_population` draws two uniforms
   per line in line order, the first against `p_wall` and the second against
   `p_poor`: a wall exists where the first is below `p_wall` and is `poor`
-  where the second is below `p_poor`, else `modern`. A wall is the line that
-  drew it: `height_m` is the line's `face_height_m`, and `size_class`,
+  where the second is below `p_poor`, else `modern`. The script passes step
+  12's draw for the world as `walled`, which replaces the first comparison, so
+  the walls that shape the hazard are the walls that are exposed; both
+  uniforms are still drawn, so the condition stream does not change. A world
+  missing from the draws, or a unit not drawn in it, stops the run and says to
+  add the world to step 12's `WORLD_IDS`. A wall is the line that drew it: `height_m` is the line's `face_height_m`, and `size_class`,
   `length_m`, `wall_position`, `is_flatland`, `source`, `material` and the
   geometry are copied from the line (`population.POPULATION_COLUMNS`).
   Nothing is placed or sized in the draw.
@@ -206,7 +233,8 @@ and `gen_wall_population.py` draws one population per exposure world.
   claimless wall and for one off its claim's insured land. The draw and the
   stream are unchanged, and `wall_population_path()` stays the insured subset
   that vul and loss read; landslide step 8 reads the drawn walls and nothing
-  else does (decision 36 of the build contract).
+  else does (decision 36 of the build contract). The drawn walls carry wall
+  unit ids, so step 8's join on the step 7 line ids finds none of them.
 - The run prints the world id and stream, the walls drawn over the lines
   offered against the expected count, the claim and coverage counts kept and
   dropped, `describe_population()` by size class and condition, the share on
@@ -214,9 +242,13 @@ and `gen_wall_population.py` draws one population per exposure world.
   the count of drawn walls and how many carry an `rw_id`
   (`describe_drawn_walls()`), and ends by saying plainly that the result is
   not evidence about Wellington.
+- Over the pilot on 2026-10-05, world 0: 3,466 walls drawn of the 7,248
+  units (3,458 expected), 3,213 on a claim and 2,019 kept on the insured land
+  (277 small, 895 medium and 847 large; 1,896 cut and 123 fill).
 - `gen_exposure.py` runs the three scripts in this order after the insured
   land and dwellings steps, over `exposure/config.py`'s `EXTENT` and
   `WORLD_IDS`; the lines read landslide steps 3, 4 and 6, so the hazard module
-  runs first.
+  runs first. Landslide step 12 is in no orchestrator, so it is run by hand
+  before them.
 
 Potential future improvements: see `s6_wall_population_implementation_plan.md`.

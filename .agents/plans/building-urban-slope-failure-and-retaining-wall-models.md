@@ -766,9 +766,11 @@ boundary of the range is reported.
 - [x] `gen_wall_probability.py` reworked to lines, with the condition model.
 - [x] `gen_wall_population.py` reworked to draw per world on the exposure seed,
       carrying `wall_line_id`.
-- [ ] Later: `gen_wall_count_bounds.py` and the constrained draw. The scaling,
-      `wall_probability.apply_count_bounds`, is written and tested and not yet
-      called.
+- Superseded 2026-10-05, not to be built: `gen_wall_count_bounds.py` and the
+      constrained draw. The claim report counts update the wall units per
+      property in landslide step 12 instead
+      (`.agents/plans/placing-retaining-walls-on-pifs.md`, Method 4), and the
+      scaling, `wall_probability.apply_count_bounds`, is removed.
 
 ### Phase 3 — The urban model
 
@@ -812,8 +814,10 @@ boundary of the range is reported.
 ## Files
 
 **New library code** (`src/landloss/`): `exposure/rw/lines.py`,
-`exposure/rw/population.py` (the per-world draw; the count bounds scaling is
-`apply_count_bounds` in `exposure/rw/wall_probability.py`);
+`exposure/rw/population.py` (the per-world draw; the count bounds scaling,
+`apply_count_bounds` in `exposure/rw/wall_probability.py`, was removed on
+2026-10-05, superseded by the wall unit claim update in landslide step 12,
+`.agents/plans/placing-retaining-walls-on-pifs.md`);
 `hazard/landslide/ground_map.py`, `slope_units.py`; `hazard/landslide/urban/`
 with `delineation.py`, `geometry.py`, `fragility.py`, `realisation.py`;
 `hazard/realisation.py` gains the world id; `domain/constants.py` gains

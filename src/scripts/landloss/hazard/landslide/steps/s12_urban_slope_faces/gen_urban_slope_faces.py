@@ -15,6 +15,7 @@ Run from the repository root::
 Settings are in ``config.py``.
 """
 
+import pickle
 import time
 
 import geopandas as gpd
@@ -26,6 +27,7 @@ from rasterio import features
 from landloss.hazard.landslide.instability_zones import (
     MAX_PIF_SPAN_M,
     find_instability_zones,
+    gen_pif_spines,
     gen_siz_table,
     with_walls,
     write_siz_table,
@@ -90,19 +92,57 @@ def zones_path(scenario, *, extent):
     return WORK_DIR / f"urban-slope-zones-{scenario}{extent_suffix(extent)}.parquet"
 
 
-def get_inputs(*, extent, use_cached_layers):
-    """The DEM with the sea masked, the ground map and the ground groups.
+def found_path(*, extent):
+    """Where the grown elements, as found, are kept for the per-world zones."""
+    return WORK_DIR / f"urban-slope-found{extent_suffix(extent)}.pkl"
+
+
+def write_found(found, *, extent):
+    """Keep the found elements so the per-world zones need not find them again."""
+    with found_path(extent=extent).open("wb") as file:
+        pickle.dump(found, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def read_found(*, extent):
+    """The found elements :func:`write_found` kept.
+
+    Raises:
+        FileNotFoundError: If this step's faces run has not written them.
+    """
+    path = found_path(extent=extent)
+    if not path.exists():
+        msg = f"{path} not found: rerun gen_urban_slope_faces.py"
+        raise FileNotFoundError(msg)
+    with path.open("rb") as file:
+        # Written by this step's own run under temp/, not an outside file.
+        return pickle.load(file)  # noqa: S301
+
+
+def dem_bbox(*, extent):
+    """The bounds of the 1 m DEM, the bbox the step reads its layers on.
+
+    The reader caches are keyed by bbox, so every script of the step reading
+    the LINZ and GNS layers takes it from here and shares their cache.
+    """
+    with rioxarray.open_rasterio(dem_path(1, extent=extent)) as dem:
+        return tuple(dem.rio.bounds())
+
+
+def get_dem(*, extent, use_cached_layers):
+    """The 1 m DEM with every cell off the LINZ land polygons set to no data.
+
+    The pips are found on this DEM, so a later step that walks or fits the
+    pifs reads it from here too.
 
     Returns:
-        ``(dem, transform, bbox, ground_map, group, position)``. Fill is read
-        as soil in ``group``, as the pip test has no fill class.
+        ``(dem, transform, bbox)``.
     """
     dem_da = rioxarray.open_rasterio(dem_path(1, extent=extent), masked=True).squeeze(
         "band", drop=True
     )
     dem = dem_da.to_numpy().astype("float64")
     transform = dem_da.rio.transform()
-    bbox = dem_da.rio.bounds()
+    bbox = dem_bbox(extent=extent)
     land = get_nz_coastline_polygons(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
     on_land = features.rasterize(
         [(geometry, 1) for geometry in land.geometry],
@@ -111,11 +151,22 @@ def get_inputs(*, extent, use_cached_layers):
         fill=0,
         dtype="uint8",
     ).astype(bool)
+    return np.where(on_land, dem, np.nan), transform, bbox
+
+
+def get_inputs(*, extent, use_cached_layers):
+    """The DEM with the sea masked, the ground map and the ground groups.
+
+    Returns:
+        ``(dem, transform, bbox, ground_map, group, position)``. Fill is read
+        as soil in ``group``, as the pip test has no fill class.
+    """
+    dem, transform, bbox = get_dem(extent=extent, use_cached_layers=use_cached_layers)
     ground_map = gpd.read_parquet(ground_map_path(extent=extent))
     group, position = rasterise_ground_map(
         ground_map, transform, dem.shape, fill_as_soil=True
     )
-    return np.where(on_land, dem, np.nan), transform, bbox, ground_map, group, position
+    return dem, transform, bbox, ground_map, group, position
 
 
 def fill_by_element(elements, ground_map):
@@ -197,6 +248,7 @@ def main(
     gns_wall_match_m,
     search_m,
     gns_only_min_length_m,
+    end_window_m,
 ):
     """Run the pipeline over the extent and write the siz table, elements and zones.
 
@@ -207,6 +259,8 @@ def main(
         search_m: Walls, lines and buildings further than this are not recorded.
         gns_only_min_length_m: Mapped wall with no pip near it becomes a candidate
             of its own if at least this long, in metres.
+        end_window_m: The fall direction at each end of a pif's spine is the
+            mean over its pips within this many metres of the end.
     """
     dem, transform, bbox, ground_map, group, position = get_inputs(
         extent=extent, use_cached_layers=use_cached_layers
@@ -216,6 +270,8 @@ def main(
         dem, group, transform, categories={"ground_row": position}
     )
     elapsed = time.perf_counter() - start
+    WORK_DIR.mkdir(parents=True, exist_ok=True)
+    write_found(zones.found, extent=extent)
     elements = zones.found.elements
     is_fill, thickness = fill_by_element(elements, ground_map)
 
@@ -239,6 +295,9 @@ def main(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     table = gen_siz_table(zones, transform, crs=CRS)
+    table = table.join(
+        gen_pif_spines(table, cell_size_m=abs(transform.a), end_window_m=end_window_m)
+    )
     properties = get_nz_property_boundaries(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
@@ -287,4 +346,5 @@ if __name__ == "__main__":
         gns_wall_match_m=config.GNS_WALL_MATCH_M,
         search_m=config.SEARCH_M,
         gns_only_min_length_m=config.GNS_ONLY_MIN_LENGTH_M,
+        end_window_m=config.PIF_END_WINDOW_M,
     )

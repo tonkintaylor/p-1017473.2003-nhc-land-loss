@@ -604,7 +604,21 @@ def run_chain(root):
     forced = probabilities.copy()
     forced["p_wall"] = 1.0
     write(forced, gen_wall_probability.wall_probability_path(extent=extent))
-    gen_wall_population.main(extent=extent, world_ids=[WORLD])
+    # Landslide step 12's draw of which walls exist, with every one walled.
+    draws_file = root / "hazard" / "urban-slope-wall-draws.parquet"
+    draws_file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "world_id": np.int64(WORLD),
+            "wall_unit_id": forced["wall_line_id"].to_numpy(),
+            "walled": True,
+        }
+    ).to_parquet(draws_file)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            gen_wall_population, "wall_draws_path", lambda *, extent: draws_file
+        )
+        gen_wall_population.main(extent=extent, world_ids=[WORLD])
     walls = gpd.read_parquet(
         gen_wall_population.wall_population_path(WORLD, extent=extent)
     )

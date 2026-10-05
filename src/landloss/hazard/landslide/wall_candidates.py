@@ -16,6 +16,7 @@ import pandas as pd
 import shapely
 from shapely.ops import substring
 
+from landloss.exposure.land.extent import stack_representatives
 from landloss.hazard.landslide.slope_elements import height_band
 
 SIZ_CLASS = "siz"
@@ -140,7 +141,16 @@ def wall_candidate_evidence(
 
 
 def _property_frame(properties: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """The property polygons with only the columns a candidate carries."""
+    """The property polygons with only the columns a candidate carries.
+
+    Stacked unit titles (identical geometry) are one piece of ground: only the
+    title :func:`~landloss.exposure.land.extent.stack_representatives` picks
+    for the stack is kept, so a candidate on the stack goes to the title the
+    claim and NZMM records go to.
+    """
+    properties = properties.reset_index(drop=True)
+    stack = stack_representatives(properties)
+    properties = properties[stack.to_numpy() == properties.index.to_numpy()]
     frame = properties.rename(columns=PROPERTY_COLUMNS)[
         [*PROPERTY_COLUMNS.values(), "geometry"]
     ].copy()
@@ -158,7 +168,13 @@ def property_of_pifs(
 
     A pif on a boundary wall has points in two properties; it is given the one
     holding most of them, and ``property_share`` and ``n_properties`` say how
-    clean that is.
+    clean that is. The wall itself goes to the rateable property: the one
+    holding most of the pif's points unless that is a road parcel, in which
+    case the non-road property with the next most (ties to the lowest
+    ``property_id``); a pif with no point on a non-road property has none, so
+    its wall is out of the exposure but still in the hazard (it still fails).
+    Hydro parcels count as rateable here; they get no claim id later. A stack
+    of unit titles counts once, as the title that represents it.
 
     Args:
         sizs: The siz table with each pif's pips as geometry.
@@ -170,9 +186,11 @@ def property_of_pifs(
         A frame indexed like ``sizs`` with ``property_id``, ``property_source``,
         ``valuation_reference``, ``title_type``, ``property_is_road``,
         ``property_share`` (the fraction of the pif's points in that property)
-        and ``n_properties`` (how many properties its points touch). A pif with
-        no point in any property has NaN in the property columns and 0 in
-        ``n_properties`` and ``property_share``.
+        ``n_properties`` (how many properties its points touch),
+        ``rateable_property_id`` (NA where no non-road property holds a point)
+        and ``rateable_share`` (the fraction of the pif's points in it, 0 where
+        NA). A pif with no point in any property has NaN in the property
+        columns and 0 in ``n_properties`` and ``property_share``.
     """
     parts = sizs.geometry.explode(index_parts=False)
     points = gpd.GeoDataFrame(
@@ -204,6 +222,22 @@ def property_of_pifs(
     result["property_share"] = result["property_share"].fillna(0.0)
     result["n_properties"] = (
         per_property.groupby("pif").size().reindex(sizs.index).fillna(0).astype(int)
+    )
+
+    rows = per_property["index_right"].astype(int).to_numpy()
+    rateable = per_property.assign(
+        property_id=frame["property_id"].to_numpy()[rows],
+        is_road=frame["property_is_road"].to_numpy()[rows],
+    )
+    rateable = rateable[~rateable["is_road"]].sort_values(
+        ["pif", "n", "property_id"], ascending=[True, False, True]
+    )
+    rateable = rateable.drop_duplicates("pif").set_index("pif")
+    result["rateable_property_id"] = rateable["property_id"].reindex(sizs.index)
+    result["rateable_share"] = (
+        (rateable["n"] / n_points.reindex(rateable.index))
+        .reindex(sizs.index)
+        .fillna(0.0)
     )
     return result
 
@@ -247,10 +281,12 @@ def gen_gns_only_candidates(
         search_m: The building distance is NaN beyond this.
 
     Returns:
-        Line candidates with ``length_m``, ``x`` and ``y`` (the midpoint),
+        Line candidates, indexed by ``gns_only_id`` (from 0), with
+        ``length_m``, ``x`` and ``y`` (the midpoint),
         ``candidate_class``, the property columns of :func:`property_of_pifs`
-        (the property holding most of the line's length), ``ground_material``,
-        ``ground_modification`` and ``building_m``.
+        (the property holding most of the line's length) and its
+        ``rateable_property_id`` (by the same rule as a pif's, on length),
+        ``ground_material``, ``ground_modification`` and ``building_m``.
     """
     pips = shapely.get_parts(sizs.geometry.to_numpy())
     tree = shapely.STRtree(pips)
@@ -286,13 +322,21 @@ def gen_gns_only_candidates(
     candidates["building_m"] = _nearest_m(
         candidates, buildings, max_distance_m=search_m
     )
+    candidates.index.name = "gns_only_id"
     return candidates
 
 
 def _property_of_lines(
     lines: gpd.GeoDataFrame, properties: gpd.GeoDataFrame
 ) -> pd.DataFrame:
-    """The property holding the longest part of each line, NaN where none."""
+    """The property holding the longest part of each line, NaN where none.
+
+    Also ``rateable_property_id``, by the rule :func:`property_of_pifs` uses
+    with length in place of points: the non-road property holding the longest
+    part, ties to the lowest ``property_id``, NA where the line touches no
+    non-road property. A GNS-only piece and the pif it duplicates are then on
+    one property and can join.
+    """
     frame = _property_frame(properties).reset_index(drop=True)
     joined = gpd.sjoin(lines[["geometry"]], frame[["geometry"]], how="inner")
     overlap = shapely.length(
@@ -301,9 +345,27 @@ def _property_of_lines(
             frame.geometry.to_numpy()[joined["index_right"].to_numpy()],
         )
     )
-    joined = joined.assign(overlap_m=overlap).sort_values("overlap_m", ascending=False)
-    best = joined[~joined.index.duplicated()]
+    rows = joined["index_right"].to_numpy()
+    joined = pd.DataFrame(
+        {
+            "line": joined.index.to_numpy(),
+            "index_right": rows,
+            "overlap_m": overlap,
+            "property_id": frame["property_id"].to_numpy()[rows],
+            "is_road": frame["property_is_road"].to_numpy()[rows],
+        }
+    ).sort_values(
+        ["line", "overlap_m", "property_id"],
+        ascending=[True, False, True],
+        kind="mergesort",
+    )
+    best = joined.drop_duplicates("line").set_index("line")
     columns = [c for c in frame.columns if c != "geometry"]
     chosen = frame.loc[best["index_right"], columns]
     chosen.index = best.index
-    return chosen.reindex(lines.index)
+    result = chosen.reindex(lines.index)
+    rateable = joined[~joined["is_road"]].drop_duplicates("line").set_index("line")
+    result["rateable_property_id"] = (
+        rateable["property_id"].reindex(lines.index).astype("string")
+    )
+    return result

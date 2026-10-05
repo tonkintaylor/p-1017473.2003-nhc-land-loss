@@ -13,8 +13,8 @@ the Wellington pilot. The loss module itself is not run from here.
 The hazard module runs twice because the urban slope chain crosses modules
 both ways. Its first pass (``gen_hazard.main``) builds the shaking, the
 liquefaction and the landslide ground work (terrain, ground map, slope units,
-urban slope candidates) and the large landslide model, none of which reads an
-exposure output. The exposure module's wall lines then read those landslide
+urban slope candidates, and step 12's faces and wall units drawn per world)
+and the large landslide model, none of which reads an exposure output. The exposure module's wall lines then read those landslide
 layers, and its wall population is drawn per world. The hazard module's second
 pass (``gen_hazard.main_urban``) reconciles the urban slope polygons to the
 wall lines, assigns each polygon its fragility for the walls of each world,

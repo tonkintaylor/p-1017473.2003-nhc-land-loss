@@ -166,3 +166,45 @@ def test_a_mapped_wall_with_no_pip_near_it_becomes_a_gns_only_candidate(properti
     assert candidates["x"].tolist() == pytest.approx([307.5, 322.5])
     assert candidates["property_id"].tolist() == ["4", "4"]
     assert candidates["building_m"].tolist() == pytest.approx([20.0, 20.6155], abs=1e-3)
+
+
+def _gns_only(sizs, walls, properties):
+    return gen_gns_only_candidates(
+        sizs,
+        walls=walls,
+        properties=properties,
+        ground_map=_layer([], material=[], modification=[]),
+        buildings=_layer([]),
+        wall_match_m=2.0,
+        min_length_m=3.5,
+        max_length_m=20.0,
+        search_m=50.0,
+    )
+
+
+def test_gns_only_candidates_are_indexed_by_gns_only_id(properties):
+    sizs = _pif_table([[(100, 0), (101, 0)]])
+    walls = _layer([shapely.LineString([(300.0, 0.0), (330.0, 0.0)])])
+    candidates = _gns_only(sizs, walls, properties)
+    assert candidates.index.name == "gns_only_id"
+    assert candidates.index.tolist() == [0, 1]
+
+
+def test_a_pif_mostly_on_a_road_goes_to_the_next_rateable_property(properties):
+    sizs = _pif_table([[(148, 0), (149, 0), (151, 0), (152, 0), (153, 0)]])
+    result = property_of_pifs(sizs, properties)
+    assert result.loc[1, "property_id"] == "3"
+    assert bool(result.loc[1, "property_is_road"])
+    assert result.loc[1, "rateable_property_id"] == "2"
+    assert result.loc[1, "rateable_share"] == pytest.approx(2 / 5)
+
+
+def test_a_pif_only_on_road_has_no_rateable_property(properties):
+    sizs = _pif_table([[(200, 0), (201, 0)], [(0, 0)], [(500, 500)]])
+    result = property_of_pifs(sizs, properties)
+    assert pd.isna(result.loc[1, "rateable_property_id"])
+    assert result.loc[1, "rateable_share"] == 0.0
+    assert result.loc[2, "rateable_property_id"] == "1"
+    assert result.loc[2, "rateable_share"] == pytest.approx(1.0)
+    assert pd.isna(result.loc[3, "rateable_property_id"])
+    assert result.loc[3, "rateable_share"] == 0.0

@@ -20,14 +20,16 @@ that applies them, in `landloss.exposure.rw.wall_probability`.
 EXTENT = "wlg-pilot"
 
 # Which exposure worlds to draw a population for. A world is one draw of which
-# candidate lines are walls, seeded on EXPOSURE_BASE_SEED and the world id and
+# candidate walls exist, seeded on EXPOSURE_BASE_SEED and the world id and
 # not on any earthquake, so a few worlds pair with many hazard realisations.
-# Read by gen_wall_population.py.
+# Which wall units are walled is drawn in landslide step 12, whose config
+# reads WORLD_IDS from here. Read by gen_wall_population.py.
 WORLD_IDS = [0]
 
 # Whether to reuse the already-clipped GNS SLIDE and LINZ layers for this
-# extent. Set False to fetch them again. Read by gen_wall_lines.py only:
-# gen_wall_probability.py reads the lines it wrote and fetches nothing.
+# extent. Set False to fetch them again. Read by gen_wall_lines.py, and by
+# gen_wall_probability.py for the LINZ property boundaries it ties each wall
+# unit to a claim with.
 USE_CACHED_LAYERS = True
 
 # How near a road centreline a property boundary piece has to lie to count as

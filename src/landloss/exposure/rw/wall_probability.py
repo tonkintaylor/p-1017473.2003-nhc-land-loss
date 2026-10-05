@@ -1,8 +1,14 @@
-"""The probability that each candidate wall line is a wall, and its condition.
+"""The probability that each candidate wall is a wall, and its condition.
 
 A retaining wall inventory does not exist for the study area (**L-04**), so a
-candidate line (:mod:`landloss.exposure.rw.lines`) carries a probability, not a
-fact. This module puts two on each line:
+candidate carries a probability, not a fact. The candidates are the wall units
+landslide step 12 builds on the potential instability faces
+(:mod:`landloss.hazard.landslide.wall_units`), which carry their own
+``p_wall``: :func:`gen_unit_probability_table` puts the condition on each unit
+and the claim it belongs to (:func:`claim_of_properties`), in the shape the
+population draw reads. The earlier candidate lines
+(:mod:`landloss.exposure.rw.lines`) and the two probabilities this module puts
+on each line are kept for the urban slope chain test:
 
 - ``p_wall``: the probability that the line is a wall, from the source the line
   came from, lowered where the face is a cut in rock, capped on the flat land,
@@ -24,9 +30,10 @@ above and Wellington City only [townsend_2020], so a mapped wall raises a
 line's probability to at least :data:`BETA_MAPPED_WALL_PROBABILITY` and the
 absence of one changes nothing. Every number that combines the evidence
 carries a ``beta`` name because it is engineering judgement with no fit behind
-it; the claim report extraction (**T-50**) is the calibration source, and
-:func:`apply_count_bounds` is where its minimum and maximum walls per property
-enter once it is held.
+it; the claim report extraction (**T-50**) is the calibration source. The walls
+a claim report lists raise the wall units' probabilities in landslide step 12
+(:func:`landloss.hazard.landslide.wall_units.gen_wall_unit_probability`), not
+here.
 """
 
 import geopandas as gpd
@@ -34,7 +41,15 @@ import numpy as np
 import pandas as pd
 
 from landloss.domain import constants
-from landloss.exposure.rw.beta_population import BETA_POOR_SHARE
+from landloss.domain.loss_contract import CLAIM_ID_COLUMN
+from landloss.exposure.land.extent import SOURCE_ID_COLUMN
+from landloss.exposure.rw.beta_population import (
+    BETA_POOR_SHARE,
+    SIZE_CLASSES,
+    classify_wall_size,
+)
+from landloss.exposure.rw.lines import CUT, FILL
+from landloss.exposure.rw.population import REQUIRED_COLUMNS, WALL_LINE_ID_COLUMN
 
 # The probability of a wall along a line with one mapped on it. Not 1, because
 # the mapping is from imagery and a line can be a road batter or the
@@ -59,11 +74,9 @@ BETA_SOURCE_PROBABILITY = {
     "property_boundary": 0.15,
 }
 
-# What a cut face in rock keeps of its prior: a rock cut stands unsupported and
-# is claimed for spalling or slides rather than wall failure (Oriental Bay and
-# Evans Bay are the worked examples). Set against the wall counts in the claim
-# report extraction (T-50) once it is held.
-BETA_ROCK_CUT_FACTOR = 0.3
+# What a cut face in rock keeps of its prior, set once in
+# landloss.domain.constants and shared with the wall units.
+BETA_ROCK_CUT_FACTOR = constants.BETA_ROCK_CUT_FACTOR
 
 # The most a line on the NLM flat land can carry: a wall there is a garden edge
 # at most. Set against the wall counts in the claim report extraction (T-50)
@@ -99,9 +112,17 @@ WALL_INPUT_COLUMNS = ("source", "is_mapped_wall", "is_rock_cut", "is_flatland")
 HEIGHT_COLUMN = "face_height_m"
 AGE_COLUMN = "dwelling_age_decade"
 
-# The count bounds table (T-50): one row per claim, the fewest and most walls
-# the claim report says the property has.
-BOUNDS_COLUMNS = ("min_walls", "max_walls")
+# The wall unit columns the unit table reads (landslide step 12).
+UNIT_COLUMNS = (
+    "property_id",
+    "p_wall",
+    "p_wall_basis",
+    "height_m",
+    "length_m",
+    "is_fill",
+    "unit_source",
+    "ground_material",
+)
 
 
 def _require(frame: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:
@@ -227,68 +248,6 @@ def poor_condition_probability(
     return probability, basis
 
 
-def apply_count_bounds(
-    p_wall: np.ndarray, claim_ids: pd.Series, bounds: pd.DataFrame
-) -> np.ndarray:
-    """Return the probabilities scaled into each claim's count bounds.
-
-    The claim report extraction (**T-50**) gives a minimum and a maximum number
-    of walls per property. Inside each claim the probabilities are scaled by
-    one factor so that their sum, the expected number of walls, is at least the
-    minimum and at most the maximum; a claim already inside its bounds, or
-    with no bounds, is unchanged. A claim whose lines all carry zero cannot be
-    scaled up, so each of its lines takes an equal share of the minimum. No
-    probability is scaled above 1, so a minimum above the number of lines is
-    met as nearly as the lines allow.
-
-    Args:
-        p_wall: The probability per line, from :func:`line_wall_probability`.
-        claim_ids: The claim of each line, aligned to ``p_wall``; null where
-            the line belongs to no claim, which no bound reaches.
-        bounds: One row per claim, indexed by claim id, carrying
-            :data:`BOUNDS_COLUMNS`.
-
-    Returns:
-        The scaled probability per line.
-
-    Raises:
-        ValueError: If the inputs differ in length, a bound column is
-            missing, or a minimum is above its maximum.
-    """
-    probability = np.asarray(p_wall, dtype=float).copy()
-    if len(probability) != len(claim_ids):
-        msg = (
-            f"p_wall and claim_ids must match: got {len(probability)} and "
-            f"{len(claim_ids)}"
-        )
-        raise ValueError(msg)
-    _require(bounds, BOUNDS_COLUMNS, "bounds")
-    if (bounds["min_walls"] > bounds["max_walls"]).any():
-        msg = "bounds carry a minimum above its maximum"
-        raise ValueError(msg)
-
-    claims = claim_ids.to_numpy(dtype=object)
-    for claim, row in bounds.iterrows():
-        inside = claims == claim
-        if not inside.any():
-            continue
-        expected = probability[inside].sum()
-        count = int(inside.sum())
-        low, high = float(row["min_walls"]), float(row["max_walls"])
-        if expected < low:
-            scaled = (
-                np.full(count, low / count)
-                if expected == 0.0
-                else probability[inside] * (low / expected)
-            )
-        elif expected > high:
-            scaled = probability[inside] * (high / expected)
-        else:
-            continue
-        probability[inside] = np.minimum(scaled, 1.0)
-    return probability
-
-
 def wall_probability_table(lines: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Return the candidate lines with the two probabilities and their bases.
 
@@ -321,4 +280,103 @@ def wall_probability_table(lines: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     table["p_wall_basis"] = wall_basis
     table["p_poor"] = p_poor
     table["p_poor_basis"] = poor_basis
+    return table
+
+
+def claim_of_properties(
+    boundaries: gpd.GeoDataFrame, claims: gpd.GeoDataFrame
+) -> pd.Series:
+    """Return the claim each LINZ property boundary belongs to.
+
+    :func:`~landloss.exposure.land.extent.build_claim_properties` dissolves the
+    boundaries with identical geometry (stacked unit titles) into one claim,
+    named after the lowest ``source_id``. This maps every claimable
+    boundary's ``source_id`` to the claim whose polygon has exactly its
+    geometry, so a wall unit on any title of a stack belongs to the stack's
+    claim. Road and hydro parcels are not claimable and have no entry.
+
+    Args:
+        boundaries: The LINZ NZ Property Boundaries, carrying ``source_id``.
+        claims: The output of ``build_claim_properties(boundaries)``.
+
+    Returns:
+        The ``claim_id`` per boundary, indexed by ``source_id`` as a string.
+    """
+    claim_of_footprint = pd.Series(
+        claims[CLAIM_ID_COLUMN].to_numpy(),
+        index=claims.geometry.to_wkb().to_numpy(),
+    )
+    claim_ids = pd.Series(
+        claim_of_footprint.reindex(boundaries.geometry.to_wkb().to_numpy()).to_numpy(),
+        index=pd.Index(
+            boundaries[SOURCE_ID_COLUMN].astype(str).to_numpy(), name="property_id"
+        ),
+        name=CLAIM_ID_COLUMN,
+    )
+    claim_ids = claim_ids[claim_ids.notna()]
+    return claim_ids[~claim_ids.index.duplicated()]
+
+
+def gen_unit_probability_table(
+    units: gpd.GeoDataFrame, claim_ids: pd.Series
+) -> gpd.GeoDataFrame:
+    """Return the wall units in the shape the population draw reads.
+
+    One row per wall unit from landslide step 12, carrying its ``p_wall`` as
+    it is and the condition probability from its height
+    (:func:`poor_condition_probability`; no dwelling age is held). A unit's id
+    is its ``wall_line_id``, so a drawn wall names the unit it came from.
+
+    Args:
+        units: The wall unit table ``gen_urban_slope_wall_units.py`` writes,
+            indexed by ``wall_unit_id``, carrying :data:`UNIT_COLUMNS`.
+        claim_ids: From :func:`claim_of_properties`.
+
+    Returns:
+        One row per unit, in unit order, on a fresh index, carrying
+        :data:`~landloss.exposure.rw.population.REQUIRED_COLUMNS`,
+        ``p_wall_basis``, ``p_poor_basis``, ``property_id``, a null
+        ``dwelling_age_decade`` and the unit's geometry.
+
+    Raises:
+        ValueError: If a unit column is missing.
+    """
+    _require(units, UNIT_COLUMNS, "units")
+    height = units["height_m"].to_numpy(dtype=float)
+    # A unit with no height is a GNS-only piece the DEM shows no step at (GNS
+    # walls with no pip near them show a step of only 0.4 to 0.5 m), so it is
+    # small, not the "large" classify_wall_size gives a NaN.
+    size_class = np.where(np.isnan(height), SIZE_CLASSES[0], classify_wall_size(height))
+    age = pd.Series(pd.array([pd.NA] * len(units), dtype="Int64"), index=units.index)
+    p_poor, poor_basis = poor_condition_probability(height, age)
+    property_id = units["property_id"].astype("string")
+    claim = property_id.map(claim_ids)
+    table = gpd.GeoDataFrame(
+        {
+            WALL_LINE_ID_COLUMN: units.index.to_numpy(dtype=object),
+            CLAIM_ID_COLUMN: claim.astype(object).where(claim.notna(), None).to_numpy(),
+            "property_id": property_id.astype(object)
+            .where(property_id.notna(), None)
+            .to_numpy(),
+            "p_wall": units["p_wall"].to_numpy(dtype=float),
+            "p_wall_basis": units["p_wall_basis"].to_numpy(dtype=object),
+            "p_poor": p_poor,
+            "p_poor_basis": poor_basis,
+            "size_class": size_class,
+            HEIGHT_COLUMN: height,
+            "length_m": units["length_m"].to_numpy(dtype=float),
+            # Landslide step 13's cut and fill class replaces this once it is
+            # settled; until then a unit not on fill is read as a cut.
+            "wall_position": np.where(units["is_fill"].to_numpy(dtype=bool), FILL, CUT),
+            # The wall units are faces of sloping ground; walls on the flat
+            # land are not candidates yet.
+            "is_flatland": np.zeros(len(units), dtype=bool),
+            "source": units["unit_source"].to_numpy(dtype=object),
+            "material": units["ground_material"].to_numpy(dtype=object),
+            AGE_COLUMN: age.to_numpy(),
+        },
+        geometry=units.geometry.to_numpy(),
+        crs=units.crs,
+    )
+    _require(table, REQUIRED_COLUMNS, "the unit table")
     return table

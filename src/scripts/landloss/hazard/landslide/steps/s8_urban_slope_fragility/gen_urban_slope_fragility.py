@@ -209,6 +209,33 @@ def describe_flatland_walls(polygons, walls):
     )
 
 
+def check_walls_name_polygon_lines(polygons, walls):
+    """Refuse a world whose drawn walls name none of the polygons' edge lines.
+
+    The polygons name step 7's wall lines; exposure rw step 6 now draws wall
+    units from landslide step 12, whose ids are not wall line ids. Joined
+    anyway, no polygon would find its wall and every polygon would be
+    ``no_wall`` without an error, so the run stops instead.
+
+    Raises:
+        ValueError: If there are drawn walls and edge lines and no id is in both.
+    """
+    edge_lines = {
+        line
+        for cell in polygons[geometry.WALL_LINE_IDS_COLUMN]
+        for line in geometry.edge_line_ids(cell)
+    }
+    drawn = set(walls[geometry.WALL_LINE_ID_COLUMN].dropna().astype(str))
+    if edge_lines and drawn and not edge_lines & drawn:
+        msg = (
+            "no drawn wall names a polygon edge line (drawn ids such as "
+            f"{min(drawn)!r}, edge lines such as {min(edge_lines)!r}): exposure "
+            "rw step 6 draws landslide step 12's wall units, which steps 7 and 8 "
+            "do not read yet, so every polygon would be no_wall"
+        )
+        raise ValueError(msg)
+
+
 def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
     """Assemble one world's model from the polygons and that world's walls.
 
@@ -224,7 +251,12 @@ def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
 
     Returns:
         The model frame of contract section 3.8 less ``world_id``.
+
+    Raises:
+        ValueError: If no drawn wall names a polygon edge line
+            (:func:`check_walls_name_polygon_lines`).
     """
+    check_walls_name_polygon_lines(polygons, walls)
     describe_flatland_walls(polygons, walls)
     points = representative_points(polygons)
     site_class = sample_site_class(points, extent=extent)

@@ -1,8 +1,10 @@
 """Tests for the pip, pif and siz stage of the urban slope model."""
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
+import shapely
 from rasterio.transform import Affine
 
 from landloss.hazard.landslide import instability_zones as zones
@@ -241,3 +243,104 @@ def test_the_siz_file_round_trips_with_point_geometry(tmp_path):
     assert back["is_siz"].tolist() == result.sizs["is_siz"].tolist()
     assert back.geometry.iloc[0].geom_type == "MultiPoint"
     assert back.crs.to_epsg() == 2193
+    for directions, points in zip(back["pip_direction"], back.geometry, strict=True):
+        assert len(directions) == len(points.geoms)
+
+
+def test_the_siz_file_round_trips_with_the_spines_joined(tmp_path):
+    result = _zones(_ramp(6.0, 60.0), "soil_like")
+    table = zones.gen_siz_table(result, TRANSFORM, crs=2193)
+    table = table.join(zones.gen_pif_spines(table, cell_size_m=1.0, end_window_m=3.0))
+    path = tmp_path / "siz.parquet"
+    zones.write_siz_table(table, path)
+    back = zones.read_siz_table(path)
+    assert back.geometry.iloc[0].geom_type == "MultiPoint"
+    assert back["spine"].iloc[0].geom_type == "LineString"
+
+
+# Spines ---------------------------------------------------------------------
+
+
+def _spines(dem: np.ndarray) -> pd.DataFrame:
+    table = zones.gen_siz_table(_zones(dem, "soil_like"), TRANSFORM, crs=2193)
+    return zones.gen_pif_spines(table, cell_size_m=1.0, end_window_m=3.0)
+
+
+def _bearing_gap(a: float, b: float) -> float:
+    return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+def test_a_straight_wall_has_a_straight_spine_facing_east_at_both_ends():
+    spines = _spines(_wall(1.0))
+    assert len(spines) == 1
+    row = spines.iloc[0]
+    # The path steps up to PIF_JOIN_M at a time, so it need not visit every pip.
+    assert np.array(row["spine"].coords)[:, 0] == pytest.approx(20.5)
+    assert row["spine_length_m"] == pytest.approx(SHAPE[0] - 1, abs=1e-6)
+    assert (row["end_a_x"], row["end_a_y"]) == pytest.approx((20.5, 0.5))
+    assert (row["end_b_x"], row["end_b_y"]) == pytest.approx((20.5, 29.5))
+    assert row["end_a_fall_deg"] == pytest.approx(90.0)
+    assert row["end_b_fall_deg"] == pytest.approx(90.0)
+    assert row["fall_resultant"] == pytest.approx(1.0)
+
+
+def test_an_l_shaped_face_turns_between_its_ends():
+    rows, cols = np.indices(SHAPE)
+    dem = np.where((cols <= C_TOP) & (rows >= 15), 2.0, 0.0)
+    table = zones.gen_siz_table(_zones(dem, "soil_like"), TRANSFORM, crs=2193)
+    assert len(table) == 1
+    assert len(table.geometry.iloc[0].geoms) == 35
+    row = zones.gen_pif_spines(table, cell_size_m=1.0, end_window_m=3.0).iloc[0]
+    assert (row["end_a_x"], row["end_a_y"]) == pytest.approx((0.5, 14.5))
+    assert (row["end_b_x"], row["end_b_y"]) == pytest.approx((20.5, 0.5))
+    assert _bearing_gap(row["end_a_fall_deg"], 0.0) < 15.0
+    assert _bearing_gap(row["end_b_fall_deg"], 90.0) < 15.0
+    assert 60.0 <= _bearing_gap(row["end_a_fall_deg"], row["end_b_fall_deg"]) <= 120.0
+    assert row["fall_resultant"] < 0.95
+    assert row["spine_length_m"] > 20.0
+
+
+def _one_pip(direction: int) -> gpd.GeoDataFrame:
+    table = gpd.GeoDataFrame(
+        {"pip_direction": [np.array([direction], dtype=np.int8)]},
+        geometry=[shapely.MultiPoint([(10.5, 5.5)])],
+        crs=2193,
+    )
+    table.index = pd.Index([1], name="pif_id")
+    return table
+
+
+def test_a_one_pip_pif_gets_a_one_cell_spine_across_its_fall():
+    row = zones.gen_pif_spines(_one_pip(1), cell_size_m=1.0, end_window_m=3.0).iloc[0]
+    assert row["spine_length_m"] == pytest.approx(1.0)
+    assert (row["end_a_x"], row["end_a_y"]) == pytest.approx((10.5, 5.0))
+    assert (row["end_b_x"], row["end_b_y"]) == pytest.approx((10.5, 6.0))
+    assert row["end_a_fall_deg"] == pytest.approx(90.0)
+    assert row["end_b_fall_deg"] == pytest.approx(90.0)
+    assert row["fall_resultant"] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("width", [1, 2, 3])
+def test_a_thick_ribbon_has_one_spine_end_at_each_end(width):
+    # A face 20 cells long, falling south, one to three cells thick: the spine
+    # must not fold back down the next row with both ends at one end.
+    xs, ys = np.meshgrid(np.arange(20) + 0.5, np.arange(width) + 0.5)
+    table = gpd.GeoDataFrame(
+        {"pip_direction": [np.full(xs.size, 2, dtype=np.int8)]},
+        geometry=[shapely.MultiPoint(np.column_stack([xs.ravel(), ys.ravel()]))],
+        crs=2193,
+    )
+    table.index = pd.Index([1], name="pif_id")
+    row = zones.gen_pif_spines(table, cell_size_m=1.0, end_window_m=3.0).iloc[0]
+    assert row["spine_length_m"] == pytest.approx(19.0, abs=1.0)
+    assert row["end_a_x"] == pytest.approx(0.5)
+    assert row["end_b_x"] == pytest.approx(19.5)
+    assert row["end_a_fall_deg"] == pytest.approx(180.0)
+    assert row["end_b_fall_deg"] == pytest.approx(180.0)
+
+
+def test_pip_directions_that_do_not_match_the_pips_are_rejected():
+    table = _one_pip(1)
+    table["pip_direction"] = [np.array([1, 1], dtype=np.int8)]
+    with pytest.raises(ValueError, match="one direction per pip"):
+        zones.gen_pif_spines(table, cell_size_m=1.0, end_window_m=3.0)

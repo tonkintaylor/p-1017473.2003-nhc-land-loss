@@ -1,0 +1,1 @@
+`apply_count_bounds` and `BOUNDS_COLUMNS` are removed from `landloss.exposure.rw.wall_probability`. The claim report wall counts now raise the wall units' probabilities per property in landslide step 12 (`landloss.hazard.landslide.wall_units.gen_wall_unit_probability`), so no probability falls.

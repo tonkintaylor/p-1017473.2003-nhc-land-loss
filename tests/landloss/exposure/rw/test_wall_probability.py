@@ -1,14 +1,16 @@
-"""Tests for the probability on each candidate wall line and the step writing it."""
+"""Tests for the probability on each candidate wall and the step writing it."""
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
-from shapely.geometry import LineString
+from shapely.geometry import LineString, MultiLineString, box
 
 from landloss.domain import constants
+from landloss.exposure.land.extent import build_claim_properties
 from landloss.exposure.rw import lines as wl
 from landloss.exposure.rw.beta_population import BETA_POOR_SHARE
+from landloss.exposure.rw.population import REQUIRED_COLUMNS
 from landloss.exposure.rw.wall_probability import (
     BETA_FLATLAND_MAX_PROBABILITY,
     BETA_MAPPED_WALL_PROBABILITY,
@@ -20,7 +22,8 @@ from landloss.exposure.rw.wall_probability import (
     POOR_BASES,
     PROBABILITY_COLUMNS,
     WALL_BASES,
-    apply_count_bounds,
+    claim_of_properties,
+    gen_unit_probability_table,
     line_wall_probability,
     poor_condition_probability,
     wall_probability_table,
@@ -222,65 +225,91 @@ def test_mismatched_condition_inputs_are_refused():
         )
 
 
-# --- the count bounds hook ----------------------------------------------------
+# --- the wall units -----------------------------------------------------------
 
 
-def bounds(**claims):
-    rows = {
-        claim: {"min_walls": lo, "max_walls": hi} for claim, (lo, hi) in claims.items()
-    }
-    return pd.DataFrame.from_dict(rows, orient="index")
+def units_frame(*, height_m=(2.0,), property_id=("P1",), is_fill=(False,)):
+    """A step 12 wall unit table with the columns the unit table reads."""
+    n = len(height_m)
+    return gpd.GeoDataFrame(
+        {
+            "property_id": pd.array(list(property_id), dtype="string"),
+            "p_wall": np.full(n, 0.5),
+            "p_wall_basis": ["prior"] * n,
+            "height_m": np.asarray(height_m, dtype=float),
+            "length_m": np.full(n, 8.0),
+            "is_fill": list(is_fill),
+            "unit_source": ["pif"] * n,
+            "ground_material": ["fill_uncontrolled"] * n,
+        },
+        geometry=[
+            MultiLineString([[(X0 + 20 * i, Y0), (X0 + 20 * i + 8, Y0)]])
+            for i in range(n)
+        ],
+        index=pd.Index([f"WU{i + 1:07d}" for i in range(n)], name="wall_unit_id"),
+        crs=CRS,
+    )
 
 
-def test_a_claim_under_its_minimum_is_scaled_up_to_it():
-    p = np.array([0.2, 0.2, 0.2])
-    claims = pd.Series(["A", "A", "A"])
-    scaled = apply_count_bounds(p, claims, bounds(A=(1.5, 3)))
-    assert scaled.sum() == pytest.approx(1.5)
-    assert np.allclose(scaled, 0.5)
+def boundaries_frame():
+    """Two stacked unit titles, a freehold title and a road parcel."""
+    stack = box(X0, Y0 - 5, X0 + 20, Y0 + 5)
+    return gpd.GeoDataFrame(
+        {
+            "source_id": ["U2", "U1", "F1", "R1"],
+            "source": [
+                "NZ Unit of Property",
+                "NZ Unit of Property",
+                "NZ Property Titles",
+                "NZ Primary Parcels - Road",
+            ],
+        },
+        geometry=[
+            stack,
+            stack,
+            box(X0 + 20, Y0 - 5, X0 + 40, Y0 + 5),
+            box(X0 + 40, Y0 - 5, X0 + 60, Y0 + 5),
+        ],
+        crs=CRS,
+    )
 
 
-def test_a_claim_over_its_maximum_is_scaled_down_to_it():
-    p = np.array([0.9, 0.9, 0.9])
-    claims = pd.Series(["A", "A", "A"])
-    scaled = apply_count_bounds(p, claims, bounds(A=(0, 1)))
-    assert scaled.sum() == pytest.approx(1.0)
+def test_stacked_titles_map_to_one_claim_and_a_road_to_none():
+    boundaries = boundaries_frame()
+    claim_ids = claim_of_properties(boundaries, build_claim_properties(boundaries))
+    assert claim_ids.to_dict() == {"U2": "U1", "U1": "U1", "F1": "F1"}
 
 
-def test_a_claim_inside_its_bounds_and_an_unbounded_claim_are_unchanged():
-    p = np.array([0.5, 0.5, 0.3])
-    claims = pd.Series(["A", "A", "B"])
-    scaled = apply_count_bounds(p, claims, bounds(A=(0.5, 2)))
-    assert np.array_equal(scaled, p)
+def test_the_unit_table_carries_what_the_draw_reads():
+    units = units_frame(
+        height_m=(0.8, 2.0, 3.0),
+        property_id=("U2", "R1", None),
+        is_fill=(True, False, False),
+    )
+    claim_ids = pd.Series({"U2": "U1", "U1": "U1"})
+    table = gen_unit_probability_table(units, claim_ids)
+    assert set(REQUIRED_COLUMNS) <= set(table.columns)
+    assert table["wall_line_id"].tolist() == units.index.tolist()
+    assert table["claim_id"].isna().tolist() == [False, True, True]
+    assert table["claim_id"].iloc[0] == "U1"
+    assert table["size_class"].tolist() == ["small", "medium", "large"]
+    assert table["wall_position"].tolist() == ["fill", "cut", "cut"]
+    assert table["p_poor_basis"].tolist() == ["height", "default", "default"]
+    assert not table["is_flatland"].any()
+    assert table["p_wall"].tolist() == pytest.approx([0.5, 0.5, 0.5])
+    assert table["dwelling_age_decade"].isna().all()
+    assert table.crs == CRS
 
 
-def test_no_probability_is_scaled_above_one():
-    p = np.array([0.9, 0.1])
-    claims = pd.Series(["A", "A"])
-    scaled = apply_count_bounds(p, claims, bounds(A=(1.9, 2)))
-    assert scaled.max() <= 1.0
+def test_a_unit_with_no_height_is_small_not_large():
+    table = gen_unit_probability_table(units_frame(height_m=(np.nan,)), pd.Series())
+    assert table["size_class"].tolist() == ["small"]
+    assert np.isnan(table["face_height_m"].iloc[0])
 
 
-def test_lines_at_zero_share_the_minimum_equally():
-    p = np.array([0.0, 0.0])
-    claims = pd.Series(["A", "A"])
-    scaled = apply_count_bounds(p, claims, bounds(A=(1, 2)))
-    assert np.allclose(scaled, 0.5)
-
-
-def test_a_claimless_line_is_never_scaled():
-    p = np.array([0.2])
-    claims = pd.Series([None], dtype=object)
-    assert np.array_equal(apply_count_bounds(p, claims, bounds(A=(1, 2))), p)
-
-
-def test_bad_bounds_are_refused():
-    with pytest.raises(ValueError, match="minimum above"):
-        apply_count_bounds(np.array([0.2]), pd.Series(["A"]), bounds(A=(3, 1)))
-    with pytest.raises(ValueError, match="max_walls"):
-        apply_count_bounds(
-            np.array([0.2]), pd.Series(["A"]), pd.DataFrame({"min_walls": [1]})
-        )
+def test_the_unit_table_refuses_a_missing_column():
+    with pytest.raises(ValueError, match="is_fill"):
+        gen_unit_probability_table(units_frame().drop(columns=["is_fill"]), pd.Series())
 
 
 # --- the table ---------------------------------------------------------------
@@ -319,44 +348,42 @@ def test_the_table_refuses_a_missing_input_column():
 
 @pytest.fixture
 def redirected_script(tmp_path, monkeypatch):
-    """Point gen_wall_probability.py at a synthetic lines file in tmp_path."""
-    lines = stacked(
-        lines_frame(n=2, source="terrain_break"),
-        lines_frame(source="gns_mapped_wall", mapped=True, face_height_m=0.4),
-        lines_frame(source="road_frontage", flat=True, claim_id=None),
+    """Point gen_wall_probability.py at synthetic wall units and boundaries."""
+    units = units_frame(
+        height_m=(0.8, 2.0, np.nan),
+        property_id=("U2", "F1", "R1"),
+        is_fill=(True, False, False),
     )
-    lines_file = tmp_path / "wall-lines-pilot.geoparquet"
-    lines.to_parquet(lines_file)
+    units_file = tmp_path / "urban-slope-wall-units-pilot.geoparquet"
+    units.to_parquet(units_file)
     monkeypatch.setattr(script, "WORK_DIR", tmp_path / "exposure")
-    monkeypatch.setattr(script, "wall_lines_path", lambda *, extent: lines_file)
-    return lines
+    monkeypatch.setattr(script, "wall_units_path", lambda *, extent: units_file)
+    monkeypatch.setattr(script, "dem_bbox", lambda *, extent: (0.0, 0.0, 1.0, 1.0))
+    monkeypatch.setattr(
+        script, "get_nz_property_boundaries", lambda **_: boundaries_frame()
+    )
+    return units
 
 
-def test_gen_wall_probability_main_writes_one_row_per_line(tmp_path, redirected_script):
-    script.main(extent="wlg-pilot")
+def test_gen_wall_probability_main_writes_one_row_per_unit(tmp_path, redirected_script):
+    script.main(extent="wlg-pilot", use_cached_layers=True)
 
     out_path = script.wall_probability_path(extent="wlg-pilot")
     assert out_path == tmp_path / "exposure" / "wall-probability-pilot.geoparquet"
     written = gpd.read_parquet(out_path)
-    assert len(written) == len(redirected_script)
-    assert written.columns.tolist() == [
-        *redirected_script.columns,
-        *PROBABILITY_COLUMNS,
-    ]
-    assert (
-        written["wall_line_id"].tolist() == redirected_script["wall_line_id"].tolist()
-    )
-    assert written["p_wall_basis"].tolist() == [
-        "source_prior",
-        "source_prior",
-        "source_prior",
-        "flatland_cap",
-    ]
-    assert written["p_poor_basis"].tolist() == [
-        "default",
-        "default",
-        "height",
-        "default",
-    ]
+    assert written["wall_line_id"].tolist() == redirected_script.index.tolist()
+    assert written["claim_id"].isna().tolist() == [False, False, True]
+    assert written["claim_id"].dropna().tolist() == ["U1", "F1"]
+    assert written["size_class"].tolist() == ["small", "medium", "small"]
+    assert written["p_poor_basis"].tolist() == ["height", "default", "default"]
+    assert set(REQUIRED_COLUMNS) <= set(written.columns)
     assert written["dwelling_age_decade"].isna().all()
     assert written.crs == CRS
+
+
+def test_gen_wall_probability_main_says_to_run_step_12_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        script, "wall_units_path", lambda *, extent: tmp_path / "missing.geoparquet"
+    )
+    with pytest.raises(FileNotFoundError, match=r"gen_urban_slope_wall_units\.py"):
+        script.main(extent="wlg-pilot", use_cached_layers=True)

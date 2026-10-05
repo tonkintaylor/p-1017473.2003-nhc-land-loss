@@ -10,6 +10,22 @@ Use the `using-prek-pre-commit` skill when running pre-commit checks.
 
 Extended thinking should only trigger for multi-step reasoning problems. When in doubt, respond directly without extended analysis.
 
+## Replies to the user
+
+When reporting findings, options, caveats or next steps in chat, write them as an
+enumerated list whose numbers are unique across the whole reply, so the user can
+refer to any point by its number ("3.4 is wrong", "do 2.1 and 3.5"):
+
+- Number the sections 1, 2, 3 and the points inside each 1.1, 1.2, 2.1; go a
+  level deeper (2.1.1) only where a point has parts.
+- Type each full number literally at the start of the point ("3.4 The floor
+  ..."). Do not use nested markdown lists or bullets for points, which render as
+  unnumbered or restart at 1.
+- Never restart numbering at 1 under a new heading.
+
+This applies to chat replies only; repository documents keep the conventions
+their skills define.
+
 ## Script naming
 
 A script is named for what it produces, so a directory listing says what each

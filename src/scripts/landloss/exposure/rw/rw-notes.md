@@ -73,8 +73,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   and maximum number of walls per property, and raises the probabilities of the
   candidate lines inside that property. The SME suburb estimate, the manual
   mapping study, the remote sensing detection and the ICNZ database will not be
-  obtained (decided 2026-10-01). The scaling, `apply_count_bounds`, is written
-  and not yet called.
+  obtained (decided 2026-10-01). The scaling once written for this was
+  removed on 2026-10-05: the claim counts now update the wall units'
+  probabilities in landslide step 12.
 - [x] **Draw the wall population per exposure realisation**, on its own stream,
   separate from the hazard realisations: a few exposure realisations against
   many hazard ones, because whether a wall exists is not something the
@@ -225,9 +226,9 @@ rules were set against Christchurch's open valuation roll
 `validations/rwt_age_christchurch.md`).
 
 Every number is `BETA_` judgement, not evidence about Wellington. The step 8
-age is not yet read onto the lines, so the age rule never fires, and no count
-bounds are held, so
-`apply_count_bounds` is not called. Both scripts are exercised end to end on
+age is not yet read onto the lines, so the age rule never fires. (The count
+bounds hook was removed on 2026-10-05; the claim counts update the wall units
+in landslide step 12.) Both scripts are exercised end to end on
 synthetic inputs only; neither has been run over the pilot. The interim
 per-property probability and the slope-driven stand-in are deleted;
 `landloss.exposure.rw.beta_population` keeps the size and condition classes,
@@ -252,8 +253,8 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 3. Bring the collected input datasets into the repository, or record where they
    are held and how they are read, so the inputs are reproducible.
 4. Read the claim report extraction (**T-50**) when it lands, in a later phase,
-   and constrain the wall count per property to the minimum and maximum it
-   gives, through `apply_count_bounds`.
+   and raise the wall units' probabilities per property on the walls it lists
+   (built 2026-10-05 in landslide step 12, on the claim layer held now).
 5. Read step 8's age bin per property onto the lines, in place of the empty
    `dwelling_age_decade`, and set the condition probability from the four bins.
 6. Train the predictive model, bringing slope, height, wall position and
