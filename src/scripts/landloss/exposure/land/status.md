@@ -109,6 +109,8 @@ polygon now includes the driveway and is cut to the property boundary.
   terraced houses captured as one polygon. A further 3,227 overhang by a median
   of 0.30 m2, which is the two layers disagreeing.
 - The 2 m premium is not implemented.
+- QV's rating roll is read by `landloss.io.qv_rating_roll.get_qv_rating_roll`;
+  nothing in the land chain reads it yet.
 - The rate per square metre is modelled directly, per site, and calibrated
   so that total site value over total rating units is each authority's
   published average (2026-10-01). It is built on the measured area of each
@@ -116,8 +118,6 @@ polygon now includes the driveway and is cut to the property boundary.
   cut from now describe the same ground. The per-authority
   `median_lot_size_m2` survives only as the reference the size factor is
   relative to and the fallback for an address standing in no property.
-- QV's rating roll is read by `landloss.io.qv_rating_roll.get_qv_rating_roll`;
-  nothing in the land chain reads it yet.
 
 ## Next
 

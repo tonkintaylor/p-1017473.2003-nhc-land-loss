@@ -290,12 +290,11 @@ def correct_for_lateral_spreading(moderate_or_worse, major_or_worse, *, extent):
     Raises:
         FileNotFoundError: If step 1 has not been run for this extent.
     """
-    free_faces_extent = "pilot" if extent == "wlg-pilot" else "study"
-    path = free_faces_path(free_faces_extent)
+    path = free_faces_path(extent)
     if not path.exists():
         msg = (
             f"No free faces at {path}. Run s1_free_faces with EXTENT = "
-            f"{free_faces_extent!r} first, or set LATERAL_SPREADING to False."
+            f"{extent!r} first, or set LATERAL_SPREADING to False."
         )
         raise FileNotFoundError(msg)
     free_faces = gpd.read_file(path).to_crs(constants.DEFAULT_CRS)

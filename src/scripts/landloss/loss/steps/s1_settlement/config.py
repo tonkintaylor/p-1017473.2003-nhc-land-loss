@@ -9,9 +9,10 @@ The policy settings are not here, for the reason given in the module-level
 than an edit to this file.
 """
 
-# Whether to run over the small Wellington pilot box. Must match the run of
-# step 0, whose caps this checks itself against.
-PILOT = True
+# The extent to run over: "full", or a name from
+# landloss.io.area_of_interest.EXTENTS. Must match the run of step 0, whose caps
+# this checks itself against.
+EXTENT = "wlg-pilot"
 
 # Which modelled earthquakes to settle.
 REALISATION_IDS = [0]

@@ -58,7 +58,7 @@ def test_every_step_binds_to_its_main(called: list[str]) -> None:
 def test_accessibility_runs_between_terrain_and_land_value(
     called: list[str],
 ) -> None:
-    """The land value reads the terrain and accessibility files written first."""
+    """Land value reads the terrain, accessibility and amenity files written first."""
     gen_exposure.main(extent="wlg-pilot", realisation_ids=[0], world_ids=[0])
 
     terrain = called.index("s1_build_terrain_attributes")

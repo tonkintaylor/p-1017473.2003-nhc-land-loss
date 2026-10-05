@@ -26,7 +26,7 @@
   `lognormal_mean` fits a lognormal through the 50th and 85th and returns its
   mean, which runs 1.25 to 2.4 times the median. The 15th is not used: it is $0
   for None, and it is where the non-claimants' $0s pull the table down. Means
-  from the source would replace the estimate (**T-66**).
+  from the source would replace the estimate (**T-65**).
 - **The basis is the target's**: 2010/2011 dollars excluding GST, averaged over
   damaged properties with non-claimants at $0 (**Q-17**). The rates are only
   consistent with the drop-out off, and are to be refitted when claimant-only

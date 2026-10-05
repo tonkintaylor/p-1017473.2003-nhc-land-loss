@@ -93,9 +93,9 @@ def constructability(slope_deg: pd.Series) -> pd.Series:
     ).astype(str)
 
 
-def main(*, pilot, realisation_ids):
+def main(*, extent, realisation_ids):
     """Write the stress file. The arguments are ignored; it is not a run."""
-    del pilot, realisation_ids
+    del extent, realisation_ids
     rng = np.random.default_rng(SEED)
     source = pilot_csv()
 
@@ -147,4 +147,4 @@ def main(*, pilot, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(pilot=config.PILOT, realisation_ids=config.REALISATION_IDS)
+    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)

@@ -22,6 +22,5 @@ EXTENT = "wlg-pilot"
 
 # Whether to apply the lateral spreading correction to P(at least Major) before
 # the states are expanded (register task T-47). It reads the free faces step 1
-# wrote for the same extent -- "pilot" or "study" -- so run step 1 with that
-# EXTENT first.
+# wrote for the same extent, so run step 1 with this EXTENT first.
 LATERAL_SPREADING = True

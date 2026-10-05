@@ -63,6 +63,11 @@ NZ_SWAMP_POLYGONS_TOPO50_LAYER_ID = 50359
 # https://data.linz.govt.nz/layer/50258-nz-coastlines-topo-150k/
 NZ_COASTLINES_TOPO50_LAYER_ID = 50258
 
+# https://data.linz.govt.nz/layer/51153-nz-coastlines-and-islands-polygons-topo-150k/
+# The land polygons of the mainland and islands, from Topo50, in NZGD2000. Land
+# is inside the polygon and the sea outside, which is what a water mask needs.
+NZ_COASTLINE_POLYGONS_LAYER_ID = 51153
+
 # https://lris.scinfo.org.nz/layer/123148-lcdb-v60-land-cover-database-version-60-mainland-new-zealand/
 # LCDB v6.0, released October 2025. Polygons carrying a land cover class at each
 # of six time steps from summer 1996/97 to summer 2023/24.

@@ -211,3 +211,6 @@ skills-lock.json
 
 # Local MCP server config
 .mcp.json
+
+# Claude Code session lock
+.claude/scheduled_tasks.lock

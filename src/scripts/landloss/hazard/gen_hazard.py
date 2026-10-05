@@ -148,9 +148,7 @@ def main(*, extent, realisation_ids, world_ids):
             ),
             (
                 "liquefaction s1, free faces",
-                lambda: gen_liq_free_faces.main(
-                    extent="pilot" if extent == "wlg-pilot" else "study"
-                ),
+                lambda: gen_liq_free_faces.main(extent=extent),
             ),
             (
                 "liquefaction s2, land damage probabilities",

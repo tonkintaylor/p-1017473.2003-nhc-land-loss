@@ -73,7 +73,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   from its ground lost as `area_cost_nzd`, beside the lookup, and nothing
   settles on it. Against diluted costs with the drop-out off, the rates only
   re-express the Canterbury means per m²; they become a result when refitted
-  against claimant-only costs with the drop-out on (**T-66**).
+  against claimant-only costs with the drop-out on (**T-65**).
 
 ## Loss contract
 
@@ -106,7 +106,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - Step 2 carries a drop-out draw -- which properties on the grid go on to
   claim -- but leaves it off, because the current costs already average over
   non-claimants at $0. Every property on the grid claims at the diluted cost
-  until claimant-only rates arrive (**T-66**, **L-43**). With the draw on at
+  until claimant-only rates arrive (**T-65**, **L-43**). With the draw on at
   the placeholder rates, 908 of the pilot's 2,484 properties on the grid
   claimed, all 197 Severe and Very severe among them.
 - The percentile is a run-level scenario rather than a column, because
@@ -131,13 +131,13 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    replaces the Canterbury lookup as the repair cost the loss module settles
    on. It reproduces means, so its pilot total is about 1.8 times the lookup's
    at the 50th percentile. Refit it when claimant-only costs arrive
-   (**T-66**).
+   (**T-65**).
 7. Tune the drop-out rates, the share of properties in each state that do not
    claim. Step 2 can draw claims at **placeholder** rates, `DROP_OUT_RATES`
    in its `config.py` -- 95%, 75%, 40% and 15% for None to Major, 0% for
    Severe and Very severe -- and they wait on Virginie Lacrosse's table
    (**T-64**) and her and John Leeves' feedback (**Q-16**). The draw is off
-   until her claimant-only costs replace the current ones (**T-66**); her
+   until her claimant-only costs replace the current ones (**T-65**); her
    counts of damaged properties and claimants per band will validate it.
 
 ## Validation
@@ -157,7 +157,7 @@ on feedback rather than derived.
   `steps/s2_liq_land_damage/config.py`. Placeholders by Perrie Gilbert, Severe
   and Very severe fixed at 0%; feedback from Virginie Lacrosse and/or John
   Leeves (**T-64**, **Q-16**). Not applied until the costs are claimant-only
-  (**T-66**).
+  (**T-65**).
 - **Evacuated area and inundated share per land damage state**,
   `EVACUATED_AREA_M2` and `INUNDATED_SHARE` in the same `config.py`. Judgement
   from the MBIE state descriptions, agreed 2026-09-30 (**L-39**), to be tuned
@@ -169,7 +169,7 @@ on feedback rather than derived.
 - **Repair rates**, `REPAIR_RATES` in the same `config.py`: per m² inundated,
   per m² evacuated, and per claim. **Provisional**, fitted by step 3 to the
   diluted Canterbury means and not validated (**L-45**); refit whenever the ranges, the overlap or the cost table
-  change, and against claimant-only costs once they arrive (**T-66**).
+  change, and against claimant-only costs once they arrive (**T-65**).
 - **No-SVA multiplier on the inundated rate**, `NO_SVA_INUNDATED_MULTIPLIER`,
   applied when `NO_SVA` is set. 1.5 is a placeholder by Perrie Gilbert,
   awaiting feedback from Virginie Lacrosse and/or John Leeves (**Q-18**).
@@ -178,7 +178,7 @@ on feedback rather than derived.
 
 - **The drop-out and the costs have to be on one basis.** The current
   Canterbury costs include non-claimants at $0 (**Q-17**, closed), so the
-  drop-out stays off against them. Once claimant-only costs arrive (**T-66**)
+  drop-out stays off against them. Once claimant-only costs arrive (**T-65**)
   it comes on, and the T-57 repair rates are to be calibrated against
   claimants only, to match.
 
