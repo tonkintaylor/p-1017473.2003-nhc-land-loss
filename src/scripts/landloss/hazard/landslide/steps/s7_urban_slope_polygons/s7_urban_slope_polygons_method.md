@@ -1,5 +1,10 @@
 # Step 7 — Urban slope polygons: method
 
+- **Superseded in the pipeline (2026-10-06).** Landslide steps 8 and 9 read
+  step 12's zones of each world's wall draw instead of these polygons, and
+  `gen_hazard.main_urban` no longer runs this step: its polygons are reconciled
+  to the exposure wall lines, which no longer carry the walls exposure rw step 6
+  draws. The scripts stay until step 12's plan, phase 5, removes them.
 - The step turns the step 6 failure candidates and the exposure wall lines
   into the failure polygons of the urban model, one row per `slope_id`, each
   carrying the wall on its edge and the fixed geometry of every state it can

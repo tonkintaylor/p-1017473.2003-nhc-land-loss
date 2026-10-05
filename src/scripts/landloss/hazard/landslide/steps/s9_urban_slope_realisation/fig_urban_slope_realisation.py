@@ -123,7 +123,7 @@ def outcome_layers(model, combined, outcomes):
 
     Raises:
         ValueError: If the run wrote a ``slope_id`` the model file does not
-            carry, which means step 7 or 8 was rerun after step 9.
+            carry, which means step 8 was rerun after step 9.
     """
     evacuated = combined[combined[LAND_CLASS_COLUMN] == EVACUATED]
     population = evacuated[urban.POPULATION_COLUMN]
@@ -137,7 +137,7 @@ def outcome_layers(model, combined, outcomes):
     if missing:
         msg = (
             f"{len(missing):,} slope_ids the run wrote are not in the model file "
-            f"(first {missing[:3]}); step 7 or 8 was rerun after step 9, so rerun "
+            f"(first {missing[:3]}); step 8 was rerun after step 9, so rerun "
             "step 9 before drawing it"
         )
         raise ValueError(msg)

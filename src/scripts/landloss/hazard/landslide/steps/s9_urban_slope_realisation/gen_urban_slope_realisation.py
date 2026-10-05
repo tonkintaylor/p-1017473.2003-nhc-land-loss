@@ -2,8 +2,9 @@
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s9_urban_slope_realisation/gen_urban_slope_realisation.py
 
-Run first, over the same extent: step 8 (the model file for each world), the
-wall population for each world, shaking step 5 (the PGV field for each
+Run first, over the same extent: step 8 (the model file for each world, on
+landslide step 12's zones of that world's wall draw), the wall population for
+each world (exposure rw step 6, the same draw), shaking step 5 (the PGV field for each
 earthquake) and step 1 (the large-model realisation for each earthquake).
 
 For each world ``w`` and earthquake ``r``, following plan section 5.1:
@@ -15,9 +16,10 @@ For each world ``w`` and earthquake ``r``, following plan section 5.1:
    probability of failure at a level of shaking, and the draw is what decides
    whether each polygon fails. Rows stay in model-file order, sorted by
    ``slope_id``, so a polygon's uniform is tied to its id; every polygon with
-   a wall then takes the uniform of the first polygon sharing a wall line
-   with it, so a wall on polygons at several scales fails or stands once, at
-   the published rate (contract decision 34). The run prints the rate
+   a wall then takes the uniform of the first polygon sharing its wall (the
+   wall unit, written as ``wall_line_id``), so a wall under several polygons
+   (the segments of its element, or the elements of its unit) fails or stands
+   once, at the published rate (contract decision 34). The run prints the rate
    setting the model file was built at.
 3. Reads the large-model realisation for ``r``. A failed urban polygon whose
    evacuated polygon shares ground with a large-model evacuated polygon is
@@ -35,13 +37,12 @@ For each world ``w`` and earthquake ``r``, following plan section 5.1:
    as one combined realisation carrying both ids.
 6. Writes the outcome of every wall of world ``w`` on sloping land: standing,
    failed with its polygon, absorbed, or superseded, with the id of the
-   polygon that took it. A wall takes the outcome of every polygon whose edge
-   carries its line, so a wall split at a property boundary into several
-   lines along one polygon edge fails with that polygon on every line.
+   polygon that took it. A wall takes the outcome of every polygon on its
+   wall unit, the most severe first.
 
 Two polygons share ground where their intersection has an area above
 ``realisation.SHARED_GROUND_TOLERANCE_M2``; polygons that only touch along an
-edge, as neighbouring candidates of one scale always do, share none.
+edge, as neighbouring segments of one element do, share none.
 
 The library behind it is :mod:`landloss.hazard.landslide.urban.realisation`.
 What it runs over, and for which worlds and earthquakes, comes from

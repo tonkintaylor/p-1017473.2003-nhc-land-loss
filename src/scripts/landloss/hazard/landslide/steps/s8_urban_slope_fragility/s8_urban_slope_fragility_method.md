@@ -11,10 +11,55 @@
   `WORLD_IDS`, `URBAN_RATE` and `RETURN_PERIOD_YR` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments. No script takes command line arguments and no `main()` carries a
-  default. `RETURN_PERIOD_YR` is imported from shaking step 3's `config.py`
-  rather than repeated, so the step always reads the PGV grid step 3 wrote.
-- The inputs are read in `gen_urban_slope_fragility.main()`: the polygons from
-  step 7's `urban_slope_polygons_path()`, each world's drawn walls from
+  default. `WORLD_IDS` is imported from exposure rw step 6's `config.py`,
+  as landslide step 12 imports it, and `RETURN_PERIOD_YR` from shaking step
+  3's, rather than repeated, so the step always reads the worlds step 12
+  zoned and the PGV grid step 3 wrote. The figure and the table draw each
+  world's model, the pipeline's drawn walls; the two whole-scenario bounds,
+  every candidate walled and none, are drawn by step 12's
+  `fig_urban_slope_wall_zones.py` (its `FIG_ZONE_SCENARIOS`).
+- The polygons are landslide step 12's zones of each world's wall draw, not
+  step 7's polygons, which the pipeline no longer builds (2026-10-06). Step
+  12 draws per world which wall units are walled and builds that world's
+  zones with them (`urban-slope-zones-wNNN`); exposure rw step 6 writes the
+  same draw as its drawn walls, each wall's `wall_line_id` the unit's id. So
+  the wall that holds a slope in the hazard is the wall that is exposed, and
+  the old edge-line join, which matched step 7's line ids and none of the
+  units, is gone. `read_polygons()` reads a world's zones and turns them into
+  one row per polygon with
+  `landloss.hazard.landslide.urban.face_polygons.face_polygons()`:
+  - the polygon's wall unit is the unit whose `member_pif_ids` holds its
+    element's pif (`siz_id`), written as `wall_line_id` and as the one-entry
+    `wall_line_ids`; a polygon whose pif is in no unit has neither;
+  - `wall_position` is `fill` where the unit `is_fill`, else `cut`;
+  - the geometry is the world's own: `evacuated` (also the row's geometry),
+    `imminent` and `inundated` (None where the polygon has none), with
+    `depth_evacuated_m` the zone's depth and `depth_inundated_m` the
+    evacuated volume over the inundated area;
+  - the Kingsbury rating is scored by `kingsbury_factors()` with the slope
+    the element's `overall_angle_deg`, the height the polygon's `height_m`
+    (in the contract's `face_height_10m` column), and the modification,
+    geology, prior failure and groundwater of the ground map piece under
+    most of the element; an element off the ground map, or on a piece with
+    no geology, takes `BETA_OFF_MAP_GROUND` (natural weathered rock, no prior
+    failure, 4 m to groundwater; 15% of the pilot's elements);
+  - `scale_m` is 1, the grid cell, for every polygon, and the `slope_id` is
+    minted per world by location, as each world's zones are built anew;
+  - `with_amplification()` reads step 3's 100 m topographic position
+    (`terrain_path("topographic-position-100m")`) at the representative
+    point into the placeholder amplification.
+- Before the join, `face_polygons.check_zones_match_walls()` checks that the
+  zones and the drawn walls are one draw: a polygon is walled in the zones
+  (its element a `free_face`) exactly where its unit is among the world's
+  drawn sloping-land walls. A walled polygon whose unit drew no wall, a bare
+  one whose unit did, or a walled one in no unit stops the run with the
+  counts and the scripts to rerun, rather than give walled ground a
+  localised median or bare ground a wall curve. It replaces the guard that
+  stopped the run while the drawn walls named units and the polygons named
+  step 7's lines.
+- The other inputs are read in `gen_urban_slope_fragility.main()`: step 12's
+  elements, wall units and the step 4 ground map once
+  (`read_step12_inputs()`), each world's drawn walls from
   exposure step 6's `gen_wall_population.drawn_walls_path()` (every wall the
   world drew, before the claim and coverage filters, with `rw_id` null on
   the uninsured ones; the run prints how many are insured), the wall curves from
@@ -27,19 +72,16 @@
   read: the localised median's constants live in the library.
 - The fragility rules live in `landloss.hazard.landslide.urban.fragility`, one
   named function per rule, assembled per world by `assign_fragility()`.
-- The wall state of a polygon is set by `wall_state()`: a polygon any of whose
-  edge lines (step 7's `wall_line_ids`, longest shared edge first) drew a
-  sloping-land wall in the world (`drawn_edge_walls()`, joined to the drawn
-  walls on `wall_line_id`, at most one wall per line) is in the `fill_wall`
-  or `cut_wall` state of its own `wall_position` (the line sharing its
-  longest edge, whose geometry step 7 fixed); every other polygon is
-  `no_wall`. The lines are split at property boundaries and the polygons are
-  not, so one wall along an edge is often several lines, and any of them
-  drawing a wall gives the polygon its wall. The polygon takes the `rw_id`,
-  size class and condition of the first such line in edge order, written as
-  the model's `wall_line_id`, and every edge line that drew a wall is written
-  to the model's `wall_line_ids` (empty on a `no_wall` row), so step 9 gives
-  each of those walls the polygon's outcome. Whether a polygon has a wall is
+- The wall state of a polygon is set by `wall_state()`: a polygon whose
+  wall unit drew a sloping-land wall in the world (`drawn_edge_walls()`,
+  joined to the drawn walls on `wall_line_id`, at most one wall per unit) is
+  in the `fill_wall` or `cut_wall` state of its unit's `wall_position`;
+  every other polygon is `no_wall`. The polygon takes the `rw_id`, size class
+  and condition of its unit's wall, written as the model's `wall_line_id`,
+  and the unit is written to the model's `wall_line_ids` (empty on a
+  `no_wall` row), so step 9 gives the wall the outcome of every polygon on
+  it. The same functions still read step 7's polygons, whose edge can carry
+  several lines and every state's geometry, for the library tests. Whether a polygon has a wall is
   a match on the edge lines, not a non-null `rw_id`: the claim and coverage filters
   decide what is insured, not whether a wall holds the slope, so an
   uninsured wall (a council or road-reserve wall, or one beyond its claim's
@@ -52,12 +94,13 @@
   leaves that polygon `no_wall` with a null `rw_id`: vul shaking rw step 9
   draws a flat-land wall and nowhere else does (contract sections 3.11 and
   5.1); step 7 already records sloping-land lines only, so such a wall is
-  never on an edge. `gen_urban_slope_fragility.describe_flatland_walls()`
-  prints how many were left out and how many of those sat on an edge, which
-  should be zero. The state picks the
-  `evacuated`, `inundated` and `imminent` geometry and the
-  `depth_evacuated_m` and `depth_inundated_m` off the polygon's state
-  columns.
+  never on an edge; the wall units are faces of sloping ground and none is
+  flat land. `gen_urban_slope_fragility.describe_flatland_walls()` prints how
+  many were left out and how many of those were a polygon's unit, which
+  should be zero. The `evacuated`, `inundated` and `imminent` geometry and the
+  two depths are the polygon's own, already the world's
+  (`fragility._pick_state()` takes a single column where the polygons carry
+  one, and the state's column of step 7's polygons otherwise).
 - A polygon with a wall takes the wall curve of the wall's `size_class` and
   `initial_condition` under the one `unnamed` class (`wall_curve()`): the
   published median and dispersion of [koutsoupaki_2023] as the asset README
@@ -81,7 +124,7 @@
   `landloss.domain.constants.LOCALISED_FRAGILITY_BETA`, and its
   `fragility_source` is `localised:<continuous_rating>`.
 - Every median is adjusted by `polygon_theta()`: divided by the polygon's
-  `amp_factor` from step 7 and multiplied by the rate factor of the run's
+  `amp_factor` (`with_amplification()`) and multiplied by the rate factor of the run's
   `URBAN_RATE` (`rate_factor()`, from
   `landloss.domain.constants.URBAN_RATE_FACTORS`). The setting and the factor
   are written on every row, and the run prints them.
@@ -99,9 +142,12 @@
   dispersion (`medians_by_zone_and_state()`); a polygon with no zone is
   grouped under `none`.
 - The rules are covered without the network by
-  `tests/landloss/hazard/landslide/urban/test_fragility.py`, which also runs
-  the three scripts end to end on synthetic polygons, walls and grids in a
-  temporary directory with the basemap tiles faked. The TS1170.5 reader in
+  `tests/landloss/hazard/landslide/urban/test_fragility.py`, which also checks
+  `face_polygons` and its draw check, and runs the three scripts end to end
+  on synthetic step 12 zones, elements and wall units, drawn walls and grids
+  in a temporary directory with the basemap tiles faked, and by
+  `test_chain_end_to_end.py`, which runs the chain from step 12's files to
+  the loss input tables. The TS1170.5 reader in
   `main()` is faked there too.
 
 Potential future improvements: see `s8_urban_slope_fragility_implementation_plan.md`.

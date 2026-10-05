@@ -8,8 +8,9 @@ condition, from the height. Each probability carries the rule that set it.
 
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s6_wall_population/gen_wall_probability.py
 
-Run landslide step 12 first, ``gen_urban_slope_faces.py`` then
-``gen_urban_slope_wall_units.py``; no orchestrator runs it yet. The LINZ
+Run landslide step 12 first, ``gen_urban_slope_faces.py``, then step 13's
+``gen_pif_cut_fill.py``, then ``gen_urban_slope_wall_units.py``
+(``gen_hazard.main`` runs them in that order). The LINZ
 property boundaries are read on the bbox of that step's DEM, so the cache is
 shared. No dwelling age parquet is held in this build, so
 ``dwelling_age_decade`` stays null and every condition probability comes from

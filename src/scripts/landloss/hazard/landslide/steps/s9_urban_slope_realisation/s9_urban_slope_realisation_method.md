@@ -11,6 +11,17 @@
   PGV field shaking step 5 wrote for the earthquake (`gen_pgv_realisations.pgv_path`) and the
   large-model realisation step 1 wrote for it
   (`s1_simulate_landslides.realisation_path`).
+- **The polygons are landslide step 12's zones of the world's wall draw**
+  (since 2026-10-06; step 8 method file), not step 7's polygons. A model
+  row's "wall line" is its wall unit: `wall_line_id` is the unit's id, the
+  id exposure rw step 6 writes on the world's walls, and `wall_line_ids`
+  lists that one unit on a walled row. Nothing in this step changed with
+  it: the grouping, the outcome join and the geometry read the same columns.
+  A unit carries every segment of its element and every element of its
+  pifs, so all the polygons on one unit share one uniform and fail together.
+  The figure draws each world's realisation, the pipeline's walls; the
+  every-walled and none-walled bounds are step 12's
+  `fig_urban_slope_wall_zones.py`.
 - **The rate setting** step 8 built the model at is printed with its factor
   from the model file's `rate_setting` and `rate_factor` columns
   (`describe_rate_setting()`), so a run log shows which setting produced the
@@ -33,8 +44,8 @@
 - **One uniform per wall line** (contract decision 34). After the per-row
   draw, every row whose `wall_state` is not `no_wall` takes the uniform of
   the first row in model order sharing a wall line with it: a row's lines are
-  the model's `wall_line_ids` (every line on its edge that drew a wall; a
-  wall split at a property boundary is several lines), and rows are grouped
+  the model's `wall_line_ids` (the wall unit on a step 12 polygon; on step
+  7's polygons every line on its edge that drew a wall), and rows are grouped
   by any line they share, transitively. Rows without a wall, or with no line,
   keep their own uniform, so their draws are unchanged. A wall line sits on the edges of polygons at several scales,
   each carrying the same published wall curve; with a uniform each the wall

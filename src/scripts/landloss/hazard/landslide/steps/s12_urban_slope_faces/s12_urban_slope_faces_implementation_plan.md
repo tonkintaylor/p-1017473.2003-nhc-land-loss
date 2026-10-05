@@ -8,8 +8,9 @@ the fragility per element is not started; stage D3 of
 The step runs the pips, pifs and sizs pipeline
 (`.agents/plans/building-pip-pif-siz-slope-polygons.md`) over a whole extent,
 writes its layers, attaches the evidence for retaining wall candidates to the
-siz table, and runs the checks that need only those layers. It replaces steps 6
-and 7 once steps 8 and 9 read its polygons (phase 5).
+siz table, and runs the checks that need only those layers. Steps 8 and 9
+read its per-world zones in place of step 7's polygons (phase 5,
+2026-10-06); steps 6 and 7 are removed once that has run over the pilot.
 
 ## Phase 1 — The pipeline over an extent
 
@@ -59,11 +60,20 @@ checks them against held-out claims.
       to the property holding most of its pips, or the rateable one with the
       next most where that is a road parcel.
 - [x] Prior probability per wall unit from the height band, a rock cut over
-      2.5 m and fill (ground map material or a SLIDE fill body). The ground map
-      is not settled (fill and rock grade), so the prior moves when it is.
-- [ ] Read landslide step 13's cut and fill class into the prior (lower on a
-      cut, lower again on a cut in rock), as the "cut" of the rock cut rule
-      and as the rw `wall_position`, once step 13 is settled.
+      2.5 m and fill. The ground map's rock grade is not settled, so the prior
+      moves when it is.
+- [x] Read landslide step 13's cut and fill class into the prior
+      (2026-10-06): fill and cut and fill take the fill factor, the rock
+      factor applies only to a `cut` in rock over 2.5 m, natural takes
+      `BETA_NATURAL_WALL_FACTOR`, uncertain and unknown are neutral; the
+      ground map's fill no longer sets it. A unit takes the class of its
+      longest pif, and the rw `wall_position` follows (fill on fill and cut
+      and fill, else cut). The script stops if step 13 is missing or stale.
+- [x] Wall height from step 13's pips (2026-10-06): a pif's `height_m` is
+      the 80th percentile of its pips' drops to the foot of the face
+      (`WALL_HEIGHT_QUANTILE`), not `max_delta_h_m` (kept for reference),
+      which put only 29% of the pilot's walled units under 1.5 m against 54%
+      in Anderson et al. [anderson_2015]. Rerun and recheck the height shape.
 - [x] The GNS floor: a wall unit with a GNS mapped wall on it is at least 0.95,
       and a `gns_only` candidate is 0.8.
 - [x] Update from the property databases with the Poisson-binomial update in
@@ -92,8 +102,8 @@ checks them against held-out claims.
       nothing is calibrated until **T-50**, and on the pilot most claim values
       fall under the suppression limit.
 - [x] Run step 12 from an orchestrator: `gen_hazard.main` runs the faces,
-      wall units and wall zones, and step 12's `WORLD_IDS` is read from
-      exposure rw step 6's config.
+      step 13, the wall units and the wall zones, and step 12's `WORLD_IDS` is
+      read from exposure rw step 6's config.
 - [ ] A rule for a wall on a property boundary, which is one unit on each
       side (count it on both, or tie the two units to one draw).
 - [ ] Wall units on the flat land: every unit is a face of sloping ground.
@@ -103,8 +113,19 @@ checks them against held-out claims.
 
 ## Phase 5 — Replace steps 6 and 7
 
-- [ ] Steps 8 and 9 read the polygons from this step.
-- [ ] Steps 6 and 7, their figures and their tests are removed.
+- [x] Steps 8 and 9 read the polygons from this step (2026-10-06): step 8
+      reads each world's zones (`urban-slope-zones-wNNN`) through
+      `landloss.hazard.landslide.urban.face_polygons`, a polygon's wall is its
+      element's wall unit, and it stops where the zones and exposure rw step
+      6's drawn walls are not one draw; step 9 reads step 8's model unchanged.
+      `gen_hazard.main_urban` no longer runs step 7. Not yet run over the
+      pilot.
+- [x] The two bounds stay for the figures: `fig_urban_slope_wall_zones.py`
+      draws the walled and bare zones side by side at the pilot sites
+      (`FIG_ZONE_SCENARIOS`).
+- [ ] Steps 6 and 7, their figures and their tests are removed (step 6's
+      candidates still feed exposure rw step 6's wall lines; step 7 is out
+      of the pipeline but its scripts and library remain).
 - [ ] The old seeding code (`find_slope_elements`) is removed with
       `fig_toy_slope_elements.py` refactored off it.
 

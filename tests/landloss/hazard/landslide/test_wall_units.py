@@ -17,6 +17,7 @@ from landloss.hazard.landslide.wall_units import (
     FILL,
     GNS_FLOOR,
     GNS_ONLY,
+    NATURAL,
     NZMM,
     PRIOR,
     ROCK_CUT,
@@ -25,6 +26,7 @@ from landloss.hazard.landslide.wall_units import (
     gen_element_walls,
     gen_gns_floor,
     gen_gns_wall_features,
+    gen_pif_wall_heights,
     gen_property_wall_records,
     gen_wall_draws,
     gen_wall_members,
@@ -106,9 +108,25 @@ NO_GNS_ONLY = _gns_only()
 NO_FEATURES = _layer([])
 
 
-def _units(sizs, gns_only=NO_GNS_ONLY, features=NO_FEATURES, **overrides):
+def _cut_fill(sizs, *, classes=None, heights=None):
+    """Step 13 per pif: uncertain (neutral) at the pif's largest drop by default."""
+    return pd.DataFrame(
+        {
+            "cut_fill_class": classes or ["uncertain"] * len(sizs),
+            "wall_height_m": heights or sizs["max_delta_h_m"].tolist(),
+        },
+        index=sizs.index,
+    )
+
+
+def _units(
+    sizs, gns_only=NO_GNS_ONLY, features=NO_FEATURES, cut_fill=None, **overrides
+):
+    cut_fill = _cut_fill(sizs) if cut_fill is None else cut_fill
     return gen_wall_units(
-        gen_wall_members(sizs, gns_only), features, **{**JOIN, **overrides}
+        gen_wall_members(sizs, gns_only, cut_fill),
+        features,
+        **{**JOIN, **overrides},
     )
 
 
@@ -225,30 +243,31 @@ def test_a_gns_only_piece_on_a_road_is_out_of_the_exposure():
 
 
 def test_a_unit_takes_the_highest_face_nearest_building_and_longest_ground():
-    units = _units(
-        _pifs(
-            _pif(
-                (0, 0),
-                (0, 10),
-                90.0,
-                max_delta_h_m=2.0,
-                building_m=5.0,
-                ground_material="rock",
-            ),
-            _pif(
-                (0, 12),
-                (0, 17),
-                90.0,
-                max_delta_h_m=4.0,
-                building_m=3.0,
-                ground_material="soil",
-                height_band=2,
-            ),
-        )
+    sizs = _pifs(
+        _pif(
+            (0, 0),
+            (0, 10),
+            90.0,
+            max_delta_h_m=2.0,
+            building_m=5.0,
+            ground_material="rock",
+        ),
+        _pif(
+            (0, 12),
+            (0, 17),
+            90.0,
+            max_delta_h_m=4.0,
+            building_m=3.0,
+            ground_material="soil",
+            height_band=2,
+        ),
     )
+    units = _units(sizs, cut_fill=_cut_fill(sizs, heights=[1.5, 2.5]))
     unit = units.iloc[0]
+    # The height is the highest member's wall height; the largest pip drop
+    # stays for reference.
     assert unit["max_delta_h_m"] == pytest.approx(4.0)
-    assert unit["height_m"] == pytest.approx(4.0)
+    assert unit["height_m"] == pytest.approx(2.5)
     assert unit["building_m"] == pytest.approx(3.0)
     assert unit["ground_material"] == "rock"
     assert unit["height_band"] == 1
@@ -262,42 +281,116 @@ def _unit_frame(**columns):
         "gns_wall": False,
         "height_band": 1,
         "ground_material": "soil",
-        "max_delta_h_m": 2.0,
-        "in_slide_fill": False,
+        "height_m": 2.0,
+        "cut_fill_class": "uncertain",
     }
     n = max(len(v) for v in columns.values())
     data = {k: columns.get(k, [v] * n) for k, v in defaults.items()}
     return pd.DataFrame(data, index=[f"WU{i:07d}" for i in range(1, n + 1)])
 
 
-def test_the_prior_follows_the_siz_band_rock_cut_and_fill_rules():
+ROCK_F = constants.BETA_ROCK_CUT_FACTOR
+FILL_F = constants.BETA_FILL_WALL_FACTOR
+NATURAL_F = constants.BETA_NATURAL_WALL_FACTOR
+
+# One unit per row: (class, ground material, height_m, the unit's (siz) height
+# band, prior factor on 0.5, basis, is_rock_cut, is_fill, is_natural). The
+# prior's band comes from height_m, not the siz band.
+PRIOR_CASES = [
+    ("uncertain", "soil", 2.0, 1, 1.0, PRIOR, False, False, False),
+    ("cut", "rock", 3.0, 1, ROCK_F, ROCK_CUT, True, False, False),
+    ("cut", "rock", 2.0, 1, 1.0, PRIOR, False, False, False),
+    ("cut", "soil", 3.0, 1, 1.0, PRIOR, False, False, False),
+    ("fill", "rock", 3.0, 1, FILL_F, FILL, False, True, False),
+    ("cut_and_fill", "soil", 2.0, 1, FILL_F, FILL, False, True, False),
+    ("natural", "soil", 2.0, 1, NATURAL_F, NATURAL, False, False, True),
+    ("unknown", "rock", 3.0, 1, 1.0, PRIOR, False, False, False),
+    ("uncertain", "soil", 4.0, 1, 0.8, PRIOR, False, False, False),
+    ("uncertain", "soil", 2.0, 2, 1.0, PRIOR, False, False, False),
+]
+
+
+def test_the_prior_follows_the_siz_band_and_cut_and_fill_class():
+    cases = list(zip(*PRIOR_CASES, strict=True))
     units = _unit_frame(
-        ground_material=["soil", "rock", "rock", "fill_uncontrolled", "soil", "soil"],
-        max_delta_h_m=[2.0, 3.0, 2.0, 2.0, 2.0, 4.0],
-        in_slide_fill=[False, False, False, False, True, False],
-        height_band=[1, 1, 1, 1, 1, 2],
+        cut_fill_class=list(cases[0]),
+        ground_material=list(cases[1]),
+        height_m=list(cases[2]),
+        height_band=list(cases[3]),
     )
     prior = gen_wall_prior(units)
-    assert prior["p_prior"].tolist() == pytest.approx([0.5, 0.15, 0.5, 0.65, 0.65, 0.4])
-    assert prior["p_prior_basis"].tolist() == [
-        PRIOR,
-        ROCK_CUT,
-        PRIOR,
-        FILL,
-        FILL,
-        PRIOR,
-    ]
-    assert prior["is_rock_cut"].tolist() == [False, True, False, False, False, False]
-    assert prior["is_fill"].tolist() == [False, False, False, True, True, False]
+    assert prior["p_prior"].tolist() == pytest.approx([0.5 * f for f in cases[4]])
+    assert prior["p_prior_basis"].tolist() == list(cases[5])
+    assert prior["prior_height_band"].tolist() == [1] * 8 + [2, 1]
+    assert prior["is_rock_cut"].tolist() == list(cases[6])
+    assert prior["is_fill"].tolist() == list(cases[7])
+    assert prior["is_natural"].tolist() == list(cases[8])
 
 
-def test_a_fill_modification_on_rock_changes_nothing():
-    units = _unit_frame(ground_material=["rock"], max_delta_h_m=[2.0]).assign(
-        ground_modification="fill"
-    )
+def test_ground_map_fill_no_longer_sets_the_prior():
+    units = _unit_frame(
+        ground_material=["fill_uncontrolled", "rock"],
+        cut_fill_class=["uncertain", "uncertain"],
+    ).assign(ground_modification="fill", in_slide_fill=True)
     prior = gen_wall_prior(units)
-    assert prior["p_prior"].iloc[0] == pytest.approx(0.5)
-    assert not prior["is_fill"].iloc[0]
+    assert prior["p_prior"].tolist() == pytest.approx([0.5, 0.5])
+    assert not prior["is_fill"].any()
+
+
+def test_the_wall_height_is_the_quantile_of_the_pips_face_drops():
+    pips = pd.DataFrame(
+        {
+            "pif_id": [7, 7, 7, 7, 7, 3],
+            "z": [11.0, 12.0, 13.0, 14.0, 15.0, 5.0],
+            "foot_z": [10.0] * 5 + [4.5],
+        }
+    )
+    heights = gen_pif_wall_heights(pips, quantile=0.8)
+    assert heights.name == "wall_height_m"
+    assert heights.index.name == "pif_id"
+    # Drops of 1 to 5 m: the 80th percentile is 4.2 m (linear), the largest 5 m.
+    assert heights.loc[7] == pytest.approx(4.2)
+    assert heights.loc[3] == pytest.approx(0.5)
+    assert gen_pif_wall_heights(pips, quantile=1.0).loc[7] == pytest.approx(5.0)
+    with pytest.raises(ValueError, match="quantile"):
+        gen_pif_wall_heights(pips, quantile=80)
+
+
+def test_a_candidate_pif_missing_from_step_13_stops_the_members():
+    sizs = _pifs(_pif((0, 0), (0, 10), 90.0), _pif((0, 13), (0, 23), 90.0))
+    with pytest.raises(ValueError, match="step 13"):
+        gen_wall_members(sizs, NO_GNS_ONLY, _cut_fill(sizs).iloc[:1])
+
+
+def test_a_unit_takes_the_class_of_its_longest_pif():
+    sizs = _pifs(_pif((0, 0), (0, 10), 90.0), _pif((0, 13), (0, 18), 90.0))
+    units = _units(sizs, cut_fill=_cut_fill(sizs, classes=["cut", "fill"]))
+    assert len(units) == 1
+    assert units["cut_fill_class"].iloc[0] == "cut"
+
+
+def test_a_tie_for_the_longest_pif_takes_the_most_common_class():
+    sizs = _pifs(
+        _pif((0, 0), (0, 10), 90.0),
+        _pif((0, 13), (0, 23), 90.0),
+        _pif((0, 26), (0, 30), 90.0),
+    )
+    units = _units(sizs, cut_fill=_cut_fill(sizs, classes=["cut", "fill", "fill"]))
+    assert len(units) == 1
+    assert units["cut_fill_class"].iloc[0] == "fill"
+    # An even tie goes to the class of the tied pif with the lowest id.
+    units = _units(sizs, cut_fill=_cut_fill(sizs, classes=["natural", "cut", "fill"]))
+    assert units["cut_fill_class"].iloc[0] == "natural"
+
+
+def test_a_gns_only_unit_is_class_unknown():
+    units = _units(
+        _pifs(_pif((0, 0), (0, 10), 90.0)),
+        _gns_only([(50, 0), (50, 10)]),
+    )
+    by_source = units.set_index("unit_source")["cut_fill_class"]
+    assert by_source.loc["gns_only"] == "unknown"
+    assert by_source.loc["pif"] == "uncertain"
 
 
 def test_a_small_unit_carries_the_small_prior_and_the_floor_sets_it():

@@ -2,6 +2,10 @@
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s7_urban_slope_polygons/gen_urban_slope_polygons.py
 
+Superseded in the pipeline (2026-10-06): landslide step 8 reads step 12's
+zones of each world's wall draw, and ``gen_hazard.main_urban`` no longer runs
+this step. It stays until step 12's plan, phase 5, removes it.
+
 The run settings -- the extent, whether to reuse the
 cached LINZ layers, and the road half width -- come from ``config.py`` beside
 this script rather than from the command line.

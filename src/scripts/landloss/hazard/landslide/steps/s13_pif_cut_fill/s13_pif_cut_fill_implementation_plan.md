@@ -1,7 +1,8 @@
 # Step 13 — Pif cut and fill: implementation plan
 
-**Status:** Phases 1 and 2 complete; phase 3, reading the class into the wall
-probability, is next.
+**Status:** Phases 1 and 2 complete; phase 3 built (2026-10-06): step 12's
+wall units read the class into their prior and each pif's wall height from
+the pip table. Reporting the drawn walls by class is left.
 
 The step classes every pif of step 12 as cut, fill, cut and fill, uncertain or
 natural ground, so that the wall probability can read it. It runs after step 12
@@ -35,21 +36,25 @@ and before the wall units and their prior (step 12 phase 4,
 
 ## Phase 3 — Feed the wall probability
 
-These are for the lead to set. Every number is a `BETA_` constant in
-`landloss.domain.constants` until **T-50** calibrates it.
+The rules are the lead's (2026-10-06), built in
+`landloss.hazard.landslide.wall_units.gen_wall_prior`. Every number is a
+`BETA_` constant in `landloss.domain.constants` until **T-50** calibrates it.
 
-- [ ] A wall unit takes the class of its longest member pif (as it takes its
-      ground and height band), or the class covering most of its pips.
-- [ ] Lower the prior on a cut, and lower it further on a cut in rock (step 12's
-      `ground_group` weak rock). Wellington greywacke cuts often stand
-      unsupported at 55 to 75° [nzgs_2025_torlesse], and the engineering advice
-      is that most walls hold fill and soil. This sits with the existing rock
-      reduction for cuts taller than the soil cover (band 4 and up, over
-      2.5 m), not on top of it twice.
-- [ ] Keep or raise the prior on fill and on cut and fill, the front and back of
-      a platform [monteith_2020].
-- [ ] Leave `uncertain`, `natural` and `unknown` at the prior from height and
-      ground alone.
+- [x] A wall unit takes the class of its longest member pif (as it takes its
+      ground and height band); where pifs tie for the longest, the tied class
+      most of its pifs hold. A GNS-only unit is `unknown`.
+- [x] Apply the rock reduction (`BETA_ROCK_CUT_FACTOR`, 0.3) only to class
+      `cut` on a rock material taller than the soil cover (over 2.5 m), not to
+      every face in rock. Wellington greywacke cuts often stand unsupported at
+      55 to 75° [nzgs_2025_torlesse]. A cut in soil keeps its prior.
+- [x] Raise the prior on fill and on cut and fill, the front and back of a
+      platform [monteith_2020] (`BETA_FILL_WALL_FACTOR`, 1.3), in place of the
+      ground map's fill.
+- [x] Lower the prior on `natural` (`BETA_NATURAL_WALL_FACTOR`, 0.5); leave
+      `uncertain` and `unknown` at the prior from siz and height band alone.
+- [x] Each pif's wall height is the 80th percentile of its pips' drops to
+      the foot of the face (`gen_pif_wall_heights`, step 12's
+      `WALL_HEIGHT_QUANTILE`), not its largest pip drop.
 - [ ] Report the drawn walls by class in the step 6 checks.
 
 ## Phase 4 — Improvements

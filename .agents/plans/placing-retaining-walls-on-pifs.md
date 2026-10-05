@@ -36,6 +36,13 @@ size. Keep every weight as a named `BETA_` constant in
   lines of 3 to 20 m, class `gns_only`, with `property_id`, ground material and
   `building_m`. These are mapped walls with no pip within 2 m (979 pieces, 8.9 km
   of 30.7 km mapped, over the pilot), indexed by `gns_only_id`.
+- **Cut and fill per pif** (landslide step 13, 2026-10-05):
+  `urban-slope-pif-cut-fill{suffix}.parquet`, one row per pif with
+  `cut_fill_class` (`cut`, `cut_and_fill`, `fill`, `natural`, `uncertain` or
+  `unknown`), and `urban-slope-pif-cut-fill-pips{suffix}.parquet`, each pip
+  with the foot of its face. The order is step 12's faces, step 13, then step
+  12's wall units and wall zones (`gen_hazard.main`); the wall units script
+  stops if step 13's tables are missing or older than the siz table.
 - **Elements** (`urban-slope-elements{suffix}.parquet`) carry `siz_id`, which is
   a `pif_id` in the siz table (checked over the pilot: all 9,204 elements map,
   to 5,441 distinct pifs, because a pif cut into pieces grows several
@@ -86,8 +93,15 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
      siz table so this needs no second pip run.
 
    A wall unit takes the
-   highest `max_delta_h_m`, the lowest `building_m`, and the ground and height
-   band of its longest member. A pif that straddles properties
+   highest member height, the lowest `building_m`, and the ground and height
+   band of its longest member. A pif's height is the 80th percentile over its
+   pips of the drop from pip to the foot of its face, from landslide step 13's
+   pip table (`gen_pif_wall_heights`, `WALL_HEIGHT_QUANTILE` in step 12's
+   `config.py`; the lead, 2026-10-06). It was the pif's `max_delta_h_m`, the
+   largest drop of any pip pair, which overstated the retained height: on the
+   pilot only 29% of walled units were under 1.5 m, against 54% in Anderson et
+   al. [anderson_2015]. `max_delta_h_m` stays on the unit for reference; a
+   `gns_only` piece keeps the DEM step across it. A pif that straddles properties
    (`n_properties > 1`, about a fifth of pifs) goes to the property with most of
    its pips (`property_share`) unless that is a road parcel, in which case take
    the rateable property with the next most pips; if none, drop the wall from the
@@ -96,25 +110,35 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
    the lowest `source_id` (`landloss.exposure.land.extent.stack_representatives`),
    the title the claim, the records and the pifs all go to. Write the unit table with
    its member pif ids so every unit maps back to elements.
-2. **Prior.** For each wall unit, `p_prior` from its height band (the two
-   bands of `landslide-slope-thresholds.csv`, split at 3.5 m, and 0 below
-   0.5 m), whether it is a siz, and the ground map:
-   rock walls are rarer than soil ones (Wellington greywacke cuts stand at 55 to
-   75° unsupported [nzgs_2025_torlesse]; apply the rock reduction only to cuts
-   taller than the soil cover, a highest face `max_delta_h_m` over 2.5 m),
-   fill gets a higher prior (a fill material on the ground map or a SLIDE fill
-   body; not the ground map's `modification`, which is fill on 88% of the
-   pilot's candidates), and a wall below about 0.7 m (about 1.0 m where it
-   faces a diagonal) makes no pips, so it is a candidate only where GNS maps
-   it: that is the drop a pip needs at 1, 3 and 5 m (`PIP_DROP_M`,
-   `PIP_OFFSETS_M` in `instability_zones.py`), and GNS walls 2 to 5 m from a
-   pip show a step of only 0.4 to 0.5 m. No prior is lowered for it. The cut
-   and fill class of each pif (landslide step 13,
-   `urban-slope-pif-cut-fill{suffix}.parquet`, the class of the unit's longest
-   member: lower on a cut, lower again on a cut in weak rock, kept or raised on
-   fill and cut and fill, unchanged on uncertain, natural and unknown) is a
-   further factor added once it is settled (Open decisions); until then the
-   rock reduction reads any face in rock as a cut.
+2. **Prior.** For each wall unit, `p_prior` from the height band of its
+   wall height `height_m` (the two bands of `landslide-slope-thresholds.csv`,
+   split at 3.5 m, and 0 below 0.5 m; not the siz table's band, which is from
+   `max_delta_h_m` and stays for the hazard), whether it is a siz, and the cut and fill class of landslide step
+   13 (`urban-slope-pif-cut-fill{suffix}.parquet`; the lead, 2026-10-06). A
+   unit takes the class of its longest member pif, or, where pifs tie for the
+   longest, the tied class most of its pifs hold; a `gns_only` unit is
+   `unknown`. By class:
+   - `fill` and `cut_and_fill` take the higher fill prior
+     (`BETA_FILL_WALL_FACTOR`), the front and back of a platform
+     [monteith_2020];
+   - `cut` in rock taller than the soil cover (a ground map rock material and
+     a height over 2.5 m) takes the rock reduction (`BETA_ROCK_CUT_FACTOR`):
+     Wellington greywacke cuts stand at 55 to 75° unsupported
+     [nzgs_2025_torlesse]. A cut in soil, or a lower one in rock, keeps its
+     prior;
+   - `natural` takes `BETA_NATURAL_WALL_FACTOR`, since a face that falls no
+     more than the ground around it is a bank, not an earthwork;
+   - `uncertain` and `unknown` are unchanged.
+
+   The ground map's fill (a fill material, or its `modification`, which is
+   fill on 88% of the pilot's candidates) and the SLIDE fill bodies no longer
+   set the prior; before the class, the rock reduction read every face in
+   rock over 2.5 m as a cut and reached 2,583 pilot units. A wall below about
+   0.7 m (about 1.0 m where it faces a diagonal) makes no pips, so it is a
+   candidate only where GNS maps it: that is the drop a pip needs at 1, 3 and
+   5 m (`PIP_DROP_M`, `PIP_OFFSETS_M` in `instability_zones.py`), and GNS
+   walls 2 to 5 m from a pip show a step of only 0.4 to 0.5 m. No prior is
+   lowered for it.
    Start from the existing `p_wall` logic in
    `exposure/rw/steps/s6_wall_population/gen_wall_probability.py` and move its
    weights across. The ground map is fine for now; its fill and rock-grade
@@ -213,10 +237,6 @@ One-sided, because a dataset with no wall is not evidence of no wall.
 
 - The joining distance, the up-or-down-slope offset, the end bearing tolerance
   and the corner distance for wall units (start values above).
-- **Cut and fill class of each pif.** A change is coming that classes every pif
-  as cut, fill, unknown or natural. It is not ready; when it lands it feeds the
-  prior (step 2) as a further factor. Until then the prior uses the ground map
-  only.
 - **Boundary walls.** Over the pilot, 44% of neighbouring pifs that one GNS wall
   crosses lie on different properties, so a wall on a boundary is often one
   unit on each side. A claim report on either neighbour may list it. The
@@ -228,5 +248,5 @@ One-sided, because a dataset with no wall is not evidence of no wall.
   `p_wall` takes a tempered NZMM update with `USE_NZMM_UPDATE` on) and whether
   to use it at all, pending NHC saying how the flag is filled.
 - The prior's numbers, until T-50.
-- Whether the fill and rock-grade ground map changes (pending) are made before
-  the prior is set.
+- Whether the rock-grade ground map change (pending) is made before the prior
+  is set; the ground map now says only whether a cut is in rock.

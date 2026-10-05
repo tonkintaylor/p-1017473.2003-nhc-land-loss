@@ -18,7 +18,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05; the per-zone fragility is next.
 
-**Updated:** 2026-10-05
+**Updated:** 2026-10-06
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -103,12 +103,14 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
     `research/cut_fill/pif_cut_fill.md`.
 - [x] **Place the retaining walls on the pifs (step 12, 2026-10-05)**: join
   the candidate pifs and GNS-only pieces of a property into wall units, put a
-  `BETA_` prior and the GNS floor on each, update on the claim reports and
+  `BETA_` prior (from step 13's cut and fill class, 2026-10-06) and the GNS
+  floor on each, update on the claim reports and
   NZMM per property (NZMM at 0.3 of its update), and draw each unit walled
   per exposure world, so the hazard and the exposure share one draw
   (`.agents/plans/placing-retaining-walls-on-pifs.md`). The every-siz-walled
   and none-walled runs stay as bounds; `gen_hazard.main` runs it.
-- [~] Attach a fragility per polygon (step 8); built, with placeholder medians,
+- [~] Attach a fragility per polygon (step 8), on step 12's zones of each
+  world's wall draw (2026-10-06); built, with placeholder medians,
   dispersion and rate factors until the anchoring
   (`.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, a
   skeleton for the reviewer to develop).
@@ -367,8 +369,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   units with 3,458 expected walls (3,336 before the claim and NZMM update);
   97% of the mapped wall length is within 2 m of a unit member. In world 0,
   47% of the sizs are walled and the evacuated area is 631,176 m², between
-  the all-walled 640,878 m² and the bare 612,654 m². No fragility is on a
-  zone yet, and steps 6 and 7 are still what steps 8 and 9 read. These counts
+  the all-walled 640,878 m² and the bare 612,654 m². Since 2026-10-06 steps
+  8 and 9 read each world's zones in place of step 7's polygons, which the
+  pipeline no longer builds: a polygon's wall is its element's wall unit, the
+  wall exposure rw step 6 exposes, and step 8 stops if the zones and the
+  drawn walls are not one draw. Not yet run over the pilot; the fragility is
+  still the old placeholder, not the per-element one. These counts
   predate the review fixes of 2026-10-05 (spine, corner rule, GNS-only and
   stacked title property, NZMM weight); step 12 must be rerun.
 - **Step 13, pif cut and fill (2026-10-05).**
@@ -387,9 +393,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       SLIDE and WCC polygons stay the source for those.
   - **By ground:** weak rock pifs are 31% cut against 37% in soil-like
     ground.
-  - **For the wall probability:** the plan is to lower the prior on a cut,
-    and further on a cut in rock (exposure rw status). The numbers are for the
-    lead to set.
+  - **For the wall probability (2026-10-06):** step 12's wall units read
+    each unit's class into the prior (fill and cut and fill raised, a cut in
+    rock over 2.5 m and natural ground lowered, uncertain and unknown
+    neutral) in place of the ground map's fill, and each pif's wall height
+    as the 80th percentile of its pips' drops to the foot of the face, which
+    also sets the prior's height band (the siz table's band is unchanged). Not
+    yet rerun over the pilot. `gen_hazard.main` runs step 13 between step
+    12's faces and wall units.
 
 ## Next
 
@@ -413,9 +424,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       the old seeding and bank code is retired (step 12 plan, phase 5);
    5. the wall probability on the candidates (step 12 plan, phase 4; exposure
       rw step 6, phase 2e; built 2026-10-05 with its checks, the height shape
-      against Anderson et al. [anderson_2015] included); next, reading each
-      pif's cut and fill class from step 13 into the prior once step 13 is
-      settled (step 13 plan, phase 3, for the prior's weights).
+      against Anderson et al. [anderson_2015] included), and reading step
+      13's cut and fill class and face drops into the prior and the wall
+      height (2026-10-06); next, the pilot rerun (Next, 11).
 
    Step 5 needs a rerun only for the common extent.
 3. **The lead decides the phase 3 proposals** (faces plan, phase 3, and its
@@ -446,16 +457,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 10. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
     phase 3), after the lead decides the review's proposals for the exponent,
     the cap, the urban share and the source fraction.
-11. Read step 13's cut and fill class into the wall units' prior, as the
-    "cut" of the rock cut rule and as the retaining wall `wall_position`.
-12. Settle the ground map's fill for the wall prior: its `modification` is
-    fill on 88% of the pilot's candidate pifs, rock included, so the prior
-    reads fill from the material and the SLIDE fill bodies only.
-13. Repair or retire step 8's wall edge join: the drawn walls now carry wall
-    unit ids, so it matches none of step 7's lines, and step 8 stops with an
-    error rather than build every polygon `no_wall` (steps 8 and 9 reading
-    step 12's zones resolves it; step 12 plan, phase 5).
-14. Add walls on the flat land, where no wall unit is today, and a rule for
+11. Rerun step 12's faces, step 13, then step 12's wall units, zones and
+    checks over the pilot, for the new wall height and class prior, and
+    recheck the height shape against Anderson et al. [anderson_2015] (54%
+    under 1.5 m).
+12. Run `gen_all.py` over the pilot, so steps 8 and 9 run on step 12's
+    zones, review their counts, then remove steps 6 and 7 (step 12 plan,
+    phase 5).
+13. Add walls on the flat land, where no wall unit is today, and a rule for
     a wall on a property boundary (one unit each side: count it on both, or
     tie the two to one draw).
 

@@ -672,7 +672,14 @@ def _wall_rows(
 def _pick_state(
     polygons: gpd.GeoDataFrame, state: np.ndarray, kind: str
 ) -> gpd.GeoSeries:
-    """Take the geometry of the polygon's own state, one column per kind."""
+    """Take the geometry of the polygon's own state, one column per kind.
+
+    Polygons built for one world's walls (landslide step 12's zones, through
+    :mod:`landloss.hazard.landslide.urban.face_polygons`) carry one geometry
+    per kind, already the world's, and it is taken as it is.
+    """
+    if kind in polygons.columns:
+        return gpd.GeoSeries(polygons[kind], index=polygons.index, crs=polygons.crs)
     picked = [
         polygons.loc[index, f"{kind}_{one_state}"]
         for index, one_state in zip(polygons.index, state, strict=True)
@@ -681,6 +688,9 @@ def _pick_state(
 
 
 def _pick_depth(polygons: pd.DataFrame, state: np.ndarray, kind: str) -> np.ndarray:
+    """Take the depth of the polygon's own state; one column where there is one."""
+    if f"depth_{kind}_m" in polygons.columns:
+        return polygons[f"depth_{kind}_m"].to_numpy(dtype=float)
     return np.array(
         [
             float(polygons.loc[index, f"depth_{kind}_{one_state}_m"])
@@ -783,8 +793,15 @@ def assign_fragility(
     factor.
 
     Args:
-        polygons: The step 7 polygons (contract section 3.6), carrying
-            ``wall_line_ids`` beside ``wall_line_id``.
+        polygons: The polygons, carrying ``wall_line_ids`` beside
+            ``wall_line_id``: in the pipeline, one world's landslide step 12
+            zones from
+            :func:`landloss.hazard.landslide.urban.face_polygons.face_polygons`,
+            whose wall line is the polygon's wall unit and whose geometry is
+            already the world's (one ``evacuated``, ``inundated`` and
+            ``imminent`` column, and ``depth_evacuated_m`` and
+            ``depth_inundated_m``); or step 7's polygons (contract section
+            3.6), carrying every state's geometry for the state to pick.
         walls: Every wall exposure step 6 drew in this world, before the
             claim and coverage filters (``drawn_walls_path``, contract section
             3.7), carrying ``rw_id`` (null on a wall that is not insured),
