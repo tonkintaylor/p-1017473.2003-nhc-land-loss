@@ -42,9 +42,10 @@ and 7 once steps 8 and 9 read its polygons (phase 5).
 
 ## Phase 4 — The wall probability and the fragility of each zone
 
-The wall placement runs per property, in this order. The weights are judgement
-until **T-50** (the claim report extraction); the last item checks them against
-held-out claims.
+The wall placement runs per property, in this order, and is written out in full
+in `.agents/plans/placing-retaining-walls-on-pifs.md` (read that first). The
+weights are judgement until **T-50** (the claim report extraction); the last item
+checks them against held-out claims.
 
 - [x] Parcel join: each pif is tied to a property, with how cleanly it sits
       (`property_share`, `n_properties`).

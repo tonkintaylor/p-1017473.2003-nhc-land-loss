@@ -240,7 +240,8 @@ remote sensing pilot and the ICNZ database will not be obtained (decided
 The candidates are rebuilt from the pifs of landslide step 12 (the face-based
 build, `.agents/plans/building-pip-pif-siz-slope-polygons.md`). Built there
 2026-10-05: each pif is tied to its LINZ property, and each stretch of GNS
-mapped wall with no pip near it is a `gns_only` line candidate. The order from
+mapped wall with no pip near it is a `gns_only` line candidate. The full plan is
+`.agents/plans/placing-retaining-walls-on-pifs.md`. The order from
 here, per property:
 
 - [ ] Wall units: adjacent candidate pifs and GNS-only pieces on one property
