@@ -282,11 +282,11 @@ def test_get_free_faces_reads_every_layer_and_clips(monkeypatch) -> None:
     assert "Hutt River" in set(result["name"].dropna())
 
 
-def test_the_waiwhetu_stream_is_kept_by_default() -> None:
-    """The Wellington additions are in the default ID list, beside the NLM's."""
+def test_the_waiwhetu_stream_is_left_out_by_default() -> None:
+    """No Wellington stream is added by ID while Q-19 is open."""
     names = make_names(["Waiwhetū Stream", "Korokoro Stream"], [6818507, 1])
 
     result = assemble_free_faces(names, {}, make_coast())
 
     rivers = result.loc[result["source"] == "name line"]
-    assert list(rivers["name"]) == ["Waiwhetū Stream"]
+    assert rivers.empty
