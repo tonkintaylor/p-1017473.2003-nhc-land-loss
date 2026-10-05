@@ -1,0 +1,1 @@
+The lateral spreading figure script now runs over the whole study area as well as the lower Hutt Valley, set by `EXTENT` in the script. Its outputs carry the extent in their names: `temp/hazard/liquefaction/lateral-spreading-study-area.gpkg` and `-lower-hutt.gpkg`, and the zone and change figures likewise.

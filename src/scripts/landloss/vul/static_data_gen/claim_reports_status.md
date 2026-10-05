@@ -100,6 +100,51 @@ Findings from report 0005 so far:
    (`--programmes`); if they are few, report that as a finding.
 6. The open gaps: read the PDF-only reports (I-15), and look for project
    numbers and folders the claims lists have not identified (I-16).
+7. **Fetch every parent code** (T-81, 2026-10-06): list the job folders under
+   each parent code in "Job numbering" below, then fetch and extract them.
+   This replaces the programme-by-programme lists and closes I-16.
+
+## Job numbering
+
+How the claim job numbers are set up, as passed to Perrie Gilbert on
+2026-10-06. It is the basis for listing every job folder (T-81).
+
+- **Insurer first, then one sub-code per claim; no event level.** Each insurer
+  or claims handler has a parent code, and sub-codes under it are handed out
+  in order as claims come in, one per property:
+
+  | Parent | Insurer or handler |
+  | --- | --- |
+  | 1501000 | Suncorp |
+  | 1502000 | IAG |
+  | 1502100 | Sedgwick |
+  | 1502200 | McLarens |
+  | 1502300 | Gallagher Bassett |
+  | 1503000 | Tower |
+  | 1504000 | FMG |
+  | 1505000 | Ando |
+  | 1506000 | Chubb |
+  | 1507000 | MAS |
+  | 1508000 | QBE |
+  | 1509000 | Allianz |
+  | 1600000 | "Non-BAU Insurance Claims" for the Natural Hazards Commission |
+
+  IAG runs from .0001 (July 2021) to about .2891 (October 2026).
+- **The event is not in the number.** Storm, landslip and earthquake claims
+  share one sequence. The event has to come from the start date and location,
+  or from the report. Runs of claims help, such as the Marlborough Sounds
+  claims in early August 2021 and the Oamaru and Cape Palliser runs in
+  July and August 2026.
+- **"EQC - address" became "NHC - address"** when EQC became the Natural
+  Hazards Commission. It is the same kind of job.
+- **The parent code is the channel, not always the underwriter.** A few IAG
+  sub-codes list AA Insurance, Tower or Ando as the client.
+- **The insurer's claim number may be in the file name.** C3781306 in
+  `T+T_2021-IAG-C3781306-Report` looks like IAG's claim number, which would
+  link to insurer data better than the T+T sub-code. This rests on one file
+  name; check it against others.
+- **An address can return under a new code.** One IAG address appears in 2021
+  and again in 2026 under a later sub-code, which is useful for repeat damage.
 
 ## Decisions
 

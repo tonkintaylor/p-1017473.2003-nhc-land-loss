@@ -48,13 +48,15 @@ WATERWAY_TYPES = ("river", "other")
 NLM_EXTRA_RIVER_SECTION_IDS = (7495748, 7189907, 7495747, 6974823)
 
 # This study's additions to the NLM's list, for Wellington (register task T-48).
-# This is the one place the free faces depart from the NLM's layer.
+# Empty, so the free faces are the NLM's layer with nothing added.
 #
-# The Waiwhetu Stream, both of its sections, 7.5 km in all, to the harbour at
-# Seaview: it crosses the liquefiable ground of the lower Hutt Valley floor to
-# its mouth, as the Bottle Lake watercourses do in Christchurch. Included
-# provisionally, 2026-10-02, pending Maxim Millen's view (Q-19).
-WELLINGTON_EXTRA_RIVER_SECTION_IDS = (6818507, 7212609)
+# The Waiwhetu Stream was added here on 2026-10-02, both of its sections --
+# river sections 6818507 and 7212609, 7.5 km to the harbour at Seaview -- since
+# it crosses the liquefiable lower Hutt Valley floor to its mouth, as the Bottle
+# Lake watercourses do in Christchurch. Taken out again on 2026-10-05, by Perrie
+# Gilbert, pending Maxim Millen's view (Q-19). Those two IDs are what to put back
+# if it is to count.
+WELLINGTON_EXTRA_RIVER_SECTION_IDS: tuple[int, ...] = ()
 
 EXTRA_RIVER_SECTION_IDS = NLM_EXTRA_RIVER_SECTION_IDS + (
     WELLINGTON_EXTRA_RIVER_SECTION_IDS

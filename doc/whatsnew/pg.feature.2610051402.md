@@ -1,0 +1,1 @@
+Added `fig_lateral_spreading.py` under the liquefaction report figures. It draws the lateral spreading zones over the lower Hutt Valley, the NLM's P(at least Major) before and after the correction with the change between them, and the correction curve for each zone. It reads the NLM grids from the local cache only, never from the T: drive.

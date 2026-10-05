@@ -39,11 +39,13 @@
 
 ## Where it departs from the NLM's layer
 
-- **The Waiwhetū Stream is added by ID** (`WELLINGTON_EXTRA_RIVER_SECTION_IDS`,
-  river sections 6818507 and 7212609, 7.5 km). It is named a stream, so the
-  NLM's rule leaves it out, but it crosses the liquefiable lower Hutt Valley
-  floor to the harbour at Seaview. Included provisionally on 2026-10-02, after
-  a QGIS review of the lower Hutt layer, pending Maxim Millen's view (Q-19).
+- **None, at present.** `WELLINGTON_EXTRA_RIVER_SECTION_IDS` is empty. The
+  Waiwhetū Stream (river sections 6818507 and 7212609, 7.5 km) was added by ID
+  on 2026-10-02, after a QGIS review of the lower Hutt layer: it is named a
+  stream, so the NLM's rule leaves it out, but it crosses the liquefiable lower
+  Hutt Valley floor to the harbour at Seaview. It was taken out on 2026-10-05,
+  pending Maxim Millen's view (Q-19). Over the study area it had put 189 NLM
+  cells in the near zone and 285 within 200 m.
 
 ## Checked by eye, lower Hutt, 2026-10-02
 
