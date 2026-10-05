@@ -1,6 +1,8 @@
-class,rolling,poly
-cut,2695,2083
-cut_and_fill,1550,2405
-fill,1189,527
-natural,6581,7000
-all,12015,12015
+class,rolling,poly,anchor
+cut,2695.0,2083.0,2198.0
+cut_and_fill,1550.0,2405.0,1472.0
+fill,1189.0,527.0,768.0
+uncertain,,,1093.0
+natural,6581.0,7000.0,6481.0
+unknown,,,3.0
+all,12015.0,12015.0,12015.0

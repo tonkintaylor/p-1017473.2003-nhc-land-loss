@@ -4,6 +4,14 @@ Findings from `gen_pif_cut_fill.py` and `fig_pif_cross_sections.py`, run 5 Octob
 2026 over the Wellington pilot (`wlg-pilot`), on the pifs landslide step 12 wrote
 the same day.
 
+**Adopted 5 October 2026.** The lead accepted the anchor method, which is now
+landslide step 13 (`steps/s13_pif_cut_fill/`). Its code is in
+`landloss.hazard.landslide.pif_cut_fill`, where the walk, the fit and the
+thresholds below now live as named constants. This script runs the same code
+for the anchor surface, beside the two simpler surfaces it was compared with.
+The optimised fit gives the same classes as the one first run here, except one
+pif that sits 2 mm from a class boundary (the early stop of the reweighting).
+
 ## Question
 
 Each pif (`landloss.hazard.landslide.instability_zones`) is a step in the 1 m DEM.
@@ -13,33 +21,52 @@ read from the DEM alone.
 
 ## Method
 
-- **Natural surface, two estimates.** `rolling_mean`: the DEM averaged over a
-  30 m square window (`config.ROLLING_WINDOW_M`), the lead's first idea.
-  `fit_quadratic`: a quadratic surface fitted by least squares to every DEM
-  cell within 15 m of the pif's points (`config.FIT_RADIUS_M`), so the surface
-  bends with a crest or gully where the mean does not. The repository already
-  had a close relative of the first: `landloss.common.utils.terrain.cut_fill_residual`
-  (the DEM minus a 30 m or 100 m block mean), which step 3 writes and the ground
-  map uses to class cells where no mapping reaches.
+- **Natural surface, three estimates.**
+  1. **rolling** (`rolling_mean`): the DEM averaged over a 30 m square window
+     (`config.ROLLING_WINDOW_M`). This was the lead's first idea. The
+     repository already had a close relative:
+     `landloss.common.utils.terrain.cut_fill_residual`, the DEM minus a 30 m or
+     100 m block mean, which step 3 writes and the ground map uses to class
+     cells where no mapping reaches.
+  2. **poly** (`pif_cut_fill.fit_quadratic`, unweighted): a quadratic surface fitted by least squares to
+     every DEM cell within 15 m of the pif's points (`config.FIT_RADIUS_M`). It
+     bends with a crest or gully where the mean does not.
+  3. **anchor**: the same quadratic, fitted within 20 m
+     (`pif_cut_fill.FIT_RADIUS_M`) but only to ground off the faces.
+     - The face mask (`pif_cut_fill.face_mask`) covers every cell from a pip down to its
+       foot, for every pif in the extent, grown by 1 m. It covers 15.6% of the
+       pilot.
+     - The fit is reweighted ten times by Tukey's bisquare, so a platform well
+       off the trend counts for less.
+     - Its robust residual scatter σ (1.4826 times the median absolute
+       deviation) is kept per pif. This is the second option in the literature
+       below.
 - **Crest and foot.** A pip is the crest of a drop by definition, so comparing
   pips alone with a smoothed surface reads nearly every pif as fill (see
   finding 1). Each pip is walked down its own fall direction to the first step
-  flatter than 20 degrees, up to 15 m (`face_feet`), which gives the foot of the
+  flatter than 20 degrees, up to 15 m (`pif_cut_fill.face_feet`). That gives the foot of the
   face below it.
-- **Class** (`classify`). Per pif and per surface, the crest residual and foot
-  residual are the medians over its pips of the DEM minus the surface. The
-  *excess drop* (crest minus foot residual) is how much further the ground falls
-  across the face than the natural surface does; 1 m or less is natural
-  (`config.EXCESS_DROP_M`). The *position* (crest plus foot residual over the
-  excess drop) runs from -1 (all of the excess below the surface: cut) to +1 (all
-  above: fill); beyond plus or minus one third (`config.POSITION_SPLIT`) is cut
-  or fill, between is cut and fill.
+- **Class** (`pif_cut_fill.classify`). Per pif and per surface, the crest residual and the
+  foot residual are the medians over its pips of the DEM minus the surface.
+  - The *excess drop* (crest residual minus foot residual) is how much further
+    the ground falls across the face than the natural surface does. 1 m or
+    less is natural (`pif_cut_fill.EXCESS_DROP_M`).
+  - The *position* (crest plus foot residual, over the excess drop) runs from
+    -1 (all of the excess below the surface: cut) to +1 (all of it above:
+    fill). Beyond plus or minus one third (`pif_cut_fill.POSITION_SPLIT`) is cut or
+    fill; between is cut and fill.
+  - For the anchor surface only, an excess drop over 1 m but within 2σ
+    (`pif_cut_fill.SCALE_K`) is *uncertain*.
 - **Check.** Against the GNS SLIDE genesis "Cut slope" and "Fill body" polygons
   (the siz table's `in_slide_cut` and `in_slide_fill`). They are a partial
   mapping, so "neither" is a baseline rather than a statement of natural ground.
 - **Sections.** Three 100 m sections near pif 8220, set by hand in
-  `config.SECTIONS`, drawn true scale with both surfaces, the pips coloured by
-  class and the foot below each pip.
+  `config.SECTIONS` and drawn true scale.
+  - Each section draws, for the method in `config.FIGURE_CLASS_METHOD` (anchor),
+    each pif's natural surface over its own face.
+  - The ground is shaded orange where it stands above that surface (fill) and
+    blue where it sits below it (cut).
+  - The pips are coloured by class, with the foot below each pip marked.
 
 ## Results
 
@@ -50,65 +77,90 @@ mean surface in `temp/hazard/landslide/pif-cut-fill*-pilot.*`; the sections in
 
 All 12,015 pifs of the pilot:
 
-| Class | Rolling | Poly |
-| --- | --- | --- |
-| cut | 2,695 | 2,083 |
-| cut and fill | 1,550 | 2,405 |
-| fill | 1,189 | 527 |
-| natural | 6,581 | 7,000 |
+| Class | Rolling | Poly | Anchor |
+| --- | --- | --- | --- |
+| cut | 2,695 | 2,083 | 2,198 |
+| cut and fill | 1,550 | 2,405 | 1,473 |
+| fill | 1,189 | 527 | 768 |
+| uncertain | - | - | 1,092 |
+| natural | 6,581 | 7,000 | 6,481 |
+| unknown (too few anchor cells) | - | - | 3 |
 
 The 3,341 pifs of 10 pips or more, as a share of each SLIDE group:
 
-| SLIDE says | n | Rolling cut / c+f / fill / natural | Poly cut / c+f / fill / natural |
-| --- | --- | --- | --- |
-| cut slope | 199 | 0.62 / 0.19 / 0.13 / 0.07 | 0.68 / 0.19 / 0.02 / 0.11 |
-| fill body | 301 | 0.55 / 0.26 / 0.09 / 0.09 | 0.48 / 0.38 / 0.03 / 0.12 |
-| neither | 2,806 | 0.43 / 0.22 / 0.14 / 0.21 | 0.40 / 0.32 / 0.05 / 0.22 |
+| SLIDE says | n | Rolling cut / c+f / fill / natural | Poly cut / c+f / fill / natural | Anchor cut / c+f / fill / uncertain / natural |
+| --- | --- | --- | --- | --- |
+| cut slope | 199 | 0.62 / 0.19 / 0.13 / 0.07 | 0.68 / 0.19 / 0.02 / 0.11 | 0.33 / 0.12 / 0.10 / 0.39 / 0.06 |
+| fill body | 301 | 0.55 / 0.26 / 0.09 / 0.09 | 0.48 / 0.38 / 0.03 / 0.12 | 0.41 / 0.19 / 0.06 / 0.25 / 0.10 |
+| neither | 2,806 | 0.43 / 0.22 / 0.14 / 0.21 | 0.40 / 0.32 / 0.05 / 0.22 | 0.34 / 0.21 / 0.08 / 0.19 / 0.18 |
 
 (35 pifs touch both a cut slope and a fill body and are left out.)
 
-The two methods give the same class to 79% of pifs, 68% of those with 10 pips
-or more.
+The rolling and poly methods give the same class to 79% of pifs, and 68% of
+those with 10 pips or more. The anchor fit's σ has a median of 0.41 m, but
+0.61 m on SLIDE cut slopes and 0.52 m on fill bodies, against 0.40 m elsewhere.
 
 ## Findings
 
 1. **Counting pips above the rolling mean does not separate fill.** Half the
    pifs have every pip above it, and the median share is 1.0 for SLIDE fill
-   bodies and for unmapped ground alike. Only SLIDE cut slopes are lower (0.57).
-   A pip is a crest, and a crest stands above any smoothed surface, natural or
-   not.
+   bodies and for unmapped ground alike. Only SLIDE cut slopes are lower
+   (0.57). A pip is a crest, and a crest stands above any smoothed surface,
+   natural or not.
 2. **Crest and foot together pick out cut.** SLIDE cut slopes read as cut 62%
    (rolling) and 68% (poly) of the time, against 40-43% on unmapped ground.
-3. **Neither method sees the mapped fill.** Pifs on SLIDE fill bodies read as
-   fill 9% (rolling) and 3% (poly) of the time, no more than on unmapped
-   ground, and as cut about half the time. Both surfaces are fitted to today's
-   ground, so a gully fill tens of metres across *is* the local surface. What
-   they measure is a platform cut into the top of the fill, not the fill.
-4. **The surfaces absorb half of each step.** The median face drop is 1.4 m
-   but the median excess drop only 0.9 m (rolling) and 0.9 m (poly), so most
-   small pifs fall under the 1 m natural threshold. That threshold, not the
-   ground, decides much of the natural class.
-5. **Classes near the boundaries are unstable.** Pif 8219 has a rolling
-   position of 0.34, just past the fill split, and reads as cut on the
-   quadratic. Pif 8220 reads as cut and fill on both: its crest is 0.85 m
-   above the rolling mean and its foot 0.68 m below it, which on the sections
-   is the outer edge of one platform above the cut back of the next.
-6. **Cut dominates everywhere** (40% of unmapped pifs). This may be real
-   (benched hillside housing is cut into the slope with the spoil pushed over
-   the edge), or a bias of the foot walk, which stops on the next platform's
-   cut back. Not yet tested.
+3. **No method sees the mapped fill.** Pifs on SLIDE fill bodies read as fill
+   3-9% of the time, no more than on unmapped ground, and as cut about half the
+   time.
+   - All three surfaces are fitted to today's ground, so a gully fill tens of
+     metres across *is* the local surface.
+   - What they measure is a platform cut into the top of the fill, not the fill
+     itself.
+   - The SLIDE fills come from differencing against 1938 and 1945 surfaces (see
+     the literature below), which a present-day surface cannot replace.
+4. **Fitting off the faces does not sharpen the classes.** With the anchor fit
+   and a fixed 1 m threshold, SLIDE cut slopes read as cut 63% of the time
+   (against 46% on unmapped ground) and fill bodies as fill 9%. That is the
+   same as the rolling mean.
+   - The excess drop is about 0.7 of the face drop for every surface, the
+     anchor fit included.
+   - So the gap between the two is mostly the hill's own fall across the width
+     of the face, not the surface soaking up the step. An earlier draft of
+     this note read it the other way.
+5. **The anchor fit's value is its uncertainty.** On a terraced hillside the
+   ground left after masking the faces is other platforms, so σ is largest
+   exactly where the earthworks are.
+   - 39% of the larger pifs on SLIDE cut slopes are uncertain, against 19% on
+     unmapped ground.
+   - Among the pifs it is confident about, SLIDE cut slopes read as cut 60% of
+     the time, against 54% on unmapped ground. Being confident does not make
+     it more right.
+6. **Classes near the boundaries are unstable.**
+   - Pif 8219 reads as fill on the rolling mean (position 0.34, just past the
+     split) and as cut on the quadratic and the anchor fit.
+   - Pif 8220 reads as cut and fill on the rolling mean and the quadratic, and
+     as cut on the anchor fit, whose surface lies 1.1 m above its foot. On the
+     sections it is the outer edge of one platform above the cut back of the
+     next.
+7. **Cut dominates everywhere** (34-43% of unmapped pifs). This may be real:
+   benched hillside housing is cut into the slope with the spoil pushed over
+   the edge. Or it may be a bias of the foot walk, which stops on the next
+   platform's cut back. Not yet tested.
 
 ## Implications
 
-- Present-day trend surfaces (a rolling mean, a local polynomial) can say
-  whether a face is cut back into the slope or stands proud of it, at the
-  scale of one or two platforms. They cannot recover a pre-development surface
-  under large fills. That needs either older topography, or a surface
-  interpolated across the disturbed ground from undisturbed ground around it
-  (see the literature below).
-- The SLIDE fill bodies and the WCC fill polygons
-  (`wcc_earthworks_completeness.md`) remain the source for fill. The DEM method
-  is at best a supplement for cut.
+- **What present-day trend surfaces can and cannot do.**
+  - They can say whether a face is cut back into the slope or stands proud of
+    it, at the scale of one or two platforms, and the anchor fit can say where
+    that call is within the noise.
+  - They cannot recover a pre-development surface under large fills. That
+    needs older topography (see the literature below).
+- **Where fill information has to come from.** The SLIDE fill bodies and the
+  WCC fill polygons (`wcc_earthworks_completeness.md`) remain the source. The
+  DEM method is at best a supplement for cut.
+- **What the classes are good for.** If the classes are used for walls, take
+  the cut / not-cut split rather than the four-way class, and carry the anchor
+  method's uncertain flag with it.
 
 ## Approaches in the literature
 
@@ -187,10 +239,9 @@ A search on 5 October 2026. Open-access copies are parked in
 
 ### Worth trying next
 
-1. A **robust local fit to anchor cells only**: a plane or quadratic fitted
-   to the cells outside every pif's faces and feet, with the crest and foot
-   residuals compared against the fit's own scatter. This addresses findings
-   4 and 5 and needs no new data.
+1. ~~A robust local fit to anchor cells only.~~ Tried as the anchor method
+   (findings 4 and 5). It gives an uncertainty, but no better agreement with
+   SLIDE than the rolling mean.
 2. A **classifier trained on the SLIDE polygons**, in the style of Sawada et
    al. (2013). Inputs would be the slopes 5 to 15 m above and below the face,
    openness, geomorphons, the residuals above and the distance to a building.
@@ -220,14 +271,14 @@ A search on 5 October 2026. Open-access copies are parked in
 
 ## Caveats
 
-- One pilot extent, one window and one radius; neither was tuned.
+- One pilot extent. The window, the radii, the 1 m threshold and the 2σ band
+  were none of them tuned.
 - The SLIDE polygons are a partial mapping of earthworks, and the WCC record
   holds well under half (`wcc_earthworks_completeness.md`), so the "neither"
   row is not natural ground.
 - The foot is found from a 20 degree slope rule along the pip's own eight-way
   fall direction, which may run along a face rather than across it.
-- Run with the Koordinates layers read from the local `.koopcache`, because the
-  Koordinates login was returning 502 on 5 October; the layers are the cached
-  copies step 12 used.
+- The anchor mask only knows the faces the pips found. A step under 0.7 m, or
+  a batter gentler than the pip test, stays in the fit as "natural" ground.
 
 Potential future improvements: see "Worth trying next" above.

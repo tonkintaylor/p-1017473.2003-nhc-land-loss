@@ -3,7 +3,8 @@
 An exposure world is one answer to the question the inventory cannot: which of
 the candidate lines are walls, and which of those are in poor condition. The
 draw is two uniforms per line, in line order, against the ``p_wall`` and
-``p_poor`` that :mod:`landloss.exposure.rw.wall_probability` put on it; the
+``p_poor`` that :mod:`landloss.exposure.rw.wall_probability` put on it, or,
+where the caller passes which lines are walled, against ``p_poor`` only; the
 generator comes from the caller, seeded on
 :data:`~landloss.domain.constants.EXPOSURE_BASE_SEED` and the world id
 (:mod:`landloss.hazard.realisation`), so a world reproduces and is independent
@@ -21,10 +22,11 @@ wall the world drew, with the minted ``rw_id`` joined back on
 not (:func:`attach_rw_ids`); landslide step 8 builds the urban slope model on
 that table (decision 36 of the build contract).
 
-The count bounds (**T-50**) enter before the draw, as a scaling of the
-probabilities inside each property
-(:func:`landloss.exposure.rw.wall_probability.apply_count_bounds`), so the
-draw itself has no second form.
+Whether a wall unit exists is drawn once per world in landslide step 12
+(:func:`landloss.hazard.landslide.wall_units.gen_wall_draws`), so the walls
+that shape the hazard are the walls that are exposed; that draw is passed in
+as ``walled``. The claim reports (**T-50**) enter before either draw, as the
+per-property update on the wall units' probabilities.
 """
 
 import geopandas as gpd
@@ -74,20 +76,29 @@ REQUIRED_COLUMNS = (
 
 
 def draw_wall_population(
-    probabilities: gpd.GeoDataFrame, rng: np.random.Generator
+    probabilities: gpd.GeoDataFrame,
+    rng: np.random.Generator,
+    *,
+    walled: np.ndarray | None = None,
 ) -> gpd.GeoDataFrame:
     """Draw which candidate lines are walls, and the condition of each.
 
     Two uniforms are drawn per line in line order, the first against
     ``p_wall`` and the second against ``p_poor``, so a line's draw depends on
     its position in the table and on nothing after it. A line whose ``p_wall``
-    is NaN draws no wall.
+    is NaN draws no wall. Where ``walled`` is given it replaces the first
+    comparison; both uniforms are still drawn, so the condition stream is the
+    same either way.
 
     Args:
         probabilities: The output of
+            :func:`~landloss.exposure.rw.wall_probability.gen_unit_probability_table`
+            or
             :func:`~landloss.exposure.rw.wall_probability.wall_probability_table`,
             one row per candidate line carrying :data:`REQUIRED_COLUMNS`.
         rng: The world's generator, so the draw reproduces.
+        walled: Optionally, whether each line is a wall, a bool per row of
+            ``probabilities``, already drawn.
 
     Returns:
         The lines that drew a wall, carrying :data:`POPULATION_COLUMNS`:
@@ -95,7 +106,8 @@ def draw_wall_population(
         the rest copied from the line, on a fresh index and in line order.
 
     Raises:
-        ValueError: If a required column is missing.
+        ValueError: If a required column is missing, or ``walled`` does not
+            have one flag per row.
     """
     missing = [c for c in REQUIRED_COLUMNS if c not in probabilities.columns]
     if missing:
@@ -105,8 +117,17 @@ def draw_wall_population(
     uniforms = rng.random((len(probabilities), 2))
     p_wall = probabilities["p_wall"].to_numpy(dtype=float)
     p_poor = probabilities["p_poor"].to_numpy(dtype=float)
-    # NaN compares False, so a line with no probability draws nothing.
-    has_wall = uniforms[:, 0] < p_wall
+    if walled is None:
+        # NaN compares False, so a line with no probability draws nothing.
+        has_wall = uniforms[:, 0] < p_wall
+    else:
+        has_wall = np.asarray(walled, dtype=bool)
+        if has_wall.shape != (len(probabilities),):
+            msg = (
+                f"walled must hold one flag per line: got {has_wall.shape} for "
+                f"{len(probabilities)} lines"
+            )
+            raise ValueError(msg)
     poor = uniforms[:, 1] < p_poor
 
     walls = probabilities.loc[has_wall]

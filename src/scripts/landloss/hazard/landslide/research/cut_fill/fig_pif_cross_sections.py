@@ -41,12 +41,17 @@ from scipy import ndimage
 
 from landloss.io.readers import get_gns_slide_morphology, get_nz_building_outlines
 from scripts.landloss.hazard.landslide.research.cut_fill import config
-from scripts.landloss.hazard.landslide.research.cut_fill.gen_pif_cut_fill import (
+from landloss.hazard.landslide.pif_cut_fill import (
     CUT,
     CUT_AND_FILL,
     FILL,
     NATURAL,
+    QUADRATIC_TERMS,
+    UNCERTAIN,
+    UNKNOWN,
     eval_quadratic,
+)
+from scripts.landloss.hazard.landslide.research.cut_fill.gen_pif_cut_fill import (
     pif_table_path,
     pip_table_path,
     rolling_mean_path,
@@ -70,28 +75,45 @@ STEP_M = 0.25
 # The plan's margin around the sections, in metres.
 PLAN_MARGIN_M = 10.0
 
-# A pif's quadratic is drawn this far beyond its points along the section.
-POLY_REACH_M = 5.0
+# A pif's natural surface, and the cut and fill shaded against it, are drawn
+# this far beyond its crests and feet along the section.
+SURFACE_REACH_M = 2.0
 
+# The lead's colours (2026-10-06): red fill, blue cut, orange cut and fill,
+# green natural, brown for a pif the method cannot call (uncertain or unknown).
 CLASS_COLOURS = {
-    CUT: "#2a78d6",
-    FILL: "#eb6834",
-    CUT_AND_FILL: "#1baf7a",
-    NATURAL: "#9e9e9e",
+    CUT: "#1f5fbf",
+    FILL: "#d62728",
+    CUT_AND_FILL: "#f28e2b",
+    NATURAL: "#2ca02c",
+    UNCERTAIN: "#8c564b",
+    UNKNOWN: "#8c564b",
 }
 CLASS_LABELS = {
     CUT: "cut",
     FILL: "fill",
     CUT_AND_FILL: "cut and fill",
     NATURAL: "natural",
+    UNCERTAIN: "uncertain or unknown",
 }
-CLASS_SHORT = {CUT: "C", FILL: "F", CUT_AND_FILL: "CF", NATURAL: "N"}
+CLASS_SHORT = {
+    CUT: "C",
+    FILL: "F",
+    CUT_AND_FILL: "CF",
+    UNCERTAIN: "U",
+    NATURAL: "N",
+    UNKNOWN: "?",
+}
+# The ground above the natural surface (fill) and below it (cut).
+ABOVE_COLOUR = CLASS_COLOURS[FILL]
+BELOW_COLOUR = CLASS_COLOURS[CUT]
+SHADE_ALPHA = 0.35
 GROUND_COLOUR = "#1a1a1a"
-ROLLING_COLOUR = "#7b2d8e"
-POLY_COLOUR = "#5f5f5f"
+SURFACE_COLOUR = "#7b2d8e"
 GNS_WALL_COLOUR = "#7b2d8e"
 CUT_FILL_COLOUR = "#eda100"
-BUILDING_COLOUR = "#9e9e9e"
+BUILDING_COLOUR = "#f2a7e6"
+BUILDING_ALPHA = 0.35
 
 
 def read_raster(path):
@@ -192,7 +214,11 @@ def draw_plan(ax, dem, sections, pips, walls, cut_fill, buildings):
     )
     view = shapely.box(minx, miny, maxx, maxy)
     buildings[buildings.intersects(view)].plot(
-        ax=ax, facecolor="none", edgecolor=BUILDING_COLOUR, linewidth=0.8
+        ax=ax,
+        facecolor=BUILDING_COLOUR,
+        alpha=BUILDING_ALPHA,
+        edgecolor="#ffffff",
+        linewidth=0.5,
     )
     walls[walls.intersects(view)].plot(ax=ax, color=GNS_WALL_COLOUR, linewidth=1.5)
     cut_fill[cut_fill.intersects(view)].plot(
@@ -233,8 +259,20 @@ def draw_plan(ax, dem, sections, pips, walls, cut_fill, buildings):
     )
 
 
-def draw_section(ax, number, section, dem, rolling, pips, classes, layers, *, buffer_m, length_m):
-    """One section: the ground, both natural surfaces, the pips by class and their feet."""
+def natural_surface(method, fit, rolling, xs, ys):
+    """A pif's natural surface under a method, at points along a section."""
+    if method == "rolling":
+        return sample(rolling[0], rolling[1], xs, ys)
+    coefficients = fit[[f"{method}_{term}" for term in QUADRATIC_TERMS]].to_numpy(float)
+    if np.isnan(coefficients).any():
+        return np.full(len(xs), np.nan)
+    centre = (fit[f"{method}_centre_x"], fit[f"{method}_centre_y"])
+    return eval_quadratic(coefficients, centre, fit[f"{method}_radius_m"], xs, ys)
+
+
+def draw_section(ax, number, section, dem, rolling, pips, classes, layers, *, buffer_m, length_m, method):  # noqa: PLR0913
+    """One section: the ground, each pif's natural surface with the cut and fill
+    shaded against it, the pips by class and their feet."""
     walls, cut_fill, buildings = layers
     line = section["line"]
     chain = np.arange(0.0, line.length + STEP_M / 2, STEP_M)
@@ -242,25 +280,11 @@ def draw_section(ax, number, section, dem, rolling, pips, classes, layers, *, bu
     xs, ys = np.array([p.x for p in points]), np.array([p.y for p in points])
     ground = sample(dem[0], dem[1], xs, ys)
     ax.plot(chain, ground, color=GROUND_COLOUR, linewidth=1.2, zorder=3)
-    ax.plot(
-        chain,
-        sample(rolling[0], rolling[1], xs, ys),
-        color=ROLLING_COLOUR,
-        linewidth=1.0,
-        linestyle="--",
-        zorder=3,
-    )
 
+    # Each building the section crosses, as a light band over its width.
     for start, end in building_spans(line, buildings):
-        on = (chain >= start) & (chain <= end)
-        ax.plot(
-            chain[on],
-            ground[on],
-            color=BUILDING_COLOUR,
-            linewidth=5,
-            alpha=0.6,
-            zorder=2,
-            solid_capstyle="butt",
+        ax.axvspan(
+            start, end, color=BUILDING_COLOUR, alpha=BUILDING_ALPHA, linewidth=0, zorder=1
         )
     for geoms, colour in ((walls.geometry, GNS_WALL_COLOUR), (cut_fill.geometry, CUT_FILL_COLOUR)):
         for d in chainage_of(line, geoms):
@@ -271,32 +295,27 @@ def draw_section(ax, number, section, dem, rolling, pips, classes, layers, *, bu
     near["d"] = line.project(shapely.points(near.x, near.y))
     near["foot_d"] = line.project(shapely.points(near.foot_x, near.foot_y))
 
+    # Each pif's surface over its own face, the ground shaded where it stands
+    # above that surface (fill) or below it (cut).
     for pif, group in near.groupby("pif_id"):
-        fit = classes.loc[pif]
-        if np.isnan(fit["poly_a"]):
-            continue
-        reach = (chain >= min(group.d.min(), group.foot_d.min()) - POLY_REACH_M) & (
-            chain <= max(group.d.max(), group.foot_d.max()) + POLY_REACH_M
+        reach = (chain >= min(group.d.min(), group.foot_d.min()) - SURFACE_REACH_M) & (
+            chain <= max(group.d.max(), group.foot_d.max()) + SURFACE_REACH_M
         )
-        coefficients = fit[["poly_a", "poly_b", "poly_c", "poly_d", "poly_e", "poly_f"]]
-        centre = (fit["poly_centre_x"], fit["poly_centre_y"])
-        surface = eval_quadratic(
-            coefficients.to_numpy(float), centre, config.FIT_RADIUS_M, xs[reach], ys[reach]
-        )
-        ax.plot(chain[reach], surface, color=POLY_COLOUR, linewidth=0.9, linestyle=":", zorder=3)
+        surface = natural_surface(method, classes.loc[pif], rolling, xs[reach], ys[reach])
+        d, z = chain[reach], ground[reach]
+        ax.fill_between(d, z, surface, where=z >= surface, interpolate=True, color=ABOVE_COLOUR, alpha=SHADE_ALPHA, linewidth=0, zorder=2)
+        ax.fill_between(d, z, surface, where=z < surface, interpolate=True, color=BELOW_COLOUR, alpha=SHADE_ALPHA, linewidth=0, zorder=2)
+        ax.plot(d, surface, color=SURFACE_COLOUR, linewidth=0.9, linestyle="--", zorder=3)
 
     for cls, colour in CLASS_COLOURS.items():
         these = near[near["class"] == cls]
         ax.scatter(these.d, these.z, s=18, color=colour, edgecolor="#ffffff", linewidth=0.5, zorder=5)
         ax.scatter(these.foot_d, these.foot_z, s=14, marker="v", facecolor="none", edgecolor=colour, linewidth=0.8, zorder=5)
 
-    method = config.FIGURE_CLASS_METHOD
-    other = "poly" if method == "rolling" else "rolling"
+    other = "rolling" if method != "rolling" else "anchor"
     for pif, group in near.groupby("pif_id"):
         row = classes.loc[pif]
-        label = (
-            f"{pif} {CLASS_SHORT[row[f'class_{method}']]}/{CLASS_SHORT[row[f'class_{other}']]}"
-        )
+        label = f"{pif} {CLASS_SHORT[row[f'class_{method}']]}/{CLASS_SHORT[row[f'class_{other}']]}"
         top = group.loc[group.z.idxmax()]
         ax.annotate(
             label,
@@ -316,7 +335,7 @@ def draw_section(ax, number, section, dem, rolling, pips, classes, layers, *, bu
     ax.tick_params(labelsize=7)
     ax.set_ylabel("Elevation (m)", fontsize=8)
     ax.set_title(
-        f"Section {number}: bearing {section['bearing']:.0f}\N{DEGREE SIGN}, uphill on the left",
+        f"Section {number}: bearing {section['bearing']:.0f}°, uphill on the left",
         fontsize=9,
         loc="left",
     )
@@ -331,7 +350,7 @@ def main(*, extent, use_cached_layers, specs, length_m, buffer_m, method):
         specs: Each section's centre and bearing.
         length_m: The length of each section, in metres.
         buffer_m: A pip within this many metres of a section is drawn on it.
-        method: The method whose class colours the pips.
+        method: The method whose surface, shading and class are drawn.
     """
     classes = pd.read_parquet(pif_table_path(extent=extent))
     pips = pd.read_parquet(pip_table_path(extent=extent))
@@ -364,29 +383,36 @@ def main(*, extent, use_cached_layers, specs, length_m, buffer_m, method):
             (walls, cut_fill, buildings),
             buffer_m=buffer_m,
             length_m=length_m,
+            method=method,
         )
         axes.append(ax)
     axes[-1].set_xlabel("Distance along section (m)", fontsize=8)
 
+    surface_label = {
+        "rolling": f"natural surface: rolling mean, {config.ROLLING_WINDOW_M:g} m",
+        "poly": "natural surface: the pif's quadratic",
+        "anchor": "natural surface: the pif's quadratic fitted off the faces",
+    }[method]
     handles = [
         Line2D([], [], color=GROUND_COLOUR, linewidth=1.2, label="1 m DEM"),
-        Line2D([], [], color=ROLLING_COLOUR, linewidth=1.0, linestyle="--", label=f"rolling mean, {config.ROLLING_WINDOW_M:g} m"),
-        Line2D([], [], color=POLY_COLOUR, linewidth=0.9, linestyle=":", label="pif's quadratic"),
+        Line2D([], [], color=SURFACE_COLOUR, linewidth=0.9, linestyle="--", label=surface_label),
+        Patch(color=ABOVE_COLOUR, alpha=SHADE_ALPHA, label="ground above it (fill)"),
+        Patch(color=BELOW_COLOUR, alpha=SHADE_ALPHA, label="ground below it (cut)"),
         *[
-            Line2D([], [], marker="o", linestyle="", color=colour, label=f"pip: {CLASS_LABELS[cls]}")
-            for cls, colour in CLASS_COLOURS.items()
+            Line2D([], [], marker="o", linestyle="", color=CLASS_COLOURS[cls], label=f"pif class: {label}")
+            for cls, label in CLASS_LABELS.items()
         ],
         Line2D([], [], marker="v", linestyle="", markerfacecolor="none", color=GROUND_COLOUR, label="foot of face below the pip"),
         Line2D([], [], color=GNS_WALL_COLOUR, linewidth=2, label="GNS mapped wall"),
         Line2D([], [], color=CUT_FILL_COLOUR, linewidth=2, label="GNS cut/fill line"),
-        Patch(color=BUILDING_COLOUR, alpha=0.6, label="LINZ building"),
+        Patch(color=BUILDING_COLOUR, alpha=BUILDING_ALPHA, label="LINZ building"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncol=6, fontsize=8, frameon=False)
-    other = "poly" if method == "rolling" else "rolling"
+    fig.legend(handles=handles, loc="lower center", ncol=5, fontsize=8, frameon=False)
+    other = "rolling" if method != "rolling" else "anchor"
     fig.suptitle(
-        f"Cut and fill at the pifs around pif {config.SECTION_PIF_ID}: pips coloured by "
-        f"the {method} class; labels are pif id, {method} / {other} class "
-        "(C cut, F fill, CF cut and fill, N natural); true scale",
+        f"Cut and fill at the pifs around pif {config.SECTION_PIF_ID}, by the {method} "
+        f"method. Labels: pif id, {method} / {other} class (C cut, F fill, CF cut and "
+        "fill, U uncertain, N natural). True scale.",
         fontsize=10,
     )
     FIG_DIR.mkdir(parents=True, exist_ok=True)

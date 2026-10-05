@@ -1,0 +1,1 @@
+`table_urban_slope_wall_checks.py`: the strata table adds the age bin from exposure rw step 8 where that step has been run (otherwise one row that says why it is missing) and a `below_recorded` flag for the plan's one-sided test. The pif recall reference is computed from the siz table instead of copied in as a number.

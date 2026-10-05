@@ -12,7 +12,7 @@ EXTENT = "wlg-pilot"
 USE_CACHED_LAYERS = True
 
 # ---------------------------------------------------------------------------
-# The natural ground surface, two ways
+# The two simpler natural surfaces compared with step 13's anchor surface
 # ---------------------------------------------------------------------------
 
 # The rolling mean: the 1 m DEM averaged over a square window this many metres
@@ -24,23 +24,11 @@ ROLLING_WINDOW_M = 30.0
 # DEM cell within this many metres of any of the pif's points.
 FIT_RADIUS_M = 15.0
 
-# ---------------------------------------------------------------------------
-# The face of each pif and its class
-# ---------------------------------------------------------------------------
-
-# The foot of the face below each pip: the walk down the pip's fall direction
-# stops at the first step flatter than this, or after FOOT_MAX_M.
-FOOT_SLOPE_DEG = 20.0
-FOOT_MAX_M = 15.0
-
-# A pif whose drop, crest to foot, is no more than this many metres larger than
-# the natural surface's drop over the same points is natural ground.
-EXCESS_DROP_M = 1.0
-
-# Where the excess drop sits against the natural surface, from -1 (all below
-# it: cut) to +1 (all above it: fill). Beyond plus or minus this the pif is a
-# fill or a cut; between, it straddles the natural surface and is cut and fill.
-POSITION_SPLIT = 1.0 / 3.0
+# The anchor surface, the walk to the foot of each face and the class
+# thresholds are step 13's, fixed in landloss.hazard.landslide.pif_cut_fill
+# (FIT_RADIUS_M, FACE_BUFFER_M, ROBUST_ITERATIONS, SCALE_K, FOOT_SLOPE_DEG,
+# FOOT_MAX_M, EXCESS_DROP_M, POSITION_SPLIT), so the research and the step
+# cannot drift apart.
 
 # ---------------------------------------------------------------------------
 # The cross-section figure
@@ -66,6 +54,6 @@ SECTION_LENGTH_M = 100.0
 # A pip within this many metres of a section line is drawn on it.
 SECTION_PIP_BUFFER_M = 1.0
 
-# The method whose class colours the pips ("rolling" or "poly"); the labels
-# carry both.
-FIGURE_CLASS_METHOD = "rolling"
+# The method the figure draws: its natural surface, the cut and fill it reads
+# off each face, and its class on the pips ("rolling", "poly" or "anchor").
+FIGURE_CLASS_METHOD = "anchor"

@@ -6,8 +6,10 @@
 then the PGA and PGV realisations), liquefaction (free faces, land damage
 probabilities, then states), then the landslide ground work -- the multiscale
 slope and terrain derivatives, the ground map, the slope units, the urban slope
-candidates -- and last the large-model landslide realisations, which read only
-hazard outputs. The extent, realisations and worlds come from ``config.py``
+candidates, and step 12's urban slope faces, wall units (drawn per exposure
+world) and per-world zones -- and last the large-model landslide realisations,
+which read only hazard outputs. Exposure rw step 6 reads step 12's wall units,
+so they are built in this pass. The extent, realisations and worlds come from ``config.py``
 beside this; anything else a step reads comes from that step's own
 ``config.py``.
 
@@ -78,6 +80,14 @@ from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
 from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
     gen_hancox_1997_coverage,
 )
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
+    config as faces_config,
+)
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
+    gen_urban_slope_faces,
+    gen_urban_slope_wall_units,
+    gen_urban_slope_wall_zones,
+)
 from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
     gen_liq_free_faces,
 )
@@ -115,11 +125,9 @@ def main(*, extent, realisation_ids, world_ids):
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to run.
-        world_ids: Which exposure worlds to run. Unused by this pass, which
-            draws nothing per world; carried so the two passes take the same
-            arguments and ``gen_all.py`` passes one setting to both.
+        world_ids: Which exposure worlds to draw the step 12 wall units for
+            and build their zones; the worlds exposure rw step 6 populates.
     """
-    del world_ids
     ids = {"extent": extent, "realisation_ids": realisation_ids}
     run_steps(
         "hazard",
@@ -209,6 +217,44 @@ def main(*, extent, realisation_ids, world_ids):
                     building_distance_m=candidates_config.BUILDING_DISTANCE_M,
                     min_patch_cells=candidates_config.MIN_PATCH_CELLS,
                     max_patch_length_m=candidates_config.MAX_PATCH_LENGTH_M,
+                ),
+            ),
+            (
+                "landslide s12, urban slope faces",
+                lambda: gen_urban_slope_faces.main(
+                    extent=extent,
+                    use_cached_layers=faces_config.USE_CACHED_LAYERS,
+                    gns_wall_match_m=faces_config.GNS_WALL_MATCH_M,
+                    search_m=faces_config.SEARCH_M,
+                    gns_only_min_length_m=faces_config.GNS_ONLY_MIN_LENGTH_M,
+                    end_window_m=faces_config.PIF_END_WINDOW_M,
+                ),
+            ),
+            (
+                "landslide s12, wall units",
+                lambda: gen_urban_slope_wall_units.main(
+                    extent=extent,
+                    use_cached_layers=faces_config.USE_CACHED_LAYERS,
+                    gns_wall_match_m=faces_config.GNS_WALL_MATCH_M,
+                    gns_feature_snap_m=faces_config.GNS_FEATURE_SNAP_M,
+                    join_gap_m=faces_config.WALL_JOIN_GAP_M,
+                    max_offset_m=faces_config.WALL_JOIN_MAX_OFFSET_M,
+                    bearing_tol_deg=faces_config.WALL_JOIN_BEARING_TOL_DEG,
+                    corner_gap_m=faces_config.WALL_CORNER_GAP_M,
+                    corner_max_deg=faces_config.WALL_CORNER_MAX_ANGLE_DEG,
+                    gns_only_merge_m=faces_config.GNS_ONLY_MERGE_M,
+                    holdout_share=faces_config.CLAIM_HOLDOUT_SHARE,
+                    holdout_seed=faces_config.CLAIM_HOLDOUT_SEED,
+                    use_nzmm=faces_config.USE_NZMM_UPDATE,
+                    world_ids=world_ids,
+                ),
+            ),
+            (
+                "landslide s12, wall zones per world",
+                lambda: gen_urban_slope_wall_zones.main(
+                    extent=extent,
+                    use_cached_layers=faces_config.USE_CACHED_LAYERS,
+                    world_ids=world_ids,
                 ),
             ),
             (

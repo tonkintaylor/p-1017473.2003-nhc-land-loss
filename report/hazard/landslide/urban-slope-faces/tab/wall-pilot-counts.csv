@@ -1,0 +1,11 @@
+metric,value,world_id,reference
+wall_units,7248.000,,
+wall_units_in_exposure,6821.000,,
+expected_walls,3458.459,,
+expected_walls_floor,3335.668,,
+evacuated_m2_walled,640878.000,,
+evacuated_m2_bare,612654.000,,
+walled_share_of_units,0.478,0,
+walled_share_of_sizs,0.469,0,
+evacuated_m2,631176.000,0,640878.000
+share_walled_under_1.5m,0.287,0,0.540

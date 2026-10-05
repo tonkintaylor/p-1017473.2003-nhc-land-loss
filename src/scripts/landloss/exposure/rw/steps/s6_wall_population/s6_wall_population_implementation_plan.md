@@ -1,9 +1,10 @@
 # Step 6 — Retaining wall population: implementation plan
 
-**Status:** Phase 2 complete in shape: candidate wall lines (phase 2a), a
-probability on each line (phase 2b) and a draw per exposure world (phase 2c).
-The numbers are judgement until the claim report extraction (**T-50**) lands;
-phase 2d reads it. Phases 1, 1b and 1c, the per-property interim model, are
+**Status:** Phase 2 complete in shape, and phase 2e built: the candidates are
+the wall units of landslide step 12, with their probability, claim update and
+draw per world, read into the probability table and the population (ran over
+the pilot on 2026-10-05). The numbers are judgement until the claim report
+extraction (**T-50**) lands; phase 2d reads it. Phases 1, 1b and 1c, the per-property interim model, are
 superseded and their code is deleted.
 
 ## Phase 1 — A population of the right shape (superseded)
@@ -141,10 +142,10 @@ Each line takes a probability from what the lines step read onto it
       the default `BETA_POOR_SHARE`, `BETA_UNCONSENTED_POOR_SHARE` under
       `UNCONSENTED_WALL_HEIGHT_M`, and the dwelling age where held, with the
       rule recorded in `p_poor_basis`.
-- [x] The count bounds hook (`apply_count_bounds`): scale the probabilities
-      inside each claim so the expected count sits between the claim's
-      minimum and maximum. Written and tested; not called, because no bounds
-      file exists yet (phase 2d).
+- Dropped: the count bounds hook, a scaling of the probabilities inside each
+  claim between a minimum and maximum count. Its maximum lowered
+  probabilities and its scaling ignored the priors' shape; it was removed on
+  2026-10-05 for the per-property claim update on the wall units (phase 2e).
 - [x] Read the retained height at each line from the 1 m DEM, as the face
       height across it, and class it small, medium or large on the agreed
       boundaries; no height distribution is drawn (decided 2026-10-01). Done
@@ -211,12 +212,14 @@ after the build starts: the SME suburb estimate, the manual mapping study, the
 remote sensing pilot and the ICNZ database will not be obtained (decided
 2026-10-01).
 
-- [ ] `gen_wall_count_bounds.py`: read the extraction and the address spine
-      and write a minimum and maximum number of walls per claim to
-      `temp/exposure/wall-count-bounds.parquet`.
-- [ ] Have `gen_wall_probability.py` read the bounds where the file exists and
-      call `apply_count_bounds` before writing, and record in the method file
-      which claims were scaled.
+- [ ] Extract the per-claim wall count that landslide step 12's
+      `gen_property_wall_records` reads: the `claim_walls` column of the claim
+      and NZMM layer (`validations/config.PROPERTIES_PATH`, written by
+      `gen_rw_dataset_properties.py`). The minimum and maximum bounds file
+      (`gen_wall_count_bounds.py`) is dropped: nothing reads bounds since the
+      wall unit claim update replaced `apply_count_bounds` (2026-10-05).
+- Dropped: reading the bounds in `gen_wall_probability.py`. The claim report
+  counts update the wall units in landslide step 12 instead (phase 2e).
 - [ ] Replace the `BETA_` source priors, the rock cut factor and the flat land
       cap with values fitted so the expected counts match the extraction by
       suburb, and drop the `BETA_` prefixes.
@@ -244,16 +247,33 @@ mapped wall with no pip near it is a `gns_only` line candidate. The full plan is
 `.agents/plans/placing-retaining-walls-on-pifs.md`. The order from
 here, per property:
 
-- [ ] Wall units: adjacent candidate pifs and GNS-only pieces on one property
-      joined into walls, with a rule for pifs that straddle two properties.
-- [ ] A prior from slope, height band and the ground map.
-- [ ] The GNS floor: 0.95 on a wall unit with a mapped wall on it, 0.8 on a
+- [x] Wall units: adjacent candidate pifs and GNS-only pieces on one property
+      joined into walls, with a rule for pifs that straddle two properties
+      (landslide step 12, `gen_urban_slope_wall_units.py`).
+- [x] A prior from the height band, a rock cut and fill on the ground map.
+- [ ] The landslide step 13 cut and fill class in the prior and as each
+      wall's `wall_position` (today fill where the unit is on fill, else cut).
+- [x] The GNS floor: 0.95 on a wall unit with a mapped wall on it, 0.8 on a
       `gns_only` candidate.
-- [ ] Raise from the property databases through the Poisson-binomial update
-      already described in the status, unchanged: NZMM flag to an expected
-      minimum of about 2 walls, claim reports to a per-property count (30%
-      held out). No five-round allocation, as the update is exact and has no
-      order effect.
+- [x] Raise from the property databases through the Poisson-binomial update
+      described in the status: NZMM flag to an expected minimum of 2 walls,
+      claim reports to a per-property count (30% held out). No five-round
+      allocation, as the update is exact and has no order effect.
+- [x] `gen_wall_probability.py` reads the wall units in place of the lines,
+      ties each to its claim, and puts the condition on it;
+      `gen_wall_population.py` takes which units are walls from step 12's
+      draw for the world and draws only the condition.
+- [~] Cross-validation on the held-out claims, GNS and the strata: the
+      tables are written by landslide step 12
+      (`table_urban_slope_wall_checks.py`); no calibration until **T-50**.
+- [ ] Walls on the flat land: every unit is a face of sloping ground, so
+      `is_flatland` is False throughout.
+- [ ] Landslide step 8's edge join reads `wall_line_id` against the step 7
+      line ids; the drawn walls now carry wall unit ids, so it matches none
+      until steps 8 and 9 read step 12's zones (step 12 plan, phase 5).
+- [ ] Remove `gen_wall_lines.py`, `fig_wall_lines.py` and the line
+      probability once nothing reads them (landslide step 7 and the chain test
+      do today).
 
 The earlier text of this phase, from the free-face faces layer, follows.
 (`.agents/plans/building-face-based-urban-slope-polygons.md`, phases 1 and 2),

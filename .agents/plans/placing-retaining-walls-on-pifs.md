@@ -18,7 +18,7 @@ calibrates it. The literature gives each piece of evidence its direction, not it
 size. Keep every weight as a named `BETA_` constant in
 `landloss.domain.constants`, not inline.
 
-## Built already (commit `de0cea1`, 2026-10-05)
+## Built already (commit `b59bfe7`, 2026-10-05)
 
 - **Pifs and sizs:** the siz table, one row per pif, is
   `temp/hazard/landslide/urban-slope-sizs{suffix}.parquet`
@@ -28,18 +28,21 @@ size. Keep every weight as a named `BETA_` constant in
   2 m of a pip), `gns_wall_m`, `building_m`, `candidate_class`
   (`siz`, `small` or `none`), and, from `property_of_pifs`, `property_id`,
   `valuation_reference`, `title_type`, `property_is_road`, `property_share` and
-  `n_properties`.
+  `n_properties`. Since added (2026-10-05): `pip_direction` (each pip's
+  fall direction, in the MultiPoint's order), the pif's spine, its two ends
+  and the fall at each (`gen_pif_spines`), `fall_resultant`, and the
+  rateable property (`rateable_property_id`, `rateable_share`).
 - **GNS-only candidates:** `urban-slope-gns-wall-candidates{suffix}.parquet`,
   lines of 3 to 20 m, class `gns_only`, with `property_id`, ground material and
   `building_m`. These are mapped walls with no pip within 2 m (979 pieces, 8.9 km
-  of 30.7 km mapped, over the pilot).
+  of 30.7 km mapped, over the pilot), indexed by `gns_only_id`.
 - **Elements** (`urban-slope-elements{suffix}.parquet`) carry `siz_id`, which is
   a `pif_id` in the siz table (checked over the pilot: all 9,204 elements map,
-  to 5,441 distinct pifs, because the pieces of a pif and neighbouring sizs grow
-  into shared elements). A wall draw is per pif, so turn it into element flags
-  by `siz_id`; an element grown from several pifs needs a rule (walled if any of
-  its pifs is). `with_walls(found, walled)` takes a Series of flags indexed by
-  element label.
+  to 5,441 distinct pifs, because a pif cut into pieces grows several
+  elements). Each element has exactly one pif, and every element's pif is a
+  siz and so in a wall unit, so an element is walled where its pif's unit is.
+  `with_walls(found, walled)` takes a Series of flags indexed by element
+  label.
 
 ## Method
 
@@ -49,22 +52,69 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
 1. **Wall units.** One wall can be several pifs (a long wall is cut at 20 m, and a
    wall with a gap is two pifs), so count walls, not pifs. Join candidate pifs
    (`candidate_class` in `siz`, `small`) and `gns_only` pieces of one property
-   into wall units when their ends or nearest points are within a joining
-   distance (start at 5 m, a `config.py` setting) and they run roughly parallel
-   (bearing within 30°, using `fall_bearing_deg` for pifs). A wall unit takes the
+   into wall units **end to end only**:
+   - **Where GNS maps the wall, it is the join.** Pifs within 2 m of one GNS
+     mapped wall feature are one unit (on each property it crosses).
+   - **Elsewhere, two pieces join when** the gap between their facing ends is
+     within the joining distance (start at 5 m), they are offset up or down the
+     slope by no more than about 1.5 m (the offset measured along the fall
+     direction at those ends), and the fall directions at those ends are within
+     30°. A corner is allowed: ends within about 3 m join where the falls turn
+     by more than the 30° and up to 90°; two faces falling the same way are
+     never a corner, so stacked terraces stay apart however close their ends
+     (review fix, 2026-10-05). All four values are `config.py` settings.
+   - **Why.** Checked over the pilot on 2026-10-05: a rule of 5 m, same
+     property and `fall_bearing_deg` within 30° joined 2,303 candidate pairs,
+     only 197 of them on one GNS wall, and 61% offset more than 2 m along the
+     fall (stacked terraces, not one wall with a gap). It also caught only 25%
+     of neighbouring pifs that one GNS wall crosses, because walls turn corners
+     and one bearing per pif cannot follow them.
+   - **Directions at the ends, not one bearing per pif.** `fall_bearing_deg` is
+     the mean of the pips' eight-way fall directions over the whole pif, which
+     means nothing on an L-shaped or curved pif (and cancels on a U around a
+     platform). Do not split pifs at bends: an L-shaped wall is one wall in a
+     claim report, and splitting would change the hazard's elements. Instead
+     store, per pif, its spine (the longest shortest path through its pips
+     joined within `PIF_JOIN_M`, by a double sweep on the whole graph; a
+     minimum spanning tree's longest path folds back on a face two or more
+     cells thick, with both ends at one end), the two spine ends, the mean fall direction of the pips
+     within a few metres of each end (`end_a_fall_deg`, `end_b_fall_deg`), and
+     how much it bends (the mean resultant length of its pips' fall vectors, 1
+     for a straight face). Joining compares the facing ends' values. The pips'
+     own directions are in `Pips.direction`
+     (`landloss.hazard.landslide.instability_zones`); write them out with the
+     siz table so this needs no second pip run.
+
+   A wall unit takes the
    highest `max_delta_h_m`, the lowest `building_m`, and the ground and height
    band of its longest member. A pif that straddles properties
    (`n_properties > 1`, about a fifth of pifs) goes to the property with most of
    its pips (`property_share`) unless that is a road parcel, in which case take
    the rateable property with the next most pips; if none, drop the wall from the
-   exposure and keep it in the hazard (it still fails). Write the unit table with
+   exposure and keep it in the hazard (it still fails). A `gns_only` piece takes
+   its property by the same rule on length. Stacked unit titles count once, as
+   the lowest `source_id` (`landloss.exposure.land.extent.stack_representatives`),
+   the title the claim, the records and the pifs all go to. Write the unit table with
    its member pif ids so every unit maps back to elements.
-2. **Prior.** For each wall unit, `p_prior` from its height band (the eight bands
-   in `landslide-slope-thresholds.csv`), whether it is a siz, and the ground map:
+2. **Prior.** For each wall unit, `p_prior` from its height band (the two
+   bands of `landslide-slope-thresholds.csv`, split at 3.5 m, and 0 below
+   0.5 m), whether it is a siz, and the ground map:
    rock walls are rarer than soil ones (Wellington greywacke cuts stand at 55 to
    75° unsupported [nzgs_2025_torlesse]; apply the rock reduction only to cuts
-   taller than the soil cover, band 4 and up, over 2.5 m), fill gets a higher
-   prior, and a wall below about 0.5 m is less likely to be resolved by the grid.
+   taller than the soil cover, a highest face `max_delta_h_m` over 2.5 m),
+   fill gets a higher prior (a fill material on the ground map or a SLIDE fill
+   body; not the ground map's `modification`, which is fill on 88% of the
+   pilot's candidates), and a wall below about 0.7 m (about 1.0 m where it
+   faces a diagonal) makes no pips, so it is a candidate only where GNS maps
+   it: that is the drop a pip needs at 1, 3 and 5 m (`PIP_DROP_M`,
+   `PIP_OFFSETS_M` in `instability_zones.py`), and GNS walls 2 to 5 m from a
+   pip show a step of only 0.4 to 0.5 m. No prior is lowered for it. The cut
+   and fill class of each pif (landslide step 13,
+   `urban-slope-pif-cut-fill{suffix}.parquet`, the class of the unit's longest
+   member: lower on a cut, lower again on a cut in weak rock, kept or raised on
+   fill and cut and fill, unchanged on uncertain, natural and unknown) is a
+   further factor added once it is settled (Open decisions); until then the
+   rock reduction reads any face in rock as a cut.
    Start from the existing `p_wall` logic in
    `exposure/rw/steps/s6_wall_population/gen_wall_probability.py` and move its
    weights across. The ground map is fine for now; its fill and rock-grade
@@ -72,8 +122,17 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
 3. **GNS floor.** A wall unit with a GNS mapped wall on it
    (`gns_wall`) is at least **0.95**. A `gns_only` unit is set at **0.8**; a
    `gns_only` unit that joins a pif wall unit takes the 0.95 floor from the
-   join. GNS is the only dataset that locates a wall, so only it is evidence on a
-   candidate.
+   join. A `gns_only` piece within 5 m of a candidate pif on the same property
+   joins that pif's unit whatever its direction (a `config.py` setting), so one
+   wall is not counted twice: about 17% of mapped wall length (about 5 km over
+   the pilot) is 2 to 5 m from a pip. Those stretches show a step of only 0.4
+   to 0.5 m on the 1 m DEM (against 1.0 m at walls within 2 m of a pip), under
+   the 0.7 m pip drop, so some may be a lower second wall beside the pif rather
+   than the same wall drawn off; the 5 m merge accepts that. GNS is the only
+   dataset that locates a wall, so only it is evidence on a candidate. GNS maps
+   only the walls visible from above, so the part of a pif no mapped wall
+   reaches is not evidence against a wall there: the floor applies to the
+   whole unit.
 4. **Property databases (the update, unchanged from `exposure/rw/status.md`,
    "Wall datasets").** The claim reports and NZMM say how many walls a property
    has, not which candidate is the wall.
@@ -88,7 +147,9 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
      expected minimum for the database that does not say how many), applied
      modestly and flagged unreliable: NZMM agrees with GNS no better than chance
      (kappa 0.03) and its provenance is unknown. Make the n a `BETA_` constant
-     and report results with and without NZMM.
+     and report results with and without NZMM. "Modestly" is a weight: where
+     NZMM's count is the larger, a unit moves `BETA_NZMM_UPDATE_WEIGHT` (0.3)
+     of the way from its claims update to the full update on n = 2.
    - Hold out a seeded 30% of claims; never update on them. Claims exist only on
      claimed properties, mostly hill land, so the update is biased towards them;
      do not fit any prior to the databases.
@@ -150,11 +211,22 @@ One-sided, because a dataset with no wall is not evidence of no wall.
 
 ## Open decisions
 
-- The joining distance and bearing tolerance for wall units (start values above).
+- The joining distance, the up-or-down-slope offset, the end bearing tolerance
+  and the corner distance for wall units (start values above).
+- **Cut and fill class of each pif.** A change is coming that classes every pif
+  as cut, fill, unknown or natural. It is not ready; when it lands it feeds the
+  prior (step 2) as a further factor. Until then the prior uses the ground map
+  only.
+- **Boundary walls.** Over the pilot, 44% of neighbouring pifs that one GNS wall
+  crosses lie on different properties, so a wall on a boundary is often one
+  unit on each side. A claim report on either neighbour may list it. The
+  per-property update needs a rule for this (count it on both, or tie the two
+  units so one draw serves both); left for later.
 - Whether the straddling-pif rule should prefer the property whose building is
   nearer rather than most pips.
-- NZMM's n and whether to use it at all, pending NHC saying how the flag is
-  filled.
+- NZMM's n, its weight (`BETA_NZMM_UPDATE_WEIGHT`, 0.3 from 2026-10-05, so
+  `p_wall` takes a tempered NZMM update with `USE_NZMM_UPDATE` on) and whether
+  to use it at all, pending NHC saying how the flag is filled.
 - The prior's numbers, until T-50.
 - Whether the fill and rock-grade ground map changes (pending) are made before
   the prior is set.

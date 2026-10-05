@@ -1,0 +1,1 @@
+Wall units (`wall_units.gen_wall_units`) join two pifs at a corner only where their falls turn by more than `WALL_JOIN_BEARING_TOL_DEG`. Before, two parallel terraces stacked down a slope joined whenever their facing ends were within `WALL_CORNER_GAP_M`.

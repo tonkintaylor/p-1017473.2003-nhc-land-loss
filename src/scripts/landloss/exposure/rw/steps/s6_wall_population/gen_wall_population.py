@@ -1,10 +1,14 @@
-"""Draw one exposure world's retaining wall population from the line probabilities.
+"""Draw one exposure world's retaining wall population from the wall units.
 
-Reads the per-line probabilities ``gen_wall_probability.py`` wrote and draws
-one population per exposure world: which candidate lines are walls and the
-condition of each. A wall is the line that drew it, carrying the line's id,
-its DEM face height and size class, its length, whether it holds fill or a cut
-face, and the claim it belongs to. Lines with no claim are dropped, because
+Reads the per-unit probabilities ``gen_wall_probability.py`` wrote and the
+walls landslide step 12 drew for each exposure world
+(``gen_urban_slope_wall_units.py``), and builds one population per world:
+which candidate walls exist is step 12's draw, so the walls that shape the
+hazard are the walls that are exposed, and the condition of each is drawn
+here. A wall is the unit that drew it, carrying the unit's id (as
+``wall_line_id``), its DEM face height and size class, its length, whether it
+holds fill or a cut face, and the claim it belongs to. Walls with no claim are
+dropped, because
 council and road-reserve walls are out of scope (**I-05**); the walls that
 touch their own claim's insured land, buffered by 2 m, are kept; and each kept
 wall is given an ``rw_id``. That insured population is what vul and loss read.
@@ -19,9 +23,10 @@ loss tables (decision 36 of the build contract).
 
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s6_wall_population/gen_wall_population.py
 
-Run ``gen_wall_probability.py`` first, and land step 5 for the insured land.
-This script reads no elevation model and no GNS layer, so any number of worlds
-draw quickly.
+Run ``gen_wall_probability.py`` first, landslide step 12's
+``gen_urban_slope_wall_units.py`` for every world in ``WORLD_IDS``, and land
+step 5 for the insured land. This script reads no elevation model and no GNS
+layer, so any number of worlds draw quickly.
 
 A world is seeded on ``EXPOSURE_BASE_SEED`` and its own id, not on any
 earthquake: whether a wall exists is a fact we do not know, not something the
@@ -37,6 +42,7 @@ import sys
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 
 from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, RW_ID_COLUMN
@@ -55,7 +61,11 @@ from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_lan
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import config
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_probability import (
+    RUN_STEP_12_FIRST,
     wall_probability_path,
+)
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
+    wall_draws_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 
@@ -120,6 +130,36 @@ def insert_world_id(walls, world_id):
     return walls
 
 
+def read_wall_draws(*, extent):
+    """The walls landslide step 12 drew per world, refused loudly if missing.
+
+    Raises:
+        FileNotFoundError: If the draws are not written.
+    """
+    path = wall_draws_path(extent=extent)
+    if not path.exists():
+        msg = f"no wall unit draws at {path}: {RUN_STEP_12_FIRST}"
+        raise FileNotFoundError(msg)
+    return pd.read_parquet(path)
+
+
+def walled_in_world(draws, world_id, wall_line_ids):
+    """Whether each candidate wall is walled in one world, aligned to the ids.
+
+    Raises:
+        ValueError: If the world, or any of the walls, was not drawn.
+    """
+    rows = draws[draws[WORLD_ID_COLUMN] == world_id]
+    walled = rows.set_index("wall_unit_id")["walled"].reindex(wall_line_ids)
+    if rows.empty or walled.isna().any():
+        msg = (
+            f"world {world_id} not drawn for every wall unit; add it to the "
+            "landslide s12 config WORLD_IDS and rerun gen_urban_slope_wall_units.py"
+        )
+        raise ValueError(msg)
+    return walled.to_numpy(dtype=bool)
+
+
 def describe_drawn_walls(drawn):
     """Print how many drawn walls there are and how many of them are insured."""
     insured = int(drawn[RW_ID_COLUMN].notna().sum())
@@ -136,7 +176,7 @@ def describe_draw(walls, probabilities):
     share = len(walls) / len(probabilities) if len(probabilities) else 0.0
     expected = float(np.nansum(probabilities["p_wall"].to_numpy(dtype=float)))
     print(
-        f"Walls drawn: {len(walls):,} over {len(probabilities):,} candidate lines "
+        f"Walls drawn: {len(walls):,} over {len(probabilities):,} candidates "
         f"({share:.1%}); expected {expected:,.0f}"
     )
 
@@ -199,13 +239,17 @@ def main(*, extent, world_ids):
     probability_path = wall_probability_path(extent=extent)
     print(f"Reading the wall probabilities from {probability_path} ...")
     probabilities = gpd.read_parquet(probability_path)
+    draws = read_wall_draws(extent=extent)
     insured = gpd.read_parquet(insured_land_path(extent=extent))
 
     for world_id in world_ids:
         print(RULE)
         print(f"World {world_id}, stream {RNG_STREAM!r} on EXPOSURE_BASE_SEED")
         rng = realisation_seed(constants.EXPOSURE_BASE_SEED, world_id, RNG_STREAM)
-        drawn = draw_wall_population(probabilities, rng)
+        walled = walled_in_world(
+            draws, world_id, probabilities[WALL_LINE_ID_COLUMN].to_numpy()
+        )
+        drawn = draw_wall_population(probabilities, rng, walled=walled)
         describe_draw(drawn, probabilities)
 
         # Filtered after the draw, so the stream is the same whatever is kept.

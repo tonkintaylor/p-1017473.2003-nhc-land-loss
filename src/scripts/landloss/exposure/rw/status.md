@@ -1,10 +1,10 @@
 # Retaining wall exposure: status
 
-**Status:** Candidate wall lines, a probability on each and a wall population
-per exposure world are built and ran over the pilot on 2026-10-02. A property
-boundary, road frontage or SLIDE earthwork edge is now a candidate only where
-the 1 m DEM steps across it, and the candidates are to be rebuilt from the
-landslide model's potential instability faces (pifs). That rebuild was reviewed against the GNS literature review
+**Status:** The wall candidates are rebuilt on the landslide model's
+potential instability faces (pifs): wall units, their probability with the
+claim report update, and a draw per exposure world, read by step 6, ran over
+the pilot on 2026-10-05. The candidate wall lines of 2026-10-02 stay for
+landslide step 7. That rebuild was reviewed against the GNS literature review
 (`temp/gns_review/`) on 2026-10-02: the literature gives each piece of
 evidence on a wall its direction, not its size, so every probability is still
 judgement until the claim report extraction (**T-50**) calibrates it. A second
@@ -36,7 +36,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   the stretches where the 1 m DEM steps at least 0.5 m across it (the lead,
   2026-10-02), bridging dips of up to 3 m and keeping stretches of at least
   3 m.
-- [>] **Build the wall candidates from the potential instability faces (pifs)**
+- [x] **Build the wall candidates from the potential instability faces (pifs)**
   of the landslide model, with the mapped walls, boundaries and SLIDE edges as
   evidence on each rather than as lines of their own (pips, pifs and sizs plan,
   `.agents/plans/building-pip-pif-siz-slope-polygons.md`; step 6 plan,
@@ -51,16 +51,42 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   candidates of the earlier faces plan. Built 2026-10-05: every pif is tied to
   its property (LINZ property boundaries), and every GNS mapped wall with no
   pip within 2 m is a candidate of its own (`gns_only`, 979 of them over the
-  pilot, 8.9 km of the 30.7 km mapped). Still to build: wall units (adjacent
-  pifs on one property joined, so one wall is not several), the probability
-  and the databases' update. The prior is read from slope, height band and the
-  ground map; a GNS mapped wall on a pif is floored at 0.95 and a `gns_only`
-  candidate is set at 0.8; the property databases and claim reports then raise
-  the probabilities through the Poisson-binomial update below, unchanged.
+  pilot, 8.9 km of the 30.7 km mapped). Built the same day (landslide step 12,
+  `.agents/plans/placing-retaining-walls-on-pifs.md`): wall units (pifs and
+  `gns_only` pieces of one property joined end to end, so one wall is not
+  several), a prior from the height band, a rock cut and fill, a 0.95 floor
+  on a unit GNS maps and 0.8 on a `gns_only` unit, and the claim and NZMM
+  update below.
+- [ ] **Read each pif's cut and fill class into the prior, before deciding
+  whether there is a wall**, once it is settled; the prior does not read it
+  yet (landslide step 13, built 2026-10-05;
+  `urban-slope-pif-cut-fill.parquet`, joined to the siz table on `pif_id`).
+  - **How the class is read.** Each pif is cut, fill, cut and fill, uncertain
+    or natural, from how its crest and the foot of its face sit against a
+    robust surface fitted to the ground off the faces.
+  - **Walls are less likely on a cut, particularly in rock.** A cut face in
+    rock often stands unsupported; Wellington greywacke cuts stand at 55 to
+    75° [nzgs_2025_torlesse]. So the prior falls on a cut, and further on a
+    cut in weak rock (step 12's `ground_group`).
+  - **Fill and cut and fill keep the higher prior.** These are the front of a
+    platform and its back, which is where walls hold fill and soil (Nick
+    Peters, below; [monteith_2020]).
+  - **Unclassified faces are left alone.** Uncertain, natural and unknown
+    pifs keep the prior from height and ground.
+  - **Limits.** The class is local: it cannot see a large gully fill, which
+    reads as the surface itself, so the SLIDE fill bodies and the ground map
+    still carry fill.
+  - **Over the pilot:** of the pifs of 10 pips or more, 37% in soil-like
+    ground and 31% in weak rock are cut.
+  - **Still open.** The weights are for the lead (step 13 plan, phase 3), and
+    a wall unit takes the class of its longest member.
 - [~] **Lower the chance of a wall on a rock cut**, from the 1:50,000 geology
   and the SLIDE materials through the ground map; Wellington greywacke cuts
   commonly stand at 55 to 75° and many long-standing ones are unsupported
-  [nzgs_2025_torlesse]. Two changes: apply it only to cuts taller than the
+  [nzgs_2025_torlesse]. Three changes, the second built on the wall units
+  (2026-10-05, on a unit's highest face): read "cut" from step 13's class on
+  the pif rather than from the ground map's modification, which is fill on
+  most of the pilot; apply it only to cuts taller than the
   soil cover over the rock (height band 4 and up, over 2.5 m), usually under 1 m and 0.5 to 3 m on
   typical slopes [nzgs_2025_torlesse; hancox_2013_slope_types]; and remap
   SLIDE's mixed fill classes in the ground map, which today make 71% of the
@@ -74,10 +100,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   walls on flat land fail by shaking in `vul/shaking/rw`.
 - [~] **Set condition from the age of the dwelling** (step 8, below); not yet
   read onto the lines.
-- [ ] **Raise the wall probabilities on a claimed property from the walls
+- [x] **Raise the wall probabilities on a claimed property from the walls
   its claim report lists** (**T-50**), holding a share of claims out for the
-  cross-validation (Wall datasets, below; the lead, 2026-10-02). This replaces
-  `apply_count_bounds`, which is written and not called. The SME suburb
+  cross-validation (Wall datasets, below; the lead, 2026-10-02). Built
+  2026-10-05 on the wall units in landslide step 12; the count bounds hook it
+  replaces is removed. The SME suburb
   estimate, the manual mapping, the remote sensing pilot and the ICNZ database
   will not be obtained (decided 2026-10-01).
 - [ ] **Settle a replaced wall against the $50,000 per dwelling sub-cap**, plus
@@ -173,7 +200,7 @@ How each can be used:
   to any of them and the model inherits its gaps. Even taken together they
   find a wall on only 51% of the claimed properties where an engineer listed
   one.
-- [ ] **Hold them out and cross-validate at the end**, once the face-based
+- [~] **Hold them out and cross-validate at the end**, once the face-based
   candidates and `p_wall` are settled (Validation, below). The checks are
   one-sided, because a dataset with no wall is not evidence of no wall:
   - **Claims, per property:** the modelled expected walls (the sum of
@@ -188,7 +215,9 @@ How each can be used:
     any dataset, or their union, records. A stratum where it does is one where
     the model has too few walls.
   - **NZMM:** only after NHC says how the flag is filled.
-- [ ] **Let a claim report raise each wall's probability, not set a
+  - Built 2026-10-05 as tables (landslide step 12,
+    `table_urban_slope_wall_checks.py`); nothing is calibrated on them.
+- [x] **Let a claim report raise each wall's probability, not set a
   minimum count** (the lead, 2026-10-02). On a claimed property whose report
   lists n walls, each candidate line's `p_wall` is updated on the evidence
   that at least n of the property's lines are walls:
@@ -196,10 +225,11 @@ How each can be used:
   lines) / P(at least n of all lines), each from the Poisson-binomial of
   the lines' priors. Every line rises or stays, never falls, and the
   expected count rises towards n without being forced to it. A report listing
-  no walls changes nothing, because it is not evidence of no wall. This is
-  proposed; how to meet it is not settled.
-  - It replaces `apply_count_bounds`, whose maximum lowers probabilities and
-    whose scaling ignores the priors' shape. Remove it with the change.
+  no walls changes nothing, because it is not evidence of no wall. Built
+  2026-10-05 on the wall units (landslide step 12), with NZMM true read as at
+  least 2 walls, applied at 0.3 of its update and flagged unreliable.
+  - It replaced the count bounds hook, removed on 2026-10-05, whose maximum
+    lowered probabilities and whose scaling ignored the priors' shape.
   - A random, seeded share of claims (say 30%) is held out and never
     updated, so the cross-validation scores the model on claims it did not
     see.
@@ -219,6 +249,19 @@ What this module owes the retaining wall table `loss` reads
 
 ## Where it is now
 
+- **The pilot run of 2026-10-05 on the wall units** (landslide step 12 method
+  file): 7,248 units, 3,458 expected walls (3,336 before the claim and NZMM
+  update), 6,821 units on a claim. 67% of the GNS mapped wall length is within
+  2 m of a pif, 97% with the `gns_only` units. The claim layer reaches 70
+  claimed properties in the pilot, 21 held out; most hold-out values are under
+  the suppression limit. In world 0, 3,466 walls are drawn and 2,019 insured.
+  29% of the drawn units are under 1.5 m, against 54% in Canterbury
+  [anderson_2015]. These counts predate the review fixes later that day
+  (landslide step 12 plan, phase 4); rerun step 12 and then step 6.
+- `gen_wall_probability.py` reads the wall units, ties each to its claim
+  (`claim_of_properties`) and puts the condition on it;
+  `gen_wall_population.py` takes which units are walls from step 12's draw
+  for the world (`draw_wall_population(walled=...)`) and draws the condition.
 - **The pilot run of 2026-10-02**: 8,342 candidate lines, 2,921 walls drawn in
   world 0, 1,760 of them insured on 1,058 claims. Property boundaries were
   4,540 of the lines, 110 km. With the step test on the boundaries, road
@@ -229,9 +272,9 @@ What this module owes the retaining wall table `loss` reads
   method file.
 - `gen_wall_lines.py`, `gen_wall_probability.py` and `gen_wall_population.py`
   are the three scripts of step 6; their method file says what each does.
-  `p_wall` comes from the source, lowered on rock cuts, capped on flat land and
-  raised where a wall is mapped; `p_poor` is raised under 1.5 m. Every number
-  is `BETA_` judgement.
+  The lines' `p_wall` (from the source, lowered on rock cuts, capped on flat
+  land and raised where a wall is mapped) stays in the library for the chain
+  test; `p_poor` is raised under 1.5 m. Every number is `BETA_` judgement.
 - Every wall a world drew, insured or not, is written to
   `drawn-walls-wNNN[-pilot].geoparquet` for the urban slope model; the insured
   ones, with their `rw_id`, to `wall-population-wNNN[-pilot].geoparquet`.
@@ -278,32 +321,33 @@ What this module owes the retaining wall table `loss` reads
 
 ## Next
 
-1. **Rerun the pilot chain from exposure step 6**, so `temp/` and every step
-   downstream carry the step-tested wall lines; until then they hold the
-   lines from before the step test. Skip this if the faces rebuild (2) is
-   starting now: it replaces those lines.
-2. Rebuild the wall candidates on the sizs (the siz table written by landslide
-   stage D3; step 6 plan, phase 2e). The pif to property join and the GNS-only
-   candidates are built (2026-10-05); next, the wall units (adjacent pifs on a
-   property joined, with a rule for the fifth of pifs that straddle a boundary),
-   the prior, the 0.95 and 0.8 GNS floors and the databases' update. Then rerun
-   the pilot and record the counts, the GNS mapped wall recall and
-   the drawn height shape against Anderson et al. [anderson_2015] in the
-   method file. The five 20% allocation rounds are not used: the per-property
-   update has no order effect.
-3. Name the six wall classes.
-4. Read step 8's age bin onto the lines and set the condition probability from
-   it.
-5. Bring slope, height, position and subdivision age into `p_wall`, and wall
-   type into `p_poor`.
-6. Once `p_wall` is settled, raise it on the claimed properties that are not
-   held out, using the walls their reports list, in place of
-   `apply_count_bounds`. Then cross-validate on the held-out claims, GNS and
-   the strata (Wall datasets, above; `validations/`).
-7. Record where the collected input datasets are held, so the inputs are
-   reproducible.
-8. Delete the two height-range constants once the loss owner has moved the
-   pricing test (**I-14**).
+1. **Rerun the pilot chain downstream of exposure step 6** (vul and the loss
+   inputs), so they read the wall-unit population of 2026-10-05 rather than
+   the one drawn from the lines; landslide step 8 needs its join repaired (4)
+   first.
+2. Read landslide step 13's cut and fill class into the wall units' prior
+   (lower on a cut, lower again on a cut in rock), as the "cut" of the rock
+   cut rule and as each wall's `wall_position`, once step 13 is settled.
+3. Decide the ground map's fill: its `modification` marks 88% of the pilot's
+   candidate pifs as fill, rock included, so the prior reads fill from the
+   material and the SLIDE fill bodies only (landslide step 4 plan, phase 2).
+4. Repair landslide step 8's edge join: the drawn walls carry wall unit ids,
+   so it matches none of the step 7 lines, and step 8 now stops with an error
+   rather than build every polygon `no_wall`; resolved when steps 8 and 9 read
+   step 12's zones.
+5. Add walls on the flat land: every wall unit is a face of sloping ground.
+6. Tie a wall on a property boundary, which is one unit on each side, so one
+   draw serves both, or count it on both.
+7. Name the six wall classes.
+8. Read step 8's age bin onto the wall units and set the condition probability
+   from it.
+9. Bring subdivision age into `p_wall`, and wall type into `p_poor`.
+10. Calibrate the wall units' weights on the held-out claims, GNS and the
+    strata once **T-50** is complete (Wall datasets, above).
+11. Record where the collected input datasets are held, so the inputs are
+    reproducible.
+12. Delete the two height-range constants once the loss owner has moved the
+    pricing test (**I-14**).
 
 ## Validation
 

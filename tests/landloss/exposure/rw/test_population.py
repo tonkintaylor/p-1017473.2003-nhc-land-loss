@@ -162,6 +162,27 @@ def test_a_claimless_line_is_drawn_and_left_for_the_script_to_drop():
     assert walls["claim_id"].isna().all()
 
 
+def test_a_given_walled_draw_replaces_p_wall_and_keeps_the_condition_stream():
+    table = probabilities(n=200, p_wall=0.5, p_poor=0.5)
+    walled = np.zeros(200, dtype=bool)
+    walled[::3] = True
+    given = draw_wall_population(table, rng(), walled=walled)
+    assert given["wall_line_id"].tolist() == table.loc[walled, "wall_line_id"].tolist()
+    # The condition comes from the second uniform either way, so a line drawn
+    # in both keeps its condition.
+    everything = draw_wall_population(table.assign(p_wall=1.0), rng())
+    condition = everything.set_index("wall_line_id")["initial_condition"]
+    assert (
+        given["initial_condition"].tolist()
+        == condition.loc[given["wall_line_id"]].tolist()
+    )
+
+
+def test_a_walled_draw_of_the_wrong_length_is_refused():
+    with pytest.raises(ValueError, match="one flag per line"):
+        draw_wall_population(probabilities(n=3), rng(), walled=np.ones(2, dtype=bool))
+
+
 def test_a_missing_column_is_refused():
     assert set(PROBABILITY_COLUMNS) & set(REQUIRED_COLUMNS) == {"p_wall", "p_poor"}
     with pytest.raises(ValueError, match="p_poor"):
@@ -230,12 +251,26 @@ def redirected_script(tmp_path, monkeypatch):
     )
     table_file = tmp_path / "wall-probability-pilot.geoparquet"
     insured_file = tmp_path / "insured-land-pilot.geoparquet"
+    draws_file = tmp_path / "urban-slope-wall-draws-pilot.parquet"
     table.to_parquet(table_file)
     insured.to_parquet(insured_file)
+    every_wall_walled(table, world_ids=(0, 1)).to_parquet(draws_file)
     monkeypatch.setattr(script, "WORK_DIR", tmp_path / "exposure")
     monkeypatch.setattr(script, "wall_probability_path", lambda *, extent: table_file)
     monkeypatch.setattr(script, "insured_land_path", lambda *, extent: insured_file)
+    monkeypatch.setattr(script, "wall_draws_path", lambda *, extent: draws_file)
     return table
+
+
+def every_wall_walled(table, *, world_ids):
+    """A landslide step 12 draws table with every candidate walled per world."""
+    return pd.DataFrame(
+        {
+            "world_id": np.repeat(np.asarray(world_ids, dtype=np.int64), len(table)),
+            "wall_unit_id": np.tile(table["wall_line_id"].to_numpy(), len(world_ids)),
+            "walled": True,
+        }
+    )
 
 
 def test_gen_wall_population_main_writes_one_file_per_world(
@@ -269,6 +304,19 @@ def test_gen_wall_population_main_reproduces_a_world(redirected_script):
     again = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
     assert one["initial_condition"].tolist() == again["initial_condition"].tolist()
     assert one["rw_id"].tolist() == again["rw_id"].tolist()
+
+
+def test_a_world_step_12_did_not_draw_is_refused(redirected_script):
+    with pytest.raises(ValueError, match="world 2 not drawn"):
+        script.main(extent="wlg-pilot", world_ids=[2])
+
+
+def test_missing_draws_say_to_run_step_12(tmp_path, redirected_script, monkeypatch):
+    monkeypatch.setattr(
+        script, "wall_draws_path", lambda *, extent: tmp_path / "missing.parquet"
+    )
+    with pytest.raises(FileNotFoundError, match=r"gen_urban_slope_wall_units\.py"):
+        script.main(extent="wlg-pilot", world_ids=[0])
 
 
 def test_drawn_walls_path_names_the_world_and_the_extent():

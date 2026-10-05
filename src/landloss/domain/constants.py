@@ -339,6 +339,52 @@ MIN_WALL_HEIGHT_M = 0.5
 # in poor condition.
 UNCONSENTED_WALL_HEIGHT_M = 1.5
 
+# The wall unit weights (landloss.hazard.landslide.wall_units), every one
+# engineering judgement with no fit behind it; each is replaced by the claim
+# report extraction (T-50).
+# The prior that a wall unit holding a siz is a wall: between the old wall
+# line priors of a terrain break (0.4) and a SLIDE cut or fill edge (0.5),
+# because a siz is a face steep and high enough to need retaining. Replaced by
+# T-50.
+BETA_SIZ_WALL_PRIOR = 0.5
+# The prior of a unit of small pifs only (a GNS mapped wall with no siz under
+# it). A small pif always carries a GNS wall, so the GNS floor sets its value
+# and this only shows in p_prior. Replaced by T-50.
+BETA_SMALL_WALL_PRIOR = 0.3
+# What the prior keeps by the height band of the unit (0 under 0.5 m, 1 from
+# 0.5 m, 2 from 3.5 m): faces of 3.5 m and over are more often unretained
+# banks or cuttings. A band not listed keeps 1. Replaced by T-50.
+BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR = {0: 1.0, 1: 1.0, 2: 0.8}
+# What a cut face in rock keeps of its prior: a rock cut stands unsupported
+# (Wellington greywacke cuts stand at 55 to 75 degrees, nzgs_2025_torlesse) and
+# is claimed for spalling or slides rather than wall failure (Oriental Bay and
+# Evans Bay are the worked examples). Replaced by T-50.
+BETA_ROCK_CUT_FACTOR = 0.3
+# The rock cut factor applies only to faces taller than this, in metres: under
+# it the face is in the soil cover over the rock, which is retained like soil.
+# Replaced by T-50.
+BETA_ROCK_CUT_MIN_HEIGHT_M = 2.5
+# What a unit on fill multiplies its prior by: fill is placed and so more often
+# retained. Replaced by T-50.
+BETA_FILL_WALL_FACTOR = 1.3
+# The least probability of a wall unit with a GNS mapped wall on it. Not 1,
+# because the mapping is from imagery and a line can be a road batter or the
+# neighbour's wall. Replaced by T-50.
+BETA_GNS_WALL_UNIT_FLOOR = 0.95
+# The probability of a unit made only of GNS mapped wall with no pif near it:
+# lower than the floor, because the DEM sees no step there. Replaced by T-50.
+BETA_GNS_ONLY_WALL_PROBABILITY = 0.8
+# The walls a property with NZMM has_retaining_wall true is taken to have: the
+# project lead's expected minimum, for a database that does not say how many.
+# Unreliable: NZMM agrees with GNS no better than chance (kappa 0.03) and its
+# provenance is unknown. Replaced by T-50.
+BETA_NZMM_MIN_WALLS = 2
+# The share of the full NZMM update a wall unit takes, from 0 (none) to 1 (as
+# strong as a claim report listing BETA_NZMM_MIN_WALLS walls). Low because
+# NZMM is applied modestly: it agrees with GNS no better than chance and its
+# provenance is unknown. Judgement; replaced by T-50 or dropped.
+BETA_NZMM_UPDATE_WEIGHT = 0.3
+
 # Multiplier on every urban fragility median by config.URBAN_RATE. Medium is
 # 1.0 by definition; low and high are placeholders to be set by the anchoring
 # (.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md,
@@ -356,6 +402,8 @@ LOCALISED_FRAGILITY_BETA = 0.6
 # seven digits, minted by location (landloss.common.utils.ids).
 # Candidate wall line ids, WL<7 digits>.
 WALL_LINE_ID_PREFIX = "WL"
+# Wall unit ids (one wall made of pifs and GNS-only pieces), WU<7 digits>.
+WALL_UNIT_ID_PREFIX = "WU"
 # Urban failure polygon ids, SP<7 digits>.
 SLOPE_ID_PREFIX = "SP"
 # Urban failure candidate ids, UC<7 digits>.

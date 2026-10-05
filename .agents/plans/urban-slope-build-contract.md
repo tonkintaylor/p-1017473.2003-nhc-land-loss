@@ -788,7 +788,10 @@ Prints: world id and stream; lines drawn over lines offered; expected count;
 
 As built (phases 2 to 4, accepted, G):
 
-- `apply_count_bounds(p_wall, claim_ids, bounds)` is built in
+- (Superseded 2026-10-05: the wall unit claim update in landslide step 12
+  replaces this and `apply_count_bounds` is removed;
+  `.agents/plans/placing-retaining-walls-on-pifs.md`.)
+  `apply_count_bounds(p_wall, claim_ids, bounds)` is built in
   `wall_probability.py`, beside the probability it scales, not in
   `population.py` (section 7.10 amended); it is tested and not called, because
   no bounds file is held. `BOUNDS_COLUMNS = ("min_walls", "max_walls")` names
@@ -2051,7 +2054,10 @@ As built (phases 2 to 4, accepted, G):
 - Additive names: `BUILDING_ACT_DECADE = 1990`, the basis vocabularies
   `WALL_BASES` and `POOR_BASES` and their unpacked constants,
   `WALL_INPUT_COLUMNS`, `HEIGHT_COLUMN`, `AGE_COLUMN`, `BOUNDS_COLUMNS`, and
-  `apply_count_bounds()` (section 7.10 amended).
+  `apply_count_bounds()` (section 7.10 amended; `apply_count_bounds` and
+  `BOUNDS_COLUMNS` were removed on 2026-10-05, superseded by the wall unit
+  claim update in landslide step 12,
+  `.agents/plans/placing-retaining-walls-on-pifs.md`).
 - `beta_population` also drops `_ramp`, `ID_COLUMN`, `AREA_COLUMN` and
   `COLUMNS`, which only the deleted `wall_lines` used.
 - **"Nothing reads them" was wrong for two constants.** The loss module's
@@ -2074,7 +2080,10 @@ that drew a wall, with `initial_condition`, `height_m` (= `face_height_m`),
 `size_class`, `length_m` and the geometry, and the columns of section 3.7
 except `rw_id` and `world_id`. The count bounds (T-50) scale `p_wall`
 before the draw, through `wall_probability.apply_count_bounds()` (as built,
-section 7.9), so the draw has no second form. Test in
+section 7.9), so the draw has no second form. (Superseded 2026-10-05: the
+claim report counts now update the wall units in landslide step 12 before the
+draw, and `apply_count_bounds` is removed;
+`.agents/plans/placing-retaining-walls-on-pifs.md`.) Test in
 `tests/landloss/exposure/rw/test_population.py`: a line at `p_wall = 1` always
 draws, at 0 never; the same generator reproduces.
 
@@ -2637,7 +2646,9 @@ Decisions made at the phases 2 to 4 integration (2026-10-02), each recorded
 in the section it changes:
 
 28. `apply_count_bounds` lives in `wall_probability.py`, not `population.py`
-    (sections 7.9, 7.10).
+    (sections 7.9, 7.10). Superseded 2026-10-05: `apply_count_bounds` is
+    removed and the wall unit claim update in landslide step 12 replaces it
+    (`.agents/plans/placing-retaining-walls-on-pifs.md`).
 29. `BETA_MIN_HEIGHT_M` and `BETA_MAX_HEIGHT_M` stay in `beta_population`
     until the loss owner moves its pricing test (section 7.9, **I-14**).
 30. Step 8's PGV/PGA ratio reads the cell a point falls in, NaN off the grid

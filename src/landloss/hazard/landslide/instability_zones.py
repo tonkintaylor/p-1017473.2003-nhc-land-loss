@@ -22,7 +22,9 @@ The sizs seed the watershed growth of
 :func:`landloss.hazard.landslide.slope_polygons.build_slope_polygons`, once with
 every siz walled and once with none (:func:`with_walls`). The siz table (every
 pif, with its maximum angles and delta_h and the siz flag) is also the input of
-the retaining-wall workflow (:func:`gen_siz_table`).
+the retaining-wall workflow (:func:`gen_siz_table`), with each pif's spine
+and the fall direction at its two ends (:func:`gen_pif_spines`) so that pieces
+of one wall can be joined end to end.
 """
 
 import math
@@ -38,7 +40,7 @@ from numpy.typing import ArrayLike, NDArray
 from rasterio.transform import Affine
 from scipy import ndimage
 from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
+from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
 from landloss.hazard.landslide.slope_elements import (
@@ -610,7 +612,9 @@ def gen_siz_table(
 
     Returns:
         The siz table (every pif; ``is_siz`` says which are sizs) with a
-        MultiPoint of the pif's pip cell centres.
+        MultiPoint of the pif's pip cell centres and ``pip_direction``: each
+        pip's fall direction as an index into :data:`DIRECTIONS` (int8), in the
+        same order as the MultiPoint's points.
     """
     rows, cols = np.nonzero(result.pips.mask)
     points = pd.DataFrame(
@@ -618,16 +622,174 @@ def gen_siz_table(
             "x": transform.c + (cols + 0.5) * transform.a,
             "y": transform.f + (rows + 0.5) * transform.e,
             "pif_id": result.pif_labels[rows, cols],
+            "direction": result.pips.direction[rows, cols],
         }
     )
+    # groupby keeps the row order within a group, so a pif's directions line
+    # up with the points of its MultiPoint.
+    groups = points.groupby("pif_id")
     geometry = gpd.GeoSeries(
         {
             pif: shapely.MultiPoint(group[["x", "y"]].to_numpy())
-            for pif, group in points.groupby("pif_id")
+            for pif, group in groups
         },
         crs=crs,
     ).reindex(result.sizs.index)
-    return gpd.GeoDataFrame(result.sizs, geometry=geometry, crs=crs)
+    pip_direction = pd.Series(
+        {pif: group["direction"].to_numpy(dtype=np.int8) for pif, group in groups},
+        dtype=object,
+    ).reindex(result.sizs.index)
+    return gpd.GeoDataFrame(
+        result.sizs.assign(pip_direction=pip_direction), geometry=geometry, crs=crs
+    )
+
+
+SPINE_COLUMNS = (
+    "spine",
+    "spine_length_m",
+    "end_a_x",
+    "end_a_y",
+    "end_b_x",
+    "end_b_y",
+    "end_a_fall_deg",
+    "end_b_fall_deg",
+    "fall_resultant",
+)
+
+
+def _longest_geodesic_path(
+    xy: NDArray[np.float64],
+) -> tuple[NDArray[np.int64], float]:
+    """The longest shortest path through three or more pips, end to end.
+
+    The graph joins pips within :data:`PIF_JOIN_M`, the radius
+    :func:`cluster_pifs` used, so a pif is one component; if it is not, the
+    largest component is kept. The two ends are found by a double sweep on the
+    graph's geodesic distance: the pip furthest from the lowest (x, y) pip,
+    then the pip furthest from that; the path is the shortest between them.
+    The sweep is run on the whole graph rather than on a spanning tree,
+    because on a face two or more cells thick the grid's many equal edge
+    weights make the tree comb-like, and its longest path folds back down the
+    next row with both ends at one end of the face.
+
+    Returns:
+        ``(path, length)``: the pips along the path, in order, and its length.
+    """
+    pairs = cKDTree(xy).query_pairs(PIF_JOIN_M + 1e-9, output_type="ndarray")
+    weight = np.hypot(*(xy[pairs[:, 0]] - xy[pairs[:, 1]]).T)
+    graph = coo_matrix(
+        (
+            np.r_[weight, weight],
+            (np.r_[pairs[:, 0], pairs[:, 1]], np.r_[pairs[:, 1], pairs[:, 0]]),
+        ),
+        shape=(len(xy), len(xy)),
+    ).tocsr()
+    n_parts, part = connected_components(graph, directed=False)
+    nodes = np.arange(len(xy))
+    if n_parts > 1:
+        nodes = np.flatnonzero(part == np.bincount(part).argmax())
+    start = nodes[np.lexsort((xy[nodes, 1], xy[nodes, 0]))[0]]
+    dist = dijkstra(graph, directed=False, indices=start)
+    end_a = int(np.argmax(np.where(np.isfinite(dist), dist, -1.0)))
+    dist, predecessors = dijkstra(
+        graph, directed=False, indices=end_a, return_predecessors=True
+    )
+    end_b = int(np.argmax(np.where(np.isfinite(dist), dist, -1.0)))
+    path = [end_b]
+    while path[-1] != end_a:
+        path.append(int(predecessors[path[-1]]))
+    return np.array(path[::-1], dtype=np.int64), float(dist[end_b])
+
+
+def _mean_fall_deg(sin: NDArray[np.float64], cos: NDArray[np.float64]) -> float:
+    """The circular mean of fall directions, in degrees from north."""
+    return float(np.degrees(np.arctan2(sin.sum(), cos.sum())) % 360.0)
+
+
+def gen_pif_spines(
+    sizs: gpd.GeoDataFrame, *, cell_size_m: float, end_window_m: float
+) -> pd.DataFrame:
+    """The spine of every pif and the fall direction at each of its ends.
+
+    One bearing per pif (``fall_bearing_deg``) means nothing on an L-shaped or
+    curved pif and cancels on a U around a platform, so pieces of one wall
+    cannot be joined end to end on it. The spine is the longest shortest path
+    through the pif's pips, joined within :data:`PIF_JOIN_M`, found by a double
+    sweep (:func:`_longest_geodesic_path`); its two ends, and the mean fall
+    direction of the pips near each, are what joining compares. Bearings are
+    degrees from north (0 is north, the sine is east), as in
+    :func:`assess_pifs`.
+
+    Args:
+        sizs: The siz table from :func:`gen_siz_table`: a MultiPoint of pip
+            centres and ``pip_direction``.
+        cell_size_m: The cell size; a one-pip pif's spine is one cell long,
+            across its fall.
+        end_window_m: The fall direction at an end is the mean over the pips
+            within this many metres of it.
+
+    Returns:
+        A frame indexed like ``sizs`` with ``spine`` (a LineString, in the CRS
+        of ``sizs``), ``spine_length_m``, ``end_a_x``, ``end_a_y``, ``end_b_x``,
+        ``end_b_y`` (end a is the end with the smaller (x, y)),
+        ``end_a_fall_deg``, ``end_b_fall_deg`` and ``fall_resultant`` (the mean
+        resultant length of the pips' fall vectors: 1 for a straight face,
+        lower the more it bends).
+
+    Raises:
+        ValueError: If ``pip_direction`` does not have one entry per pip.
+    """
+    geometries = sizs.geometry.to_numpy()
+    xy = shapely.get_coordinates(geometries)
+    counts = shapely.get_num_geometries(geometries)
+    directions = [np.asarray(d, dtype=np.int64) for d in sizs["pip_direction"]]
+    if any(len(d) != k for d, k in zip(directions, counts, strict=True)):
+        msg = "pip_direction needs one direction per pip of every pif."
+        raise ValueError(msg)
+    direction = np.concatenate([np.zeros(0, dtype=np.int64), *directions])
+    theta = np.radians(BEARING_DEG[direction])
+    sin, cos = np.sin(theta), np.cos(theta)
+
+    n = len(sizs)
+    spines = [None] * n
+    values = np.full((n, len(SPINE_COLUMNS) - 1), np.nan)
+    starts = np.r_[0, np.cumsum(counts)]
+    for i in range(n):
+        lo, hi = starts[i], starts[i + 1]
+        k = hi - lo
+        if k == 0:
+            continue
+        pts, s, c = xy[lo:hi], sin[lo:hi], cos[lo:hi]
+        if k == 1:
+            # One cell long, across the fall: the fall is (sin, cos), so
+            # (cos, -sin) runs along the face.
+            across = np.array([c[0], -s[0]]) * 0.5 * cell_size_m
+            line, length = np.array([pts[0] - across, pts[0] + across]), cell_size_m
+        elif k == 2:
+            line, length = pts, float(np.hypot(*(pts[1] - pts[0])))
+        else:
+            path, length = _longest_geodesic_path(pts)
+            line = pts[path]
+        if tuple(line[-1]) < tuple(line[0]):
+            line = line[::-1]
+        falls = []
+        for end in (line[0], line[-1]):
+            near = np.hypot(*(pts - end).T) <= end_window_m
+            if k == 1:
+                near[:] = True
+            falls.append(_mean_fall_deg(s[near], c[near]))
+        spines[i] = shapely.LineString(line)
+        values[i] = [
+            length,
+            *line[0],
+            *line[-1],
+            *falls,
+            np.hypot(s.sum(), c.sum()) / k,
+        ]
+
+    frame = pd.DataFrame(values, index=sizs.index, columns=list(SPINE_COLUMNS[1:]))
+    frame.insert(0, "spine", gpd.GeoSeries(spines, index=sizs.index, crs=sizs.crs))
+    return frame
 
 
 def write_siz_table(table: gpd.GeoDataFrame, path: Path) -> None:

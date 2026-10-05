@@ -974,3 +974,13 @@ def test_the_validation_figure_draws_without_a_fit():
         anchors, ratio_m_s_per_g=1.0, fit=None
     )
     assert len(fig.axes) >= 5
+
+
+def test_drawn_walls_naming_no_edge_line_stop_the_run():
+    polygons = pd.DataFrame({"wall_line_ids": [["WL0000001"], None]})
+    units = pd.DataFrame({"wall_line_id": ["WU0000001", "WU0000002"]})
+    with pytest.raises(ValueError, match="no drawn wall names a polygon edge line"):
+        step.check_walls_name_polygon_lines(polygons, units)
+    lines = pd.DataFrame({"wall_line_id": ["WL0000001", "WL0000009"]})
+    step.check_walls_name_polygon_lines(polygons, lines)
+    step.check_walls_name_polygon_lines(polygons, lines.iloc[:0])
