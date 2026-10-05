@@ -74,4 +74,19 @@
   `test_kritikos_2015_step.py`; and the coverage footprints and fit helpers by
   `test_kritikos_2015_fit.py`.
 
+## Limitations
+
+- **The fault term is distance to mapped faults, kept as the base case.** The
+  lead decided to keep `FAULT_TERM = "mapped"` (2026-10-05) rather than hold the
+  term at its far-field value. The scenario is mainly a Hikurangi interface
+  rupture, which does not rupture a mapped crustal fault, so distance to mapped
+  faults is a static property of the site, not distance to the rupture; at
+  Kaikōura, density within 200 m of a ruptured fault was up to three times the
+  background. Wellington is dense with mapped faults and the pilot sits on the
+  flat top of the membership (every cell within 10 km), so the term does not
+  rank cells there and may raise H evenly. The membership was fitted where
+  mapped faults are sparse. With the GEM faults as stand-ins the term lowers
+  Wenchuan's AUC (0.831 against 0.893 without it). The transfer function is
+  fitted with the term on, so changing `FAULT_TERM` means refitting it.
+
 Potential future improvements: see `s11_kritikos_2015_implementation_plan.md`.

@@ -13,7 +13,13 @@ from rasterio.transform import from_origin
 from shapely.geometry import Point, Polygon
 
 from landloss.domain import constants
-from landloss.io import DEFAULT_KOOPCACHE_DIR, REPO_ROOT, elevation, readers
+from landloss.io import (
+    DEFAULT_KOOPCACHE_DIR,
+    REPO_ROOT,
+    elevation,
+    koopcache_dir,
+    readers,
+)
 from landloss.io.area_of_interest import SMALL_WLG_PILOT
 from landloss.io.readers import (
     get_gns_slide_morphology,
@@ -46,6 +52,20 @@ BBOX = (0.0, 0.0, 2000.0, 2000.0)
 def _cache_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the extent cache out of the working tree during tests."""
     monkeypatch.setenv("KOOPCACHE_DIR", str(tmp_path / "koopcache"))
+
+
+class FakeLayerDetails:
+    """Stands in for ttpy's layer details, which name a layer's cache folder."""
+
+    title = "Test Layer: v2"
+
+
+@pytest.fixture(autouse=True)
+def _fake_layer_details(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name layer folders without asking Koordinates for the layer's title."""
+    monkeypatch.setattr(
+        readers, "get_latest_layer_details", lambda conn, layer_id: FakeLayerDetails
+    )
 
 
 @pytest.fixture
@@ -383,15 +403,19 @@ def ttpy_sees(monkeypatch: pytest.MonkeyPatch, layer_file: Path) -> dict[str, st
     return seen
 
 
+LAYER_FOLDER = "1-test-layer-v2"
+
+
 def test_ttpy_gets_the_default_cache_when_the_variable_is_unset(
     ttpy_sees: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """.env.example says leave it unset; ttpy raises on an unset one by itself."""
     monkeypatch.delenv("KOOPCACHE_DIR")
+    monkeypatch.setattr(readers, "koopcache_dir", _koopcache_dir_without_creating)
 
     get_koordinates_layer_extent(layer=1)
 
-    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == DEFAULT_KOOPCACHE_DIR
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == DEFAULT_KOOPCACHE_DIR / LAYER_FOLDER
 
 
 def test_ttpy_gets_a_relative_cache_anchored_at_the_repo_root(
@@ -399,10 +423,11 @@ def test_ttpy_gets_a_relative_cache_anchored_at_the_repo_root(
 ) -> None:
     """Otherwise ttpy downloads to wherever the script happened to be run from."""
     monkeypatch.setenv("KOOPCACHE_DIR", ".koopcache")
+    monkeypatch.setattr(readers, "koopcache_dir", _koopcache_dir_without_creating)
 
     get_koordinates_layer_extent(layer=1)
 
-    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == REPO_ROOT / ".koopcache"
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == REPO_ROOT / ".koopcache" / LAYER_FOLDER
 
 
 def test_ttpy_gets_an_absolute_cache_unchanged(
@@ -413,7 +438,122 @@ def test_ttpy_gets_an_absolute_cache_unchanged(
 
     get_koordinates_layer_extent(layer=1)
 
-    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == tmp_path / "elsewhere"
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]) == tmp_path / "elsewhere" / LAYER_FOLDER
+
+
+def _koopcache_dir_without_creating(*subdirs: str, create: bool = True) -> Path:
+    """Resolve cache folders under the real repo without making them there."""
+    return koopcache_dir(*subdirs, create=False)
+
+
+def test_the_cache_root_is_restored_after_a_download(
+    ttpy_sees: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every other cache reads the same variable, so ttpy's value must not stick."""
+    monkeypatch.setenv("KOOPCACHE_DIR", str(tmp_path / "elsewhere"))
+
+    get_koordinates_layer_extent(layer=1)
+
+    assert os.environ["KOOPCACHE_DIR"] == str(tmp_path / "elsewhere")
+
+
+def test_an_unset_cache_root_is_left_unset_after_a_download(
+    ttpy_sees: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Putting the variable back means removing it when it was never there."""
+    monkeypatch.delenv("KOOPCACHE_DIR")
+    monkeypatch.setattr(readers, "koopcache_dir", _koopcache_dir_without_creating)
+
+    get_koordinates_layer_extent(layer=1)
+
+    assert "KOOPCACHE_DIR" not in os.environ
+
+
+# --- one folder per dataset --------------------------------------------------
+
+
+def test_slugify_keeps_only_lowercase_words_and_hyphens() -> None:
+    """Punctuation in a Koordinates title must not reach a Windows path."""
+    assert (
+        readers.slugify("GNS SLIDE Morphological Data - Genesis")
+        == "gns-slide-morphological-data-genesis"
+    )
+    assert readers.slugify("  Cut/fill: (2013)  ") == "cut-fill-2013"
+
+
+def test_a_dataset_folder_is_named_from_its_key_and_name() -> None:
+    """The point of the folders: a person can find a layer by what it is."""
+    folder = readers.dataset_cache_dir("125308", lambda: "GNS SLIDE Data")
+
+    assert folder.name == "125308-gns-slide-data"
+    assert folder.is_dir()
+
+
+def test_an_existing_dataset_folder_is_reused_without_asking_its_name() -> None:
+    """A renamed layer keeps its folder, and finding it costs no request."""
+    first = readers.dataset_cache_dir("7", lambda: "Old name")
+
+    def fail() -> str:
+        msg = "the name should not be asked for when the folder exists"
+        raise AssertionError(msg)
+
+    assert readers.dataset_cache_dir("7", fail) == first
+
+
+def test_a_key_is_not_mistaken_for_a_longer_one() -> None:
+    """Layer 12 must not reuse layer 125's folder."""
+    readers.dataset_cache_dir("125", lambda: "Other")
+
+    assert readers.dataset_cache_dir("12", lambda: "Mine").name == "12-mine"
+
+
+def test_a_downloaded_layer_is_fetched_into_its_own_folder(
+    ttpy_sees: dict[str, str], tmp_path: Path
+) -> None:
+    """ttpy is pointed at the layer's folder, not the cache root."""
+    get_koordinates_layer_extent(layer=1)
+
+    assert Path(ttpy_sees["KOOPCACHE_DIR"]).name == LAYER_FOLDER
+
+
+def test_a_downloaded_layer_caches_its_extents_beside_it(
+    fake_koordinates: dict[str, object], layer_file: Path
+) -> None:
+    """A layer's clips sit in an extents folder next to the download."""
+    get_koordinates_layer_extent(layer=1, bbox=BBOX)
+
+    assert len(list((layer_file.parent / "extents").glob("*.gpkg"))) == 1
+    assert not any(readers.extent_cache_dir().iterdir())
+
+
+def test_an_arcgis_layer_is_cached_in_a_named_folder(monkeypatch) -> None:
+    """The sub-layer's name is asked of the service, once, to name its folder."""
+    requests_made = []
+
+    def fake_get(url, params, timeout):
+        requests_made.append(url)
+        return FakeResponse({"name": "Interpreted Materials"})
+
+    monkeypatch.setattr(readers.requests, "get", fake_get)
+    url = "https://example.test/rest/services/Env/GNSSlideData/MapServer"
+
+    first = readers.arcgis_cache_path(url, 3, "EPSG:2193", None)
+    second = readers.arcgis_cache_path(url, 3, "EPSG:2193", (1, 2, 3, 4))
+
+    assert first.parent.name == "gnsslidedata-3-interpreted-materials"
+    assert first.parent.parent.name == "arcgis"
+    assert second.parent == first.parent
+    assert requests_made == [f"{url}/3"]
+
+
+def test_a_wfs_layer_is_cached_in_a_folder_named_for_it() -> None:
+    """A WFS type name already reads as a name, so it names the folder."""
+    path = readers.wfs_cache_path(
+        "https://example.test/ows", "gns:NZL-Urban_Wellington", "EPSG:2193", None
+    )
+
+    assert path.parent.name == "gns-nzl-urban-wellington"
+    assert path.parent.parent.name == "wfs"
 
 
 # --- NZ Rail Station Points ---------------------------------------------------

@@ -213,12 +213,23 @@ chosen from the domain rather than a single shared variable.
 Caching happens at two levels, which matters because layers such as NZ Addresses
 are national:
 
-1. ttpy caches the whole downloaded layer under `KOOPCACHE_DIR`, keyed by layer
-   ID, version and a hash of the layer details. A layer is downloaded once.
-2. `landloss.io.readers` caches the clipped extent under `KOOPCACHE_DIR/extents`,
-   keyed by the source file name — which encodes the layer version — plus the CRS
-   and bounding box. Asking for the same extent again skips reading and clipping
-   the source.
+1. ttpy caches the whole downloaded layer, keyed by layer ID, version and a hash
+   of the layer details. A layer is downloaded once.
+2. `landloss.io.readers` caches the clipped extent, keyed by the source file name
+   — which encodes the layer version — plus the CRS and bounding box. Asking for
+   the same extent again skips reading and clipping the source.
+
+Each layer has its own folder below `KOOPCACHE_DIR`, named
+`<layer id>-<slugified Koordinates title>`, so a layer can be found in the cache
+by what it is: `125308-gns-slide-morphological-data/` holds ttpy's download, and
+its `extents/` folder the clips of it. The readers hand ttpy the layer's folder as
+its `KOOPCACHE_DIR` for the length of the download. The folder is found by its
+ID prefix, so the title is only asked of Koordinates the first time, and a layer
+renamed upstream keeps its folder. ArcGIS and WFS reads follow the same pattern
+under `arcgis/` and `wfs/`. The file names inside are unchanged hashes, because
+they are what keeps a stale version or extent from being served.
+`src/landloss/io/one_offs/gen_koopcache_folders.py` moved a cache from before the
+folders into them.
 
 The extent cache applies only when a bounding box is given, because without a clip
 it would store a second full copy of a layer ttpy has already cached.

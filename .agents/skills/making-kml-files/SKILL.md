@@ -106,12 +106,13 @@ layers with a map-worthy field, styled to match the QGIS pilot project. Rebuild 
 the command in section 2 after any step re-runs — the KMLs are copies and will not update.
 
 The two LINZ layers, building outlines and property boundaries, name their clipped
-extents by `path` under `.koopcache/extents/`. Those file names carry a hash of the
-layer version and the pilot box, so they **go stale** when either changes: LINZ rebuilds
+extents by `path` under each layer's `.koopcache/<layer id>-<name>/extents/`. Those file
+names carry a hash of the layer version and the pilot box, so they **go stale** when either changes: LINZ rebuilds
 the property layer weekly, so the reader's own lookup can miss the cache and start a
 multi-gigabyte download, which is why the spec points at the files directly. If a file
 is missing, re-run `gen_insured_land.py` (which fetches both over the pilot box) and
-update the two paths from `.koopcache/extents/`.
+update the two paths from `.koopcache/101290-nz-building-outlines/extents/` and
+`.koopcache/122657-nz-property-boundaries/extents/`.
 
 Of the other layers, the address spine, the land rate per address and the insured land
 extent are also derived from LINZ data and are not yet credited in their KMLs.

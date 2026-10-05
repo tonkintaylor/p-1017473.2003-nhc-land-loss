@@ -1,0 +1,9 @@
+method,slide,cut,cut_and_fill,fill,natural
+rolling,cut,195,57,32,135
+rolling,cut and fill,27,5,3,0
+rolling,fill,297,187,97,364
+rolling,neither,2176,1301,1057,6082
+poly,cut,169,87,8,155
+poly,cut and fill,27,8,0,0
+poly,fill,214,279,42,410
+poly,neither,1673,2031,477,6435

@@ -25,8 +25,8 @@ TPI_SD_M = None
 # "mapped" measures distance to the mapped active faults in the NZ Active Faults
 # Database; "far_field" holds the fault term at its far-field value everywhere,
 # which is the plan's proposal for the base case under an interface scenario
-# (no mapped fault ruptures). The decisions table of the plan names "mapped"
-# as the base case until the lead decides.
+# (no mapped fault ruptures). The lead decided on 2026-10-05 to keep "mapped" as
+# the base case; the limitation is written up in the step's method file.
 FAULT_TERM = "mapped"
 
 # The events the hazard-to-coverage transfer function is fitted on, from

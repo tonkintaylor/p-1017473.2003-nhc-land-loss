@@ -105,7 +105,7 @@
       "checked": false
     },
     {
-      "path": ".koopcache/extents/101290_438655_b768d93ed7fa3b3e5b89c8beadfbf02f_d08e04e72f25241a.gpkg",
+      "path": ".koopcache/101290-nz-building-outlines/extents/101290_438655_b768d93ed7fa3b3e5b89c8beadfbf02f_d08e04e72f25241a.gpkg",
       "name": "LINZ building outlines by use (pilot)",
       "field": "use",
       "categories": {
@@ -131,7 +131,7 @@
       "attribution": "Source: Land Information New Zealand (LINZ), licensed CC BY 4.0 (https://data.linz.govt.nz/license/attribution-4-0-international/). Clipped to the pilot area."
     },
     {
-      "path": ".koopcache/extents/122657_447319_e867e64487f1a429bdb040e2bfb2a59c_cdc6a423e60ed863.gpkg",
+      "path": ".koopcache/122657-nz-property-boundaries/extents/122657_447319_e867e64487f1a429bdb040e2bfb2a59c_cdc6a423e60ed863.gpkg",
       "name": "LINZ property boundaries by title type (pilot)",
       "field": "title_type",
       "categories": {

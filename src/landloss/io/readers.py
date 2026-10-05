@@ -6,6 +6,12 @@ Koordinates once. On top of that, this module caches the clipped extent, so
 asking for the same extent of the same layer version a second time skips reading
 and clipping the source.
 
+Each dataset is cached in a folder of its own named ``<key>-<common name>`` --
+``125308-gns-slide-morphological-data/``, with its clipped extents in an
+``extents/`` folder inside -- so a person can find a layer in the cache by what
+it is. The file names inside stay as ttpy and the cache keys make them, since
+those carry the version and extent that keep a stale copy from being served.
+
 Measured against the 809 MB NZ Addresses layer, that second cache saves little:
 GeoPackage is spatially indexed, so pushing the bounding box down into the read
 is already about as fast as reading a small cached copy back. The download is the
@@ -19,7 +25,9 @@ already cached.
 import hashlib
 import math
 import os
+import re
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin
@@ -36,6 +44,7 @@ from rasterio.transform import Affine, from_origin
 from rasterio.warp import reproject, transform_bounds
 from shapely import box, make_valid
 from ttpy.gis.koop import KoordinatesConnection, get_latest_layer
+from ttpy.gis.koop.get_latest import get_latest_layer_details
 
 from landloss.domain import constants
 from landloss.io import KOOPCACHE_DIR_ENV_VAR, elevation, koopcache_dir
@@ -102,16 +111,57 @@ def resolve_api_key(domain: str) -> str:
     return api_key
 
 
+def slugify(text: str) -> str:
+    """Return ``text`` lower-cased, every run of other characters one hyphen."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def dataset_cache_dir(key: str, name: Callable[[], str], *parents: str) -> Path:
+    """Return the cache folder for one dataset, ``<key>-<common name>``.
+
+    The key identifies the dataset -- a Koordinates layer ID, say -- and the name
+    is only there so a person can find it. So an existing folder for the key is
+    reused whatever it is called, and ``name`` is only asked for when there is
+    none yet, since finding it may cost a request. A layer renamed upstream keeps
+    the folder it already has rather than being downloaded again.
+
+    Args:
+        key: What identifies the dataset. No other dataset's key may be this
+            followed by a hyphen.
+        name: Returns the dataset's common name, slugified into the folder name.
+        parents: Folders below the cache root to put the dataset folder in.
+
+    Returns:
+        The dataset's folder, created if it did not exist.
+    """
+    root = koopcache_dir(*parents)
+    for existing in sorted(root.glob(f"{key}-*")):
+        if existing.is_dir():
+            return existing
+    return koopcache_dir(*parents, f"{key}-{slugify(name())}")
+
+
+def koordinates_layer_cache_dir(conn: KoordinatesConnection, layer: int) -> Path:
+    """Return the folder a Koordinates layer is cached in, named from its title."""
+    return dataset_cache_dir(
+        str(layer), lambda: get_latest_layer_details(conn, layer).title
+    )
+
+
 def _get_latest_layer(conn: KoordinatesConnection, layer: int) -> Path:
-    """Fetch a Koordinates layer through ttpy, into this repository's cache.
+    """Fetch a Koordinates layer through ttpy, into its folder in the cache.
 
     ttpy reads ``KOOPCACHE_DIR`` from the environment for itself and refuses to
     download anything when it is unset -- which is exactly how ``.env.example``
     tells everyone to leave it, because :func:`landloss.io.koopcache_dir`
-    supplies the default. So the resolved root is handed to ttpy here, as an
-    absolute path, before every call. That also stops a relative value in an
-    older ``.env`` sending ttpy's downloads to wherever the script was launched
-    from while every other cache stays anchored at the repo root.
+    supplies the default. So the layer's folder below the resolved root is
+    handed to ttpy here, as an absolute path, for the length of the call. That
+    is how a download lands in its own folder without ttpy knowing about them,
+    and it stops a relative value in an older ``.env`` sending ttpy's downloads
+    to wherever the script was launched from.
+
+    The variable is put back afterwards, because :func:`koopcache_dir` reads it
+    too and would otherwise take the layer's folder for the cache root.
 
     Args:
         conn: An open connection to the layer's Koordinates domain.
@@ -120,17 +170,28 @@ def _get_latest_layer(conn: KoordinatesConnection, layer: int) -> Path:
     Returns:
         The path ttpy downloaded or cached the layer at.
     """
-    os.environ[KOOPCACHE_DIR_ENV_VAR] = str(koopcache_dir())
-    return get_latest_layer(conn=conn, layer_id=layer)
+    layer_dir = koordinates_layer_cache_dir(conn, layer)
+    previous = os.environ.get(KOOPCACHE_DIR_ENV_VAR)
+    os.environ[KOOPCACHE_DIR_ENV_VAR] = str(layer_dir)
+    try:
+        return get_latest_layer(conn=conn, layer_id=layer)
+    finally:
+        if previous is None:
+            del os.environ[KOOPCACHE_DIR_ENV_VAR]
+        else:
+            os.environ[KOOPCACHE_DIR_ENV_VAR] = previous
 
 
 def extent_cache_dir() -> Path:
-    """Return the directory clipped extents are cached in, creating it if needed."""
+    """Return the directory extents of local files are cached in, creating it."""
     return koopcache_dir("extents")
 
 
 def extent_cache_path(
-    source: Path, crs: int | str, bbox: tuple[float, float, float, float] | None
+    source: Path,
+    crs: int | str,
+    bbox: tuple[float, float, float, float] | None,
+    cache_dir: Path | None = None,
 ) -> Path:
     """Return the cache file for one clipped extent of one layer.
 
@@ -141,13 +202,17 @@ def extent_cache_path(
         source: The file the extent was clipped out of.
         crs: The CRS the extent was reprojected to.
         bbox: The bounding box the extent was clipped to, if any.
+        cache_dir: The folder to cache in. Defaults to :func:`extent_cache_dir`,
+            which is where extents of a local file go; a downloaded layer's
+            extents go in an ``extents`` folder inside the layer's own.
 
     Returns:
         The path the clipped extent is cached at.
     """
     key = f"{source.name}|{crs}|{bbox}"
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
-    return extent_cache_dir() / f"{source.stem}_{digest}.gpkg"
+    folder = extent_cache_dir() if cache_dir is None else cache_dir
+    return folder / f"{source.stem}_{digest}.gpkg"
 
 
 def get_koordinates_layer_extent(
@@ -183,8 +248,11 @@ def get_koordinates_layer_extent(
             layer_path = _get_latest_layer(conn, layer)
         finally:
             conn.close()
+        # Beside the download, in the layer's own folder.
+        cache_dir = layer_path.parent / "extents"
     else:
         layer_path = Path(layer)
+        cache_dir = None
 
     # Only an actual clip is worth caching. Without a bbox the cache would hold a
     # full duplicate of a layer ttpy has already cached — gigabytes, for a
@@ -192,7 +260,7 @@ def get_koordinates_layer_extent(
     # reading the duplicate back.
     cache_wanted = use_cache and bbox is not None
 
-    cache_path = extent_cache_path(layer_path, crs, bbox)
+    cache_path = extent_cache_path(layer_path, crs, bbox, cache_dir)
     if cache_wanted and cache_path.exists():
         return gpd.read_file(cache_path)
 
@@ -201,6 +269,7 @@ def get_koordinates_layer_extent(
     # An empty frame has no geometry type for the driver to write, so there is
     # nothing worth caching; recomputing an empty result is cheap anyway.
     if cache_wanted and not layer_gdf.empty:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         layer_gdf.to_file(cache_path)
 
     return layer_gdf
@@ -1219,10 +1288,41 @@ def arcgis_cache_path(
     crs: int | str,
     bbox: tuple[float, float, float, float] | None,
 ) -> Path:
-    """Return the file one ArcGIS layer read is cached at."""
+    """Return the file one ArcGIS layer read is cached at.
+
+    It is in the layer's folder below ``arcgis/``, named for the service, the
+    sub-layer and the sub-layer's own name, e.g.
+    ``arcgis/gnsslidemorphologicaldata-3-interpreted-materials/``.
+    """
     key = f"{service_url}|{layer}|{crs}|{bbox}"
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
-    return koopcache_dir("arcgis") / f"arcgis_{layer}_{digest}.gpkg"
+    return arcgis_cache_dir(service_url, layer) / f"arcgis_{layer}_{digest}.gpkg"
+
+
+def arcgis_cache_dir(service_url: str, layer: int) -> Path:
+    """Return the folder one ArcGIS sub-layer is cached in.
+
+    The service name is the path segment before ``MapServer`` or
+    ``FeatureServer``. The sub-layer's name is asked of the service the first
+    time only.
+    """
+    service = slugify(service_url.rstrip("/").split("/")[-2])
+    return dataset_cache_dir(
+        f"{service}-{layer}",
+        lambda: _arcgis_layer_name(service_url, layer),
+        "arcgis",
+    )
+
+
+def _arcgis_layer_name(service_url: str, layer: int) -> str:
+    """Return the name an ArcGIS service gives one of its sub-layers."""
+    response = requests.get(
+        f"{service_url.rstrip('/')}/{layer}",
+        params={"f": "json"},
+        timeout=ARCGIS_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json().get("name", "layer")
 
 
 def get_arcgis_feature_layer(
@@ -1268,8 +1368,9 @@ def get_arcgis_feature_layer(
         ValueError: If the service reports an error, which it does with an
             ordinary HTTP 200 and so would otherwise pass unnoticed.
     """
-    cache_path = arcgis_cache_path(service_url, layer, crs, bbox)
-    if use_cache and cache_path.exists():
+    # Only resolved when caching, since finding the folder may ask the service.
+    cache_path = arcgis_cache_path(service_url, layer, crs, bbox) if use_cache else None
+    if cache_path is not None and cache_path.exists():
         return gpd.read_file(cache_path)
 
     query_url = f"{service_url.rstrip('/')}/{layer}/query"
@@ -1311,7 +1412,7 @@ def get_arcgis_feature_layer(
         pd.concat(pages, ignore_index=True), geometry="geometry", crs=crs
     )
 
-    if use_cache:
+    if cache_path is not None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         features.to_file(cache_path)
 
@@ -1353,10 +1454,15 @@ def wfs_cache_path(
     crs: int | str,
     bbox: tuple[float, float, float, float] | None,
 ) -> Path:
-    """Return the file one WFS layer read is cached at."""
+    """Return the file one WFS layer read is cached at.
+
+    It is in a folder below ``wfs/`` named for the layer, which in WFS already
+    reads as a name: ``gns:NZL-Urban_Wellington_geological_units`` caches under
+    ``wfs/gns-nzl-urban-wellington-geological-units/``.
+    """
     key = f"{service_url}|{type_name}|{crs}|{bbox}"
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
-    return koopcache_dir("wfs") / f"wfs_{digest}.gpkg"
+    return koopcache_dir("wfs", slugify(type_name)) / f"wfs_{digest}.gpkg"
 
 
 def get_wfs_layer(

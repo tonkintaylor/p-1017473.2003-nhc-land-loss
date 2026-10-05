@@ -167,7 +167,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   coverage is 1.47%. The TPI
   window and class thresholds are judgements, though the AUC does not depend on
   the window. The fault term lowers Wenchuan's AUC with the GEM faults, which
-  bears on the lead's `FAULT_TERM` decision.
+  bears on the `FAULT_TERM` choice, which the lead has settled as `"mapped"`
+  (2026-10-05); the limitation is in the step 11 method file.
 - **Literature review of the first part, 2026-10-02.** Steps 3 to 5 and the
   faces plan's phases 0 to 2 were read against the 991 findings of
   `temp/gns_review/`, and the plans edited in place with citations: the faces
