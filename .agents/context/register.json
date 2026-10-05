@@ -366,7 +366,7 @@
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Call with Perrie Gilbert 2026-09-25",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-47",
@@ -478,7 +478,7 @@
       "Owner": "Unassigned",
       "Phase": "2",
       "Source": "Wgtn Land Model 2026-10-01",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-61",
@@ -522,11 +522,130 @@
     },
     {
       "ID": "T-66",
-      "Task": "Ask the loss module owner to move the five loss_input_path calls, in loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py, loss/steps/s1_settlement/s1_gen_settlement.py, loss/validations/gen_calc_walkthrough.py (two calls) and loss/validations/gen_viewer_data.py, to world_loss_input_path(name, world_id, realisation_id, pilot=pilot) with a WORLD_IDS setting, so the loss module reads every exposure world rather than world 0 only and the deprecated loss_input_path can be deleted.",
       "Task": "Ask the loss module owner to move the five loss_input_path calls, in loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py, loss/steps/s1_settlement/s1_gen_settlement.py, loss/validations/gen_calc_walkthrough.py (two calls) and loss/validations/gen_viewer_data.py, to world_loss_input_path(name, world_id, realisation_id, extent=extent) with a WORLD_IDS setting, so the loss module reads every exposure world rather than world 0 only and the deprecated loss_input_path can be deleted.",
       "Owner": "Unassigned",
       "Phase": "3",
       "Source": "Urban slope build 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-67",
+      "Task": "Agree with Maxim Millen how Nick Peters' comments are to become validation checks on the modelled retaining walls and landslides, then build them.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-68",
+      "Task": "Run the pipeline across the whole study area once Maxim Millen's changes to how outputs are saved are in, following on from T-51.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-69",
+      "Task": "Start the output figures from the whole-study-area run.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-70",
+      "Task": "Write a technical explanation of the code in the style of the NLM technical report, as part of the technical document in T-59.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-71",
+      "Task": "Write QGIS layers that step through the liquefaction pipeline: the probability of each land damage state, the sampled land damage state, then the evacuated and inundated land, which the pipeline currently holds as areas per property rather than as polygons.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-72",
+      "Task": "Decide with Maxim Millen whether the liquefaction land damage state is sampled per property, as now at each property's representative point, or per grid cell, and how that choice carries the lateral spreading adjustment.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-73",
+      "Task": "Look up the ID of the property whose generated driveway passes through a neighbouring house, found in the QGIS review, and check what the driveway generation is doing there.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-74",
+      "Task": "Check whether the road parcel layer carries an attribute marking a road as private, so private lanes can be told apart from public roads.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-75",
+      "Task": "Make the retaining wall probability fall away once a steep face is too high to plausibly be fully retained, rather than rising with height throughout, as Nick Peters suggested.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-76",
+      "Task": "Set the probability that a potential instability face fails, with a low and a high estimate, which has not yet been established.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-77",
+      "Task": "Put the retaining wall placement and failure rules and their input parameters in a table, with a plot of the fragility curve for each wall type, so John Leeves can review and challenge them.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-78",
+      "Task": "Send Perrie Gilbert the calibrated lateral spreading adjustment numbers, or a figure of them, to replace the values currently on the liquefaction layers.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-79",
+      "Task": "Set up a follow-up session with Nick Peters and John Leeves on Wednesday 2026-10-07 to review the retaining wall and slope rules, with pictures of where the modelled walls landed.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-80",
+      "Task": "Check how the driveway for 3416ee25-80ea-4728-9765-3c92569150c7 is formed, since a shorter route to the road appears to be available but is not used.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Perrie Gilbert 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-81",
+      "Task": "Fetch and extract claim reports from every insurer parent job code and the NHC 1600000 code, rather than only the IAG 1502000, Suncorp 1501000 and EQC 2013 and 2016 programmes, using the numbering notes in claim_reports_status.md to list the job folders (resolves I-16).",
+      "Owner": "Perrie Gilbert",
+      "Phase": "2",
+      "Source": "Perrie Gilbert 2026-10-06",
       "Status": "Open"
     }
   ],
@@ -845,6 +964,48 @@
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Perrie Gilbert 2026-10-02",
       "Status": "Open"
+    },
+    {
+      "ID": "L-46",
+      "Limitation": "The LINZ building outlines miss many sheds and other appurtenant structures, so insured land is underestimated wherever one would extend the 8 m buffer. John Leeves suggested correcting for it with an add-on at the end rather than mapping the structures.",
+      "Affects": "exposure/land, loss",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-47",
+      "Limitation": "Private lanes cannot be told apart from public roads, so a shared driveway along a private lane is not counted as insured land and may be much underestimated.",
+      "Affects": "exposure/land (driveways)",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-48",
+      "Limitation": "Potential instability points are found from steps of about 0.7 m across 1 m in the 1 m DEM, so very small retaining walls and steps below that are not detected.",
+      "Affects": "hazard/landslide, retaining wall placement",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-49",
+      "Limitation": "Rock is modelled as a single greywacke type. Weathering grade and sandstone- versus siltstone-dominated sequences cannot be mapped at this scale, and Nick Peters advised the effort would return little.",
+      "Affects": "hazard/landslide",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-50",
+      "Limitation": "The large greenfield landslide models map failures whose smallest size exceeds almost every damaged area in the claim reports (about two exceed it), so they cover a different scale of failure from the urban model and contribute little to its failures.",
+      "Affects": "hazard/landslide",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-51",
+      "Limitation": "A rain event coinciding with or following the earthquake is not modelled, though such sequences, as after Kaikoura, can cause much further slope failure. It may be partly reflected in the high landslide estimate.",
+      "Affects": "hazard/landslide, loss",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -974,6 +1135,22 @@
       "Affects": "claim report extraction (T-50)",
       "Source": "Claim report extraction 2026-10-01",
       "Status": "Open"
+    },
+    {
+      "ID": "I-17",
+      "Improvement": "Distinguish private lanes and shared driveways from public roads, and add appurtenant structures missing from the building outlines, when refining the insured land extent.",
+      "Rationale": "Both understate insured land (see the limitations raised on 2026-10-05); agreed as potential further improvements for the NHC loss modelling team.",
+      "Phase": "Future",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-18",
+      "Improvement": "Route generated driveways so they cannot pass through a building or across another property, allowing non-straight paths.",
+      "Rationale": "Straight-line driveways sometimes cut through a neighbouring house; judged too complex for now and a good one for the future.",
+      "Phase": "Future",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Parked"
     }
   ],
   "Questions": [
@@ -1123,10 +1300,18 @@
     },
     {
       "ID": "Q-19",
-      "Question": "Should the Waiwhetū Stream count as a lateral spreading free face? It is not named a river, so the NLM's rule leaves it out, but it crosses the liquefiable lower Hutt Valley floor to the harbour at Seaview. Perrie Gilbert has included it by ID (river sections 6818507 and 7212609) provisionally, as the NLM did for the watercourses around Bottle Lake (T-48).",
+      "Question": "Should the Waiwhetū Stream count as a lateral spreading free face? It is not named a river, so the NLM's rule leaves it out, but it crosses the liquefiable lower Hutt Valley floor to the harbour at Seaview. Perrie Gilbert included it by ID (river sections 6818507 and 7212609) provisionally on 2026-10-02, as the NLM did for the watercourses around Bottle Lake (T-48), and took it out again on 2026-10-05 pending this answer.",
       "Asked of": "Maxim Millen",
       "Answer": "",
       "Source": "Perrie Gilbert, QGIS review of the lower Hutt free faces 2026-10-02",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-20",
+      "Question": "Does NHC want a single best estimate of losses from T+T, or low and high scenarios (for example on retaining wall numbers and slope failure rates) alongside a committed central estimate?",
+      "Asked of": "Bridget Attwood",
+      "Answer": "",
+      "Source": "Wgtn land model sense check 2026-10-05; to be asked by John Leeves or Virginie Lacrosse",
       "Status": "Open"
     }
   ]
