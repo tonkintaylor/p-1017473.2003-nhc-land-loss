@@ -544,9 +544,30 @@ def test_the_path_names_the_realisation_and_the_extent():
     )
 
 
-def test_hancox_coverage_is_already_a_source_area_fraction():
+def test_hancox_and_kritikos_coverage_are_already_source_area_fractions():
     assert step.coverage_source_area_fraction("hancox_1997") == 1.0
+    assert step.coverage_source_area_fraction("kritikos_2015") == 1.0
     assert step.coverage_source_area_fraction("esnz") == step.BETA_SOURCE_AREA_FRACTION
+
+
+def test_the_kritikos_coverage_is_read_from_the_step_11_raster(monkeypatch):
+    seen = {}
+
+    def fake_read_grid(path):
+        seen["path"] = path
+        return "grid"
+
+    monkeypatch.setattr(step, "read_grid", fake_read_grid)
+    monkeypatch.setattr(step, "align_probability", lambda grid, template: grid)
+    got = step.read_model_coverage(
+        coverage_model="kritikos_2015",
+        bbox=None,
+        extent="wlg-pilot",
+        realisation_id=3,
+        template=None,
+    )
+    assert got == "grid"
+    assert seen["path"] == step.kritikos_coverage_path(3, extent="wlg-pilot")
 
 
 def test_an_unknown_large_model_is_refused():

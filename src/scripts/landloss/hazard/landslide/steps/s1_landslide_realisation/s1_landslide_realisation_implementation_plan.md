@@ -1,7 +1,8 @@
 # Step 1 — Landslide realisation: implementation plan
 
 **Status:** Phase 2, placement in slope units, is built and tested end to end
-on a synthetic three-unit plane and now accepts the Hancox step 10 coverage or
+on a synthetic three-unit plane and now accepts the Hancox step 10 coverage, the
+Kritikos step 11 coverage or
 the supplied ESNZ grid; the Hancox route has not been run over the pilot. Phase 1 is the cell-by-cell realisation it replaced, kept here because
 its calibration still carries into phase 2. Phases 3 to 6 are open.
 
@@ -11,7 +12,7 @@ section 10 of `.agents/plans/building-urban-slope-failure-and-retaining-wall-mod
 contract section 3.9 of `.agents/plans/urban-slope-build-contract.md`). The
 small failures beside buildings are the urban population, landslide steps 6 to
 9, and step 9 combines the two realisations. `COVERAGE_MODEL` selects the
-Hancox step 10 coverage or the supplied 32 m ESNZ probability grid; the three
+Hancox step 10 coverage, the Kritikos step 11 coverage or the supplied 32 m ESNZ probability grid; the three
 things neither carries — where a failure starts, how big it is, where the
 debris goes — are added on top.
 

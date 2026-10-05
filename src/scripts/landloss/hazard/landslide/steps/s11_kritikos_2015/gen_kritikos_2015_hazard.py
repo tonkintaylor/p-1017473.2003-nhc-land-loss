@@ -8,9 +8,10 @@ through the PGV-only relation of Worden et al. (2012). Kritikos et al. (2015)
 [kritikos_2015] set the memberships and the fuzzy gamma combination, and the
 active faults are the GNS NZ Active Faults Database (read off ``R:``).
 
-The output is the relative hazard H, 0 to 1, not a coverage: the transfer
-function from H to areal coverage is fitted on the model's own training events
-and is not yet available, so this step stops at H.
+The output is the relative hazard H, 0 to 1, and the areal coverage the transfer
+function fitted by ``gen_kritikos_2015_transfer_function.py`` on Northridge and
+Wenchuan gives for it. The coverage is what landslide step 1 reads when its
+``COVERAGE_MODEL`` is ``kritikos_2015``.
 """
 
 import sys
@@ -18,7 +19,7 @@ import sys
 import numpy as np
 
 from landloss.common.utils.terrain import cell_size, write_raster
-from landloss.hazard.landslide.models.kritikos_2015 import inputs, model
+from landloss.hazard.landslide.models.kritikos_2015 import evaluation, inputs, model
 from landloss.hazard.shaking.pgv import mmi_from_pgv
 from landloss.io.active_faults import get_active_faults
 from landloss.io.area_of_interest import extent_suffix
@@ -40,8 +41,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 WORK_DIR = TEMP_DIR / "hazard" / "landslide"
 OUT_STEM = "kritikos-2015-hazard"
+COVERAGE_STEM = "kritikos-2015-coverage"
 SOURCE_RESOLUTION_M = 10
 HAZARD_NAME = "kritikos_2015_hazard"
+COVERAGE_NAME = "kritikos_2015_coverage"
 FAULT_TERMS = ("mapped", "far_field")
 RULE = "-" * 72
 
@@ -50,6 +53,34 @@ def hazard_path(realisation_id, *, extent):
     """Return the Kritikos relative hazard raster for one shaking realisation."""
     suffix = extent_suffix(extent)
     return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.tif"
+
+
+def coverage_path(realisation_id, *, extent):
+    """Return the Kritikos areal coverage raster for one shaking realisation.
+
+    Landslide step 1 reads this when it runs with ``COVERAGE_MODEL`` set to
+    ``kritikos_2015``.
+    """
+    suffix = extent_suffix(extent)
+    return WORK_DIR / f"{COVERAGE_STEM}-r{realisation_id:03d}{suffix}.tif"
+
+
+def check_transfer_function(transfer, *, gamma, tpi_window_m, fault_term):
+    """Refuse a transfer function fitted for a hazard built differently.
+
+    The curve maps this hazard to coverage only if the hazard was built the way
+    it was when the curve was fitted.
+
+    Raises:
+        ValueError: If the curve's fitting settings differ from this run's.
+    """
+    wanted = {"gamma": gamma, "tpi_window_m": tpi_window_m, "fault_term": fault_term}
+    if transfer.settings != wanted:
+        msg = (
+            f"The transfer function was fitted with {transfer.settings} but this "
+            f"run uses {wanted}. Rerun gen_kritikos_2015_transfer_function.py."
+        )
+        raise ValueError(msg)
 
 
 def build_inputs(dem, *, tpi_window_m, tpi_sd_m, fault_term, get_faults):
@@ -141,6 +172,23 @@ def describe(hazard, mm, gentle, *, realisation_id):
         )
 
 
+def describe_coverage(coverage, *, realisation_id):
+    """Print the coverage the transfer function gives and the area it implies."""
+    values = coverage.to_numpy()
+    valid = np.isfinite(values)
+    cell_km2 = cell_size(coverage) ** 2 / 1e6
+    print(
+        f"  coverage: mean {values[valid].mean():.3%}, "
+        f"p90 {np.percentile(values[valid], 90):.3%}, "
+        f"max {values[valid].max():.3%}"
+    )
+    print(
+        f"  expected landslide source area, realisation {realisation_id}: "
+        f"{np.nansum(values) * cell_km2:,.2f} km2 over "
+        f"{valid.sum() * cell_km2:,.1f} km2"
+    )
+
+
 def main(
     *,
     extent,
@@ -150,7 +198,11 @@ def main(
     tpi_sd_m,
     fault_term,
 ):
-    """Write one Kritikos relative hazard raster per shaking realisation."""
+    """Write one Kritikos relative hazard and coverage raster per realisation."""
+    transfer = evaluation.get_transfer_function()
+    check_transfer_function(
+        transfer, gamma=gamma, tpi_window_m=tpi_window_m, fault_term=fault_term
+    )
     dem_file = gen_multiscale_slope.dem_path(SOURCE_RESOLUTION_M, extent=extent)
     dem = read_grid(dem_file)
     slope, position, fault_km = build_inputs(
@@ -169,8 +221,14 @@ def main(
         pgv = read_grid(pgv_path(realisation_id, extent=extent))
         hazard, mm, gentle = build_hazard(slope, position, fault_km, pgv, gamma=gamma)
         describe(hazard, mm, gentle, realisation_id=realisation_id)
+        coverage = hazard.copy(data=transfer(hazard.to_numpy())).rename(COVERAGE_NAME)
+        coverage = coverage.rio.write_nodata(np.nan)
+        describe_coverage(coverage, realisation_id=realisation_id)
         out_path = hazard_path(realisation_id, extent=extent)
         write_raster(hazard.astype("float32"), out_path)
+        print(f"Wrote {out_path}")
+        out_path = coverage_path(realisation_id, extent=extent)
+        write_raster(coverage.astype("float32"), out_path)
         print(f"Wrote {out_path}")
 
 

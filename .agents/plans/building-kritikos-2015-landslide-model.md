@@ -155,14 +155,22 @@ to coverage is needed, and under the lead's decision of 2026-10-02 (rebuild
 note, "How they combine") it comes from the model's own training events, not
 from Kaikōura, so that model 2 stays an independent estimate.
 
-- [ ] Fit (the tool, `evaluation.fit_transfer_function`, is built and tested; the
-      fit needs the inventories) a transfer function from H to areal coverage on **Northridge 1994
+- [x] Fit a transfer function from H to areal coverage on **Northridge 1994
       and Wenchuan 2008**, the two events the memberships were derived from:
-      bin cells by H, take the observed coverage in each bin, and fit a
-      monotone curve (`fit_transfer_function`), as Nowicki Jessee fitted their
-      equation 9. Pool the two events, and report each one's curve as the
-      spread. The inventories are in the USGS Ground Failure Database
-      (`landloss.io.gfdb`), on `R:`, so the lead runs this step.
+      bin cells by H (20 bins of equal cumulative weight), take the observed
+      coverage in each bin, and fit a monotone curve
+      (`fit_transfer_function`), as Nowicki Jessee fitted their equation 9.
+      Each event is fitted alone and the two are pooled with each event's cells
+      weighted 1/n. Done by `steps/s11_kritikos_2015/
+      gen_kritikos_2015_transfer_function.py`; the pooled curve is the io asset
+      `kritikos-2015-transfer-function.csv`. Result: mean observed coverage
+      0.39% (Northridge) and 1.29% (Wenchuan); pooled curve 0.005%, 0.36%,
+      0.89%, 1.87%, 3.84% at H 0.09, 0.48, 0.62, 0.77, 0.865. The events'
+      curves differ by 1.3× to 70×, and the pooled curve predicts 1.05%
+      against 0.39% for Northridge and 0.61% against 1.29% for Wenchuan. The
+      spread is reported, not hidden; the pooled-versus-bracket choice is open.
+      Wenchuan has points without areas, so the published 811 km² (secondary
+      source, `verify`) is spread over them as discs.
 - [ ] Test, do not scale: run the Kaikōura check of phase 5 through the
       transfer function and report its total against the inventory, against
       Marc et al. (2016) and against the Hancox extent
@@ -171,8 +179,10 @@ from Kaikōura, so that model 2 stays an independent estimate.
 
 ### Phase 7 — Wellington forward run
 
-- [~] Built as step 11 (`steps/s11_kritikos_2015/`), writing the relative hazard H on
-      the 60 m grid; the coverage and the hand-off to step 1 wait for phase 6.
+- [x] Built as step 11 (`steps/s11_kritikos_2015/`), writing the relative hazard H and
+      the coverage on the 60 m grid, which step 1 reads with
+      `COVERAGE_MODEL = "kritikos_2015"`. Run over `wlg-pilot`: mean coverage
+      1.47%.
       A step under `src/scripts/landloss/hazard/landslide/steps/` (next free
       number), following the `adding-steps-scripts` skill: coverage on the 60 m
       grid over the study area, from the study's MM, then handed to the

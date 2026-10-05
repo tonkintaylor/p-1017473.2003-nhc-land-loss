@@ -14,13 +14,26 @@ Two things the paper does and one it leaves out:
   estimate (plan, phase 6).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 
-# The number of equal-count hazard bins the transfer function is fitted over.
+from landloss.io import ASSETS_DIR
+
+# The number of equal-weight hazard bins the transfer function is fitted over.
 DEFAULT_N_BINS = 20
+
+# The fitted curve, written by landslide step 11's
+# ``gen_kritikos_2015_transfer_function.py`` and read by its hazard script.
+TRANSFER_FUNCTION_PATH = ASSETS_DIR / "kritikos-2015-transfer-function.csv"
+
+# The columns of that file after ``hazard`` and ``coverage``: the settings the
+# hazard was built with when the curve was fitted, repeated on every row. A
+# curve is only meaningful for a hazard built the same way.
+SETTINGS_COLUMNS = ("gamma", "tpi_window_m", "fault_term")
 
 
 def success_rate_curve(
@@ -82,14 +95,48 @@ def success_rate_auc(hazard: npt.ArrayLike, landslides: npt.ArrayLike) -> float:
 
 @dataclass(frozen=True)
 class TransferFunction:
-    """A monotone map from relative hazard to areal landslide coverage."""
+    """A monotone map from relative hazard to areal landslide coverage.
+
+    ``settings`` records how the hazard was built when the curve was fitted
+    (see :data:`SETTINGS_COLUMNS`); it is empty for a curve fitted in memory.
+    """
 
     hazard: np.ndarray
     coverage: np.ndarray
+    settings: dict = field(default_factory=dict)
 
     def __call__(self, hazard: npt.ArrayLike) -> np.ndarray:
         """Return the coverage at a hazard, flat beyond the fitted range."""
         return np.interp(np.asarray(hazard, dtype=float), self.hazard, self.coverage)
+
+    def to_frame(self) -> pd.DataFrame:
+        """Return the curve as the table :func:`get_transfer_function` reads."""
+        table = pd.DataFrame({"hazard": self.hazard, "coverage": self.coverage})
+        for name in SETTINGS_COLUMNS:
+            table[name] = self.settings[name]
+        return table
+
+
+def get_transfer_function(path: Path = TRANSFER_FUNCTION_PATH) -> TransferFunction:
+    """Read the fitted hazard-to-coverage curve.
+
+    Args:
+        path: The curve's CSV, with ``hazard``, ``coverage`` and the
+            :data:`SETTINGS_COLUMNS`.
+
+    Returns:
+        The curve, carrying the settings it was fitted with.
+    """
+    table = pd.read_csv(path)
+    settings = {name: table[name].iloc[0] for name in SETTINGS_COLUMNS}
+    settings["gamma"] = float(settings["gamma"])
+    settings["tpi_window_m"] = float(settings["tpi_window_m"])
+    settings["fault_term"] = str(settings["fault_term"])
+    return TransferFunction(
+        hazard=table["hazard"].to_numpy(float),
+        coverage=table["coverage"].to_numpy(float),
+        settings=settings,
+    )
 
 
 def _pool_adjacent_violators(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
@@ -116,23 +163,29 @@ def fit_transfer_function(
     coverage: npt.ArrayLike,
     *,
     n_bins: int = DEFAULT_N_BINS,
+    weights: npt.ArrayLike | None = None,
 ) -> TransferFunction:
     """Fit a monotone hazard-to-coverage curve to an inventory.
 
-    Cells are binned by hazard into bins of equal count, the observed coverage
-    of each bin is the mean over its cells, and a non-decreasing curve is fitted
-    through the bin means by pooling adjacent violators, weighted by the cells in
-    each bin. Pool several events by concatenating their cells; fit each alone
-    to report the spread between events.
+    Cells are binned by hazard into bins of equal weight (equal count when
+    ``weights`` is not given), the observed coverage of each bin is the weighted
+    mean over its cells, and a non-decreasing curve is fitted through the bin
+    means by pooling adjacent violators, weighted by each bin's weight. Pool
+    several events by concatenating their cells, weighting each cell by one over
+    its event's cell count so that each event counts equally however large its
+    study area; fit each alone to report the spread between events.
 
     Args:
         hazard: Relative hazard per cell. Cells where it is NaN are left out.
         coverage: Observed fraction of each cell covered by landslide source
             area, same shape as ``hazard``.
-        n_bins: The number of equal-count bins.
+        n_bins: The number of bins.
+        weights: Weight of each cell, same shape as ``hazard``, or None for
+            equal weights.
 
     Returns:
-        The fitted :class:`TransferFunction`, at the mean hazard of each bin.
+        The fitted :class:`TransferFunction`, at the weighted mean hazard of
+        each bin.
 
     Raises:
         ValueError: If the shapes differ, ``n_bins`` is under 2, or there are
@@ -140,24 +193,29 @@ def fit_transfer_function(
     """
     h = np.asarray(hazard, dtype=float).ravel()
     c = np.asarray(coverage, dtype=float).ravel()
-    if h.shape != c.shape:
-        msg = "hazard and coverage must have the same shape"
+    w = np.ones_like(h) if weights is None else np.asarray(weights, dtype=float).ravel()
+    if not h.shape == c.shape == w.shape:
+        msg = "hazard, coverage and weights must have the same shape"
         raise ValueError(msg)
-    valid = np.isfinite(h) & np.isfinite(c)
-    h, c = h[valid], c[valid]
+    valid = np.isfinite(h) & np.isfinite(c) & (w > 0)
+    h, c, w = h[valid], c[valid], w[valid]
     if n_bins < 2 or h.size < n_bins:
         msg = f"need at least {max(n_bins, 2)} valid cells for {n_bins} bins"
         raise ValueError(msg)
 
     order = np.argsort(h, kind="stable")
-    h, c = h[order], c[order]
-    bins = np.array_split(np.arange(h.size), n_bins)
-    bin_h = np.array([h[b].mean() for b in bins])
-    bin_c = np.array([c[b].mean() for b in bins])
-    bin_n = np.array([b.size for b in bins], dtype=float)
+    h, c, w = h[order], c[order], w[order]
+    # Each cell goes to the bin its mid-point of cumulative weight falls in.
+    share = (np.cumsum(w) - w / 2.0) / w.sum()
+    bin_of = np.minimum((share * n_bins).astype(int), n_bins - 1)
+    bins = [np.flatnonzero(bin_of == k) for k in range(n_bins)]
+    bins = [b for b in bins if b.size]
+    bin_w = np.array([w[b].sum() for b in bins])
+    bin_h = np.array([np.average(h[b], weights=w[b]) for b in bins])
+    bin_c = np.array([np.average(c[b], weights=w[b]) for b in bins])
 
     # Bins of tied hazard share one x; keep one point per distinct hazard so the
     # curve can be interpolated.
     keep = np.concatenate([[True], np.diff(bin_h) > 0])
-    fitted = _pool_adjacent_violators(bin_c, bin_n)
+    fitted = _pool_adjacent_violators(bin_c, bin_w)
     return TransferFunction(hazard=bin_h[keep], coverage=fitted[keep])

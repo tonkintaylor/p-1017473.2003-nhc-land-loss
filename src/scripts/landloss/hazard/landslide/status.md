@@ -145,23 +145,28 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   TS1170.5-derived PGV; its separate Marc amount uses the plan's central
   interface sensitivity rather than final NSHM source geometry.
 - **Kritikos model 2** (`.agents/plans/building-kritikos-2015-landslide-model.md`)
-  has its library and forward step built and unit tested; step 11 has run over
-  `wlg-pilot` with the real AF250 traces. The paper's
+  is built end to end: step 11 has run over `wlg-pilot` with the real AF250
+  traces and writes H and a coverage raster per realisation, and step 1 reads
+  it with `COVERAGE_MODEL = "kritikos_2015"`. The paper's
   average memberships are digitised from Figure 5 to about 0.02
   (`context/lit/landslide/kritikos_2015/figures/`); the fuzzy gamma model, the
   60 m inputs, the AF250 fault reader, the success-rate AUC and the monotone
   transfer-function fit are in `landloss.hazard.landslide.models.kritikos_2015`
-  and `landloss.io.active_faults`. Step 11 writes the relative hazard H per
-  realisation; it stops there, because the hazard-to-coverage transfer function
-  still has to be fitted on Northridge and Wenchuan from the GFDB, and step 1
-  does not yet read it. The digitisation reproduces the paper's Wenchuan AUC (0.831 against
+  and `landloss.io.active_faults`. The digitisation reproduces the paper's Wenchuan AUC (0.831 against
   0.839) and brackets its Northridge value (0.867 to 0.927 by study area
   against 0.904) with Copernicus 30 m and GEM faults as stand-ins
   (`validations/kritikos_2015/`); Chi-Chi cannot be reproduced, as the GFDB
-  lacks its landslides. The TPI
+  lacks its landslides. The transfer function is fitted on Northridge and
+  Wenchuan (`gen_kritikos_2015_transfer_function.py`, committed as an io
+  asset), each event alone and pooled. The two events disagree by 1.3× to 70×
+  in coverage at the same H, and the pooled curve is 2.7× over Northridge's
+  observed coverage and 2.1× under Wenchuan's, so the curve is a judgement
+  between them, not a measurement. Wenchuan's coverage rests on a secondary-source
+  total area (811 km², runout included), marked `verify`. Over `wlg-pilot`
+  every cell is at the flat top of the MM and fault memberships and mean
+  coverage is 1.47%. The TPI
   window and class thresholds are judgements, though the AUC does not depend on
   the window. The fault term lowers Wenchuan's AUC with the GEM faults, which
-  bears on the lead's `FAULT_TERM` decision. The fault term lowers Wenchuan's AUC with the GEM faults, which
   bears on the lead's `FAULT_TERM` decision.
 - **Literature review of the first part, 2026-10-02.** Steps 3 to 5 and the
   faces plan's phases 0 to 2 were read against the 991 findings of
@@ -384,9 +389,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 7. Choose the large-model route. Run Hancox model 3 over the pilot and review
    its total and slope distribution, then run Nowicki Jessee over Wellington
    as the USGS runs it, with both models' Kaikōura tests reported.
-   Kritikos model 2 waits on the lead running its phases 5 and 6 (score
-   Kaikōura, fit the transfer function); phase 4, reproducing the paper's AUCs,
-   is done.
+   Kritikos model 2 waits on the lead scoring Kaikōura (phase 5) and
+   running it through the curve (phase 6, test do not scale), and on the
+   choice between the pooled curve and a per-event bracket; phase 4,
+   reproducing the paper's AUCs, and the fit and wiring are done.
 8. Replace the large-model runout rule with the de Vilder et al. (2022) reach
    angles; the urban rule is in the faces plan, phase 3.
 9. Add imminent-risk land to each large landslide (**T-45**), with the same
@@ -402,7 +408,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 - Hancox slope-class shares, MM and extent masks, Marc apportionment and the
   step 1 handoff in `tests/landloss/hazard/landslide/`.
 - Kritikos memberships, fuzzy gamma, inputs, AUC and transfer fit in
-  `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`; the paper's
+  `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`; the coverage
+  footprints in `test_kritikos_2015_fit.py`; the paper's
   AUCs are reproduced on Northridge and Wenchuan
   (`validations/kritikos_2015/kritikos_2015_findings.md`), not on Chi-Chi.
 - Large-model density against the Greater Wellington `SEVERITY` zonation, as a

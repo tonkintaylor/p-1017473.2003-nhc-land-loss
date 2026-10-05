@@ -39,8 +39,12 @@ import rasterio
 import rioxarray  # noqa: F401 - registers the .rio accessor
 import xarray as xr
 from rasterio.enums import Resampling
+from rasterio.features import rasterize
 from rasterio.merge import merge
+from rasterio.transform import from_origin
+from scipy.ndimage import convolve
 
+from landloss.hazard.landslide.models.kritikos_2015 import inputs
 from landloss.io import gfdb
 from landloss.io.shakemap import get_shakemap_grid
 from scripts.landloss.paths import TEMP_DIR
@@ -60,6 +64,14 @@ COPERNICUS_URL = (
 # The cell size of the model's grid.
 RESOLUTION_M = 60.0
 
+# How many times finer a polygon inventory is burned than the 60 m grid, to turn
+# polygons into the fraction of each cell they cover.
+SUPERSAMPLE = 10
+
+# Margin of DEM kept beyond the widest study area, so the TPI window and the
+# slope have ground to work from at its edge.
+DEM_EDGE_M = 2000.0
+
 
 @dataclass(frozen=True)
 class Event:
@@ -73,6 +85,9 @@ class Event:
     shakemap_url: str
     published_auc: float
     published_auc_over_5deg: float
+    # The inventory's published total landslide area, for a points inventory
+    # that carries no area of its own. None where the polygons give it.
+    total_area_km2: float | None = None
 
 
 EVENTS = {
@@ -101,6 +116,9 @@ EVENTS = {
         ),
         published_auc=0.839,
         published_auc_over_5deg=0.845,
+        # 811 km2 over about 60,000 landslides, as reported by Gorum et al.
+        # (2011) [gorum_2011]; read from a secondary summary, so verify.
+        total_area_km2=811.0,
     ),
 }
 
@@ -115,13 +133,8 @@ def _download(url, path, *, use_cache):
     return path
 
 
-def get_landslide_points(event, *, use_cache):
-    """Return the event's landslides as one point each, in the event's UTM CRS.
-
-    The paper reduces landslide polygons to a point at the top of each. This
-    takes the polygon's representative point instead, which lies inside it; a
-    polygon is far smaller than the 60 m cell except for the largest ones.
-    """
+def get_landslides(event, *, use_cache):
+    """Return the event's landslides from the GFDB, in the event's UTM CRS."""
     read = (
         gfdb.get_gfdb_ground_failure_polygons
         if event.gfdb_layer == "polygons"
@@ -132,9 +145,7 @@ def get_landslide_points(event, *, use_cache):
         (landslides["type"] == "Landslide")
         & (landslides["inventory_name"] == event.gfdb_inventory)
     ]
-    landslides = landslides.to_crs(event.utm_crs)
-    points = landslides.geometry.representative_point()
-    return gpd.GeoSeries(points, crs=event.utm_crs)
+    return landslides.to_crs(event.utm_crs)
 
 
 def get_shakemap_mmi(event, *, use_cache):
@@ -233,3 +244,134 @@ def get_faults_utm(event, template, *, use_cache):
     margin = 0.6  # a bit over the 55 km far-field reach, in degrees
     faults = faults.cx[left - margin : right + margin, bottom - margin : top + margin]
     return faults.to_crs(event.utm_crs)
+
+
+def count_landslides(points, template):
+    """Return the number of landslide points falling in each cell of a grid."""
+    x = template["x"].to_numpy()
+    y = template["y"].to_numpy()
+    col = np.floor((points.x.to_numpy() - (x[0] - 30.0)) / 60.0).astype(int)
+    row = np.floor(((y[0] + 30.0) - points.y.to_numpy()) / 60.0).astype(int)
+    inside = (row >= 0) & (row < y.size) & (col >= 0) & (col < x.size)
+    counts = np.zeros(template.shape)
+    np.add.at(counts, (row[inside], col[inside]), 1.0)
+    return counts
+
+
+def spread_footprint_weights(area_m2):
+    """Return the share of one landslide's footprint falling in each grid cell.
+
+    The footprint is a disc of ``area_m2`` centred on the middle of a cell,
+    estimated by burning a point grid ``SUPERSAMPLE`` times finer than the cell.
+
+    Returns:
+        A small square array of weights summing to one, with the centre cell in
+        the middle.
+    """
+    radius = math.sqrt(area_m2 / math.pi)
+    half = math.ceil(radius / RESOLUTION_M - 0.5)
+    fine = RESOLUTION_M / SUPERSAMPLE
+    n = (2 * half + 1) * SUPERSAMPLE
+    offsets = (np.arange(n) + 0.5) * fine - n * fine / 2.0
+    inside = offsets[:, None] ** 2 + offsets[None, :] ** 2 <= radius**2
+    weights = inside.reshape(2 * half + 1, SUPERSAMPLE, 2 * half + 1, SUPERSAMPLE)
+    weights = weights.sum(axis=(1, 3)).astype(float)
+    return weights / weights.sum()
+
+
+def gen_coverage(event, landslides, counts, template):
+    """Return the fraction of each 60 m cell covered by landslide area.
+
+    A polygon inventory gives the area directly: the polygons are burned onto a
+    grid ten times finer and averaged back up. A points inventory carries no
+    area, so each landslide is given the inventory's mean area, its published
+    total over its count, as a disc centred on its point. The mean area is
+    larger than a 60 m cell, so it is spread over the cells around the point
+    rather than put in one, which keeps the total area. That assumption spreads
+    the area evenly over the landslides and, for Gorum et al. (2011), includes
+    the runout the polygons were drawn around. Coverage is capped at one.
+
+    Args:
+        event: The event, for its inventory type and total area.
+        landslides: The event's landslides, as read by :func:`get_landslides`.
+        counts: Landslide points per cell, from :func:`count_landslides`.
+        template: The 60 m grid.
+
+    Returns:
+        Coverage per cell, same shape as ``template``.
+
+    Raises:
+        ValueError: If a points inventory has no published total area.
+    """
+    cell_m2 = RESOLUTION_M**2
+    if event.gfdb_layer == "points":
+        if event.total_area_km2 is None:
+            msg = f"{event.name} is a points inventory with no total area"
+            raise ValueError(msg)
+        mean_area_m2 = event.total_area_km2 * 1e6 / len(landslides)
+        spread = convolve(
+            counts, spread_footprint_weights(mean_area_m2), mode="constant"
+        )
+        return np.minimum(spread * mean_area_m2 / cell_m2, 1.0)
+
+    x = template["x"].to_numpy()
+    y = template["y"].to_numpy()
+    fine = RESOLUTION_M / SUPERSAMPLE
+    transform = from_origin(
+        x[0] - RESOLUTION_M / 2, y[0] + RESOLUTION_M / 2, fine, fine
+    )
+    burned = rasterize(
+        landslides.geometry,
+        out_shape=(y.size * SUPERSAMPLE, x.size * SUPERSAMPLE),
+        transform=transform,
+        dtype="uint8",
+    )
+    return (
+        burned.reshape(y.size, SUPERSAMPLE, x.size, SUPERSAMPLE)
+        .mean(axis=(1, 3), dtype="float64")
+        .astype(float)
+    )
+
+
+def build_event_layers(event, *, tpi_windows_m, max_margin_m, use_cache):
+    """Return the model inputs and the observed landslides for one event.
+
+    The grid covers the inventory's bounding box plus ``max_margin_m``, the
+    widest study area scored; the caller picks the study area from it.
+
+    Returns:
+        A dict with ``mm``, ``slope``, ``fault_km``, ``position`` (a dict by TPI
+        window), ``counts`` (landslide points per cell) and ``coverage``
+        (landslide area fraction per cell), all aligned 60 m grids as arrays,
+        with ``x``, ``y``, ``bounds`` (the inventory's) and ``n_landslides``.
+    """
+    landslides = get_landslides(event, use_cache=use_cache)
+    points = landslides.geometry.representative_point()
+    minx, miny, maxx, maxy = points.total_bounds
+    edge = max_margin_m + DEM_EDGE_M
+    padded = (minx - edge, miny - edge, maxx + edge, maxy + edge)
+    dem = get_dem_60m(event, padded, use_cache=use_cache)
+    dem_60m, slope = inputs.gen_slope_60m(dem)
+
+    mmi = get_shakemap_mmi(event, use_cache=use_cache)
+    mm = get_mmi_on(mmi, dem_60m)
+    faults = get_faults_utm(event, dem_60m, use_cache=use_cache)
+    fault_km = inputs.gen_fault_distance_km(faults, dem_60m)
+
+    position = {
+        window: inputs.gen_slope_position(dem_60m, slope, window_m=window)
+        for window in tpi_windows_m
+    }
+    counts = count_landslides(points, dem_60m)
+    return {
+        "mm": mm.to_numpy(),
+        "slope": slope.to_numpy(),
+        "fault_km": fault_km.to_numpy(),
+        "position": {w: p.to_numpy() for w, p in position.items()},
+        "counts": counts,
+        "coverage": gen_coverage(event, landslides, counts, dem_60m),
+        "x": dem_60m["x"].to_numpy(),
+        "y": dem_60m["y"].to_numpy(),
+        "bounds": (minx, miny, maxx, maxy),
+        "n_landslides": len(points),
+    }

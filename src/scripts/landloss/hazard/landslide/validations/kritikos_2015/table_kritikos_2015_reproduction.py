@@ -24,7 +24,7 @@ Writes ``kritikos_2015_reproduction.csv`` under the report folder's
 import numpy as np
 import pandas as pd
 
-from landloss.hazard.landslide.models.kritikos_2015 import evaluation, inputs, model
+from landloss.hazard.landslide.models.kritikos_2015 import evaluation, model
 from scripts.landloss.hazard.landslide.validations.kritikos_2015 import (
     config,
     event_inputs,
@@ -33,62 +33,6 @@ from scripts.landloss.paths import REPORT_DIR
 
 TAB_DIR = REPORT_DIR / "hazard" / "landslide" / "kritikos-2015-validation" / "tab"
 TAB_NAME = "kritikos_2015_reproduction.csv"
-
-# Margin of DEM kept beyond the widest study area, so the TPI window and the
-# slope have ground to work from at its edge.
-DEM_EDGE_M = 2000.0
-
-
-def count_landslides(points, template):
-    """Return the number of landslide points falling in each cell of a grid."""
-    x = template["x"].to_numpy()
-    y = template["y"].to_numpy()
-    col = np.floor((points.x.to_numpy() - (x[0] - 30.0)) / 60.0).astype(int)
-    row = np.floor(((y[0] + 30.0) - points.y.to_numpy()) / 60.0).astype(int)
-    inside = (row >= 0) & (row < y.size) & (col >= 0) & (col < x.size)
-    counts = np.zeros(template.shape)
-    np.add.at(counts, (row[inside], col[inside]), 1.0)
-    return counts
-
-
-def build_event_layers(event, *, tpi_windows_m, max_margin_m, use_cache):
-    """Return the model inputs and landslide counts for one event.
-
-    The grid covers the inventory's bounding box plus ``max_margin_m``, the
-    widest study area scored; :func:`score` picks the study area from it.
-
-    Returns:
-        A dict with ``mm``, ``slope``, ``fault_km``, ``position`` (a dict by TPI
-        window) and ``counts``, all aligned 60 m grids as arrays, with ``x``,
-        ``y``, ``bounds`` (the inventory's) and ``n_landslides``.
-    """
-    points = event_inputs.get_landslide_points(event, use_cache=use_cache)
-    minx, miny, maxx, maxy = points.total_bounds
-    edge = max_margin_m + DEM_EDGE_M
-    padded = (minx - edge, miny - edge, maxx + edge, maxy + edge)
-    dem = event_inputs.get_dem_60m(event, padded, use_cache=use_cache)
-    dem_60m, slope = inputs.gen_slope_60m(dem)
-
-    mmi = event_inputs.get_shakemap_mmi(event, use_cache=use_cache)
-    mm = event_inputs.get_mmi_on(mmi, dem_60m)
-    faults = event_inputs.get_faults_utm(event, dem_60m, use_cache=use_cache)
-    fault_km = inputs.gen_fault_distance_km(faults, dem_60m)
-
-    position = {
-        window: inputs.gen_slope_position(dem_60m, slope, window_m=window)
-        for window in tpi_windows_m
-    }
-    return {
-        "mm": mm.to_numpy(),
-        "slope": slope.to_numpy(),
-        "fault_km": fault_km.to_numpy(),
-        "position": {w: p.to_numpy() for w, p in position.items()},
-        "counts": count_landslides(points, dem_60m),
-        "x": dem_60m["x"].to_numpy(),
-        "y": dem_60m["y"].to_numpy(),
-        "bounds": (minx, miny, maxx, maxy),
-        "n_landslides": len(points),
-    }
 
 
 def score(
@@ -153,7 +97,7 @@ def main(
     rows = []
     for name in events:
         event = event_inputs.EVENTS[name]
-        layers = build_event_layers(
+        layers = event_inputs.build_event_layers(
             event,
             tpi_windows_m=windows,
             max_margin_m=max(study_area_margins_m),

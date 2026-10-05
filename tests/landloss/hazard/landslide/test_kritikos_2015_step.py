@@ -7,6 +7,10 @@ import xarray as xr
 from shapely.geometry import LineString
 
 from landloss.domain import constants
+from landloss.hazard.landslide.models.kritikos_2015 import evaluation
+from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015 import (
+    config,
+)
 from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015 import (
     gen_kritikos_2015_hazard as step,
 )
@@ -124,11 +128,17 @@ def test_build_hazard_rises_with_pgv_and_is_nan_where_pgv_is():
     assert gentle.shape == hazard_strong.shape
 
 
-def test_main_writes_one_hazard_grid_per_realisation(monkeypatch):
+def test_main_writes_a_hazard_and_a_coverage_grid_per_realisation(monkeypatch):
     dem = ramp_dem()
     pgv = grid(np.full((24, 24), 0.5), cell=100.0, name="pgv_m_s")
     written = []
+    curve = evaluation.TransferFunction(
+        hazard=np.array([0.0, 1.0]),
+        coverage=np.array([0.0, 0.04]),
+        settings={"gamma": 0.9, "tpi_window_m": 600.0, "fault_term": "far_field"},
+    )
 
+    monkeypatch.setattr(step.evaluation, "get_transfer_function", lambda: curve)
     monkeypatch.setattr(
         step.gen_multiscale_slope,
         "dem_path",
@@ -157,6 +167,46 @@ def test_main_writes_one_hazard_grid_per_realisation(monkeypatch):
 
     assert [path.name for _, path in written] == [
         "kritikos-2015-hazard-r000-pilot.tif",
+        "kritikos-2015-coverage-r000-pilot.tif",
         "kritikos-2015-hazard-r002-pilot.tif",
+        "kritikos-2015-coverage-r002-pilot.tif",
     ]
-    assert all(raster.name == "kritikos_2015_hazard" for raster, _ in written)
+    hazard, coverage = written[0][0], written[1][0]
+    assert hazard.name == "kritikos_2015_hazard"
+    assert coverage.name == "kritikos_2015_coverage"
+    both = np.isfinite(hazard.to_numpy())
+    assert np.array_equal(both, np.isfinite(coverage.to_numpy()))
+    assert np.allclose(
+        coverage.to_numpy()[both], 0.04 * hazard.to_numpy()[both], atol=1e-6
+    )
+
+
+def test_coverage_path_names_the_model_realisation_and_extent():
+    assert (
+        step.coverage_path(3, extent="wlg-pilot").name
+        == "kritikos-2015-coverage-r003-pilot.tif"
+    )
+
+
+def test_a_curve_fitted_with_other_settings_is_refused():
+    curve = evaluation.TransferFunction(
+        hazard=np.array([0.0, 1.0]),
+        coverage=np.array([0.0, 0.04]),
+        settings={"gamma": 0.9, "tpi_window_m": 600.0, "fault_term": "mapped"},
+    )
+    step.check_transfer_function(
+        curve, gamma=0.9, tpi_window_m=600.0, fault_term="mapped"
+    )
+    with pytest.raises(ValueError, match="gen_kritikos_2015_transfer_function"):
+        step.check_transfer_function(
+            curve, gamma=0.8, tpi_window_m=600.0, fault_term="mapped"
+        )
+
+
+def test_the_committed_curve_matches_the_committed_settings():
+    step.check_transfer_function(
+        evaluation.get_transfer_function(),
+        gamma=config.GAMMA,
+        tpi_window_m=config.TPI_WINDOW_M,
+        fault_term=config.FAULT_TERM,
+    )

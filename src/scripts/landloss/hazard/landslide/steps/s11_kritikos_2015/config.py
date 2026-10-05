@@ -28,3 +28,23 @@ TPI_SD_M = None
 # (no mapped fault ruptures). The decisions table of the plan names "mapped"
 # as the base case until the lead decides.
 FAULT_TERM = "mapped"
+
+# The events the hazard-to-coverage transfer function is fitted on, from
+# validations/kritikos_2015/event_inputs.EVENTS: the two the paper's memberships
+# were derived from, so that model 2 stays independent of Kaikoura, which is
+# where the portfolio is tested (the plan's phase 6). The curve is fitted with
+# this file's GAMMA, TPI_WINDOW_M and FAULT_TERM, and the hazard script refuses
+# a curve fitted with different ones.
+FIT_EVENTS = ["northridge", "wenchuan"]
+
+# How far the fitting study area extends beyond each inventory's bounding box,
+# in metres. The paper does not define one; the AUC reproduction found it moves
+# the score more than anything else, and it moves the low-hazard end of the
+# coverage curve the same way.
+FIT_MARGIN_M = 0.0
+
+# The number of hazard bins the curve is fitted over.
+FIT_N_BINS = 20
+
+# Reuse downloaded event inputs and the per-event GFDB cache.
+USE_CACHE = True

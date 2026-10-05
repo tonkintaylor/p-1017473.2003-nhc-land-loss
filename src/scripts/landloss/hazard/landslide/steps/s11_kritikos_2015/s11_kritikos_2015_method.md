@@ -34,15 +34,44 @@
 - `hazard_path()` names one float32 raster of the relative hazard H, 0 to 1,
   per shaking realisation under `temp/hazard/landslide/`, with
   `extent_suffix()` separating pilot and full-study outputs.
-- The step writes H, not a coverage. The transfer function from H to areal
-  coverage is fitted on Northridge and Wenchuan by
-  `evaluation.fit_transfer_function()`, which needs the GFDB inventories
-  (`landloss.io.gfdb`, now read from the local cache); step 1 does not yet read
-  this model.
-- The memberships, fuzzy gamma, inputs, success-rate AUC, transfer fit and the
-  fault reader are covered by
-  `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`, and the step's
-  fault-term switch, output names and run by
-  `tests/landloss/hazard/landslide/test_kritikos_2015_step.py`.
+- H is a relative score, so it is turned into areal coverage by a transfer
+  function fitted once, by `gen_kritikos_2015_transfer_function.py`, and
+  committed as `landloss/io/assets/kritikos-2015-transfer-function.csv`.
+  For each fitting event (`FIT_EVENTS`: Northridge and Wenchuan, the two the
+  paper's memberships were derived from, so Kaikōura stays a test) the script
+  builds H over the inventory's bounding box (`FIT_MARGIN_M` beyond it) with
+  this config's `GAMMA`, `TPI_WINDOW_M` and `FAULT_TERM`, and an observed
+  coverage grid from the inventory (`validations/kritikos_2015/event_inputs.py`).
+  `evaluation.fit_transfer_function()` then sorts cells by H, cuts them into
+  `FIT_N_BINS` bins of equal cumulative weight and takes each bin's mean H and
+  mean coverage. Each event is fitted alone, and the committed curve pools the
+  two with every cell of an event weighted 1/(its cell count), so that the
+  16 million Wenchuan cells do not swamp the 1.7 million Northridge ones.
+- Observed coverage is the share of a 60 m cell covered by landslide. Northridge
+  is polygons (Harp & Jibson), burned at 10× supersampling and block-averaged.
+  Wenchuan (Gorum et al. [gorum_2011]) is points with no areas in the GFDB, so
+  the published total of 811 km² (a secondary-source figure, marked `verify`) is
+  divided by the count and each landslide is spread as a disc of that mean area
+  (13,490 m², more than one 60 m cell) by convolution, which conserves area.
+  That area includes runout, so it overstates source area against Northridge's
+  source polygons; the two events' coverages are not strictly the same quantity.
+- `gen_kritikos_2015_hazard.py` applies the committed curve to H and writes the
+  coverage as `kritikos_coverage_path()`, one float32 raster per realisation,
+  which step 1 reads with `COVERAGE_MODEL = "kritikos_2015"`. It refuses the run
+  if the curve's recorded gamma, TPI window or fault term differ from
+  `config.py`; rerun the fit script after changing any of them.
+- The fitted events disagree. Where both exceed 0.01% coverage their curves
+  differ by a factor of 1.3 to 70, Wenchuan being higher over H 0.4–0.75 and
+  flat at about 4.5% above 0.74, Northridge steeper at the top (3.3% at 0.865).
+  The pooled curve applied back to each event's own cells gives 1.05% for
+  Northridge against 0.39% observed (2.7× over) and 0.61% for Wenchuan against
+  1.29% observed (2.1× under). The fit also depends on the study area, which the
+  paper does not define; only margin 0 has been fitted.
+- The memberships, fuzzy gamma, inputs, success-rate AUC, weighted transfer fit
+  and the fault reader are covered by
+  `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`; the step's
+  fault-term switch, output names, curve check and run by
+  `test_kritikos_2015_step.py`; and the coverage footprints and fit helpers by
+  `test_kritikos_2015_fit.py`.
 
 Potential future improvements: see `s11_kritikos_2015_implementation_plan.md`.

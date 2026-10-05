@@ -89,6 +89,33 @@ The GFDB is read with `landloss.io.gfdb` from the copy of the delivery in
 this geodatabase, so the reader now filters with `LIKE` and compares exactly in
 pandas. Rerunning the script as committed, from the cache, gives the same table.
 
+## The transfer function from H to coverage
+
+`steps/s11_kritikos_2015/gen_kritikos_2015_transfer_function.py` fits it on
+the same two events, over the inventory bounding box, with the step's settings
+(γ 0.9, TPI 600 m, mapped faults). Tables: `report/hazard/landslide/
+kritikos-2015-validation/tab/kritikos_2015_transfer_function*.csv`.
+
+| Event | Cells | Observed mean coverage | Pooled curve gives |
+| --- | --- | --- | --- |
+| Northridge | 1.71 M | 0.39% | 1.05% (2.7× over) |
+| Wenchuan | 16.1 M | 1.29% | 0.61% (2.1× under) |
+
+- The pooled curve rises from 0.005% at H 0.09 to 0.36% at 0.48, 0.89% at 0.62,
+  1.87% at 0.77 and 3.84% at 0.865.
+- The events disagree. Where both exceed 0.01% the curves differ by 1.3× to 70×:
+  Wenchuan is higher over H 0.4–0.75 and saturates near 4.5% above 0.74;
+  Northridge is lower in the middle and steep at the top. The same H does not
+  mean the same coverage in the two earthquakes, so the pooled curve is a
+  compromise and the per-event curves are the honest range.
+- Wenchuan's points carry no area. Coverage there is the published 811 km²
+  [gorum_2011] (a secondary-source figure, `verify`) divided by the count and
+  spread as discs, which conserves area. It includes runout, so it is not the
+  same quantity as Northridge's source polygons (mean 2,144 m² against 13,490 m²).
+  A first version capped coverage per cell and lost most of the area (0.37%).
+- Not yet run: other study-area margins, which moved the AUC by up to 0.06, and
+  so will move this curve.
+
 ## Licences and sources
 
 Working copies sit in `temp/reference/kritikos_2015_validation/` with a

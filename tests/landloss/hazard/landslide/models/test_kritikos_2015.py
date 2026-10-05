@@ -262,6 +262,45 @@ class TestEvaluation:
         with pytest.raises(ValueError, match="valid cells"):
             evaluation.fit_transfer_function([1.0, 2.0], [0.1, 0.2], n_bins=5)
 
+    def test_weights_make_each_event_count_equally(self):
+        # A big event at coverage 0.1 and a small one at 0.3, over the same
+        # hazards: equal weighting must land between them, not on the big one.
+        hazard = np.concatenate([np.linspace(0, 1, 900), np.linspace(0, 1, 100)])
+        coverage = np.concatenate([np.full(900, 0.1), np.full(100, 0.3)])
+        weights = np.concatenate([np.full(900, 1 / 900), np.full(100, 1 / 100)])
+        unweighted = evaluation.fit_transfer_function(hazard, coverage, n_bins=5)
+        weighted = evaluation.fit_transfer_function(
+            hazard, coverage, n_bins=5, weights=weights
+        )
+        assert unweighted(0.5) == pytest.approx(0.12, abs=0.02)
+        assert weighted(0.5) == pytest.approx(0.2, abs=0.02)
+
+    def test_weights_must_match_the_cells(self):
+        with pytest.raises(ValueError, match="same shape"):
+            evaluation.fit_transfer_function(
+                [1.0, 2.0, 3.0], [0.1, 0.2, 0.3], n_bins=2, weights=[1.0, 1.0]
+            )
+
+    def test_transfer_function_round_trips_through_its_file(self, tmp_path):
+        settings = {"gamma": 0.9, "tpi_window_m": 600.0, "fault_term": "mapped"}
+        fn = evaluation.TransferFunction(
+            hazard=np.array([0.2, 0.5, 0.9]),
+            coverage=np.array([0.0, 0.01, 0.04]),
+            settings=settings,
+        )
+        path = tmp_path / "curve.csv"
+        fn.to_frame().to_csv(path, index=False)
+        back = evaluation.get_transfer_function(path)
+        assert back.settings == settings
+        assert back(0.7) == pytest.approx(fn(0.7))
+
+    def test_the_committed_curve_is_monotone_and_a_coverage(self):
+        fn = evaluation.get_transfer_function()
+        assert np.all(np.diff(fn.hazard) > 0)
+        assert np.all(np.diff(fn.coverage) >= 0)
+        assert fn.coverage.min() >= 0
+        assert fn.coverage.max() <= 1
+
 
 class TestActiveFaultsReader:
     def _write(self, directory, name="af250.gpkg"):

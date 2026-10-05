@@ -24,7 +24,10 @@
   topographic position (`gen_terrain_derivatives.terrain_path`).
 - `read_model_coverage()` reads the model selected by `COVERAGE_MODEL`.
   `"hancox_1997"`, the committed setting, reads the per-realisation source
-  coverage written by step 10; `"esnz"` reads the supplied probability through
+  coverage written by step 10; `"kritikos_2015"` reads the one written by step
+  11 (`gen_kritikos_2015_hazard.coverage_path`), the Kritikos relative hazard
+  through its fitted transfer function, used as it stands like Hancox's;
+  `"esnz"` reads the supplied probability through
   `landloss.io.source_material.get_eil_landslide_probability` from the path in
   `EIL_PROBABILITY_SOURCE_PATH`.
 - Each selected grid is used at its own scale, neither rescaled nor clipped.
@@ -34,8 +37,9 @@
   many landslides.
 - **The working grid is the 10 m DEM grid** the slope units were cut on.
   `align_probability()` puts the selected grid onto it nearest neighbour
-  (`rio.reproject_match`); the Hancox grid is already aligned and the ESNZ
-  grid's 32 m cells are repeated over the 10 m cells they contain.
+  (`rio.reproject_match`); the Hancox grid is already aligned, the Kritikos
+  grid's 60 m cells are repeated over the 10 m cells they contain, and the ESNZ
+  grid's 32 m cells likewise.
   `unit_labels()` burns the units onto that grid, one
   label per unit; the probability, position, slope and aspect are then read
   cell for cell.
@@ -50,7 +54,8 @@
 - **Expected failed area per unit** is computed by `expected_failed_area_m2()`:
   the sum over the unit's cells of model coverage times cell area, times the
   value from `coverage_source_area_fraction()`, times one minus
-  `URBAN_AREA_SHARE`. Hancox's value is already source coverage and uses a
+  `URBAN_AREA_SHARE`. Hancox's and Kritikos's values are already source
+  coverage and use a
   fraction of 1. ESNZ uses `BETA_SOURCE_AREA_FRACTION` 0.252, the phase 1
   areal-coverage placeholder. The
   urban share, 0.25, is the share of the inventory's area the urban model

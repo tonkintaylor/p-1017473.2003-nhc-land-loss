@@ -1,8 +1,8 @@
 # Step 11 — Kritikos (2015) relative hazard: implementation plan
 
-**Status:** The library, the forward step and their unit tests are built. The
-coverage conversion and the checks against the paper and Kaikōura wait on the
-lead, because they read `R:`.
+**Status:** The library, the forward step, the fitted transfer function and
+step 1's reading of the coverage are built and tested. Kaikōura's score and
+total, and the Wellington sensitivities, are still to do.
 
 The plan for the model as a whole is
 `.agents/plans/building-kritikos-2015-landslide-model.md`.
@@ -32,16 +32,24 @@ The plan for the model as a whole is
 
 ## Phase 3 — Convert H to coverage
 
-- [ ] Fit `evaluation.fit_transfer_function()` on Northridge and Wenchuan.
-- [ ] Add the fitted curve to this step so it writes a coverage raster, and add
+- [x] Fit `evaluation.fit_transfer_function()` on Northridge and Wenchuan
+      (`gen_kritikos_2015_transfer_function.py`); pooled curve committed.
+- [x] Add the fitted curve to this step so it writes a coverage raster, and add
       `kritikos_2015` to step 1's `LARGE_MODELS` and `read_model_coverage()`.
 - [ ] Report Kaikōura's total through the curve, against Marc et al. (2016) and
       the Hancox extent, without rescaling.
+- [ ] Decide between the pooled curve and a per-event bracket: the two events'
+      curves differ by 1.3× to 70×, and the pooled curve is 2.7× over on
+      Northridge and 2.1× under on Wenchuan.
+- [ ] Refit with `FIT_MARGIN_M` of 5 and 15 km to see how far the curve depends
+      on the study area (needs a path that does not overwrite the asset).
+- [ ] Replace the secondary-source Wenchuan area (811 km²) with Gorum et al.'s.
 
 ## Phase 4 — Run Wellington
 
-- [ ] Run over `wlg-pilot` and read the printed saturation: the share of cells
-      at MM 9 or above and within 10 km of a mapped fault.
+- [x] Run over `wlg-pilot` and read the printed saturation: every cell is at MM 9
+      or above and within 10 km of a mapped fault, so the pilot sits on the flat
+      top of both memberships. Mean coverage 1.47% (H median 0.70).
 - [ ] Run the sensitivities in `config.py`: `TPI_WINDOW_M` of 300 and 1200,
       `GAMMA` of 0.8, and `FAULT_TERM = "far_field"`.
 - [ ] Fix `TPI_SD_M` to the full-study value, then run the four territorial

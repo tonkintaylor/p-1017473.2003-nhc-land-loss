@@ -1,7 +1,8 @@
 """Draw one realisation of the large landslides, placed one slope unit at a time.
 
 A model grid gives each cell's expected large-landslide coverage: the Hancox
-model 3 grid written by step 10 on the committed settings, or the supplied ESNZ
+model 3 grid written by step 10 on the committed settings, the Kritikos model 2
+coverage written by step 11, or the supplied ESNZ
 probability grid when `COVERAGE_MODEL` selects it. It cannot say how much land a
 claim covers, or whose land the debris lands on, because it holds no landslides.
 This script draws a set of them, the **large** population of plan section 10:
@@ -18,7 +19,7 @@ rather than passing flags, so that what a run did can be read off the source.
 The step reads only hazard outputs: the selected coverage, the slope units from step 5
 (``slope_units_path``), the 10 m DEM, slope and aspect from step 3 and its 100 m
 topographic position, the step 4 ground map, and the supplied probability grid,
-or the step 10 Hancox coverage, on the 10 m DEM grid so every per-cell product below is cell
+or the step 10 Hancox or step 11 Kritikos coverage, on the 10 m DEM grid so every per-cell product below is cell
 aligned. It fetches nothing.
 
 **No large landslide starts on flat land** (the project lead, 2026-10-02). The
@@ -32,7 +33,7 @@ Nine stages, each of which is a stated assumption rather than a measurement.
 
 1. **Expected failed area per unit.** The sum over the unit's cells of model
    coverage times cell area, times the model's source-area fraction (1 for
-   Hancox coverage; :data:`BETA_SOURCE_AREA_FRACTION` for ESNZ), times one
+   Hancox and Kritikos coverage; :data:`BETA_SOURCE_AREA_FRACTION` for ESNZ), times one
    minus ``URBAN_AREA_SHARE`` (the share of the inventory's area the urban
    model draws instead).
 2. **A count per unit**, a Poisson draw with mean the expected area over the
@@ -104,6 +105,9 @@ from scripts.landloss.hazard.landslide.steps.s5_slope_units.gen_slope_units impo
 )
 from scripts.landloss.hazard.landslide.steps.s10_hancox_1997.gen_hancox_1997_coverage import (
     coverage_path as hancox_coverage_path,
+)
+from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015.gen_kritikos_2015_hazard import (
+    coverage_path as kritikos_coverage_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 
@@ -181,7 +185,7 @@ SIZE_EXPONENT = 2.1
 # Kaikōura inventory (phase 2 of the plan) sets it.
 BETA_SOURCE_AREA_FRACTION = 0.252
 
-LARGE_MODELS = ("esnz", "hancox_1997")
+LARGE_MODELS = ("esnz", "hancox_1997", "kritikos_2015")
 
 # How many of a unit's highest-weight cells a failure's seed is chosen among.
 # A single best cell would seed every failure in the unit at the same place; a
@@ -323,7 +327,7 @@ def coverage_source_area_fraction(coverage_model):
     """Return the conversion from a model grid to expected source coverage."""
     if coverage_model == "esnz":
         return BETA_SOURCE_AREA_FRACTION
-    if coverage_model == "hancox_1997":
+    if coverage_model in ("hancox_1997", "kritikos_2015"):
         return 1.0
     msg = f"large model must be one of {LARGE_MODELS}, not {coverage_model!r}"
     raise ValueError(msg)
@@ -335,6 +339,8 @@ def read_model_coverage(*, coverage_model, bbox, extent, realisation_id, templat
         supplied = read_probability(bbox)
     elif coverage_model == "hancox_1997":
         supplied = read_grid(hancox_coverage_path(realisation_id, extent=extent))
+    elif coverage_model == "kritikos_2015":
+        supplied = read_grid(kritikos_coverage_path(realisation_id, extent=extent))
     else:
         coverage_source_area_fraction(coverage_model)
     return align_probability(supplied, template)

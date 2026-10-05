@@ -27,9 +27,11 @@ EXTENT = "wlg-pilot"
 REALISATION_IDS = [0]
 
 # The large-landslide coverage model handed to the placement machinery.
-# ``hancox_1997`` reads the coverage raster written by step 10. ``esnz`` keeps
-# the supplied probability-grid route available as the other built portfolio
-# member.
+# ``hancox_1997`` reads the coverage raster written by step 10 and
+# ``kritikos_2015`` the one written by step 11 (the Kritikos relative hazard
+# through its fitted transfer function), both used directly as the expected
+# source-area coverage. ``esnz`` keeps the supplied probability-grid route
+# available as the other built portfolio member.
 COVERAGE_MODEL = "hancox_1997"
 
 # The smallest source a large-model failure can have, in square metres: the top
