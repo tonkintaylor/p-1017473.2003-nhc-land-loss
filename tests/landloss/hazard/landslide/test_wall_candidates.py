@@ -6,9 +6,12 @@ import pytest
 import shapely
 
 from landloss.hazard.landslide.wall_candidates import (
+    GNS_ONLY_CLASS,
     NOT_CANDIDATE,
     SIZ_CLASS,
     SMALL_CLASS,
+    gen_gns_only_candidates,
+    property_of_pifs,
     wall_candidate_evidence,
 )
 
@@ -93,3 +96,73 @@ def test_every_layer_may_be_empty(pifs):
         NOT_CANDIDATE,
     ]
     assert evidence["gns_wall_m"].isna().all()
+
+
+@pytest.fixture
+def properties():
+    """Two rateable properties side by side, a road parcel and a far one."""
+    return _layer(
+        [
+            shapely.box(-10, -10, 50, 10),
+            shapely.box(50, -10, 150, 10),
+            shapely.box(150, -10, 250, 10),
+            shapely.box(290, -10, 340, 10),
+        ],
+        source_id=[1, 2, 3, 4],
+        source=["NZ Unit of Property"] * 2
+        + ["NZ Primary Parcels - Road", "NZ Unit of Property"],
+        valuation_reference=["A", "B", None, "D"],
+        title_type=["Freehold", "Unit", None, "Freehold"],
+    )
+
+
+def _pif_table(point_sets):
+    table = _layer([shapely.MultiPoint(points) for points in point_sets])
+    table.index = pd.Index(range(1, len(point_sets) + 1), name="pif_id")
+    return table
+
+
+def test_a_pif_takes_the_property_holding_most_of_its_points(properties):
+    sizs = _pif_table(
+        [
+            [(0, 0), (1, 0)],
+            [(48, 0), (49, 0), (51, 0)],
+            [(200, 0)],
+            [(500, 500)],
+        ]
+    )
+    result = property_of_pifs(sizs, properties)
+    assert result["property_id"].tolist()[:3] == ["1", "1", "3"]
+    assert result["valuation_reference"].tolist()[:2] == ["A", "A"]
+    assert result["property_is_road"].tolist()[:3] == [False, False, True]
+    assert result["property_share"].tolist() == pytest.approx([1.0, 2 / 3, 1.0, 0.0])
+    assert result["n_properties"].tolist() == [1, 2, 1, 0]
+    assert pd.isna(result.loc[4, "property_id"])
+
+
+def test_a_mapped_wall_with_no_pip_near_it_becomes_a_gns_only_candidate(properties):
+    sizs = _pif_table([[(100, 0), (101, 0)]])
+    walls = _layer(
+        [
+            shapely.LineString([(100.5, 1.0), (100.5, 5.0)]),
+            shapely.LineString([(300.0, 0.0), (330.0, 0.0)]),
+            shapely.LineString([(400.0, 0.0), (401.0, 0.0)]),
+        ]
+    )
+    candidates = gen_gns_only_candidates(
+        sizs,
+        walls=walls,
+        properties=properties,
+        ground_map=_layer([], material=[], modification=[]),
+        buildings=_layer([shapely.box(300, 20, 310, 30)]),
+        wall_match_m=2.0,
+        min_length_m=3.5,
+        max_length_m=20.0,
+        search_m=50.0,
+    )
+    assert len(candidates) == 2
+    assert (candidates["candidate_class"] == GNS_ONLY_CLASS).all()
+    assert candidates["length_m"].tolist() == pytest.approx([15.0, 15.0])
+    assert candidates["x"].tolist() == pytest.approx([307.5, 322.5])
+    assert candidates["property_id"].tolist() == ["4", "4"]
+    assert candidates["building_m"].tolist() == pytest.approx([20.0, 20.6155], abs=1e-3)

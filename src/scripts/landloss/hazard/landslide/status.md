@@ -17,7 +17,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-03; the pipeline step (stage D3, step 12) ran over the pilot on
 2026-10-04, and the wall probability and per-zone fragility are next.
 
-**Updated:** 2026-10-04
+**Updated:** 2026-10-05
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -334,7 +334,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   candidates of class `small`; the whole run takes about 40 s. Against the GNS
   mapping, 63% of mapped wall length has a siz pip within 2 m (67% a pip of any
   pif) and 59% of sharp breaks in slope within 3 m. The checks are in
-  `table_urban_slope_face_checks.py`. No probability is yet put on a candidate,
+  `table_urban_slope_face_checks.py`. Every pif is also tied to its LINZ
+  property (2026-10-05; 2,440 straddle two or more properties, 832 are on road
+  parcels), and the 979 stretches of GNS mapped wall with no pip near them
+  (8.9 km of 30.7 km) are written as `gns_only` line candidates. No probability
+  is yet put on a candidate (the plan is a prior, a 0.95 floor for a GNS wall
+  on a pif, 0.8 for GNS-only, then the databases' update; exposure rw step 6),
   no fragility on a zone, and steps 6 and 7 are still what steps 8 and 9 read.
 
 ## Next

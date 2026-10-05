@@ -11,7 +11,7 @@ judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-04
+**Updated:** 2026-10-05
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -48,7 +48,15 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   thresholds are `landslide-slope-thresholds.csv` and
   `landslide-seed-thresholds.csv`. Pifs only where the DEM is LiDAR
   [de_vilder_2024; nzgs_2025_recognition]. This replaces the free-face
-  candidates of the earlier faces plan.
+  candidates of the earlier faces plan. Built 2026-10-05: every pif is tied to
+  its property (LINZ property boundaries), and every GNS mapped wall with no
+  pip within 2 m is a candidate of its own (`gns_only`, 979 of them over the
+  pilot, 8.9 km of the 30.7 km mapped). Still to build: wall units (adjacent
+  pifs on one property joined, so one wall is not several), the probability
+  and the databases' update. The prior is read from slope, height band and the
+  ground map; a GNS mapped wall on a pif is floored at 0.95 and a `gns_only`
+  candidate is set at 0.8; the property databases and claim reports then raise
+  the probabilities through the Poisson-binomial update below, unchanged.
 - [~] **Lower the chance of a wall on a rock cut**, from the 1:50,000 geology
   and the SLIDE materials through the ground map; Wellington greywacke cuts
   commonly stand at 55 to 75° and many long-standing ones are unsupported
@@ -275,10 +283,14 @@ What this module owes the retaining wall table `loss` reads
    lines from before the step test. Skip this if the faces rebuild (2) is
    starting now: it replaces those lines.
 2. Rebuild the wall candidates on the sizs (the siz table written by landslide
-   stage D3; step 6 plan, phase 2e), after the lead reviews the large
-   evacuated polygons (landslide status, Next 2); then rerun the pilot and record the counts, the GNS mapped wall recall and
+   stage D3; step 6 plan, phase 2e). The pif to property join and the GNS-only
+   candidates are built (2026-10-05); next, the wall units (adjacent pifs on a
+   property joined, with a rule for the fifth of pifs that straddle a boundary),
+   the prior, the 0.95 and 0.8 GNS floors and the databases' update. Then rerun
+   the pilot and record the counts, the GNS mapped wall recall and
    the drawn height shape against Anderson et al. [anderson_2015] in the
-   method file.
+   method file. The five 20% allocation rounds are not used: the per-property
+   update has no order effect.
 3. Name the six wall classes.
 4. Read step 8's age bin onto the lines and set the condition probability from
    it.

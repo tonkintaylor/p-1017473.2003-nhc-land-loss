@@ -332,7 +332,8 @@ findings document with the reason.
       here, not in stage D3.
 - [x] **Stage D3 — the full pilot.** Built as step 12
       (`steps/s12_urban_slope_faces/`, 2026-10-04) over the pilot: the
-      pipeline, the wall candidates' evidence and the checks that need only
+      pipeline, the wall candidates' evidence (with each pif's property and
+      the GNS-only wall candidates, 2026-10-05) and the checks that need only
       those layers, with counts and timings in its method file. The walls'
       probability, the fragility and the share of urban ground that fails in a
       realisation (the order of 1% check) are phase 4 of that step's plan. The

@@ -237,7 +237,24 @@ remote sensing pilot and the ICNZ database will not be obtained (decided
 
 ### Phase 2e — Rebuild on the faces (literature review, 2026-10-02)
 
-The candidates are rebuilt from the step faces of the static faces layer
+The candidates are rebuilt from the pifs of landslide step 12 (the face-based
+build, `.agents/plans/building-pip-pif-siz-slope-polygons.md`). Built there
+2026-10-05: each pif is tied to its LINZ property, and each stretch of GNS
+mapped wall with no pip near it is a `gns_only` line candidate. The order from
+here, per property:
+
+- [ ] Wall units: adjacent candidate pifs and GNS-only pieces on one property
+      joined into walls, with a rule for pifs that straddle two properties.
+- [ ] A prior from slope, height band and the ground map.
+- [ ] The GNS floor: 0.95 on a wall unit with a mapped wall on it, 0.8 on a
+      `gns_only` candidate.
+- [ ] Raise from the property databases through the Poisson-binomial update
+      already described in the status, unchanged: NZMM flag to an expected
+      minimum of about 2 walls, claim reports to a per-property count (30%
+      held out). No five-round allocation, as the update is exact and has no
+      order effect.
+
+The earlier text of this phase, from the free-face faces layer, follows.
 (`.agents/plans/building-face-based-urban-slope-polygons.md`, phases 1 and 2),
 which replaces phase 2a's line sources with evidence on one face. What the
 review of `temp/gns_review/` adds:

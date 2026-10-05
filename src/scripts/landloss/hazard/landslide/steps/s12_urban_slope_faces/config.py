@@ -27,6 +27,10 @@ GNS_BREAK_MATCH_M = 3.0
 # near it, in metres.
 SEARCH_M = 50.0
 
+# A stretch of GNS mapped wall with no pip within GNS_WALL_MATCH_M becomes a
+# candidate of its own only if it is at least this long, in metres.
+GNS_ONLY_MIN_LENGTH_M = 3.0
+
 # Evacuated polygons over this area, in square metres, are counted for review
 # (the old pilot's largest was 2,142 m2).
 LARGE_POLYGON_M2 = 2000.0

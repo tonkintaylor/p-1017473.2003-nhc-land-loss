@@ -1,6 +1,7 @@
 # Step 12 — Urban slope faces: implementation plan
 
-**Status:** Phases 1 to 3 complete, phase 4 next (stage D3 of
+**Status:** Phases 1 to 3 complete, phase 4 started (the parcel join and the
+GNS-only candidates are built; stage D3 of
 `.agents/plans/building-face-based-urban-slope-polygons.md`).
 
 The step runs the pips, pifs and sizs pipeline
@@ -28,6 +29,9 @@ and 7 once steps 8 and 9 read its polygons (phase 5).
 - [x] A GNS mapped wall with no siz within reach stays a candidate, classed
       small, because a 1 m grid cannot resolve a wall under about 0.5 m.
 - [x] Evidence columns written onto the siz table.
+- [x] Every pif tied to a property (`property_of_pifs`), and every stretch of
+      GNS mapped wall with no pip near it made a `gns_only` candidate
+      (`gen_gns_only_candidates`).
 
 ## Phase 3 — Checks that need only these layers
 
@@ -38,10 +42,33 @@ and 7 once steps 8 and 9 read its polygons (phase 5).
 
 ## Phase 4 — The wall probability and the fragility of each zone
 
-- [ ] A probability on each wall candidate from its evidence. Every weight is
-      judgement until **T-50** (the claim report extraction).
-- [ ] Walls from the probability replace the two scenarios: each siz is walled
-      by a draw, through `with_walls` with a Series.
+The wall placement runs per property, in this order. The weights are judgement
+until **T-50** (the claim report extraction); the last item checks them against
+held-out claims.
+
+- [x] Parcel join: each pif is tied to a property, with how cleanly it sits
+      (`property_share`, `n_properties`).
+- [x] GNS-only candidates: mapped wall with no pip near it, as lines.
+- [ ] Wall units: join adjacent candidate pifs within a property (and the
+      GNS-only pieces) into walls, so one wall is not counted as several pifs.
+      Decide the rule for the 2,440 pifs that straddle properties (about a fifth,
+      mostly a property against a road parcel): give the wall to the property
+      holding most of its pips, or to the one whose building is nearer.
+- [ ] Prior probability per wall unit from slope (height band), height and the
+      ground map. Needs the ground map settled (fill and rock grade).
+- [ ] The GNS floor: a wall unit with a GNS mapped wall on it is at least 0.95,
+      and a `gns_only` candidate is 0.8.
+- [ ] Update from the property databases, keeping the Poisson-binomial update
+      already written in `exposure/rw/status.md`: an NZMM flag raises the
+      expected minimum to about 2 walls on the property (modestly, as NZMM
+      agrees with GNS no better than chance), and the claim reports give a
+      per-property count with a 30% hold-out.
+- [ ] Not taken from the five-round proposal: the 20% allocation rounds, because
+      the per-property update is exact and has no order effect. They return only
+      if a global wall target is set.
+- [ ] Walls from the probability replace the two scenarios: each wall unit is
+      walled by a draw, through `with_walls` with a Series.
+- [ ] Cross-validation of the probabilities on the held-out claims.
 - [ ] A fragility per element, and the share of urban ground in a polygon that
       fails in a realisation, against the order of 1% the literature gives (the
       check the first pilot missed by a factor of about 40).
@@ -62,6 +89,5 @@ and 7 once steps 8 and 9 read its polygons (phase 5).
 
 - Cut the siz table's pifs at the same 20 m span as the growth, so a long pif
   is not one wall candidate.
-- Property boundary and road frontage as wall evidence (needs the address
-  spine's boundaries read onto the pifs).
+- Road frontage as wall evidence (the property boundary itself is built).
 - The age bin of the claim property as evidence (T-50).

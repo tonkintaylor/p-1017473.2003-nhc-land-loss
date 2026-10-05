@@ -27,16 +27,34 @@
   candidate if it is a siz (class `siz`) or a GNS mapped wall lies within
   `GNS_WALL_MATCH_M` of it (class `small`). No probability is put on a
   candidate.
-- The siz table (every pif, the pips as a MultiPoint, the evidence columns) is
-  written to `urban-slope-sizs.parquet` by `gen_urban_slope_faces.py`, and the
-  grown elements as polygons to `urban-slope-elements.parquet`. All are under
-  `temp/hazard/landslide/`, with `extent_suffix(extent)` on the name.
+- Each pif is tied to a property by `wall_candidates.property_of_pifs`: the LINZ
+  NZ Property Boundaries polygon (`get_nz_property_boundaries`) holding most of
+  its pips. The siz table carries `property_id`, `property_source`,
+  `valuation_reference`, `title_type`, `property_is_road`, `property_share` (the
+  fraction of the pif's pips in that property) and `n_properties` (how many
+  properties its pips touch). `describe_properties()` prints how many pifs
+  are on road parcels or straddle properties.
+- Every stretch of GNS mapped wall with no pip within `GNS_WALL_MATCH_M` is made
+  a candidate of its own, class `gns_only`, by
+  `wall_candidates.gen_gns_only_candidates`: stretches under
+  `GNS_ONLY_MIN_LENGTH_M` are dropped and longer ones are cut into equal pieces
+  no longer than `MAX_PIF_SPAN_M`. Each carries its length, midpoint, property
+  (the one holding most of its length), ground map material and modification,
+  and nearest building. They are written as lines to
+  `urban-slope-gns-wall-candidates.parquet` (`gns_only_path()`).
+- The siz table (every pif, the pips as a MultiPoint, the evidence and property
+  columns) is written to `urban-slope-sizs.parquet` by `gen_urban_slope_faces.py`,
+  and the grown elements as polygons to `urban-slope-elements.parquet`. All are
+  under `temp/hazard/landslide/`, with `extent_suffix(extent)` on the name.
 - Counts and timings are printed by `describe()`. Over the `wlg-pilot` extent:
   353,740 pips, 12,015 pifs, 8,223 sizs (7,709 of 7,709 soil pifs and 514 of
   4,306 weak rock) and 9,204 elements in 24.8 s; the polygons take 6.8 s
   (walled, 9,204 polygons, 640,878 m² evacuated) and 8.7 s (bare, 9,354
   polygons, 612,654 m²). The pifs are 8,223 `siz` candidates and 197 `small`
-  ones (a GNS wall with no siz); 3,595 are not candidates.
+  ones (a GNS wall with no siz); 3,595 are not candidates. Every pif is in a
+  property polygon; 832 are on road parcels and 2,440 straddle two or more
+  properties. 979 GNS-only candidates (8,940 m of the 30,676 m of mapped wall,
+  3 to 20 m long) are made, 201 of them on road parcels.
 - `table_urban_slope_face_checks.py` writes three tables to
   `report/hazard/landslide/urban-slope-faces/tab/`. `gns-agreement.csv`: with
   a pip within 2 m, 63% of the GNS mapped wall length is near a siz and 67%

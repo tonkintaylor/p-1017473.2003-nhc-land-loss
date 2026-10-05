@@ -24,6 +24,7 @@ import rioxarray
 from rasterio import features
 
 from landloss.hazard.landslide.instability_zones import (
+    MAX_PIF_SPAN_M,
     find_instability_zones,
     gen_siz_table,
     with_walls,
@@ -35,12 +36,17 @@ from landloss.hazard.landslide.slope_polygons import (
     build_slope_polygons,
     polygon_geometries,
 )
-from landloss.hazard.landslide.wall_candidates import wall_candidate_evidence
+from landloss.hazard.landslide.wall_candidates import (
+    gen_gns_only_candidates,
+    property_of_pifs,
+    wall_candidate_evidence,
+)
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import (
     get_gns_slide_morphology,
     get_nz_building_outlines,
     get_nz_coastline_polygons,
+    get_nz_property_boundaries,
     get_slide_genesis,
 )
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
@@ -72,6 +78,11 @@ def siz_table_path(*, extent):
 def elements_path(*, extent):
     """Where the grown elements are written."""
     return WORK_DIR / f"urban-slope-elements{extent_suffix(extent)}.parquet"
+
+
+def gns_only_path(*, extent):
+    """Where the GNS-only wall candidates (lines) are written."""
+    return WORK_DIR / f"urban-slope-gns-wall-candidates{extent_suffix(extent)}.parquet"
 
 
 def zones_path(scenario, *, extent):
@@ -168,7 +179,25 @@ def describe(zones, elapsed, scenario_results):
         )
 
 
-def main(*, extent, use_cached_layers, gns_wall_match_m, search_m):
+def describe_properties(table):
+    """Print how cleanly the pifs sit on properties."""
+    has_property = table["n_properties"] > 0
+    on_road = table["property_is_road"].fillna(value=False).astype(bool)
+    print(
+        f"{has_property.mean():.1%} of pifs in a property, "
+        f"{on_road.sum():,} on road parcels, "
+        f"{(table['n_properties'] > 1).sum():,} straddling two or more properties"
+    )
+
+
+def main(
+    *,
+    extent,
+    use_cached_layers,
+    gns_wall_match_m,
+    search_m,
+    gns_only_min_length_m,
+):
     """Run the pipeline over the extent and write the siz table, elements and zones.
 
     Args:
@@ -176,6 +205,8 @@ def main(*, extent, use_cached_layers, gns_wall_match_m, search_m):
         use_cached_layers: Whether to reuse the cached LINZ and GNS layers.
         gns_wall_match_m: A mapped wall within this many metres of a pif is on it.
         search_m: Walls, lines and buildings further than this are not recorded.
+        gns_only_min_length_m: Mapped wall with no pip near it becomes a candidate
+            of its own if at least this long, in metres.
     """
     dem, transform, bbox, ground_map, group, position = get_inputs(
         extent=extent, use_cached_layers=use_cached_layers
@@ -208,9 +239,13 @@ def main(*, extent, use_cached_layers, gns_wall_match_m, search_m):
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     table = gen_siz_table(zones, transform, crs=CRS)
+    properties = get_nz_property_boundaries(
+        bbox=bbox, crs=CRS, use_cache=use_cached_layers
+    )
+    mapped_walls = morphology[morphology["Type"] == MAPPED_WALL_TYPE]
     evidence = wall_candidate_evidence(
         table,
-        walls=morphology[morphology["Type"] == MAPPED_WALL_TYPE],
+        walls=mapped_walls,
         cut_fill_lines=morphology[morphology["Type"] == CUT_FILL_LINE_TYPE],
         cut_slopes=genesis[genesis["Type"] == CUT_SLOPE_TYPE],
         fill_bodies=genesis[genesis["Type"] == FILL_BODY_TYPE],
@@ -219,9 +254,28 @@ def main(*, extent, use_cached_layers, gns_wall_match_m, search_m):
         wall_match_m=gns_wall_match_m,
         search_m=search_m,
     )
-    table = table.join(evidence)
+    table = table.join(evidence).join(property_of_pifs(table, properties))
     write_siz_table(table, siz_table_path(extent=extent))
     print(table["candidate_class"].value_counts().to_string())
+    describe_properties(table)
+
+    gns_only = gen_gns_only_candidates(
+        table,
+        walls=mapped_walls,
+        properties=properties,
+        ground_map=ground_map,
+        buildings=buildings,
+        wall_match_m=gns_wall_match_m,
+        min_length_m=gns_only_min_length_m,
+        max_length_m=MAX_PIF_SPAN_M,
+        search_m=search_m,
+    )
+    gns_only.to_parquet(gns_only_path(extent=extent))
+    on_property = int(gns_only["property_id"].notna().sum())
+    print(
+        f"{len(gns_only):,} GNS-only candidates, {gns_only['length_m'].sum():,.0f} m "
+        f"of {mapped_walls.length.sum():,.0f} m mapped; {on_property:,} on a property"
+    )
     element_polygons(zones.found, transform).to_parquet(elements_path(extent=extent))
     print(f"Written to {WORK_DIR}")
 
@@ -232,4 +286,5 @@ if __name__ == "__main__":
         use_cached_layers=config.USE_CACHED_LAYERS,
         gns_wall_match_m=config.GNS_WALL_MATCH_M,
         search_m=config.SEARCH_M,
+        gns_only_min_length_m=config.GNS_ONLY_MIN_LENGTH_M,
     )
