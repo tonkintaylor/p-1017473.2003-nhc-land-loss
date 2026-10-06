@@ -1,6 +1,6 @@
 """Write the one CSV the static loss viewer reads, and put the viewer beside it.
 
-    uv run --frozen python src/scripts/landloss/loss/validations/gen_viewer_data.py
+    uv run --frozen python src/scripts/landloss/loss/ui/gen_viewer_data.py
 
 The viewer is `loss_viewer.html`, a single page with no server and no build
 step: open it, drag the CSV on, and it settles every claim in the browser. The
@@ -54,7 +54,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     WALL_REPAIR_COLUMN,
     settlement_path,
 )
-from scripts.landloss.loss.validations.gen_calc_walkthrough import wall_shape
+from scripts.landloss.loss.ui.gen_calc_walkthrough import wall_shape
 from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
     loss_input_path,

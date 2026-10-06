@@ -1,6 +1,6 @@
 """Write the settlement calculation as a spreadsheet, for review off the code.
 
-    uv run --frozen python src/scripts/landloss/loss/validations/gen_calc_walkthrough.py
+    uv run --frozen python src/scripts/landloss/loss/ui/gen_calc_walkthrough.py
 
 Three tabs, for two different questions.
 

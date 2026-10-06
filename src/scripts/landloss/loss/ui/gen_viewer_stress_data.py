@@ -1,6 +1,6 @@
 """Write a region-sized CSV for the viewer, to find out where the page slows down.
 
-    uv run --frozen python src/scripts/landloss/loss/validations/gen_viewer_stress_data.py
+    uv run --frozen python src/scripts/landloss/loss/ui/gen_viewer_stress_data.py
 
 The pilot is 4,388 properties in one Wellington box. The study area is four
 territorial authorities, so the page will eventually be asked to draw something
@@ -27,7 +27,7 @@ import pandas as pd
 
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from scripts.landloss.loss.steps.s1_settlement import config
-from scripts.landloss.loss.validations.gen_viewer_data import OUT_DIR
+from scripts.landloss.loss.ui.gen_viewer_data import OUT_DIR
 from scripts.landloss.paths import TEMP_DIR
 
 if hasattr(sys.stdout, "reconfigure"):
