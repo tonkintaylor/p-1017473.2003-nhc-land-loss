@@ -18,7 +18,10 @@ design and consent fee, the share of concrete walls, and how a replacement
 compares with the wall it replaces.
 
 **Which claims count.** Accepted claims only (``claim_accepted``) and land
-reports only (not structural assessments). Each is labelled by trigger --
+reports only (not structural assessments), inside the four study authorities
+(``in_study_area``) -- except earthquake claims, which are kept wherever they
+are, since the study area alone holds too few of them (Perrie Gilbert,
+2026-10-06). Each is labelled by trigger --
 earthquake, rain, or unknown where the report does not say -- and the tables
 are given for each. A report revised after several inspections gives one
 column per inspection, and summing those can double count, so the land-area
@@ -46,14 +49,27 @@ from landloss.loss.pricing import (
     BETA_CONCRETE_SHARE,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
 )
-from scripts.landloss.paths import CLAIM_REPORTS_ASSETS_DIR, RESEARCH_DIR
+from scripts.landloss.paths import CLAIM_REPORTS_EXTRACTED_DIR, RESEARCH_DIR
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-EXTRACTED_DIR = CLAIM_REPORTS_ASSETS_DIR / "extracted"
+EXTRACTED_DIR = CLAIM_REPORTS_EXTRACTED_DIR
 OUT_DIR = RESEARCH_DIR / "vul" / "claim_reports"
-LISTS = ("iag-1502000", "suncorp-1501000", "kaikoura-2016", "seddon-2013")
+LISTS = (
+    "iag-1502000",
+    "suncorp-1501000",
+    "kaikoura-2016",
+    "seddon-2013",
+    "loss-adjusters-1502100",
+    "tower-1503000",
+    "fmg-1504000",
+    "mas-1505000",
+    "ando-1506000",
+    "chubb-1507000",
+    "qbe-1508000",
+    "allianz-1509000",
+)
 
 # What the loss module charges in design and consent fees per claim.
 MODEL_FEES_EXCL_GST = PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD
@@ -198,7 +214,12 @@ def main() -> int:
     accepted = reports[
         (reports["claim_accepted"] == "True")
         & (reports["report_kind"].fillna("land") != "structural")
-    ].reset_index(drop=True)
+    ]
+    in_scope = (accepted["in_study_area"] == "True") | (
+        accepted["trigger"] == "earthquake"
+    )
+    out_of_area = int((~in_scope).sum())
+    accepted = accepted[in_scope].reset_index(drop=True)
     claims = set(accepted["subproject"])
     walls = walls[walls["subproject"].isin(claims)].copy()
     remedial = remedial[remedial["subproject"].isin(claims)].copy()
@@ -236,7 +257,9 @@ def main() -> int:
     # --- the sample --------------------------------------------------------
     section("The sample")
     lines.append(
-        f"{len(reports):,} reports read; {len(accepted):,} accepted land claims; "
+        f"{len(reports):,} reports read; {len(accepted):,} accepted land claims "
+        "inside the study area, or earthquake claims from anywhere "
+        f"({out_of_area:,} rain and unknown claims outside it left out); "
         f"{len(land):,} of those with one summary column, used for the land "
         f"areas ({len(accepted) - len(land):,} multi-column reports left out)."
     )
