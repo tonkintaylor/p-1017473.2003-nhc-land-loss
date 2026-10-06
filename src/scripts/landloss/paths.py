@@ -32,6 +32,15 @@ CLAIM_REPORTS_ASSETS_DIR = (
     REPO_ROOT / "src" / "landloss" / "common" / "assets" / "claim_reports"
 )
 
+# What extract_claim_reports.py reads out of the reports, one folder per claims
+# list. It is written to, and read from, Maxim Millen's folder on the U: drive
+# rather than the repo, so the extraction stays out of the repository and
+# every script -- the extraction, the claim report analysis and the retaining
+# wall validation -- uses the one copy, whoever runs it.
+CLAIM_REPORTS_EXTRACTED_DIR = (
+    Path("U:/") / "MAMI" / "land-loss" / "claim_reports" / "extracted"
+)
+
 IAG_1502000_REPORT_PATHS_CSV = ASSETS_DIR / "claims-report-paths-iag-1502000.csv"
 IAG_1502000_LANDSLIDE_SUMMARY_CSV = (
     ASSETS_DIR / "claims-landslide-summary-iag-1502000.csv"

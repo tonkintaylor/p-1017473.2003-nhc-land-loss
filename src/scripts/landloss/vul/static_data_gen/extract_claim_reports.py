@@ -53,7 +53,7 @@ import zipfile
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-from scripts.landloss.paths import CLAIM_REPORTS_ASSETS_DIR, REPO_ROOT
+from scripts.landloss.paths import CLAIM_REPORTS_EXTRACTED_DIR, REPO_ROOT
 from scripts.landloss.vul.static_data_gen.fetch_claim_reports import (
     DEFAULT_PROJECT,
     FETCHED,
@@ -65,7 +65,7 @@ from scripts.landloss.vul.static_data_gen.fetch_claim_reports import (
 )
 
 # Where a claims list's extraction is written, one folder per list.
-EXTRACTED_DIR = CLAIM_REPORTS_ASSETS_DIR / "extracted"
+EXTRACTED_DIR = CLAIM_REPORTS_EXTRACTED_DIR
 
 # The claims list's own columns carried onto each report row, by the name they
 # take there.
