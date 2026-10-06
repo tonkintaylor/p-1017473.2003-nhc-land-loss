@@ -46,8 +46,7 @@ PILOT_CLAIMS_PER_ADDRESS = 4388 / 8591
 DRAWN = [
     "dwellings",
     "damaged_area_m2",
-    "wall_face_m2",
-    "wall_rate_excl_gst",
+    "wall_value_excl_gst",
     "replacement_face_m2",
     "replacement_rate_excl_gst",
     "new_wall_face_m2",

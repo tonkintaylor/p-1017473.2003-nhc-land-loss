@@ -33,11 +33,13 @@ from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from landloss.io.area_of_interest import extent_suffix
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
-    BETA_SIZE_CLASS_HEIGHT_M,
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
     timber_pole_rate_excl_gst_nzd_per_m2,
+)
+from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
+    wall_udv_by_claim,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
@@ -54,7 +56,6 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     WALL_REPAIR_COLUMN,
     settlement_path,
 )
-from scripts.landloss.loss.ui.gen_calc_walkthrough import wall_shape
 from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
     world_loss_input_path,
@@ -110,22 +111,33 @@ def site_multiplier(claims: pd.DataFrame) -> pd.Series:
     )
 
 
-def viewer_rows(claims: pd.DataFrame, walls: pd.DataFrame) -> pd.DataFrame:
+def wall_value_excl_gst(rw: pd.DataFrame, policy: PolicySettings) -> pd.Series:
+    """Return each claim's damaged wall value before GST, summed wall by wall.
+
+    Taken from step 0's own function, so the viewer's cap is built from the same
+    value the module's is. A claim's walls are valued one by one and then added:
+    a single size, length and rate per claim would price every metre of a claim
+    with walls of mixed sizes at its tallest wall's size and highest rate.
+    """
+    return wall_udv_by_claim(rw, policy=policy) / (1.0 + policy.gst_rate)
+
+
+def viewer_rows(claims: pd.DataFrame, wall_value: pd.Series) -> pd.DataFrame:
     """Return the table the viewer reads, one row per claim.
 
-    Only what the Act does not decide. Wall cost arrives as a **face area and a
-    rate** rather than as a price, because a price already has GST, the site
-    multiplier and the specification uplift baked into it -- and all three are
-    controls on the page.
+    Only what the Act does not decide. Wall value and wall cost arrive **before
+    GST**, and the repair as a face area and a rate rather than as a price,
+    because a price already has GST, the site multiplier and the specification
+    uplift baked into it -- and all three are controls on the page.
 
     Args:
         claims: Step 1's settlements, indexed by claim.
-        walls: The damaged walls' size, length and rate per claim.
+        wall_value: The damaged walls' value before GST per claim, as
+            :func:`wall_value_excl_gst` returns.
 
     Returns:
         The viewer's rows.
     """
-    height = walls["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     new_height = claims[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
     new_rate = np.where(
         new_height > 0, timber_pole_rate_excl_gst_nzd_per_m2(new_height), 0.0
@@ -135,9 +147,10 @@ def viewer_rows(claims: pd.DataFrame, walls: pd.DataFrame) -> pd.DataFrame:
             "dwellings": claims["dwelling_count"].astype(int),
             "damaged_area_m2": claims["damaged_area_m2"].round(4),
             "land_rate_incl_gst": claims["land_rate_incl_gst_nzd_per_m2"].round(6),
-            # Wall geometry and rate, not a wall price.
-            "wall_face_m2": (height * walls["wall_length_m"].fillna(0.0)).round(6),
-            "wall_rate_excl_gst": walls["wall_rate_excl_gst"].fillna(0.0).round(6),
+            # What the damaged walls were worth, before GST: it builds the cap.
+            "wall_value_excl_gst": wall_value.reindex(claims.index)
+            .fillna(0.0)
+            .round(6),
             # What the damaged wall is replaced at, which a landslide can make
             # larger than the wall that was there. The value above builds the
             # cap; this builds the repair.
@@ -186,7 +199,7 @@ def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFram
     spec = 1.0 + policy.replacement_spec_uplift
     mult = 1.0 + rows["site_multiplier"]
 
-    udv = rows["wall_face_m2"] * rows["wall_rate_excl_gst"] * gst
+    udv = rows["wall_value_excl_gst"] * gst
     wall = (
         rows["replacement_face_m2"]
         * rows["replacement_rate_excl_gst"]
@@ -253,8 +266,10 @@ def main(*, extent, world_ids, realisation_ids):
     claims = pd.read_parquet(
         settlement_path(world_id, realisation_id, extent=extent)
     ).set_index(CLAIM_ID_COLUMN)
-    walls = wall_shape(world_id, realisation_id, extent=extent).reindex(claims.index)
-    rows = viewer_rows(claims, walls)
+    rw = gpd.read_parquet(
+        world_loss_input_path("rw", world_id, realisation_id, extent=extent)
+    )
+    rows = viewer_rows(claims, wall_value_excl_gst(rw, policy))
     points = claim_points(world_id, realisation_id, extent=extent)
     rows = rows.join(points).reset_index()
 
