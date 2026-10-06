@@ -2,9 +2,9 @@
 
 The lead's rules (2026-10-06), used twice: on each pif's spine before the
 siz table and the element growth
-(:func:`landloss.hazard.landslide.instability_zones.split_pifs`), and on the
-chained members of each joined wall
-(:func:`landloss.hazard.landslide.wall_units.gen_unit_lines`):
+(:func:`landloss.hazard.landslide.instability_zones.split_pifs`), and on
+each stretch of GNS mapped wall that no pif covers
+(:func:`landloss.hazard.landslide.wall_candidates.split_by_rules`):
 
 1. A new piece starts wherever following the path within a stray tolerance
    would need more than ``max_bends`` bends, or bends turning more than
@@ -18,10 +18,6 @@ chained members of each joined wall
    cap, the most even of those; a part with no bend left at the property
    boundaries it crosses (walls only, through ``boundary_cuts``); and what
    is still over the cap into equal parts.
-
-A pif or a joined wall can branch (a T in a mapped wall, a spur off a
-crest), so it is walked as several paths first: its tree's longest path and
-then each branch off it (:func:`tree_paths`).
 
 A piece is a range of the path's points, ``(start, end)`` inclusive, and
 neighbouring pieces share their end point. :func:`canonical_line` turns a
@@ -39,88 +35,9 @@ from itertools import combinations, pairwise
 import numpy as np
 import shapely
 from numpy.typing import NDArray
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components, dijkstra
 
 Range = tuple[int, int]
 BoundaryCuts = Callable[[shapely.LineString], list[float]]
-
-
-def _farthest_path(graph: csr_matrix, start: int) -> tuple[list[int], float]:
-    """The path from ``start`` to the node farthest from it, and its length."""
-    dist, previous = dijkstra(
-        graph, directed=False, indices=start, return_predecessors=True
-    )
-    far = int(np.argmax(np.where(np.isfinite(dist), dist, -1.0)))
-    path = [far]
-    while path[-1] != start:
-        path.append(int(previous[path[-1]]))
-    return path[::-1], float(dist[far])
-
-
-def _sticks_out(
-    points: NDArray[np.float64], paths: list[NDArray[np.float64]], reach_m: float
-) -> bool:
-    """Whether any point lies ``reach_m`` or more from every path so far."""
-    lines = shapely.MultiLineString([p for p in paths if len(p) > 1])
-    return bool((shapely.distance(shapely.points(points), lines) >= reach_m).any())
-
-
-def tree_paths(
-    tree: csr_matrix, xy: NDArray[np.float64], *, min_branch_m: float
-) -> list[NDArray[np.float64]]:
-    """A spanning tree's points as paths: its longest, then each branch.
-
-    The first path is the tree's longest (a double sweep from the point with
-    the lowest (x, y)), so its ends are the two far ends. Each branch left off
-    it is then a path of its own from the point it joins at, the longest first,
-    until every point is on a path. A branch makes no path, its points left
-    to the nearest path, where it is shorter than ``min_branch_m`` or none of
-    its points lies ``min_branch_m`` or more from the paths so far: the
-    width of a face several cells thick is not a branch. A tree in several
-    parts gives each part its own paths.
-
-    Args:
-        tree: A symmetric spanning tree (or forest) over ``xy``, its weights
-            the edge lengths.
-        xy: The points, in metres.
-        min_branch_m: The shortest branch that is a path of its own.
-
-    Returns:
-        The paths as arrays of points, the first the longest.
-    """
-    tree = csr_matrix(tree)
-    start = int(np.lexsort((xy[:, 1], xy[:, 0]))[0])
-    end_a = _farthest_path(tree, start)[0][-1]
-    main, _ = _farthest_path(tree, end_a)
-    paths = [xy[main]]
-    covered = np.zeros(len(xy), dtype=bool)
-    covered[main] = True
-    while not covered.all():
-        rest = np.flatnonzero(~covered)
-        sub = tree[rest][:, rest]
-        n_parts, part = connected_components(sub, directed=False)
-        for k in range(n_parts):
-            nodes = rest[part == k]
-            edges = tree[nodes].tocoo()
-            joins = covered[edges.col]
-            join_m = float(edges.data[joins][0]) if joins.any() else 0.0
-            total_m = sub[part == k].sum() / 2.0 + join_m
-            if joins.any() and total_m < min_branch_m:
-                covered[nodes] = True
-                continue
-            local = {node: i for i, node in enumerate(nodes)}
-            inner = int(nodes[edges.row[joins][0]]) if joins.any() else int(nodes[0])
-            anchor = [int(edges.col[joins][0])] if joins.any() else []
-            branch, length = _farthest_path(tree[nodes][:, nodes], local[inner])
-            covered[nodes[branch]] = True
-            if not anchor and len(branch) > 1:
-                paths.append(xy[nodes[branch]])
-            elif length + join_m >= min_branch_m and _sticks_out(
-                xy[nodes[branch]], paths, min_branch_m
-            ):
-                paths.append(xy[[*anchor, *nodes[branch]]])
-    return paths
 
 
 def total_turn_deg(xy: NDArray[np.float64]) -> float:

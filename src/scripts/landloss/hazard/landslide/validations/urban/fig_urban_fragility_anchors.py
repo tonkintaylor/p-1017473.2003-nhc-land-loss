@@ -78,10 +78,11 @@ def rock_site_ratio_m_s_per_g(sa_t1, pga, extent):
 
     Returns:
         The median of ``pgv_m_s_from_sa_1s(sa_t1) / pga`` over the cells
-        whose centre lies inside the extent, m/s per g.
+        whose centre lies inside the extent, m/s per g; where none does, the
+        ratio of the finite cell nearest the extent's centre.
 
     Raises:
-        ValueError: If no finite cell falls inside the extent.
+        ValueError: If the grids carry no finite cell at all.
     """
     if sa_t1.shape != pga.shape:
         msg = f"The Sa(1.0 s) grid is {sa_t1.shape} and the PGA grid {pga.shape}."
@@ -93,10 +94,19 @@ def rock_site_ratio_m_s_per_g(sa_t1, pga, extent):
             np.asarray(sa_t1.to_numpy(), dtype=float)
         ) / np.asarray(pga.to_numpy(), dtype=float)
     finite = ratio[inside & np.isfinite(ratio)]
-    if finite.size == 0:
-        msg = "No finite site class I cell lies inside the extent."
+    if finite.size:
+        return float(np.median(finite))
+    # The national grids are coarser than a small extent such as the pilot box,
+    # so no cell centre may fall inside it: take the finite cell nearest its
+    # centre instead.
+    candidates = np.isfinite(ratio)
+    if not candidates.any():
+        msg = "The site class I grids carry no finite cell."
         raise ValueError(msg)
-    return float(np.median(finite))
+    centre = extent.centroid
+    distance = np.hypot(xx - centre.x, yy - centre.y)
+    distance[~candidates] = np.inf
+    return float(ratio.flat[np.argmin(distance)])
 
 
 def read_rock_site_ratio(*, return_period_yr):

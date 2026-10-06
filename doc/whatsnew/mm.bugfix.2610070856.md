@@ -1,0 +1,1 @@
+Fix `fig_urban_fragility_anchors.py` failing on the pilot box: the national TS1170.5 grids are coarser than the box, so no cell centre fell inside it; the rock-site PGV/PGA ratio now takes the cell nearest the extent's centre in that case.

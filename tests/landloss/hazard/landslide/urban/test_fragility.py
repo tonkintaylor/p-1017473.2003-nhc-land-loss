@@ -1219,9 +1219,15 @@ def test_the_rock_site_ratio_is_the_median_over_the_cells_inside_the_extent():
     inside = box(X0, Y0, X0 + 2 * CELL_M, Y0 + 2 * CELL_M)
     ratio = fig_urban_fragility_anchors.rock_site_ratio_m_s_per_g(sa_t1, pga, inside)
     assert ratio == pytest.approx(1.5)
-    outside = box(X0 - 300, Y0 - 300, X0 - 200, Y0 - 200)
-    with pytest.raises(ValueError, match="No finite"):
-        fig_urban_fragility_anchors.rock_site_ratio_m_s_per_g(sa_t1, pga, outside)
+    # An extent no cell centre falls in takes the nearest finite cell.
+    small = box(
+        X0 + 2.6 * CELL_M, Y0 + 0.4 * CELL_M, X0 + 2.7 * CELL_M, Y0 + 0.5 * CELL_M
+    )
+    near = fig_urban_fragility_anchors.rock_site_ratio_m_s_per_g(sa_t1, pga, small)
+    assert near == pytest.approx(3.0)
+    empty = make_grid([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]])
+    with pytest.raises(ValueError, match="no finite"):
+        fig_urban_fragility_anchors.rock_site_ratio_m_s_per_g(empty, pga, small)
 
 
 def test_the_zone_bands_tile_the_rating_scale():

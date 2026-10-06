@@ -27,7 +27,6 @@ import rioxarray
 from rasterio import features
 
 from landloss.hazard.landslide.instability_zones import (
-    MAX_PIF_SPAN_M,
     find_instability_zones,
     gen_pif_near_drops,
     gen_pif_spines,
@@ -274,6 +273,7 @@ def main(
     stray_tolerance_m,
     min_segment_m,
     max_turn_deg,
+    wall_max_length_m,
     wall_height_reach_m,
     wall_height_quantile,
 ):
@@ -292,6 +292,7 @@ def main(
         stray_tolerance_m: How far a piece may stray from its pif's spine.
         min_segment_m: The shortest pif piece.
         max_turn_deg: The most a pif piece's line may turn in all.
+        wall_max_length_m: The longest a GNS-only candidate may be.
         wall_height_reach_m: A pip's near drop is read this far below it.
         wall_height_quantile: A pif's wall height is this quantile of its
             pips' near drops.
@@ -368,8 +369,11 @@ def main(
         buildings=buildings,
         wall_match_m=gns_wall_match_m,
         min_length_m=gns_only_min_length_m,
-        max_length_m=MAX_PIF_SPAN_M,
+        max_length_m=wall_max_length_m,
         search_m=search_m,
+        max_bends=max_bends,
+        stray_tolerance_m=stray_tolerance_m,
+        max_turn_deg=max_turn_deg,
     )
     gns_only.to_parquet(gns_only_path(extent=extent))
     on_property = int(gns_only["property_id"].notna().sum())
@@ -393,6 +397,7 @@ if __name__ == "__main__":
         stray_tolerance_m=config.WALL_STRAY_TOLERANCE_M,
         min_segment_m=config.WALL_MIN_SEGMENT_M,
         max_turn_deg=config.MAX_TOTAL_TURN_DEG,
+        wall_max_length_m=config.WALL_MAX_LENGTH_M,
         wall_height_reach_m=config.WALL_HEIGHT_REACH_M,
         wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
     )

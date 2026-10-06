@@ -50,30 +50,11 @@ PIF_END_WINDOW_M = 3.0
 # (the old pilot's largest was 2,142 m2).
 LARGE_POLYGON_M2 = 2000.0
 
-# Wall units (gen_urban_slope_wall_units.py). Members of one GNS mapped wall
-# feature, within GNS_WALL_MATCH_M of it, are one unit. Elsewhere two pifs on
-# one property join end to end where the gap between their facing ends is
-# within WALL_JOIN_GAP_M, the ends are offset along their fall by no more than
-# WALL_JOIN_MAX_OFFSET_M (so terraces stacked down a slope stay apart) and
-# their end falls differ by no more than WALL_JOIN_BEARING_TOL_DEG. A corner
-# joins where the ends are within WALL_CORNER_GAP_M and turn by more than
-# WALL_JOIN_BEARING_TOL_DEG and no more than WALL_CORNER_MAX_ANGLE_DEG. Start values from the plan
-# (.agents/plans/placing-retaining-walls-on-pifs.md), open until T-50.
-WALL_JOIN_GAP_M = 5.0
-WALL_JOIN_MAX_OFFSET_M = 1.5
-WALL_JOIN_BEARING_TOL_DEG = 30.0
-WALL_CORNER_GAP_M = 3.0
-WALL_CORNER_MAX_ANGLE_DEG = 90.0
-
-# A GNS-only piece within GNS_ONLY_MERGE_M metres of a candidate pif on the
-# same property joins its unit, so one wall is not counted twice (about 17% of
-# the mapped wall length is 2 to 5 m from a pip), but only where it runs
-# roughly along the pif's face: its bearing within GNS_ONLY_MERGE_MAX_ANGLE_DEG
-# of the pif's strike (perpendicular to the fall at the pif's spine end nearest
-# it). The lead's quick fix (2026-10-06), after unit WU0001918 on the pilot
-# joined an east-west mapped wall to a north-south pif across it.
-GNS_ONLY_MERGE_M = 5.0
-GNS_ONLY_MERGE_MAX_ANGLE_DEG = 45.0
+# Wall candidates (the lead, 2026-10-07): every siz pif piece, every other pif
+# piece with a GNS mapped wall within GNS_WALL_MATCH_M (class low_height), and
+# every stretch of GNS mapped wall further than that from every pip, cut by the
+# line rules below (class gns_only). Each is an independent wall unit: nothing
+# is joined.
 
 # No saw-tooth walls (the lead, 2026-10-06): each wall unit's line, the line
 # exposure rw step 6 draws and the figures show, keeps at most WALL_MAX_BENDS
@@ -83,9 +64,9 @@ GNS_ONLY_MERGE_MAX_ANGLE_DEG = 45.0
 WALL_MAX_BENDS = 3
 WALL_MIN_SEGMENT_M = 3.0
 
-# Long joined walls and pifs (the lead, 2026-10-06; one rule for both,
-# landloss.hazard.landslide.bend_split): the joined members, or a pif's spine,
-# are walked end to end and a new piece starts wherever following them within
+# Pifs and GNS-only walls (the lead, 2026-10-06; one rule for both,
+# landloss.hazard.landslide.bend_split): a pif's spine, or a stretch of GNS
+# mapped wall, is walked end to end and a new piece starts wherever following them within
 # WALL_STRAY_TOLERANCE_M metres needs another bend than WALL_MAX_BENDS, or
 # bends turning more than MAX_TOTAL_TURN_DEG degrees in all (the lead set 185
 # on 2026-10-06, after a piece ran up, across and back down). 2 m is about the
@@ -94,7 +75,8 @@ WALL_MIN_SEGMENT_M = 3.0
 WALL_STRAY_TOLERANCE_M = 2.0
 MAX_TOTAL_TURN_DEG = 185.0
 # Every wall unit is one line of at most WALL_MAX_BENDS bends, from
-# WALL_MIN_SEGMENT_M to WALL_MAX_LENGTH_M metres long (the lead, 2026-10-06:
+# WALL_MIN_SEGMENT_M to WALL_MAX_LENGTH_M metres long (a GNS-only piece is cut
+# to it here, a pif piece at MAX_PIF_SPAN_M, also 50 m) (the lead, 2026-10-06:
 # "if over 50 m, then split on bends; if no bends then split on boundaries,
 # then split on evenly divide"): a wall over WALL_MAX_LENGTH_M is cut at its
 # own bends, then (with no bend left) at the property boundaries it crosses,
@@ -115,10 +97,6 @@ WALL_MAX_LENGTH_M = 50.0
 # siz table (near_drop_p80_m, named for the first setting).
 WALL_HEIGHT_REACH_M = 2.0
 WALL_HEIGHT_QUANTILE = 0.7
-
-# GNS mapped wall segments within this many metres of each other are one
-# mapped wall feature.
-GNS_FEATURE_SNAP_M = 0.5
 
 # The share of claimed properties held out of the claim update for the
 # cross-validation, and the seed that picks them.

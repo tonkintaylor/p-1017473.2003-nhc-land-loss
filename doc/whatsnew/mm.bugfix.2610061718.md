@@ -1,0 +1,1 @@
+Fix exposure land step 5 (`gen_insured_land.py`) failing at the end of a run: the insured land polygons were held in a variable named `extent`, which shadowed the extent name passed on to `driveway_path`.

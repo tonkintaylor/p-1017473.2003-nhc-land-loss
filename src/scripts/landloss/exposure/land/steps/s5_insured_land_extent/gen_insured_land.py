@@ -411,13 +411,13 @@ def main(*, extent, use_cached_extent):
     )
     driveways = generate_driveways(parts, roads)
 
-    extent = build_insured_land_extent(
+    land_extent = build_insured_land_extent(
         properties, buildings, dwellings, driveways=driveways
     )
     print(RULE)
     print(f"Roads: {len(roads):,}")
     print(describe_driveways(driveways, parts[CLAIM_ID_COLUMN].nunique()).to_string())
-    describe_extent(extent, occupied, addresses, dwellings)
+    describe_extent(land_extent, occupied, addresses, dwellings)
 
     # The rate rides along with the polygon so that the vulnerability step reads
     # one layer rather than joining two. It is the same rate step 2 modelled;
@@ -434,8 +434,8 @@ def main(*, extent, use_cached_extent):
     # Step 2's rate is taken as excluding GST, and is grossed up here by the one
     # named function so both sides are written and the loss module is handed
     # only the inclusive one.
-    rate_excl_gst = extent[CLAIM_ID_COLUMN].map(rates)
-    insured = extent.assign(
+    rate_excl_gst = land_extent[CLAIM_ID_COLUMN].map(rates)
+    insured = land_extent.assign(
         **{
             LAND_RATE_EXCL_GST_COLUMN: rate_excl_gst,
             LAND_RATE_INCL_GST_COLUMN: add_gst(rate_excl_gst),

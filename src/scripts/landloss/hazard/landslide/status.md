@@ -101,8 +101,9 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
   - Faces within the fit's own scatter are `uncertain`.
   - The method was chosen over a 30 m rolling mean and a plain quadratic in
     `research/cut_fill/pif_cut_fill.md`.
-- [x] **Place the retaining walls on the pifs (step 12, 2026-10-05)**: join
-  the candidate pifs and GNS-only pieces of a property into wall units, put a
+- [x] **Place the retaining walls on the pifs (step 12, 2026-10-05)**: make
+  each wall candidate (a siz or `low_height` pif piece, or a GNS-only piece)
+  its own wall unit (the lead, 2026-10-07; joined until then), put a
   `BETA_` prior (from step 13's cut and fill class, 2026-10-06) and the GNS
   floor on each, update on the claim reports and
   NZMM per property (NZMM at 0.3 of its update), and draw each unit walled
@@ -358,14 +359,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   pif (`landloss.hazard.landslide.wall_candidates`): a mapped GNS wall, cut/fill
   line, SLIDE cut or fill body, ground material, nearest building. Over the
   pilot, 8,223 pifs are sizs and a further 197 carry a GNS wall and are
-  candidates of class `small`; the whole run takes about 40 s. Against the GNS
+  candidates of class `low_height`; the whole run takes about 40 s. Against the GNS
   mapping, 63% of mapped wall length has a siz pip within 2 m (67% a pip of any
   pif) and 59% of sharp breaks in slope within 3 m. The checks are in
   `table_urban_slope_face_checks.py`. Every pif is also tied to its LINZ
   property (2026-10-05; 2,440 straddle two or more properties, 832 are on road
   parcels), and the 979 stretches of GNS mapped wall with no pip near them
   (8.9 km of 30.7 km) are written as `gns_only` line candidates. The wall
-  placement (2026-10-05; step 12 method file) joins them into 7,248 wall
+  placement (2026-10-05; step 12 method file) made 7,248 wall
   units with 3,458 expected walls (3,336 before the claim and NZMM update);
   97% of the mapped wall length is within 2 m of a unit member. In world 0,
   47% of the sizs are walled and the evacuated area is 631,176 m², between
@@ -382,8 +383,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     kept even where the element keep rule would drop it; the width behind
     every polygon's crest is at least half its height and 1 m
     (`BETA_MIN_EVACUATED_WIDTH_H`, `BETA_MIN_EVACUATED_WIDTH_M`), walled or
-    not; and a GNS-only piece joins a pif's unit by the 5 m merge only
-    within 45° of the pif's strike. Rerun over the pilot through step 9:
+    not. Rerun over the pilot through step 9:
     6,892 pifs (was 12,015), 4,953 sizs (8,223), 8,729 elements (9,204;
     164 kept only by the siz rule), 5,002 wall units (7,333), 2,609
     expected walls, evacuated 681,973 m² walled, 666,087 m² bare and
@@ -391,31 +391,28 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     floor sets every polygon's width on the pilot, so the walled and bare
     widths are now the same. 185 of world 0's 1,570 insured sloping walls
     have no polygon in step 9 (573 of 2,004 before): 175 GNS-only, 4 on
-    `small` pifs and 6 at the DEM margin step 8 leaves out.
+    `low_height` pifs and 6 at the DEM margin step 8 leaves out.
   - **Buildings, wall lines and boundaries (the lead, 2026-10-06).** Pifs
     with most of their pips in a LINZ building outline are dropped (334 on
     the pilot); each wall unit is one line of at most 3 bends and no
     section under 3 m (`WALL_MAX_BENDS`, `WALL_MIN_SEGMENT_M`), whose length
-    is the exposure's; and units join across property boundaries, carrying
-    their length in every property they enter by 1 m, which each counts the
+    is the exposure's; and units carry their length in every property they enter by 1 m, which each counts the
     unit as a wall in the claim update. Pilot: 6,558 pifs, 4,676 sizs, 8,425
     elements, 3,961 units (1,908 expected walls), 668,912 m² evacuated in
     world 0, and 48 of 1,141 insured sloping walls with no polygon (42
     GNS-only).
   - **Long walls, GNS-only polygons, setting and tall faces (the lead,
-    2026-10-06).** Joined walls are cut where a fourth bend would be needed
-    to follow them within 2 m, then at property boundaries over 50 m; a
-    GNS-only unit gets an element and the minimum polygon on its line
+    2026-10-06).** A GNS-only unit gets an element and the minimum polygon on its line
     (`add_line_elements`, in `gen_urban_slope_wall_zones.py`, which now also
     builds the walled and bare bounds); the prior takes 2.0 on a road
     frontage and 1.5 on a property boundary, and tapers from 5 m to 0.1 at
     8 m of face. Pilot: 4,647 units, 2,639 expected walls (2,752 without the
     taper), 99% of pif spine points within 2 m of a wall line, 15 of 1,668
     insured walls with no polygon, 32% of walled units under 1.5 m.
-  - **Pif pieces and small pifs (the lead, 2026-10-06).** The siz table,
+  - **Pif pieces and low-height pifs (the lead, 2026-10-06).** The siz table,
     step 13 and the wall units use the 20 m pif pieces the growth uses
     (`parent_pif_id` kept; each piece takes its whole pif's siz test), and
-    the units of `small` pifs get a line element as the GNS-only ones do.
+    the units of `low_height` pifs get a line element as the GNS-only ones do.
     Pilot: 10,379 pieces of 6,558 pifs, 6,713 units (417 with more than one
     line, up to 5; the longest 161 m), 3,347 expected walls, 11 of 1,945
     insured walls with no polygon (10 in the DEM margin, 1 GNS-only line
@@ -446,6 +443,15 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     evenly), 4,848 units (540 cut at bends, 75 at boundaries, 61 evenly),
     no rule broken, 3,272 expected walls, 21 of 1,775 insured walls with no
     polygon, 72% of walled units under 1.5 m.
+  - **Independent candidates (the lead, 2026-10-07).** Every siz pif piece,
+    every `low_height` pif piece (renamed from `small`) and every GNS-only
+    piece, itself cut by the shared line rules, is its own wall unit with
+    one line, probability and draw; the joins are gone. Pilot: 5,832 units
+    (4,884 siz, 80.8 km; 91 low-height, 1.0 km; 857 GNS-only, 10.5 km), no
+    rule broken, 3,997 expected walls, world 0 drawing 3,991 (2,130 insured,
+    24 with no polygon: 21 in the DEM margin, 3 GNS-only lines on other
+    elements), 663,401 m² evacuated, 63% of walled units under 1.5 m (55%
+    without the GNS-only units).
 - **Step 13, pif cut and fill (2026-10-05).**
   `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
