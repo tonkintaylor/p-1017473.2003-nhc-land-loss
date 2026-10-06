@@ -36,7 +36,14 @@ def draw(heights, consent_band, claims_median):
         zorder=0,
         label=f"{low:g} to {high:g} m, built without consent",
     )
-    ax.hist(shown, bins=bins, color=sme_data.MODEL, edgecolor="white", linewidth=1.5, label="Model walls")
+    ax.hist(
+        shown,
+        bins=bins,
+        color=sme_data.MODEL,
+        edgecolor="white",
+        linewidth=1.5,
+        label="Model walls",
+    )
     ax.axvline(
         float(np.median(heights)),
         color=sme_data.INK,
@@ -52,7 +59,9 @@ def draw(heights, consent_band, claims_median):
     )
     ax.legend(frameon=False, fontsize=8, loc="upper right")
     ax.set_xlim(0, MAX_HEIGHT_M)
-    ax.set_xlabel(f"Wall height (m), last bin {MAX_HEIGHT_M:g} m and over", color=sme_data.INK)
+    ax.set_xlabel(
+        f"Wall height (m), last bin {MAX_HEIGHT_M:g} m and over", color=sme_data.INK
+    )
     ax.set_ylabel("Walls", color=sme_data.INK)
     sme_data.style_axes(ax, grid_axis="y")
     fig.tight_layout()
@@ -66,7 +75,9 @@ def main(*, extent, world_id, consent_band, claims_median, fig_dir):
     print(f"Walls: {len(heights):,}")
     print(f"  median {np.median(heights):.2f} m")
     print(f"  under {low:g} m: {np.mean(heights < low):.1%}")
-    print(f"  {low:g} to {high:g} m: {np.mean((heights >= low) & (heights <= high)):.1%}")
+    print(
+        f"  {low:g} to {high:g} m: {np.mean((heights >= low) & (heights <= high)):.1%}"
+    )
     print(f"  over {high:g} m: {np.mean(heights > high):.1%}")
     fig = draw(heights, consent_band, claims_median)
     sme_data.save(fig, fig_dir, FIG_NAME)

@@ -46,7 +46,7 @@ def draw(areas, claims_medians):
         linewidth=1.5,
         label=f"Model median {np.median(areas):.0f} m²",
     )
-    for (cause, value), style in zip(claims_medians.items(), ("--", ":")):
+    for (cause, value), style in zip(claims_medians.items(), ("--", ":"), strict=False):
         ax.axvline(
             value,
             color=sme_data.INK,
@@ -54,9 +54,13 @@ def draw(areas, claims_medians):
             linestyle=style,
             label=f"Claim reports median, {cause}: {value:g} m²",
         )
-    ax.legend(frameon=False, fontsize=8, ncol=2, loc="lower left", bbox_to_anchor=(0, 1.0))
+    ax.legend(
+        frameon=False, fontsize=8, ncol=2, loc="lower left", bbox_to_anchor=(0, 1.0)
+    )
     ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    ax.set_xlabel("Evacuated area per damaged claim (m², log scale)", color=sme_data.INK)
+    ax.set_xlabel(
+        "Evacuated area per damaged claim (m², log scale)", color=sme_data.INK
+    )
     ax.set_ylabel("Claims", color=sme_data.INK)
     sme_data.style_axes(ax, grid_axis="y")
     fig.tight_layout()

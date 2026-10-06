@@ -53,8 +53,15 @@ def draw(shares, expected):
     ]
     ax.axvspan(*expected, color=sme_data.EXPECTED_BAND, zorder=0)
     ax.barh(y, shares["share"], height=0.6, color=colours)
-    for row, share in zip(y, shares["share"]):
-        ax.text(share + 0.01, row, f"{share:.0%}", va="center", fontsize=8, color=sme_data.INK)
+    for row, share in zip(y, shares["share"], strict=False):
+        ax.text(
+            share + 0.01,
+            row,
+            f"{share:.0%}",
+            va="center",
+            fontsize=8,
+            color=sme_data.INK,
+        )
     labels = [f"{name} ({int(n):,})" for name, n in shares["properties"].items()]
     ax.set_yticks(y, labels)
     ax.set_xlim(0, 1)

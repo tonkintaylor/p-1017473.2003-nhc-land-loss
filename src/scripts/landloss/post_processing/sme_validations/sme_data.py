@@ -102,15 +102,15 @@ def dwelling_elevations(insured, *, extent):
     The dwelling is the largest building outline standing in the claim's
     insured land, which is buffered off its dwellings.
     """
-    buildings = get_nz_building_outlines(bbox=tuple(insured.total_bounds), crs=insured.crs)
+    buildings = get_nz_building_outlines(
+        bbox=tuple(insured.total_bounds), crs=insured.crs
+    )
     points = gpd.GeoDataFrame(
         {"area_m2": buildings.area.to_numpy()},
         geometry=buildings.geometry.representative_point().to_numpy(),
         crs=buildings.crs,
     )
-    placed = gpd.sjoin(
-        points, insured[["claim_id", "geometry"]], predicate="within"
-    )
+    placed = gpd.sjoin(points, insured[["claim_id", "geometry"]], predicate="within")
     dwellings = placed.sort_values("area_m2").groupby("claim_id").tail(1)
     dwellings = dwellings.set_index("claim_id")
     return sample_at_points(dem_path(1, extent=extent), dwellings.geometry)

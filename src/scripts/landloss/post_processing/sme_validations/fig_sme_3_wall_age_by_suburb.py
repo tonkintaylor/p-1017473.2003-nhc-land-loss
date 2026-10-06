@@ -151,4 +151,8 @@ def main(*, extent, suburbs, fig_dir):
 
 
 if __name__ == "__main__":
-    main(extent=config.AGE_TABLE_EXTENT, suburbs=config.AGE_SUBURBS, fig_dir=config.FIG_DIR)
+    main(
+        extent=config.AGE_TABLE_EXTENT,
+        suburbs=config.AGE_SUBURBS,
+        fig_dir=config.FIG_DIR,
+    )

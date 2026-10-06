@@ -36,7 +36,14 @@ def draw(shares):
     """Draw one bar per measure, split into meeting and not meeting the land."""
     fig, ax = plt.subplots(figsize=(8, 2.2))
     y = np.arange(len(shares))[::-1]
-    ax.barh(y, shares.values(), height=0.55, color=sme_data.MODEL, edgecolor="white", linewidth=1.5)
+    ax.barh(
+        y,
+        shares.values(),
+        height=0.55,
+        color=sme_data.MODEL,
+        edgecolor="white",
+        linewidth=1.5,
+    )
     ax.barh(
         y,
         [1 - s for s in shares.values()],
@@ -46,8 +53,16 @@ def draw(shares):
         edgecolor="white",
         linewidth=1.5,
     )
-    for row, share in zip(y, shares.values()):
-        ax.text(share / 2, row, f"{share:.0%}", ha="center", va="center", color="white", fontsize=9)
+    for row, share in zip(y, shares.values(), strict=False):
+        ax.text(
+            share / 2,
+            row,
+            f"{share:.0%}",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=9,
+        )
     ax.set_yticks(y, list(shares))
     ax.set_xlim(0, 1)
     ax.xaxis.set_major_formatter(mpl.ticker.PercentFormatter(1.0))
@@ -67,7 +82,9 @@ def main(*, extent, world_id, tolerance_m, fig_dir):
     by_property = walls.groupby("claim_id")["meets"].any()
     shares = {
         f"Walls ({len(walls):,})": float(walls["meets"].mean()),
-        f"Walled properties, any wall ({len(by_property):,})": float(by_property.mean()),
+        f"Walled properties, any wall ({len(by_property):,})": float(
+            by_property.mean()
+        ),
     }
     for label, share in shares.items():
         print(f"{label}: {share:.1%} meet the insured land")

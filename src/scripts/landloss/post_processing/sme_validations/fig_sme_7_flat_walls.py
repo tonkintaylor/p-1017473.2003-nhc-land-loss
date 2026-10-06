@@ -29,12 +29,21 @@ LANDFORMS = ("flat", "hill")
 
 def draw(shares, counts, heights):
     """Draw the walled share per landform beside the wall heights on each."""
-    fig, (share_ax, height_ax) = plt.subplots(1, 2, figsize=(9, 3), width_ratios=(1, 1.4))
+    fig, (share_ax, height_ax) = plt.subplots(
+        1, 2, figsize=(9, 3), width_ratios=(1, 1.4)
+    )
     y = np.arange(len(LANDFORMS))[::-1]
     colours = [sme_data.MODEL_LIGHT, sme_data.MODEL]
     share_ax.barh(y, [shares[f] for f in LANDFORMS], height=0.55, color=colours)
-    for row, landform in zip(y, LANDFORMS):
-        share_ax.text(shares[landform] + 0.02, row, f"{shares[landform]:.0%}", va="center", fontsize=8, color=sme_data.INK)
+    for row, landform in zip(y, LANDFORMS, strict=False):
+        share_ax.text(
+            shares[landform] + 0.02,
+            row,
+            f"{shares[landform]:.0%}",
+            va="center",
+            fontsize=8,
+            color=sme_data.INK,
+        )
     share_ax.set_yticks(y, [f"{f.capitalize()} ({counts[f]:,})" for f in LANDFORMS])
     share_ax.set_xlim(0, 1)
     share_ax.xaxis.set_major_formatter(mpl.ticker.PercentFormatter(1.0))
@@ -52,10 +61,12 @@ def draw(shares, counts, heights):
         patch_artist=True,
         medianprops={"color": sme_data.INK, "linewidth": 1.5},
     )
-    for patch, colour in zip(box["boxes"], colours):
+    for patch, colour in zip(box["boxes"], colours, strict=False):
         patch.set_facecolor(colour)
         patch.set_edgecolor(sme_data.INK)
-    height_ax.set_yticks(y, [f"{f.capitalize()} ({len(heights[f]):,} walls)" for f in LANDFORMS])
+    height_ax.set_yticks(
+        y, [f"{f.capitalize()} ({len(heights[f]):,} walls)" for f in LANDFORMS]
+    )
     height_ax.set_xlabel("Wall height (m), box p25 to p75", color=sme_data.INK)
     height_ax.tick_params(axis="y", length=0)
     height_ax.spines["left"].set_visible(False)
@@ -70,13 +81,17 @@ def main(*, extent, world_id, fig_dir):
     walls = walls.join(properties.set_index("claim_id")["landform"], on="claim_id")
     shares = properties.groupby("landform")["walled"].mean()
     counts = properties["landform"].value_counts()
-    heights = {f: walls.loc[walls["landform"] == f, "height_m"].to_numpy() for f in LANDFORMS}
+    heights = {
+        f: walls.loc[walls["landform"] == f, "height_m"].to_numpy() for f in LANDFORMS
+    }
     for landform in LANDFORMS:
         print(
             f"{landform}: {shares[landform]:.1%} of {counts[landform]:,} properties walled, "
             f"{len(heights[landform]):,} walls, median height {np.median(heights[landform]):.2f} m"
         )
-    print(f"Walls the population flags as on NLM flatland: {int(walls['is_flatland'].sum()):,} of {len(walls):,}")
+    print(
+        f"Walls the population flags as on NLM flatland: {int(walls['is_flatland'].sum()):,} of {len(walls):,}"
+    )
     fig = draw(shares, counts, heights)
     sme_data.save(fig, fig_dir, FIG_NAME)
     plt.close(fig)
