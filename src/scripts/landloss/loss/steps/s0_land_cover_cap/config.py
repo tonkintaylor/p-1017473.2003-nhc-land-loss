@@ -15,5 +15,8 @@ runs the Act as it stands, which is that class's own default.
 # four tables this reads.
 EXTENT = "wlg-pilot"
 
+# Which exposure worlds to cap, each a draw of the wall population.
+WORLD_IDS = [0]
+
 # Which modelled earthquakes to cap.
 REALISATION_IDS = [0]

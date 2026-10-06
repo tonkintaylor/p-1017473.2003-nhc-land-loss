@@ -86,16 +86,9 @@
   `world_loss_input_path(table, world_id, realisation_id, extent=...)`. The step
   writes through it and every vul caller and test uses it; `world_id` is
   positional with no default.
-- `loss_input_path(table, realisation_id, extent=...)`, the old signature, is
-  kept **deprecated** for the loss module's five callers
-  (`s0_gen_land_cover_cap.py`, `s1_gen_settlement.py`,
-  `gen_calc_walkthrough.py` twice and `gen_viewer_data.py`), which pass no
-  world. It returns `world_loss_input_path(table, 0, realisation_id, ...)`, so
-  the loss module reads world 0 of each earthquake, which is every world this
-  build runs (`WORLD_IDS = [0]`). Nothing in vul calls it, and a test pins that
-  it resolves world 0 and reads the file the step writes for world 0
-  (contract decision 37). It is deleted once the loss owner moves those calls
-  to `world_loss_input_path` with a `WORLD_IDS` setting.
+- The loss module reads the tables through `world_loss_input_path` too, per
+  exposure world and earthquake, with its own `WORLD_IDS` setting (T-66). The
+  old world-less `loss_input_path` is deleted.
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/test_property_damage_step.py`. It has not been run on
   the pilot since the rework, so no counts are recorded here; it needs

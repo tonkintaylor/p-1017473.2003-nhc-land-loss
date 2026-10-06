@@ -65,10 +65,11 @@ from landloss.loss.settlement import (
     structure_contribution_nzd,
     structure_sub_cap_bound,
 )
+from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.loss.steps.s0_land_cover_cap import config
 from scripts.landloss.paths import TEMP_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
-    loss_input_path,
+    world_loss_input_path,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -97,10 +98,11 @@ RW_SUB_CAP_BOUND_COLUMN = "retaining_wall_sub_cap_bound"
 HAS_CROSSING_COLUMN = "has_damaged_crossing"
 
 
-def land_cover_cap_path(realisation_id: int, *, extent: str) -> Path:
-    """Return the file a run writes one realisation's caps to.
+def land_cover_cap_path(world_id: int, realisation_id: int, *, extent: str) -> Path:
+    """Return the file a run writes one world and realisation's caps to.
 
     Args:
+        world_id: The exposure world, one draw of the wall population.
         realisation_id: The modelled earthquake.
         extent: The extent the run is over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
@@ -109,7 +111,8 @@ def land_cover_cap_path(realisation_id: int, *, extent: str) -> Path:
         The path, under ``temp/loss``.
     """
     suffix = extent_suffix(extent)
-    return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.parquet"
+    stem = f"{OUT_STEM}-w{world_id:03d}-r{realisation_id:03d}"
+    return WORK_DIR / f"{stem}{suffix}.parquet"
 
 
 def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
@@ -255,80 +258,96 @@ def describe_caps(caps):
     )
 
 
-def main(*, extent, realisation_ids):
-    """Build and write the land cover cap per claim, per realisation.
+def main(*, extent, world_ids, realisation_ids):
+    """Build and write the land cover cap per claim, per world and realisation.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
+        world_ids: Which exposure worlds to cap.
         realisation_ids: Which modelled earthquakes to cap.
     """
     policy = PolicySettings()
 
-    for realisation_id in realisation_ids:
-        print(f"\nCapping realisation {realisation_id} ...", flush=True)
-        tables = {
-            name: gpd.read_parquet(loss_input_path(name, realisation_id, extent=extent))
-            for name in LOSS_TABLES
-        }
+    for world_id in world_ids:
+        for realisation_id in realisation_ids:
+            print(
+                f"\nCapping world {world_id}, realisation {realisation_id} ...",
+                flush=True,
+            )
+            tables = {
+                name: gpd.read_parquet(
+                    world_loss_input_path(name, world_id, realisation_id, extent=extent)
+                )
+                for name in LOSS_TABLES
+            }
 
-        caps = loss_claims.land_by_claim(tables["land"])
-        caps[RW_UDV_COLUMN] = (
-            wall_udv_by_claim(tables["rw"], policy=policy).reindex(caps.index).fillna(0)
-        )
+            caps = loss_claims.land_by_claim(tables["land"])
+            caps[RW_UDV_COLUMN] = (
+                wall_udv_by_claim(tables["rw"], policy=policy)
+                .reindex(caps.index)
+                .fillna(0)
+            )
 
-        # The dwelling count is validated against the same table it is read
-        # from, so a claim missing one is refused here rather than quietly
-        # halving its sub-cap.
-        n_dwellings = loss_claims.dwelling_counts(
-            caps.index.to_numpy(), caps.reset_index()
-        )
-        area = caps[loss_claims.DAMAGED_AREA_COLUMN].to_numpy()
-        rate = caps[loss_claims.LAND_RATE_COLUMN].to_numpy()
-        udv = caps[RW_UDV_COLUMN].to_numpy()
-        limit = policy.retaining_wall_limit_nzd(n_dwellings)
+            # The dwelling count is validated against the same table it is read
+            # from, so a claim missing one is refused here rather than quietly
+            # halving its sub-cap.
+            n_dwellings = loss_claims.dwelling_counts(
+                caps.index.to_numpy(), caps.reset_index()
+            )
+            area = caps[loss_claims.DAMAGED_AREA_COLUMN].to_numpy()
+            rate = caps[loss_claims.LAND_RATE_COLUMN].to_numpy()
+            udv = caps[RW_UDV_COLUMN].to_numpy()
+            limit = policy.retaining_wall_limit_nzd(n_dwellings)
 
-        # A damaged crossing is given an undepreciated value of exactly its own
-        # sub-cap limit, so `min(udv, limit)` returns the limit. That is the
-        # agreed simplification: nothing prices a crossing, and both its
-        # replacement cost and its value are taken to exceed the limit, so the
-        # limit is what it contributes whatever the true figures are.
-        with_crossing = claims_with_damaged_crossing(
-            tables["culverts"], tables["bridges"]
-        )
-        caps[HAS_CROSSING_COLUMN] = caps.index.isin(with_crossing)
-        crossing_limit = policy.bridge_culvert_limit_nzd(n_dwellings)
-        crossing_udv = np.where(caps[HAS_CROSSING_COLUMN].to_numpy(), crossing_limit, 0)
-        caps[CROSSING_UDV_COLUMN] = crossing_udv
+            # A damaged crossing is given an undepreciated value of exactly its own
+            # sub-cap limit, so `min(udv, limit)` returns the limit. That is the
+            # agreed simplification: nothing prices a crossing, and both its
+            # replacement cost and its value are taken to exceed the limit, so the
+            # limit is what it contributes whatever the true figures are.
+            with_crossing = claims_with_damaged_crossing(
+                tables["culverts"], tables["bridges"]
+            )
+            caps[HAS_CROSSING_COLUMN] = caps.index.isin(with_crossing)
+            crossing_limit = policy.bridge_culvert_limit_nzd(n_dwellings)
+            crossing_udv = np.where(
+                caps[HAS_CROSSING_COLUMN].to_numpy(), crossing_limit, 0
+            )
+            caps[CROSSING_UDV_COLUMN] = crossing_udv
 
-        caps[LAND_VALUE_COLUMN] = damaged_land_value_nzd(area, rate, policy=policy)
-        caps[AREA_CAP_BOUND_COLUMN] = area_cap_bound(area, policy=policy)
-        caps[RW_CONTRIBUTION_COLUMN] = structure_contribution_nzd(udv, limit)
-        caps[RW_SUB_CAP_BOUND_COLUMN] = structure_sub_cap_bound(udv, limit)
-        caps[CROSSING_CONTRIBUTION_COLUMN] = structure_contribution_nzd(
-            crossing_udv, crossing_limit
-        )
-        caps[CAP_COLUMN] = land_cover_cap_nzd(
-            land_value_incl_gst_nzd=caps[LAND_VALUE_COLUMN].to_numpy(),
-            retaining_wall_udv_incl_gst_nzd=udv,
-            bridge_culvert_udv_incl_gst_nzd=crossing_udv,
-            n_dwellings=n_dwellings,
-            policy=policy,
-        )
+            caps[LAND_VALUE_COLUMN] = damaged_land_value_nzd(area, rate, policy=policy)
+            caps[AREA_CAP_BOUND_COLUMN] = area_cap_bound(area, policy=policy)
+            caps[RW_CONTRIBUTION_COLUMN] = structure_contribution_nzd(udv, limit)
+            caps[RW_SUB_CAP_BOUND_COLUMN] = structure_sub_cap_bound(udv, limit)
+            caps[CROSSING_CONTRIBUTION_COLUMN] = structure_contribution_nzd(
+                crossing_udv, crossing_limit
+            )
+            caps[CAP_COLUMN] = land_cover_cap_nzd(
+                land_value_incl_gst_nzd=caps[LAND_VALUE_COLUMN].to_numpy(),
+                retaining_wall_udv_incl_gst_nzd=udv,
+                bridge_culvert_udv_incl_gst_nzd=crossing_udv,
+                n_dwellings=n_dwellings,
+                policy=policy,
+            )
 
-        describe_land(caps)
-        describe_walls(caps, tables["rw"])
-        describe_crossings(caps, tables["culverts"], tables["bridges"])
-        describe_caps(caps)
+            describe_land(caps)
+            describe_walls(caps, tables["rw"])
+            describe_crossings(caps, tables["culverts"], tables["bridges"])
+            describe_caps(caps)
 
-        out = caps.reset_index()
-        out.insert(0, REALISATION_ID_COLUMN, realisation_id)
-        out_path = land_cover_cap_path(realisation_id, extent=extent)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out.to_parquet(out_path)
-        print(RULE)
-        print(f"Wrote {len(out):,} claims to {out_path}")
+            out = caps.reset_index()
+            out.insert(0, REALISATION_ID_COLUMN, realisation_id)
+            out.insert(1, WORLD_ID_COLUMN, world_id)
+            out_path = land_cover_cap_path(world_id, realisation_id, extent=extent)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out.to_parquet(out_path)
+            print(RULE)
+            print(f"Wrote {len(out):,} claims to {out_path}")
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

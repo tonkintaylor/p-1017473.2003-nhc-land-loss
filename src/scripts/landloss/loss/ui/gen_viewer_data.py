@@ -57,7 +57,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
 from scripts.landloss.loss.ui.gen_calc_walkthrough import wall_shape
 from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
-    loss_input_path,
+    world_loss_input_path,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -68,7 +68,7 @@ VIEWER = "loss_viewer.html"
 HERE = __import__("pathlib").Path(__file__).resolve().parent
 
 
-def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
+def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return each claim's position in degrees, for the map.
 
     The insured land is a polygon; the viewer wants a dot, so this takes a
@@ -76,6 +76,7 @@ def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
     L-shaped section can fall outside the property altogether.
 
     Args:
+        world_id: The exposure world.
         realisation_id: The modelled earthquake.
         extent: The extent the run is over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
@@ -83,7 +84,9 @@ def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
     Returns:
         ``lon`` and ``lat`` per claim.
     """
-    land = gpd.read_parquet(loss_input_path("land", realisation_id, extent=extent))
+    land = gpd.read_parquet(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent)
+    )
     inside = land.geometry.representative_point()
     degrees = gpd.GeoSeries(inside, crs=land.crs).to_crs(4326)
     return (
@@ -242,22 +245,26 @@ def check_viewer_against_the_model(rows, claims, policy) -> float:
     return worst
 
 
-def main(*, extent, realisation_ids):
-    """Write the viewer's CSV and copy the page beside it."""
+def main(*, extent, world_ids, realisation_ids):
+    """Write the viewer's CSV for the first world and realisation, and the page."""
     policy = PolicySettings()
+    world_id = world_ids[0]
     realisation_id = realisation_ids[0]
-    claims = pd.read_parquet(settlement_path(realisation_id, extent=extent)).set_index(
-        CLAIM_ID_COLUMN
-    )
-    walls = wall_shape(realisation_id, extent=extent).reindex(claims.index)
+    claims = pd.read_parquet(
+        settlement_path(world_id, realisation_id, extent=extent)
+    ).set_index(CLAIM_ID_COLUMN)
+    walls = wall_shape(world_id, realisation_id, extent=extent).reindex(claims.index)
     rows = viewer_rows(claims, walls)
-    rows = rows.join(claim_points(realisation_id, extent=extent)).reset_index()
+    points = claim_points(world_id, realisation_id, extent=extent)
+    rows = rows.join(points).reset_index()
 
     check_viewer_against_the_model(rows.set_index(CLAIM_ID_COLUMN), claims, policy)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     suffix = extent_suffix(extent)
-    csv_path = OUT_DIR / f"loss-viewer-r{realisation_id:03d}{suffix}.csv"
+    csv_path = (
+        OUT_DIR / f"loss-viewer-w{world_id:03d}-r{realisation_id:03d}{suffix}.csv"
+    )
     rows.to_csv(csv_path, index=False)
     shutil.copy(HERE / VIEWER, OUT_DIR / VIEWER)
     print(f"Wrote {len(rows):,} claims to {csv_path}")
@@ -267,4 +274,8 @@ def main(*, extent, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

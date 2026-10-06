@@ -8,7 +8,7 @@ land cover cap on each claim, and step 1 builds the repair cost and settles
 against it, writing ``land-cover-cap-r<nnn>[-pilot].parquet`` and
 ``settlement-r<nnn>[-pilot].parquet`` under ``temp/loss``.
 
-The extent and realisations come from ``config.py`` beside this; anything else a
+The extent, worlds and realisations come from ``config.py`` beside this; anything else a
 step reads comes from that step's own ``config.py``.
 
 **Every repair cost in step 1 rests on a stated assumption**, and the three site
@@ -23,15 +23,20 @@ from scripts.landloss.loss.steps.s1_settlement import s1_gen_settlement
 from scripts.landloss.pipeline import run_steps
 
 
-def main(*, extent, realisation_ids):
+def main(*, extent, world_ids, realisation_ids):
     """Run the loss steps in order.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
+        world_ids: Which exposure worlds to run.
         realisation_ids: Which modelled earthquakes to run.
     """
-    ids = {"extent": extent, "realisation_ids": realisation_ids}
+    ids = {
+        "extent": extent,
+        "world_ids": world_ids,
+        "realisation_ids": realisation_ids,
+    }
     run_steps(
         "loss",
         [
@@ -48,4 +53,8 @@ def main(*, extent, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

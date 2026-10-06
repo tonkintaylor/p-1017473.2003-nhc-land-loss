@@ -71,7 +71,7 @@ def pilot_csv() -> pd.DataFrame:
     Raises:
         FileNotFoundError: If it has not been generated yet.
     """
-    matches = sorted(OUT_DIR.glob("loss-viewer-r*.csv"))
+    matches = sorted(OUT_DIR.glob("loss-viewer-w*-r*.csv"))
     if not matches:
         msg = (
             f"no pilot viewer CSV in {OUT_DIR}. Run gen_viewer_data.py first -- "
