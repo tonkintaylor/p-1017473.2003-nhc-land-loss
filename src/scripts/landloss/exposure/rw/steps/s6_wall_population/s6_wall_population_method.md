@@ -122,8 +122,8 @@ each wall's age bin and type.
   writes one row per unit to `temp/exposure/wall-probability[-pilot].geoparquet`
   from `wall_probability_path()` through
   `landloss.exposure.rw.wall_probability.gen_unit_probability_table`.
-- A unit's `p_wall` and `p_wall_basis` are step 12's: the prior, the GNS floor
-  and the claim and NZMM update (the step 12 method file). Its `wall_line_id`
+- A unit's `p_wall` and `p_wall_basis` are step 12's: the points prior, the
+  GNS floor and the claim update (the step 12 method file). Its `wall_line_id`
   is its `wall_unit_id`. Its `claim_id` comes from `claim_of_properties`: the
   property's boundary maps to the claim of `build_claim_properties` with
   exactly its geometry, so every title of a stacked unit-title block maps to
@@ -169,6 +169,11 @@ each wall's age bin and type.
   Wellington.
 
 ## The age shares of each property (`gen_wall_age.py`)
+
+- Since 2026-10-07 `gen_hazard` runs `gen_wall_age.py` before landslide
+  step 12's wall units, whose points read the shares (the lead's age points),
+  and `gen_exposure` no longer runs it. It needs only QV, exposure step 8 and
+  the LINZ properties, none of step 12.
 
 - `gen_wall_age.py` writes one row per claimable LINZ property in the extent
   to `temp/exposure/wall-age[-pilot].parquet` from `wall_age_path()`, indexed

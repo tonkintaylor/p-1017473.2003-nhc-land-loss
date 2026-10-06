@@ -371,82 +371,44 @@ MIN_WALL_HEIGHT_M = 0.5
 # in poor condition.
 UNCONSENTED_WALL_HEIGHT_M = 1.5
 
-# The wall unit weights (landloss.hazard.landslide.wall_units), every one
-# engineering judgement with no fit behind it; each is replaced by the claim
-# report extraction (T-50).
-# The prior that a wall unit holding a siz is a wall: between the old wall
-# line priors of a terrain break (0.4) and a SLIDE cut or fill edge (0.5),
-# because a siz is a face steep and high enough to need retaining. Replaced by
-# T-50.
-BETA_SIZ_WALL_PRIOR = 0.5
-# The prior of a low-height wall candidate (class low_height, named small
-# until 2026-10-07): a pif piece that is not a siz but has a GNS mapped wall
-# within 2 m. It always carries a GNS wall, so the GNS floor sets its value and
-# this only shows in p_prior. Replaced by T-50.
+# The wall candidate probability (landloss.hazard.landslide.wall_units), the
+# lead's points scale of 2026-10-07 (.agents/plans/wall-probability-points.md):
+# each attribute adds the points of its bin (io/assets/wall-probability-points.csv)
+# and the total sets the prior on the log-odds scale. Every value is judgement
+# with no fit behind it, replaced by the claim report extraction (T-50).
+#
+# The probability at 0 points. INTERIM (the lead, 2026-10-07: "bring it down by
+# 40% for now, adjust GNS walls and the points-based system"): solved so the
+# pilot's total expected walls after the GNS floor and the claim update are 60%
+# of the 3,997 the multiplied factors gave (about 2,400), with the two GNS
+# values below at 0.80 and 0.70 (the lead's correction, 2026-10-07). Solved on
+# the pilot run of 2026-10-07: 2,398 expected walls (2,657 at a base of 0.30).
+BETA_WALL_BASE_P = 0.225
+# Points that double the odds that a candidate is a wall.
+BETA_WALL_POINTS_PER_DOUBLING = 20.0
+# The probability at 0 points of a low-height wall candidate (class low_height,
+# named small until 2026-10-07): a pif piece that is not a siz but has a GNS
+# mapped wall within 2 m. It always carries a GNS wall, so the GNS floor sets
+# its value and this only shows in p_prior. Replaced by T-50.
 BETA_LOW_HEIGHT_WALL_PRIOR = 0.3
-# What the prior keeps by the height band of the unit (0 under 0.5 m, 1 from
-# 0.5 m, 2 from 3.5 m): faces of 3.5 m and over are more often unretained
-# banks or cuttings. A band not listed keeps 1. Replaced by T-50.
-BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR = {0: 1.0, 1: 1.0, 2: 0.8}
-# What a unit landslide step 13 classes as a cut, on rock, keeps of its prior:
-# a rock cut stands unsupported (Wellington greywacke cuts stand at 55 to 75
-# degrees, nzgs_2025_torlesse) and is claimed for spalling or slides rather than
-# wall failure (Oriental Bay and Evans Bay are the worked examples). Replaced by
-# T-50.
-BETA_ROCK_CUT_FACTOR = 0.3
-# The rock cut factor applies only to faces whose wall height is over this, in
-# metres: under it the face is in the soil cover over the rock, which is
-# retained like soil. Replaced by T-50.
-BETA_ROCK_CUT_MIN_HEIGHT_M = 2.5
-# What a unit landslide step 13 classes as fill or cut and fill multiplies its
-# prior by: fill is placed, and the front of a platform is where walls hold it,
-# so it is more often retained. Replaced by T-50.
-BETA_FILL_WALL_FACTOR = 1.3
-# What a unit landslide step 13 classes as natural keeps of its prior: its
-# face falls no more than the ground around it does (excess drop under 1 m),
-# a bank rather than an earthwork, and walls are built to retain earthworks.
-# Replaced by T-50.
-BETA_NATURAL_WALL_FACTOR = 0.5
-# What a unit lying mostly (at least half its line) within
-# BETA_WALL_BOUNDARY_DISTANCE_M of a non-road property boundary multiplies its
-# prior by, and one mostly that near a road parcel's boundary (a road
-# frontage, which wins where both hold). Approved by the lead on 2026-10-06:
-# on the pilot, candidate pifs within 2 m of a property boundary carry a GNS
-# mapped wall 20% of the time against 8% off one, and 32% against 12% on a
-# road frontage, consistently within the height bands. Set below those raw
-# ratios because GNS maps the walls visible from above, and a wall on a
-# boundary or a frontage may be easier to see. Replaced by T-50.
-BETA_BOUNDARY_WALL_FACTOR = 1.5
-BETA_ROAD_FRONTAGE_WALL_FACTOR = 2.0
 # How near a property or road parcel boundary, in metres, a wall unit's line
-# lies to be on it, for the two factors above.
+# lies to be on it (the setting points).
 BETA_WALL_BOUNDARY_DISTANCE_M = 2.0
-# The prior of a unit whose wall height (its 80th percentile pip drop) is over
-# BETA_TALL_FACE_TAPER_START_M metres falls linearly to
-# BETA_TALL_FACE_MIN_FACTOR of itself at BETA_TALL_FACE_TAPER_END_M and stays
-# there above (the lead, 2026-10-06). Judgement: a face over about 5 m is
-# rarely retained in full on a residential lot, and above about 8 m it is a
-# cut slope or a natural face, not a wall. Replaced by T-50.
-BETA_TALL_FACE_TAPER_START_M = 5.0
-BETA_TALL_FACE_TAPER_END_M = 8.0
-BETA_TALL_FACE_MIN_FACTOR = 0.1
-# The least probability of a wall unit with a GNS mapped wall on it. Not 1,
-# because the mapping is from imagery and a line can be a road batter or the
-# neighbour's wall. Replaced by T-50.
-BETA_GNS_WALL_UNIT_FLOOR = 0.95
-# The probability of a unit made only of GNS mapped wall with no pif near it:
-# lower than the floor, because the DEM sees no step there. Replaced by T-50.
-BETA_GNS_ONLY_WALL_PROBABILITY = 0.8
-# The walls a property with NZMM has_retaining_wall true is taken to have: the
-# project lead's expected minimum, for a database that does not say how many.
-# Unreliable: NZMM agrees with GNS no better than chance (kappa 0.03) and its
-# provenance is unknown. Replaced by T-50.
-BETA_NZMM_MIN_WALLS = 2
-# The share of the full NZMM update a wall unit takes, from 0 (none) to 1 (as
-# strong as a claim report listing BETA_NZMM_MIN_WALLS walls). Low because
-# NZMM is applied modestly: it agrees with GNS no better than chance and its
-# provenance is unknown. Judgement; replaced by T-50 or dropped.
-BETA_NZMM_UPDATE_WEIGHT = 0.3
+# The least probability of a wall candidate with a GNS mapped wall within 2 m.
+# Not 1, because the mapping is from imagery and a line can be a road batter or
+# the neighbour's wall. INTERIM: 0.95 until 2026-10-07, when the lead cut it
+# to 0.80 (a first cut to 0.57 was too aggressive, the lead the same day).
+BETA_GNS_WALL_UNIT_FLOOR = 0.80
+# The probability of a GNS-only candidate (a stretch of mapped wall with no pip
+# within 2 m): lower than the floor, because the DEM sees no step there.
+# INTERIM: 0.8 until 2026-10-07, when the lead cut it to 0.70 (a first cut to
+# 0.48 was too aggressive, the lead the same day).
+BETA_GNS_ONLY_WALL_PROBABILITY = 0.70
+# What exposure rw step 6's line candidates (landloss.exposure.rw.wall_probability)
+# keep of their probability on a rock cut: a rock cut stands unsupported
+# (Wellington greywacke cuts stand at 55 to 75 degrees, nzgs_2025_torlesse) and
+# is claimed for spalling or slides rather than wall failure. Replaced by T-50.
+BETA_ROCK_CUT_FACTOR = 0.3
 
 # Multiplier on every urban fragility median by config.URBAN_RATE. Medium is
 # 1.0 by definition; low and high are placeholders to be set by the anchoring

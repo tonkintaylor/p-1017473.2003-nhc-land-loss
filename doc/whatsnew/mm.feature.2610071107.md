@@ -1,0 +1,1 @@
+Every urban slope failure now leaves a strip of debris at least one cell (1 m) long below its toe (the lead, 2026-10-07), even where the dry reach angle keeps the debris on its own ground or the volume cap is shorter (`landloss.hazard.landslide.slope_polygons.BETA_MIN_RUNOUT_M`). On the pilot all but 15 of 5,993 polygons now have inundated ground, 124,336 m² in all.

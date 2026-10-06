@@ -579,6 +579,43 @@ def gen_pif_near_drops(
     return frame.groupby("pif_id")["drop"].quantile(quantile).rename("near_drop_p80_m")
 
 
+def gen_pif_verticality(
+    dem: ArrayLike,
+    pips: Pips,
+    pif_labels: NDArray[np.int32],
+    *,
+    cells: int = 3,
+) -> pd.Series:
+    """Each pif's verticality: how much of its drop is in the first cell.
+
+    Per pip, the drop to the first cell along its own fall direction over the
+    largest drop to any of the first ``cells`` cells (the lead, 2026-10-07):
+    near 1 for a step or a wall, under 0.5 for a batter, whose fall goes on
+    evenly. Per pif, the median over its pips. A cell off the grid or with no
+    DEM is skipped; a pip with no drop has none.
+
+    Returns:
+        The verticality per pif, indexed by ``pif_id``, named ``verticality``.
+    """
+    z = np.asarray(dem, dtype=float)
+    height, width = z.shape
+    rows, cols = np.nonzero(pips.mask & (pif_labels > 0))
+    fall = pips.direction[rows, cols]
+    drops = np.full((cells, rows.size), np.nan)
+    for k in range(1, cells + 1):
+        r2 = rows + k * _STEPS[fall, 0]
+        c2 = cols + k * _STEPS[fall, 1]
+        ok = (r2 >= 0) & (r2 < height) & (c2 >= 0) & (c2 < width)
+        below = np.full(rows.size, np.nan)
+        below[ok] = z[r2[ok], c2[ok]]
+        drops[k - 1] = z[rows, cols] - below
+    with np.errstate(invalid="ignore", divide="ignore"):
+        largest = np.nanmax(np.where(np.isfinite(drops), drops, -np.inf), axis=0)
+        ratio = np.where(largest > 0, drops[0] / largest, np.nan)
+    frame = pd.DataFrame({"pif_id": pif_labels[rows, cols], "ratio": ratio})
+    return frame.groupby("pif_id")["ratio"].median().rename("verticality")
+
+
 def _pair_stats(
     xy: NDArray[np.float64], z: NDArray[np.float64], *, step_m: float
 ) -> tuple[float, float, float, bool]:

@@ -1,0 +1,292 @@
+# Numbered assumptions of the retaining wall chain, shown in boxes on the
+# reviewer page.
+#
+# Ids are permanent: append new assumptions with the next free number, and mark
+# one that no longer holds `status = "retired"` with a line on what replaced it,
+# rather than deleting or renumbering it. A review meeting records its decisions
+# against these ids, so an id must never come to mean something else.
+#
+# status is one of:
+#   decided  - set by the lead (give `decided` as who and when)
+#   beta     - judgement standing in until the claim report extraction (T-50) or
+#              another dataset calibrates it
+#   pending  - waiting on someone outside the code (named in `note`)
+#   adopted  - taken from a published method or standard
+#   check    - the code and the written method disagree; resolve before relying on it
+#   retired  - no longer holds
+#
+# `source` is where the assumption lives in the repository, so a reviewer can
+# find it. First written 2026-10-07 from the code, the step method files and
+# the status files; the wall work was moving that day, so check the source.
+#
+# Write a constant's value as its name in braces, {BETA_GNS_WALL_UNIT_FLOOR},
+# not as a number: the generator fills it from landloss.domain.constants at
+# build time, so the box shows the value the code runs with today.
+
+[[assumptions]]
+id = "RW-A01"
+step = "faces"
+title = "A wall must make pips to be found"
+text = "A pip is a 1 m DEM cell that drops at least 0.7 m at 1, 3 and 5 cells in one of eight directions. A wall lower than about 0.7 m (about 1.0 m facing a diagonal) makes no pips, so it is a candidate only where GNS maps it. No probability is lowered to allow for the walls that are missed."
+status = "beta"
+source = "src/landloss/hazard/landslide/instability_zones.py (PIP_DROP_M, PIP_OFFSETS_M); wall_units.py module docstring"
+
+[[assumptions]]
+id = "RW-A02"
+step = "faces"
+title = "Pips join into faces (pifs)"
+text = "Pips within 2 m of each other join into a pif, which needs at least 3 pips and a spine of at least 3 m. A pif lying mostly inside a building outline is dropped."
+status = "beta"
+source = "s12_urban_slope_faces_method.md"
+
+[[assumptions]]
+id = "RW-A03"
+step = "faces"
+title = "Pifs are cut into wall-length pieces"
+text = "Each pif is cut into pieces of 3 to 50 m with at most 3 bends and at most 185 degrees of turning in all. Each piece is one wall candidate."
+status = "decided"
+decided = "the lead, 2026-10-07"
+source = "src/landloss/hazard/landslide/bend_split.py"
+
+[[assumptions]]
+id = "RW-A04"
+step = "faces"
+title = "Faces only where there is LiDAR; fill is soil"
+text = "Pifs are found only on the LiDAR DEM, and fill is treated as soil."
+status = "beta"
+source = "s12_urban_slope_faces_method.md; hazard/landslide/status.md"
+
+[[assumptions]]
+id = "RW-A05"
+step = "cut_fill"
+title = "Cut, fill or natural from a fitted ground surface"
+text = "Each pif's crest and the foot of its face are compared with a robust quadratic surface fitted to the ground off the faces. An excess drop of up to 1 m is natural, and up to 2 sigma is uncertain. Beyond that, a position above +1/3 is fill, below -1/3 is cut, and in between is cut and fill. Fewer than 30 fit cells gives unknown."
+status = "beta"
+source = "src/landloss/hazard/landslide/pif_cut_fill.py; s13_pif_cut_fill_method.md"
+
+[[assumptions]]
+id = "RW-A06"
+step = "cut_fill"
+title = "A unit takes its longest pif's class"
+text = "A wall unit takes the cut/fill class of its longest pif. A gns_only unit has no pif, so it is unknown."
+status = "beta"
+source = "wall_units.py (_unit_cut_fill_class)"
+
+[[assumptions]]
+id = "RW-A07"
+step = "wall_units"
+title = "Every wall candidate is independent"
+text = "One candidate is one unit, with one line, one probability and one draw. Units on the same property are drawn independently; nothing is joined."
+status = "decided"
+decided = "the lead, 2026-10-06 and 2026-10-07"
+source = "wall_units.py module docstring"
+
+[[assumptions]]
+id = "RW-A08"
+step = "wall_units"
+title = "The prior is a points score on the odds"
+text = "Each unit scores points from the points table (verticality, height, length, distance to a building, road frontage or property boundary, cut/fill class, a cut in rock or soil, the property's wall age shares, NHC's land attributes flag). Every {BETA_WALL_POINTS_PER_DOUBLING} points doubles the odds, starting from p = {BETA_WALL_BASE_P} at 0 points, so no probability reaches 0 or 1."
+status = "beta"
+note = "Every points value and both constants wait on T-50."
+source = "src/landloss/io/assets/wall-probability-points.csv; constants.BETA_WALL_BASE_P, BETA_WALL_POINTS_PER_DOUBLING"
+
+[[assumptions]]
+id = "RW-A09"
+step = "wall_units"
+title = "Wall height is a near-drop quantile"
+text = "A pif's wall height is near_drop_p80_m from the siz table: a quantile over its pips of the drop to the lowest cell close below each pip. Neither the largest pip drop nor step 13's walk to the foot of the face is used."
+status = "check"
+note = "The wall_units.py docstring says within 3 m; the exposure status notes say the lead chose the 0.7 quantile within 2 m. Confirm which the code runs."
+source = "wall_units.py module docstring; instability_zones.gen_pif_near_drops; exposure/rw/status.md"
+
+[[assumptions]]
+id = "RW-A10"
+step = "wall_units"
+title = "GNS mapping lifts a unit to a floor"
+text = "A unit with a GNS-mapped wall on it is lifted to at least {BETA_GNS_WALL_UNIT_FLOOR}. A gns_only unit (mapped wall, no pips) takes {BETA_GNS_ONLY_WALL_PROBABILITY}. GNS maps only walls visible from above, so a candidate GNS does not map is not evidence against a wall."
+status = "beta"
+note = "Interim values set by the lead on 2026-10-07, after a first cut was too aggressive."
+source = "constants.BETA_GNS_WALL_UNIT_FLOOR, BETA_GNS_ONLY_WALL_PROBABILITY; wall_units.gen_gns_floor"
+
+[[assumptions]]
+id = "RW-A11"
+step = "wall_units"
+title = "Claim reports only raise probabilities"
+text = "Claim reports give a wall count per property, not which candidate is the wall. Each property's units are updated on that count with a Poisson-binomial, and no probability falls, so a report listing no walls changes nothing. 30% of claims are held out to check the update."
+status = "beta"
+source = "wall_units.gen_count_update, gen_wall_unit_probability, gen_claim_holdout"
+
+[[assumptions]]
+id = "RW-A12"
+step = "wall_units"
+title = "A unit counts on every property it enters"
+text = "A unit is a wall on every property it enters by at least 1 m, so it takes part in each of their claim updates and keeps the highest result."
+status = "beta"
+source = "wall_units.BETA_MIN_WALL_LENGTH_IN_PROPERTY_M"
+
+[[assumptions]]
+id = "RW-A13"
+step = "wall_units"
+title = "NHC's land attributes flag is points, not an update"
+text = "NHC's land attributes wall flag (NZMM) adds 5 points to the prior. It is a yes/no with no count and agrees with GNS no better than chance (kappa 0.03)."
+status = "pending"
+note = "NHC has not said how the flag is filled."
+source = "wall-probability-points.csv (nhc_land_attrs); report/exposure/rw/rw-datasets/tab"
+
+[[assumptions]]
+id = "RW-A14"
+step = "population"
+title = "No wall dataset exists"
+text = "There is no dataset of residential retaining walls (register L-04), so every wall line is inferred from the DEM and GNS."
+status = "decided"
+source = "exposure/rw/status.md; register L-04"
+
+[[assumptions]]
+id = "RW-A15"
+step = "population"
+title = "Walls are drawn per exposure world"
+text = "Each unit is drawn walled or not once per exposure world, independently of the earthquake. Spatial correlation between draws is not modelled."
+status = "beta"
+note = "A copula for spatial correlation is under consideration."
+source = "wall_units.gen_wall_draws; exposure/rw/status.md"
+
+[[assumptions]]
+id = "RW-A16"
+step = "population"
+title = "Wall age comes from the dwelling"
+text = "Age bin shares come from the QV rating roll's building decade first, then the title issue date, then the suburb. A lot 20 or more years older than its dwelling gives that dwelling's bin half its share, and 20% of walls move to the next bin as rebuilt."
+status = "beta"
+source = "src/landloss/exposure/rw/wall_age.py; s6_wall_population_method.md"
+
+[[assumptions]]
+id = "RW-A17"
+step = "population"
+title = "Wall type comes from age, height and frontage"
+text = "Wall type (7 types) is drawn from shares by age bin and height band, adjusted by road frontage multipliers."
+status = "pending"
+note = "The shares are placeholders for Nick Peters' review."
+source = "beta-retaining-wall-type-shares.csv; beta-retaining-wall-frontage-multipliers.csv"
+
+[[assumptions]]
+id = "RW-A18"
+step = "population"
+title = "Three size classes"
+text = "Retained height bands of under 1 m, 1 to 2.5 m and over 2.5 m (small, medium, large), chosen because those are what the costing can tell apart."
+status = "decided"
+source = "exposure/rw/status.md"
+
+[[assumptions]]
+id = "RW-A19"
+step = "population"
+title = "Only walls on insured land are covered"
+text = "A drawn wall is in the insured population only if it has a claim and its line is within 2 m of insured land. Council and road walls are out of scope (I-05), but they still hold up their slope in the hazard."
+status = "decided"
+source = "src/landloss/exposure/rw/population.py; register I-05"
+
+[[assumptions]]
+id = "RW-A20"
+step = "zones"
+title = "Evacuated width behind the crest"
+text = "The evacuated zone extends behind the crest by at least max(0.5 H, 1 m). A failed fill wall's wedge is 0.45 H."
+status = "beta"
+source = "src/landloss/hazard/landslide/slope_polygons.py; s12_urban_slope_faces_method.md"
+
+[[assumptions]]
+id = "RW-A21"
+step = "zones"
+title = "Runout and the imminent band"
+text = "Runout follows the dry debris avalanche line for every face, capped at 3 H and a 0.3 m deposit depth. The imminent band runs to a 35 degree repose line from the toe."
+status = "beta"
+source = "s12_urban_slope_faces_method.md"
+
+[[assumptions]]
+id = "RW-A22"
+step = "zones"
+title = "Forced polygons for units with nowhere to grow"
+text = "A unit none of whose pifs grew an element gets a line element along its line. Where there is no free cell for one, a polygon is forced on it."
+status = "beta"
+source = "src/landloss/hazard/landslide/forced_polygons.py; gen_urban_slope_wall_zones.py"
+
+[[assumptions]]
+id = "RW-A23"
+step = "fragility"
+title = "Koutsoupaki curves, moderate damage read as replace"
+text = "Wall fragility curves come from Koutsoupaki (2023) by type and size class. Damage state DS2 (moderate) is read as replace, because moderate damage usually leads to replacement in a claim. This is known to overpredict against Christchurch."
+status = "decided"
+decided = "the lead, 2026-10-06"
+source = "src/landloss/io/assets/retaining-wall-type-fragility.csv; vul/shaking/rw/status.md"
+
+[[assumptions]]
+id = "RW-A24"
+step = "fragility"
+title = "Two damage states only"
+text = "A wall is either undamaged or replaced, because very few damaged walls are repaired."
+status = "decided"
+source = "exposure/rw/status.md"
+
+[[assumptions]]
+id = "RW-A25"
+step = "fragility"
+title = "A sloping wall fails with its polygon"
+text = "One uniform is drawn per wall: if any polygon on the wall fails, the wall fails."
+status = "decided"
+source = "s9_urban_slope_realisation_method.md"
+
+[[assumptions]]
+id = "RW-A26"
+step = "fragility"
+title = "Every wall takes one curve for now"
+text = "The seven type curves are not yet read by anything; every wall takes the one 'unnamed' curve."
+status = "check"
+note = "In progress; landslide step 8 fragilities are placeholders until anchoring."
+source = "exposure/rw/status.md; s8_urban_slope_fragility"
+
+[[assumptions]]
+id = "RW-A27"
+step = "fragility"
+title = "Flat-land walls: adjusted curve on PGV"
+text = "A wall on flat land takes its type curve times 0.85 for fill or 1.15 for cut, converted from PGA to PGV at the site's TS1170.5 ratio, with no amplification or rate factor. No pilot wall is on flat land at present, so this path is unused."
+status = "beta"
+source = "src/landloss/vul/shaking/fragility.py; s9_wall_damage_state"
+
+[[assumptions]]
+id = "RW-A28"
+step = "damage"
+title = "How the outcome becomes damage flags"
+text = "failed_with_polygon sets is_damaged_by_shaking; absorbed or superseded sets is_evacuated. These are ORed with a geometry test: more than 0.01 m of the wall line inside an evacuated or inundated polygon."
+status = "beta"
+source = "src/landloss/vul/landslide/flags.py; s11_wall_landslide_damage"
+
+[[assumptions]]
+id = "RW-A29"
+step = "damage"
+title = "Any flag means one replacement"
+text = "Any damage flag true means the wall is replaced once. No cost is attached in vul; loss prices it."
+status = "decided"
+source = "s11_wall_landslide_damage method"
+
+[[assumptions]]
+id = "RW-A30"
+step = "damage"
+title = "Wall and land damage on one claim are not a double count"
+text = "A wall replaced after shaking and liquefaction land damage on the same claim are both paid; they are not a double count."
+status = "decided"
+decided = "the lead, 2026-10-02"
+source = "vul status notes"
+
+[[assumptions]]
+id = "RW-A31"
+step = "damage"
+title = "A boundary wall counts on each property"
+text = "A wall crossing property boundaries is counted on each property it enters by 1 m or more."
+status = "pending"
+note = "Decided, not yet in the loss module (owner's sign-off needed)."
+source = "exposure/rw/status.md"
+
+[[assumptions]]
+id = "RW-A32"
+step = "land"
+title = "Settlement at undepreciated value under a sub-cap"
+text = "Walls are settled at undepreciated replacement value, under a $50k + GST sub-cap per dwelling."
+status = "adopted"
+source = ".agents/context/nhc-land-cover-and-settlement.md"

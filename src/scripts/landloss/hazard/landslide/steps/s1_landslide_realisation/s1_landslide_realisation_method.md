@@ -58,8 +58,11 @@
   coverage and use a
   fraction of 1. ESNZ uses `BETA_SOURCE_AREA_FRACTION` 0.252, the phase 1
   areal-coverage placeholder. The
-  urban share, 0.25, is the share of the inventory's area the urban model
-  draws instead, a placeholder until a research script measures it from
+  urban share is 0 (the project lead, 2026-10-07): the Hancox relationships
+  come from natural-slope failures and do not count the cut, fill and wall
+  failures the urban model draws, and the 700 m² lower bound already keeps the
+  two populations apart. It was 0.25, a placeholder until a research script
+  measured it from
   `landloss.io.kaikoura`; every run prints it. A cell the grid does not reach
   contributes nothing, so a unit off the grid is never seeded.
 - **The count per unit** is a Poisson draw, `draw_counts()`, with mean the
@@ -167,8 +170,9 @@
   depends on the slope at the seed and not on the size of the failure.
 - The counts of neighbouring units are drawn independently, so clustering
   exists within a unit but not between units.
-- `URBAN_AREA_SHARE`, `SOURCE_ASPECT_RATIO` and `BETA_SOURCE_AREA_FRACTION`
-  are placeholders, and the total area follows the last of them directly.
+- `SOURCE_ASPECT_RATIO` and `BETA_SOURCE_AREA_FRACTION` are placeholders, and
+  the total area follows the last of them directly. `URBAN_AREA_SHARE` is 0,
+  which assumes the coverage model counts no failure the urban model draws.
 - Two inundated polygons can overlap; `describe_result()` prints the summed
   and the dissolved inundated area for that reason, and anything summing
   inundated area has to dissolve first.

@@ -11,14 +11,16 @@ and is ready to build once the lead settles the step test (Next, 1). The
 second part, the failure polygons, steps 8 and 9 and the anchoring skeleton,
 was reviewed the same day, and so were the large failures; their proposals
 wait on the lead (Next, 3 and 10). The portfolio of large models is proposed,
-not agreed; its Hancox model 3 and Wellington step are built but not run. The
+not agreed; its Hancox model 3 ran over the pilot on 2026-10-06 and placed no
+large failure there, and from 2026-10-07 it passes its full area to step 1
+(`URBAN_AREA_SHARE` 0). The
 slope elements and polygons library passed its toy-terrain
 proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-03; the pipeline step (stage D3, step 12) ran over the pilot on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05; the per-zone fragility is next.
 
-**Updated:** 2026-10-06
+**Updated:** 2026-10-07
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -104,9 +106,12 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
 - [x] **Place the retaining walls on the pifs (step 12, 2026-10-05)**: make
   each wall candidate (a siz or `low_height` pif piece, or a GNS-only piece)
   its own wall unit (the lead, 2026-10-07; joined until then), put a
-  `BETA_` prior (from step 13's cut and fill class, 2026-10-06) and the GNS
-  floor on each, update on the claim reports and
-  NZMM per property (NZMM at 0.3 of its update), and draw each unit walled
+  points-based prior (the lead, 2026-10-07: verticality, height, length,
+  building distance, setting, step 13 class, rock or soil cut, wall age, the
+  NHC flag; `.agents/plans/wall-probability-points.md`) and the GNS floor on
+  each (interim 0.80, GNS-only 0.70), update on the claim reports per
+  property (pilot 2026-10-07: base 0.225 solved for 2,398 expected walls,
+  60% of before; 2,441 walled in world 0), and draw each unit walled
   per exposure world, so the hazard and the exposure share one draw
   (`.agents/plans/placing-retaining-walls-on-pifs.md`). The every-siz-walled
   and none-walled runs stay as bounds; `gen_hazard.main` runs it.
@@ -228,11 +233,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     0.45 H with 0.25 H (our reading of the Priscilla RS2 plot) and 0.65 H
     (the buried colluvium) as cases; a cut bank with no wall keeps T-44;
   - **runout by reach angle from the crest** (A-08 replaced): the dry debris
-    avalanche line for cuts and natural banks, the fill flow slide line for
-    every fill, because Wellington fills fail after the shaking as water
-    enters the cracks [de_vilder_2022; brown_larkin_2005; monteith_2020];
+    avalanche line for every face, fill included (the lead, 2026-10-07, in
+    place of the fill flow slide line the review proposed), one length per
+    polygon held to 3 H past the toe and to 0.3 m deposit depth, never under
+    a one-cell strip at the toe, spreading back over its own scar where the
+    strip would be deeper than H or twice the source depth [de_vilder_2022];
   - **imminent ground to a 35° repose line from the toe** (A-10 revised,
-    T-45), the GNS planning screen [de_vilder_2024];
+    T-45), the GNS planning screen [de_vilder_2024], one width per polygon
+    held to where that line meets level ground;
   - **amplification by face height and ridge or terrace setting**, 1.0 for
     most house-lot faces, in place of the placeholder that gives every 60°
     wall 1.5 [brabhaharan_2018];
@@ -260,8 +268,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     lead on 2026-10-02 and built);
   - **define the urban population by ground, not size**: keep the large
     model's lower bound where Kaikōura is complete, let urban face failures
-    run past the split, and set `URBAN_AREA_SHARE` to about 0.05, the share of
-    Kaikōura area below 500 m² (3 to 5%, our digitising), not 0.25;
+    run past the split; `URBAN_AREA_SHARE` is set to 0 (decided by the lead
+    on 2026-10-07: Hancox does not count the urban model's cut, fill and wall
+    failures, and the 700 m² bound keeps the two apart);
   - **`BETA_SOURCE_AREA_FRACTION` of about 0.4 to 1.0, not 0.252**, if the
     ESNZ grid keeps the Kaikōura model's definition (a cell fails where its
     centroid lies in a source), which makes its mean probability the
@@ -452,6 +461,23 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     24 with no polygon: 21 in the DEM margin, 3 GNS-only lines on other
     elements), 663,401 m² evacuated, 63% of walled units under 1.5 m (55%
     without the GNS-only units).
+  - **Every wall has its minimum polygon (the lead, 2026-10-07).** A unit
+    whose line finds no free cell gets the band `max(0.5 H, 1 m)` behind its
+    line drawn as geometry, overlapping if it must (`forced_polygons`): 5 on
+    the pilot (1 with the uphill side unknown, 4 overlapping). No candidate
+    is left without a polygon; the 21 insured walls with none in step 9 lie
+    outside the shaking extent.
+  - **Contained runout and imminent ground (the lead, 2026-10-07).** The fill
+    flow slide line ran 724 of the pilot's polygons more than 20 m (to 266 m),
+    as single-cell lines down the fall line, and a few imminent bands up to
+    73 m uphill. Every polygon now runs out dry, takes one runout length and
+    one imminent width (the median of its rays, capped) and sweeps it along
+    its whole toe or crest (`slope_polygons`): the longest runout is 20 m
+    (2.2 H at the 99th percentile), the longest imminent band 25 m, and
+    every polygon leaves at least a one-cell strip below its toe and spreads
+    back over its own scar where that strip would be deeper than its height
+    or twice its source depth: no deposit is deeper than twice its source,
+    and the inundated depth is 5.7 m at the 90th percentile.
 - **Step 13, pif cut and fill (2026-10-05).**
   `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
@@ -550,6 +576,13 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     could sample the realised PGA field at the walled polygons and evaluate
     the curves in PGA directly, removing the ratio and the site class from
     the wall median.
+15. **Stop urban runout at building outlines** (the lead, 2026-10-07, not
+    yet built): pass the LINZ building outlines step 12 already rasterises
+    (`building_mask()`) as the `barriers` grid of `build_slope_polygons`, so
+    a small failure's debris stops at the house below it. Urban model only:
+    a large landslide destroys the building, so its runout is not stopped.
+    Roads are not barriers (a road is level ground, where the reach line
+    already ends the runout).
 
 ## Validation
 
@@ -593,9 +626,12 @@ otherwise.
   (the lead, 2026-10-02), about Gold's slide.
 - **How much spatial correlation** to add.
 - **Which runout relation** replaces the translation. For the urban faces the
-  review proposes the de Vilder et al. reach angles from the crest, dry for
-  cuts and natural banks and the flow-slide line for every fill (faces plan,
-  phase 3); for the large failures it is part B of the review.
+  lead set the de Vilder et al. dry reach angle from the crest for every face
+  (2026-10-07); for the large failures it is part B of the review.
+- **The deposit depth limits.** A deposit deeper than its strip allows
+  spreads back over its own scar (the lead, 2026-10-07) until it is no
+  deeper than one height or twice its source depth, both proposals: 5,841
+  of the pilot's 6,203 polygons spread back, 1,510 over their whole scar.
 - **Depth where two runouts overlap**: the deeper or the sum.
 - **The face detection and geometry rules**: the faces plan's open decisions,
   and the headscarp band (**T-44**). Stage D2 leaves one for the lead: whether

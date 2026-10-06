@@ -32,6 +32,10 @@ yet, as it rebuilds the GWRC model for comparison against the supplied grid
 rather than feeding the chain.
 """
 
+from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    config as wall_population_config,
+)
+from scripts.landloss.exposure.rw.steps.s6_wall_population import gen_wall_age
 from scripts.landloss.hazard import config
 from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
     config as large_config,
@@ -239,6 +243,16 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
+                # The wall age shares give the wall points their age (the lead,
+                # 2026-10-07); they read QV (on T:), exposure step 8 and the
+                # LINZ properties on the step 3 DEM's bbox, none of step 12, so
+                # they run here, before the wall units.
+                "rw s6, wall age",
+                lambda: gen_wall_age.main(
+                    extent=extent, age_extent=wall_population_config.AGE_EXTENT
+                ),
+            ),
+            (
                 "landslide s13, pif cut and fill",
                 lambda: gen_pif_cut_fill.main(
                     extent=extent,
@@ -256,7 +270,6 @@ def main(*, extent, realisation_ids, world_ids):
                     max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
                     holdout_share=faces_config.CLAIM_HOLDOUT_SHARE,
                     holdout_seed=faces_config.CLAIM_HOLDOUT_SEED,
-                    use_nzmm=faces_config.USE_NZMM_UPDATE,
                     world_ids=world_ids,
                 ),
             ),

@@ -186,6 +186,10 @@ report/**/*.pdf
 # result, let alone carried in the history for ever.
 report/**/*SYNTHETIC*
 
+# Built reviewer pages. Each embeds claim ids and claim report wall counts, so
+# it stays inside T+T, and it is rebuilt from the current outputs by
+# src/scripts/landloss/reviewer/gen_reviewer_rw.py rather than kept.
+report/reviewer/
 
 # Claim report data stays local. The claims lists may be committed; anything
 # read from the reports themselves (claimant names, report paths carrying claim

@@ -1,0 +1,96 @@
+# Example sites the landslide reviewer walks through.
+#
+# These are the twelve stage D2 sites of the slope elements research
+# (hazard/landslide/research/slope_elements/config.py, where each is described
+# in full), the same windows step 12's FIG_SITES draws, so the reviewer page and
+# the step 12 figures show the same ground. A site is an NZTM (EPSG:2193) point,
+# not an element or polygon id, because ids are minted afresh on each run.
+# `why` is the reason the site was chosen (stage D2, 2026-10-03), copied
+# 2026-10-07; if a rerun moves the feature away, re-check against it.
+#
+# No site yet shows a large (step 1) failure: the 2026-10-07 pilot draw placed
+# none. Add one when a realisation does.
+
+[[sites]]
+id = "01-wall-soil"
+title = "GNS-mapped wall on soil-like ground"
+x = 1748714.0
+y = 5424998.0
+why = "A 72 m free-face 2.9 m high with a GNS mapped wall under it, on soil-like ground, clear of any SLIDE cut or fill."
+
+[[sites]]
+id = "02-wall-tall"
+title = "Tall wall on weak rock"
+x = 1750089.0
+y = 5424544.0
+why = "A 69 m free-face 4.2 m high with a GNS wall 1.2 m from it, on weak rock: the tallest wall that is not in a cut."
+
+[[sites]]
+id = "03-wall-flat"
+title = "Stacked terraces"
+x = 1750441.0
+y = 5425145.0
+why = "A GNS wall on a 2 m step with flat ground below and a 9.5 m slope above it: how stacked faces are handled."
+
+[[sites]]
+id = "04-road-cut"
+title = "Road cut in weak rock"
+x = 1748398.0
+y = 5425070.0
+why = "The pilot's tallest free-face, 15.9 m at 56 degrees on weak rock, inside a SLIDE cut slope with the road at its toe."
+
+[[sites]]
+id = "05-excavated-toe"
+title = "Excavated toe under a natural slope"
+x = 1749009.0
+y = 5423918.0
+why = "An 11 m free-face on weak rock in a SLIDE cut slope with natural slope above it: where the evacuated ground should run up the slope."
+
+[[sites]]
+id = "06-fill-platform"
+title = "Fill platform"
+x = 1749449.0
+y = 5423734.0
+why = "A 2.9 ha SLIDE fill body, a flat platform about 100 m across with steep batters on two rims."
+
+[[sites]]
+id = "07-fill-gully"
+title = "Large gully fill"
+x = 1748600.0
+y = 5424461.0
+why = "The pilot's biggest SLIDE fill body, 38 ha and 72 m of relief, at the edge of a deep cut. A large fill is invisible to the local cut/fill class."
+
+[[sites]]
+id = "08-adjacent-catchments"
+title = "Two adjacent catchments"
+x = 1749472.0
+y = 5424360.0
+why = "The only pair of elements whose polygons overlap while their catchments are disjoint: the overlap rule."
+
+[[sites]]
+id = "09-seawall"
+title = "Harbour edge"
+x = 1750555.0
+y = 5424878.0
+why = "The pilot's longest free-face, 428 m at 1.8 m, along the harbour edge, where the coastline mask matters."
+
+[[sites]]
+id = "10-steep-bank"
+title = "Steep bank with no wall"
+x = 1749520.0
+y = 5424724.0
+why = "A 7.6 m weak rock bank at 35 degrees with no GNS wall within 19 m: the unwalled (Kingsbury) fragility."
+
+[[sites]]
+id = "11-mapped-failure"
+title = "The mapped failure"
+x = 1749417.0
+y = 5424214.0
+why = "The only SLIDE 'landslide recent' source in the pilot, on a 5 m free-face of the cut below it."
+
+[[sites]]
+id = "12-gentle-control"
+title = "Negative control"
+x = 1750665.0
+y = 5423785.0
+why = "Gentle ground of about 4 degrees with no element within 20 m. Nothing should fail here."

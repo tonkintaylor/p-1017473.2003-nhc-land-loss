@@ -63,16 +63,31 @@ run only over elements and polygons. The rules, each where the plan sets it:
 6. **Imminent ground** runs from the back of the polygon to where a line from
    the toe at :data:`BETA_REPOSE_ANGLE_DEG` meets the ground behind the crest
    [de_vilder_2024], never narrower than the T-45 band (the headscarp band's
-   width again, behind the polygon).
+   width again, behind the polygon), and never wider than where that line
+   would meet level ground, ``H / tan(35)`` (:func:`imminent_width_m`). Each
+   ray measures it; the polygon takes the median of its rays as one width,
+   and every ray sweeps that width back from the end of its evacuated band,
+   so the band is even along the crest rather than a line wherever one ray
+   climbs a steep slope.
 7. **Inundated ground**, below the toe, ends where a line from the polygon's
    crest dipping at the reach angle meets the ground, traced down the crest
    cell's fall line [hunter_fell_2003; de_vilder_2022]: the dry debris
-   avalanche relation for cuts and natural ground, the fill flow slide
-   relation for fill (:func:`reach_ratio`), on the segment's evacuated volume.
-   A stack's polygon also takes the reach from its free-face's own crest, so
-   taking the slope above never shortens the runout below the toe (stage
-   D1). An optional barrier grid (buildings, roads) stops it at the first
-   barrier cell.
+   avalanche relation for every polygon, fill included (:func:`reach_ratio`;
+   the lead, 2026-10-07), on the segment's evacuated volume. A stack's
+   polygon also takes the reach from its free-face's own crest, so taking
+   the slope above never shortens the runout below the toe (stage D1). The
+   polygon takes the median of its rays' reach past the toe as one length,
+   held to :data:`BETA_MAX_RUNOUT_H` heights and to the length that holds its
+   volume at :data:`BETA_MIN_DEPOSIT_DEPTH_M`, and never under the one-cell
+   strip of :data:`BETA_MIN_RUNOUT_M` (:func:`inundated_length_m`),
+   and every ray sweeps that length down from its own toe, so the strip is
+   even along the toe. Where the strip would carry the volume deeper than
+   :data:`BETA_MAX_DEPOSIT_DEPTH_H` heights or
+   :data:`BETA_MAX_DEPOSIT_DEPTH_SOURCE` times the polygon's own evacuated
+   depth, whichever is less, the inundated ground spreads back
+   over the polygon's own evacuated ground, the lowest cells first, until it
+   does not (:func:`deposit_overlap_m2`). An optional barrier grid
+   (buildings, roads) stops a ray at the first barrier cell.
 
 Depths, for the volume: a free-face's own ground (its face and the width
 behind its crest) is cut by a straight slip plane from its toe to the back of
@@ -194,9 +209,41 @@ DRY_REACH_LOG_INTERCEPT = 0.0315
 FILL_REACH_LOG_SLOPE = -0.090
 FILL_REACH_LOG_INTERCEPT = -0.148
 
-# The two failure styles, which pick the reach angle relation.
+# The two failure styles, which pick the reach angle relation. Every polygon
+# runs out as a dry debris avalanche (the lead, 2026-10-07): the fill flow
+# slide relation is from loose, saturated, mostly rain-triggered Hong Kong
+# fills that flowed, and on every fill element it ran debris tens of metres
+# down Wellington hillsides.
 DRY_DEBRIS_AVALANCHE = "dry_debris_avalanche"
 FILL_FLOW_SLIDE = "fill_flow_slide"
+
+# Judgement (the lead, 2026-10-07): the inundated strip runs no further past
+# the toe than this many of the polygon's heights, nor further than holds its
+# evacuated volume at this mean depth, in metres. The reach angle line alone
+# runs on for as long as the ground below stays steeper than it, tens of
+# metres for a small failure on a Wellington hillside.
+BETA_MAX_RUNOUT_H = 3.0
+BETA_MIN_DEPOSIT_DEPTH_M = 0.3
+
+# Judgement (the lead, 2026-10-07): every failure leaves a strip of debris at
+# least this long below its toe, in metres, one cell of the 1 m grid, even
+# where the reach angle keeps the debris on its own ground (a sub-metre
+# wall's reaches under a cell) or the volume cap is shorter. It wins over
+# both caps.
+BETA_MIN_RUNOUT_M = 1.0
+
+# Judgement (the lead, 2026-10-07, the limit a proposal): where the strip
+# below the toe would carry the volume deeper than this many of the polygon's
+# heights, the inundated ground spreads back over the polygon's own evacuated
+# ground, the lowest first, until it no longer does; debris piles in the scar
+# it left as well as in front of it.
+BETA_MAX_DEPOSIT_DEPTH_H = 1.0
+
+# Judgement (the lead asked for the fix, 2026-10-07; the factor a proposal):
+# nor deeper than this many times the polygon's own evacuated depth, so a
+# shallow failure on a high face does not pile its debris many times its
+# source depth in the strip at its toe.
+BETA_MAX_DEPOSIT_DEPTH_SOURCE = 2.0
 
 # The three width rules behind the crest.
 WALL_WEDGE = "wall_wedge"
@@ -238,8 +285,9 @@ class SlopePolygons:
         polygons: One row per polygon, indexed from 1 by ``polygon``: the
             element it is a segment of (``element``, ``segment``), the
             element's ``element_type`` and ``ground_group``, ``is_fill``,
-            ``style``, ``width_rule``, ``width_behind_crest_m`` (the rule's,
-            or the floor of :func:`min_evacuated_width_m` where wider),
+            ``style`` (always :data:`DRY_DEBRIS_AVALANCHE`), ``width_rule``,
+            ``width_behind_crest_m`` (the rule's, or the floor of
+            :func:`min_evacuated_width_m` where wider),
             ``width_floored`` (the floor set it),
             ``width_realised_m`` (the median over its rays of how far behind
             the crest cell's centre the furthest cell it kept lies),
@@ -249,7 +297,11 @@ class SlopePolygons:
             ``height_m`` (the polygon's, toe of the element to the crest of
             the highest element in it, median over its rays), ``length_m``
             (along the contour), ``area_m2``, ``depth_m``, ``volume_m3``,
-            ``reach_hl`` (H/L of the runout), ``imminent_area_m2``,
+            ``reach_hl`` (H/L of the runout), ``imminent_width_m`` (the
+            imminent band's width behind the evacuated ground,
+            :func:`imminent_width_m`), ``runout_m`` (the inundated strip's
+            length past the toe, :func:`inundated_length_m`),
+            ``imminent_area_m2``,
             ``inundated_area_m2``, ``n_rays``, ``centroid_x``,
             ``centroid_y``.
         cells: The cells of every zone of every polygon, one row each:
@@ -465,6 +517,105 @@ def reach_ratio(volume_m3: ArrayLike, style: ArrayLike) -> NDArray[np.float64]:
     return np.power(10.0, slope * log_volume + intercept)
 
 
+def inundated_length_m(
+    reach_m: ArrayLike,
+    *,
+    height_m: ArrayLike,
+    volume_m3: ArrayLike,
+    toe_length_m: ArrayLike,
+) -> NDArray[np.float64]:
+    """How far past its toe a polygon's debris runs, one length for the polygon.
+
+    The reach angle's run past the toe, never longer than
+    :data:`BETA_MAX_RUNOUT_H` heights nor than holds the evacuated volume at
+    :data:`BETA_MIN_DEPOSIT_DEPTH_M`, and never shorter than
+    :data:`BETA_MIN_RUNOUT_M`, the strip every failure leaves at its toe, which
+    wins over the caps (the lead, 2026-10-07).
+
+    Args:
+        reach_m: The reach angle's run past the toe, the median of the
+            polygon's rays.
+        height_m: The polygon's height.
+        volume_m3: Its evacuated volume.
+        toe_length_m: The length of its toe, along the contour.
+
+    Returns:
+        The run past the toe, in metres.
+    """
+    toe = np.maximum(np.asarray(toe_length_m, dtype=float), 1e-9)
+    cap = np.minimum(
+        BETA_MAX_RUNOUT_H * np.asarray(height_m, dtype=float),
+        np.asarray(volume_m3, dtype=float) / (BETA_MIN_DEPOSIT_DEPTH_M * toe),
+    )
+    reach = np.nan_to_num(np.asarray(reach_m, dtype=float), nan=0.0)
+    return np.maximum(np.minimum(reach, cap), BETA_MIN_RUNOUT_M)
+
+
+def deposit_overlap_m2(
+    volume_m3: ArrayLike,
+    *,
+    height_m: ArrayLike,
+    depth_m: ArrayLike,
+    strip_area_m2: ArrayLike,
+) -> NDArray[np.float64]:
+    """How much of its own evacuated ground a polygon's deposit spreads back over.
+
+    The area beyond the strip below the toe that brings the deposit's mean
+    depth down to :data:`BETA_MAX_DEPOSIT_DEPTH_H` heights or
+    :data:`BETA_MAX_DEPOSIT_DEPTH_SOURCE` times the polygon's own evacuated
+    depth, whichever is less (the lead, 2026-10-07); none where the strip
+    alone is shallow enough.
+
+    Args:
+        volume_m3: The evacuated volume.
+        height_m: The polygon's height.
+        depth_m: Its mean evacuated depth.
+        strip_area_m2: The area of the strip below its toe.
+
+    Returns:
+        The area to spread back over, in square metres; it may exceed the
+        evacuated area, which then all takes debris.
+    """
+    limit = np.minimum(
+        BETA_MAX_DEPOSIT_DEPTH_H * np.asarray(height_m, dtype=float),
+        BETA_MAX_DEPOSIT_DEPTH_SOURCE * np.asarray(depth_m, dtype=float),
+    )
+    with np.errstate(invalid="ignore", divide="ignore"):
+        needed = np.asarray(volume_m3, dtype=float) / limit
+    return np.maximum(np.nan_to_num(needed, nan=0.0) - strip_area_m2, 0.0)
+
+
+def imminent_width_m(
+    reach_m: ArrayLike, *, height_m: ArrayLike, band_m: ArrayLike
+) -> NDArray[np.float64]:
+    """How far behind the evacuated ground a polygon's imminent band runs.
+
+    The repose line's reach behind the evacuated ground, never under the T-45
+    band and never past where the line from the toe at
+    :data:`BETA_REPOSE_ANGLE_DEG` would meet level ground, ``H / tan(35)``
+    behind it (judgement, 2026-10-07). Ground rising behind the crest
+    steeper than the repose angle otherwise carries the band up the whole
+    slope above, which the retrogression link already stands for.
+
+    Args:
+        reach_m: The repose line's reach behind the evacuated ground, the
+            median of the polygon's rays.
+        height_m: The polygon's height.
+        band_m: The T-45 band of its element.
+
+    Returns:
+        The imminent band's width, in metres.
+    """
+    band = np.asarray(band_m, dtype=float)
+    cap = np.maximum(
+        np.asarray(height_m, dtype=float)
+        / math.tan(math.radians(BETA_REPOSE_ANGLE_DEG)),
+        band,
+    )
+    reach = np.nan_to_num(np.asarray(reach_m, dtype=float), nan=0.0)
+    return np.minimum(np.maximum(reach, band), cap)
+
+
 def conditional_failure_probability(
     p_above: ArrayLike, *, retrogression_p: float = BETA_RETROGRESSION_P
 ) -> NDArray[np.float64]:
@@ -547,11 +698,12 @@ class _UphillResult:
     """What the uphill march found, per ray and per marked cell."""
 
     evacuated: pd.DataFrame  # ray, cell, dist, owner
-    imminent: pd.DataFrame  # ray, cell
+    imminent: pd.DataFrame  # ray, cell, dist
     absorbed: pd.DataFrame  # ray, element
     probe: pd.DataFrame  # ray, element, cell, bench_width_m
     top_z: NDArray[np.float64]
     top_d: NDArray[np.float64]
+    evac_end: NDArray[np.float64]  # where each ray's evacuated band ends
 
 
 def _crest_rays(
@@ -736,7 +888,9 @@ def _march_uphill(
             )
         if keep.any():
             imminent_parts.append(
-                pd.DataFrame({"ray": index[keep], "cell": cell[keep]})
+                pd.DataFrame(
+                    {"ray": index[keep], "cell": cell[keep], "dist": dist[keep]}
+                )
             )
         imminent[index[(i & ~keep) | (imminent[index] & stop)]] = False
 
@@ -763,13 +917,17 @@ def _march_uphill(
             return pd.DataFrame({name: pd.Series(dtype=float) for name in columns})
         return pd.concat(parts, ignore_index=True)
 
+    # A ray stopped while evacuating (at a ridge, nodata or the edge) ends
+    # its band where its width would have.
+    evac_end = np.where(np.isnan(evac_end), exit_d + width_m[current], evac_end)
     return _UphillResult(
         evacuated=frame(evac_parts, ["ray", "cell", "dist", "owner"]),
-        imminent=frame(imminent_parts, ["ray", "cell"]),
+        imminent=frame(imminent_parts, ["ray", "cell", "dist"]),
         absorbed=frame(absorbed_parts, ["ray", "element"]).drop_duplicates(),
         probe=frame(probe_parts, ["ray", "element", "cell", "bench_width_m"]),
         top_z=top_z,
         top_d=top_d,
+        evac_end=evac_end,
     )
 
 
@@ -783,23 +941,29 @@ def _march_downhill(
     reach_hl: NDArray[np.float64],
     barriers: NDArray[np.bool_] | None,
     cell_size_m: float,
-) -> pd.DataFrame:
-    """March every ray down its fall line past its toe: the inundated ground.
+    own_keys: NDArray[np.int64],
+    ray_keys: NDArray[np.int64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """March every ray down its fall line past its toe, to the reach angle line.
 
-    A ray first crosses its own element; from the first cell off it, a cell is
-    inundated while the ground lies under the line from the polygon's crest
-    (``top_z``, ``top_d`` behind the ray's crest cell) dipping at
-    ``reach_hl``. The ray stops at the first cell at or over the line, at a
-    barrier cell, at nodata and at the edge of the grid.
+    A ray first crosses its own element and any of its polygon's evacuated
+    ground beyond it (``own_keys``, see :func:`_on_own_ground`); from the
+    first cell off both, the toe, it runs on while the ground lies under the
+    line from the polygon's crest (``top_z``, ``top_d`` behind the ray's crest
+    cell) dipping at ``reach_hl``. The ray stops at the first cell at or over
+    the line, at a barrier cell, at nodata and at the edge of the grid.
 
     Returns:
-        ``ray`` and ``cell`` of every inundated cell.
+        Per ray, the distance of its toe from its crest cell (NaN where it
+        never leaves its element) and its reach past the toe: the cells under
+        the line, a cell each (0 where none is).
     """
     shape = labels.shape
     n_rays = rays.row.size
     on_base = np.ones(n_rays, dtype=bool)
+    toe_d = np.full(n_rays, np.nan)
+    last_d = np.full(n_rays, np.nan)
     active = np.isfinite(reach_hl) & np.isfinite(top_z)
-    parts: list[pd.DataFrame] = []
     max_steps = int(2 * (shape[0] + shape[1]) / WALK_STEP_CELLS)
     for k in range(1, max_steps + 1):
         index = np.nonzero(active)[0]
@@ -820,21 +984,142 @@ def _march_downhill(
         )
         z = np.where(inside, dem[r_in, c_in], np.nan)
         lab = np.where(inside, labels[r_in, c_in], OUTSIDE)
-        on_base[index] &= lab == rays.base[index]
+        on_base[index] &= (lab == rays.base[index]) | _on_own_ground(
+            own_keys, ray_keys[index], r_in * shape[1] + c_in
+        )
         blocked = ~inside | ~np.isfinite(z)
         if barriers is not None:
             blocked |= inside & barriers[r_in, c_in]
         line_z = top_z[index] - (top_d[index] + dist) * reach_hl[index]
         past = ~on_base[index] & ~blocked
+        first = past & np.isnan(toe_d[index])
+        toe_d[index[first]] = dist[first]
         with np.errstate(invalid="ignore"):
             covered = past & (z < line_z)
-        if covered.any():
+        last_d[index[covered]] = dist[covered]
+        active[index[blocked | (past & ~covered)]] = False
+    reach = np.where(np.isfinite(last_d), last_d - toe_d + cell_size_m, 0.0)
+    return toe_d, reach
+
+
+def _on_own_ground(
+    own_keys: NDArray[np.int64],
+    ray_keys: NDArray[np.int64],
+    cells: NDArray[np.intp],
+) -> NDArray[np.bool_]:
+    """Whether each cell is in the evacuated ground of its ray's polygon.
+
+    ``own_keys`` holds every evacuated cell, sorted, as ``polygon x cells +
+    cell``, and ``ray_keys`` each ray's ``polygon x cells``.
+    """
+    if own_keys.size == 0:
+        return np.zeros(cells.shape, dtype=bool)
+    keys = ray_keys + cells
+    found = np.minimum(np.searchsorted(own_keys, keys), own_keys.size - 1)
+    return own_keys[found] == keys
+
+
+def _spread_back(
+    strip: pd.DataFrame,
+    evac_cells: pd.DataFrame,
+    polygons: pd.DataFrame,
+    z: NDArray[np.float64],
+    cell_area_m2: float,
+) -> pd.DataFrame:
+    """The evacuated cells a deposit too deep for its strip spreads back over.
+
+    Each polygon takes :func:`deposit_overlap_m2` of its own evacuated ground,
+    rounded up to whole cells, the lowest cells first, so the debris fills
+    the scar from its toe up.
+
+    Returns:
+        ``polygon``, ``cell`` and ``zone`` (:data:`INUNDATED`) of every cell
+        added.
+    """
+    strip_area = (
+        strip.groupby("polygon").size().reindex(polygons.index, fill_value=0)
+        * cell_area_m2
+    )
+    overlap = deposit_overlap_m2(
+        polygons["volume_m3"].to_numpy(),
+        height_m=polygons["height_m"].to_numpy(),
+        depth_m=polygons["depth_m"].to_numpy(),
+        strip_area_m2=strip_area.to_numpy(),
+    )
+    n_cells = pd.Series(np.ceil(overlap / cell_area_m2 - 1e-9), index=polygons.index)
+    ground = evac_cells[["polygon", "cell"]].assign(
+        z=z[evac_cells["cell"].to_numpy(dtype=np.intp)]
+    )
+    ground = ground.sort_values(["polygon", "z", "cell"], kind="mergesort")
+    rank = ground.groupby("polygon").cumcount().to_numpy()
+    keep = rank < n_cells.reindex(ground["polygon"]).fillna(0).to_numpy()
+    return ground.loc[keep, ["polygon", "cell"]].assign(zone=INUNDATED)
+
+
+def _paint(
+    dem: NDArray[np.float64],
+    rays: _Rays,
+    *,
+    downhill: bool,
+    start_m: NDArray[np.float64],
+    end_m: NDArray[np.float64],
+    barriers: NDArray[np.bool_] | None,
+    cell_size_m: float,
+) -> pd.DataFrame:
+    """Mark the cells along every ray between two distances from its crest cell.
+
+    Downhill a ray marks the cells from ``start_m`` to ``end_m`` and stops at a
+    barrier cell; uphill it marks the cells past ``start_m`` up to ``end_m``
+    and stops at a ridge, as the uphill march does. Both stop at nodata and
+    at the edge of the grid. A ray with a NaN start marks nothing.
+
+    Returns:
+        ``ray`` and ``cell`` of every marked cell.
+    """
+    shape = dem.shape
+    sign = -1.0 if downhill else 1.0
+    highest = dem[rays.row, rays.col].copy()
+    active = np.isfinite(start_m) & np.isfinite(end_m)
+    parts: list[pd.DataFrame] = []
+    max_steps = int(2 * (shape[0] + shape[1]) / WALK_STEP_CELLS)
+    for k in range(1, max_steps + 1):
+        index = np.nonzero(active)[0]
+        if index.size == 0:
+            break
+        step = sign * k * WALK_STEP_CELLS
+        r = np.rint(rays.row[index] + step * rays.up_row[index]).astype(np.intp)
+        c = np.rint(rays.col[index] + step * rays.up_col[index]).astype(np.intp)
+        inside = (r >= 0) & (r < shape[0]) & (c >= 0) & (c < shape[1])
+        r_in = np.where(inside, r, 0)
+        c_in = np.where(inside, c, 0)
+        dist = (
+            sign
+            * (
+                (r - rays.row[index]) * rays.up_row[index]
+                + (c - rays.col[index]) * rays.up_col[index]
+            )
+            * cell_size_m
+        )
+        z = np.where(inside, dem[r_in, c_in], np.nan)
+        stop = ~inside | ~np.isfinite(z)
+        if downhill:
+            if barriers is not None:
+                stop |= inside & barriers[r_in, c_in]
+            within = dist >= start_m[index] - _DISTANCE_SLACK_M
+        else:
+            highest[index] = np.fmax(highest[index], z)
+            with np.errstate(invalid="ignore"):
+                stop |= z < highest[index] - BETA_RIDGE_DROP_M
+            within = dist > start_m[index] + _DISTANCE_SLACK_M
+        beyond = dist > end_m[index] + _DISTANCE_SLACK_M
+        marked = ~stop & within & ~beyond
+        if marked.any():
             parts.append(
                 pd.DataFrame(
-                    {"ray": index[covered], "cell": (r_in * shape[1] + c_in)[covered]}
+                    {"ray": index[marked], "cell": (r_in * shape[1] + c_in)[marked]}
                 )
             )
-        active[index[blocked | (past & ~covered)]] = False
+        active[index[stop | beyond]] = False
     if not parts:
         return pd.DataFrame({"ray": pd.Series(dtype=int), "cell": pd.Series(dtype=int)})
     return pd.concat(parts, ignore_index=True).drop_duplicates()
@@ -1129,6 +1414,8 @@ def _empty(
         "depth_m",
         "volume_m3",
         "reach_hl",
+        "imminent_width_m",
+        "runout_m",
         "imminent_area_m2",
         "inundated_area_m2",
         "n_rays",
@@ -1528,7 +1815,7 @@ def build_slope_polygons(
     polygons["element_type"] = element_type[base - 1]
     polygons["ground_group"] = elements["ground_group"].to_numpy()[base - 1]
     polygons["is_fill"] = fill[base - 1]
-    polygons["style"] = np.where(fill[base - 1], FILL_FLOW_SLIDE, DRY_DEBRIS_AVALANCHE)
+    polygons["style"] = DRY_DEBRIS_AVALANCHE
     polygons["width_rule"] = rule[base - 1]
     polygons["width_behind_crest_m"] = width[base - 1]
     polygons["width_floored"] = np.isclose(
@@ -1605,9 +1892,36 @@ def build_slope_polygons(
     )
     polygons["n_rays"] = by_polygon.size().reindex(polygons.index, fill_value=0)
 
-    # The imminent band, less the polygon's own evacuated ground as kept.
-    imminent = uphill.imminent.assign(
-        polygon=ray_polygon[uphill.imminent["ray"].to_numpy(dtype=np.intp)]
+    def per_polygon(values: NDArray[np.float64]) -> pd.Series:
+        """The median of a per-ray value over each polygon's rays."""
+        return pd.Series(values).groupby(ray_polygon).median().reindex(polygons.index)
+
+    def per_ray(values: pd.Series) -> NDArray[np.float64]:
+        return values.reindex(ray_polygon).to_numpy(dtype=float)
+
+    # The imminent band: one width per polygon, the median of its rays' reach
+    # past the evacuated band, floored and capped (imminent_width_m), swept
+    # back from the end of each ray's evacuated band; less the polygon's own
+    # evacuated ground as kept.
+    imminent_far = (
+        uphill.imminent.groupby("ray")["dist"].max().reindex(range(rays.row.size))
+    ).to_numpy(dtype=float)
+    polygons["imminent_width_m"] = imminent_width_m(
+        per_polygon(imminent_far - uphill.evac_end).to_numpy(),
+        height_m=polygons["height_m"].to_numpy(),
+        band_m=t45_l[base],
+    )
+    imminent = _paint(
+        elevation,
+        rays,
+        downhill=False,
+        start_m=uphill.evac_end,
+        end_m=uphill.evac_end + per_ray(polygons["imminent_width_m"]),
+        barriers=None,
+        cell_size_m=cell_size_m,
+    )
+    imminent = imminent.assign(
+        polygon=ray_polygon[imminent["ray"].to_numpy(dtype=np.intp)]
     )[["polygon", "cell"]].drop_duplicates()
     imminent = _fill_gaps(imminent.assign(zone=IMMINENT), shape)
     imminent = imminent.merge(
@@ -1617,36 +1931,64 @@ def build_slope_polygons(
     )
     imminent = imminent[imminent["evac"].isna()].drop(columns="evac")
 
-    # The inundated ground: the reach from the polygon's crest, and for a
-    # stack the reach from its own free-face's crest as well, so taking the
-    # stack never runs out shorter than the free-face alone would.
-    hl = polygons["reach_hl"].reindex(ray_polygon).to_numpy()
-    runout = pd.concat(
-        [
-            _march_downhill(
-                found.labels,
-                elevation,
-                rays,
-                top_z=top_z,
-                top_d=top_d,
-                reach_hl=hl,
-                barriers=barrier_grid,
-                cell_size_m=cell_size_m,
-            )
-            for top_z, top_d in (
-                (uphill.top_z, uphill.top_d),
-                (elevation[rays.row, rays.col], np.zeros(rays.row.size)),
-            )
-        ],
-        ignore_index=True,
+    # The inundated ground: one length per polygon past the toe, the median
+    # of its rays' reach to the reach angle line, capped
+    # (inundated_length_m), swept down each ray from its own toe, where it
+    # leaves its element and its polygon's evacuated ground. A ray's
+    # reach is from the polygon's crest, and for a stack the longer of that
+    # and the reach from its own free-face's crest, so taking the stack never
+    # runs out shorter than the free-face alone would.
+    hl = per_ray(polygons["reach_hl"])
+    n_cells = shape[0] * n_cols
+    own_keys = np.unique(
+        evac_cells["polygon"].to_numpy(dtype=np.int64) * n_cells
+        + evac_cells["cell"].to_numpy(dtype=np.int64)
+    )
+    marches = [
+        _march_downhill(
+            found.labels,
+            elevation,
+            rays,
+            top_z=top_z,
+            top_d=top_d,
+            reach_hl=hl,
+            barriers=barrier_grid,
+            cell_size_m=cell_size_m,
+            own_keys=own_keys,
+            ray_keys=ray_polygon.astype(np.int64) * n_cells,
+        )
+        for top_z, top_d in (
+            (uphill.top_z, uphill.top_d),
+            (elevation[rays.row, rays.col], np.zeros(rays.row.size)),
+        )
+    ]
+    toe_d = marches[0][0]
+    reach = np.fmax(marches[0][1], marches[1][1])
+    polygons["runout_m"] = inundated_length_m(
+        per_polygon(np.where(np.isfinite(toe_d), reach, np.nan)).to_numpy(),
+        height_m=polygons["height_m"].to_numpy(),
+        volume_m3=volume,
+        toe_length_m=polygons["length_m"].to_numpy(),
+    )
+    # A cell is a metre of runout: the run's last cell centre lies half a
+    # cell short of its end.
+    runout = _paint(
+        elevation,
+        rays,
+        downhill=True,
+        start_m=toe_d,
+        end_m=toe_d + per_ray(polygons["runout_m"]) - 0.5 * cell_size_m,
+        barriers=barrier_grid,
+        cell_size_m=cell_size_m,
     )
     inundated = runout.assign(
         polygon=ray_polygon[runout["ray"].to_numpy(dtype=np.intp)]
     )
     inundated = inundated[["polygon", "cell"]].drop_duplicates().assign(zone=INUNDATED)
     inundated = _fill_gaps(inundated, shape)
-    # A polygon's debris does not cover its own evacuated ground (a ray whose
-    # fall line wanders back over its element under noise).
+    # The strip in front does not cover the polygon's own evacuated ground (a
+    # ray whose fall line wanders back over its element under noise); a deep
+    # deposit spreads back over it below, the lowest cells first.
     inundated = inundated.merge(
         evac_cells[["polygon", "cell"]].assign(evac=True),
         on=["polygon", "cell"],
@@ -1655,6 +1997,15 @@ def build_slope_polygons(
     inundated = inundated[inundated["evac"].isna()].drop(columns="evac")
     if barrier_grid is not None:
         inundated = inundated[~barrier_grid.ravel()[inundated["cell"].to_numpy()]]
+    inundated = pd.concat(
+        [
+            inundated,
+            _spread_back(
+                inundated, evac_cells, polygons, elevation.ravel(), cell_area_m2
+            ),
+        ],
+        ignore_index=True,
+    )
 
     cells = pd.concat([evacuated, imminent, inundated], ignore_index=True)
     cells = cells.drop_duplicates(["polygon", "zone", "cell"])

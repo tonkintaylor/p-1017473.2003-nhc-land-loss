@@ -201,7 +201,8 @@ Each line takes a probability from what the lines step read onto it
       walls in place (decision 36 of the build contract).
 - [x] Run the scripts from `gen_exposure.py` after the insured land step,
       over `exposure/config.py`'s `WORLD_IDS`; `gen_wall_age.py` runs before
-      the population.
+      the population (from `gen_hazard`, before landslide step 12's wall
+      units, since 2026-10-07: their points read the age shares).
 - [ ] Run over the pilot box and record the lines drawn, the claim and
       coverage counts, the drawn walls without an `rw_id` and the population
       by size class and wall type in the method file; then over the four

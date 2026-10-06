@@ -50,7 +50,6 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     config as wall_config,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
-    gen_wall_age,
     gen_wall_lines,
     gen_wall_population,
     gen_wall_probability,
@@ -156,12 +155,6 @@ def main(*, extent, realisation_ids, world_ids):
                 "rw s6, wall probability",
                 lambda: gen_wall_probability.main(
                     extent=extent, use_cached_layers=wall_config.USE_CACHED_LAYERS
-                ),
-            ),
-            (
-                "rw s6, wall age",
-                lambda: gen_wall_age.main(
-                    extent=extent, age_extent=wall_config.AGE_EXTENT
                 ),
             ),
             (

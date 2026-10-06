@@ -1,4 +1,4 @@
-"""Tests for the wall units: joining, prior, floor, count update and draw."""
+"""Tests for the wall units: candidates, points, floor, count update and draw."""
 
 import geopandas as gpd
 import numpy as np
@@ -14,14 +14,9 @@ from landloss.hazard.landslide.wall_candidates import (
 )
 from landloss.hazard.landslide.wall_units import (
     CLAIMS,
-    FILL,
-    NATURAL,
-    NZMM,
-    PRIOR,
-    PROPERTY_BOUNDARY,
-    ROAD_FRONTAGE,
-    ROCK_CUT,
-    TALL_FACE,
+    GNS_FLOOR,
+    GNS_ONLY,
+    POINTS,
     gen_claim_holdout,
     gen_count_update,
     gen_element_walls,
@@ -31,11 +26,12 @@ from landloss.hazard.landslide.wall_units import (
     gen_unit_properties,
     gen_wall_draws,
     gen_wall_members,
-    gen_wall_prior,
+    gen_wall_points,
     gen_wall_unit_probability,
     gen_wall_units,
+    load_wall_points,
     poisson_binomial_pmf,
-    tall_face_factor,
+    wall_probability,
 )
 
 CRS = 2193
@@ -153,8 +149,24 @@ def test_a_candidate_breaking_a_line_rule_is_refused():
         _units(_pifs(long_pif))
 
 
+BASE = 0.3
+DOUBLING = 20.0
+TABLE = load_wall_points()
+
+
+def _points(units, **kwargs):
+    return gen_wall_points(
+        units,
+        TABLE,
+        base_p=BASE,
+        low_height_base_p=constants.BETA_LOW_HEIGHT_WALL_PRIOR,
+        per_doubling=DOUBLING,
+        **kwargs,
+    )
+
+
 def _probability(units):
-    prior = gen_wall_prior(units)
+    prior = _points(units)
     return prior, gen_gns_floor(units, prior)
 
 
@@ -170,6 +182,7 @@ def test_a_gns_only_piece_on_a_road_is_out_of_the_exposure():
 
 
 def _unit_frame(**columns):
+    # A neutral candidate: every attribute in a 0-point bin.
     defaults = {
         "unit_source": "pif",
         "is_siz": True,
@@ -177,49 +190,124 @@ def _unit_frame(**columns):
         "height_band": 1,
         "ground_material": "soil",
         "height_m": 2.0,
+        "length_m": 10.0,
+        "building_m": 10.0,
+        "verticality": np.nan,
         "cut_fill_class": "uncertain",
+        "property_id": None,
     }
     n = max(len(v) for v in columns.values())
     data = {k: columns.get(k, [v] * n) for k, v in defaults.items()}
     return pd.DataFrame(data, index=[f"WU{i:07d}" for i in range(1, n + 1)])
 
 
-ROCK_F = constants.BETA_ROCK_CUT_FACTOR
-FILL_F = constants.BETA_FILL_WALL_FACTOR
-NATURAL_F = constants.BETA_NATURAL_WALL_FACTOR
+def _odds(p):
+    p = np.asarray(p, dtype=float)
+    return p / (1.0 - p)
 
-# One unit per row: (class, ground material, height_m, the unit's (siz) height
-# band, prior factor on 0.5, basis, is_rock_cut, is_fill, is_natural). The
-# prior's band comes from height_m, not the siz band.
-PRIOR_CASES = [
-    ("uncertain", "soil", 2.0, 1, 1.0, PRIOR, False, False, False),
-    ("cut", "rock", 3.0, 1, ROCK_F, ROCK_CUT, True, False, False),
-    ("cut", "rock", 2.0, 1, 1.0, PRIOR, False, False, False),
-    ("cut", "soil", 3.0, 1, 1.0, PRIOR, False, False, False),
-    ("fill", "rock", 3.0, 1, FILL_F, FILL, False, True, False),
-    ("cut_and_fill", "soil", 2.0, 1, FILL_F, FILL, False, True, False),
-    ("natural", "soil", 2.0, 1, NATURAL_F, NATURAL, False, False, True),
-    ("unknown", "rock", 3.0, 1, 1.0, PRIOR, False, False, False),
-    ("uncertain", "soil", 4.0, 1, 0.8, PRIOR, False, False, False),
-    ("uncertain", "soil", 2.0, 2, 1.0, PRIOR, False, False, False),
+
+def test_no_points_is_the_base_and_twenty_double_the_odds():
+    p = wall_probability([0.0, 20.0, -20.0, 40.0], base_p=BASE, per_doubling=DOUBLING)
+    assert p[0] == pytest.approx(BASE)
+    assert _odds(p[1:]) / _odds(BASE) == pytest.approx([2.0, 0.5, 4.0])
+    extreme = wall_probability([100.0, -100.0], base_p=BASE, per_doubling=DOUBLING)
+    assert 0.0 < extreme[1] < extreme[0] < 1.0
+
+
+def test_no_prior_reaches_one_on_the_points_table():
+    # The highest-scoring candidate the table allows stays below 1.
+    units = _unit_frame(
+        verticality=[0.9],
+        height_m=[3.0],
+        building_m=[1.0],
+        cut_fill_class=["cut"],
+        ground_material=["loess"],
+    ).assign(on_road_frontage=True, property_id="1")
+    ages = pd.DataFrame(
+        {
+            "p_pre_1970": [0.0],
+            "p_1970_1991": [0.0],
+            "p_1992_2004": [0.0],
+            "p_2005_on": [1.0],
+        },
+        index=["1"],
+    )
+    prior = _points(units, age_shares=ages, nhc_flags=pd.Series({"1": True}))
+    assert prior["wall_points"].iloc[0] == pytest.approx(10 + 5 + 10 + 20 + 10 + 10 + 5)
+    assert prior["p_prior"].iloc[0] < 1.0
+
+
+def test_a_neutral_candidate_scores_nothing_and_takes_the_base():
+    prior = _points(_unit_frame(height_m=[2.0]))
+    assert prior["wall_points"].iloc[0] == 0
+    assert prior["p_prior"].iloc[0] == pytest.approx(BASE)
+    assert prior["p_prior_basis"].iloc[0] == POINTS
+    assert prior["wall_points_explain"].iloc[0] == ""
+
+
+# One numeric attribute per case: (column, values, points).
+BIN_CASES = [
+    ("verticality", [0.3, 0.45, 0.5, 0.9], [-20, -5, 10, 10]),
+    (
+        "height_m",
+        [0.8, 1.0, 2.4, 2.5, 5.0, 7.9, 8.0, 12.0],
+        [-5, 0, 0, 5, -20, -20, -60, -60],
+    ),
+    ("length_m", [3.0, 4.9, 5.0, 40.0], [-5, -5, 0, 0]),
+    ("building_m", [0.5, 2.0, 4.9, 5.0, 20.0, np.nan], [10, 5, 5, 0, -20, -20]),
 ]
 
 
-def test_the_prior_follows_the_siz_band_and_cut_and_fill_class():
-    cases = list(zip(*PRIOR_CASES, strict=True))
+@pytest.mark.parametrize(("column", "values", "points"), BIN_CASES)
+def test_each_numeric_attribute_scores_its_bin(column, values, points):
+    prior = _points(_unit_frame(**{column: values}))
+    assert prior["wall_points"].tolist() == pytest.approx(points)
+
+
+def test_the_setting_scores_road_frontage_over_a_boundary():
+    units = _unit_frame(height_m=[2.0, 2.0, 2.0]).assign(
+        on_property_boundary=[True, True, False],
+        on_road_frontage=[False, True, False],
+    )
+    prior = _points(units)
+    assert prior["wall_points"].tolist() == [10, 20, 0]
+    assert prior["is_road_frontage"].tolist() == [False, True, False]
+    assert prior["is_property_boundary"].tolist() == [True, False, False]
+    assert prior["wall_points_explain"].tolist()[:2] == [
+        "setting property_boundary +10",
+        "setting road_frontage +20",
+    ]
+
+
+# One unit per row: (class, ground material, height_m, points, is_rock_cut,
+# is_soil_cut, is_fill, is_natural). Height 2.0 to 2.5 m scores 0 itself.
+CLASS_CASES = [
+    ("uncertain", "soil", 2.0, 0, False, False, False, False),
+    ("cut", "rock", 2.1, -20, True, False, False, False),
+    ("cut", "rock", 2.0, 0, False, False, False, False),
+    ("cut", "rock_hw_cw", 2.1, 10, False, True, False, False),
+    ("cut", "loess", 2.0, 10, False, True, False, False),
+    ("cut", "fill_uncontrolled", 2.0, 10, False, True, False, False),
+    ("fill", "rock", 2.1, 5, False, False, True, False),
+    ("cut_and_fill", "loess", 2.0, 5, False, False, True, False),
+    ("natural", "loess", 2.0, -15, False, False, False, True),
+    ("unknown", "rock", 2.1, 0, False, False, False, False),
+]
+
+
+def test_the_class_and_a_cut_in_rock_or_soil_score():
+    cases = list(zip(*CLASS_CASES, strict=True))
     units = _unit_frame(
         cut_fill_class=list(cases[0]),
         ground_material=list(cases[1]),
         height_m=list(cases[2]),
-        height_band=list(cases[3]),
     )
-    prior = gen_wall_prior(units)
-    assert prior["p_prior"].tolist() == pytest.approx([0.5 * f for f in cases[4]])
-    assert prior["p_prior_basis"].tolist() == list(cases[5])
-    assert prior["prior_height_band"].tolist() == [1] * 8 + [2, 1]
-    assert prior["is_rock_cut"].tolist() == list(cases[6])
-    assert prior["is_fill"].tolist() == list(cases[7])
-    assert prior["is_natural"].tolist() == list(cases[8])
+    prior = _points(units)
+    assert prior["wall_points"].tolist() == pytest.approx(list(cases[3]))
+    assert prior["is_rock_cut"].tolist() == list(cases[4])
+    assert prior["is_soil_cut"].tolist() == list(cases[5])
+    assert prior["is_fill"].tolist() == list(cases[6])
+    assert prior["is_natural"].tolist() == list(cases[7])
 
 
 def test_ground_map_fill_no_longer_sets_the_prior():
@@ -227,9 +315,75 @@ def test_ground_map_fill_no_longer_sets_the_prior():
         ground_material=["fill_uncontrolled", "rock"],
         cut_fill_class=["uncertain", "uncertain"],
     ).assign(ground_modification="fill", in_slide_fill=True)
-    prior = gen_wall_prior(units)
-    assert prior["p_prior"].tolist() == pytest.approx([0.5, 0.5])
+    prior = _points(units)
+    assert prior["p_prior"].tolist() == pytest.approx([BASE, BASE])
     assert not prior["is_fill"].any()
+
+
+def test_age_points_are_the_share_weighted_points_of_the_property():
+    units = _unit_frame(property_id=["1", "2", "3"])
+    ages = pd.DataFrame(
+        {
+            "p_pre_1970": [0.5, 0.0],
+            "p_1970_1991": [0.5, 0.0],
+            "p_1992_2004": [0.0, 0.5],
+            "p_2005_on": [0.0, 0.5],
+        },
+        index=["1", "2"],
+    )
+    prior = _points(units, age_shares=ages)
+    assert prior["age_points"].tolist() == pytest.approx([-7.5, 5.0, 0.0])
+    assert prior["has_age"].tolist() == [True, True, False]
+    assert prior["wall_points_explain"].iloc[0] == "age property ages -8"
+
+
+def test_missing_age_shares_score_nothing():
+    prior = _points(_unit_frame(property_id=["1"]), age_shares=None)
+    assert prior["age_points"].tolist() == [0.0]
+    assert not prior["has_age"].any()
+
+
+def test_the_nhc_land_attributes_flag_is_five_points():
+    units = _unit_frame(property_id=["1", "2", None])
+    prior = _points(units, nhc_flags=pd.Series({"1": True, "2": False}))
+    assert prior["wall_points"].tolist() == [5, 0, 0]
+    assert prior["wall_points_explain"].iloc[0] == "nhc_land_attrs flagged +5"
+
+
+def test_the_explain_lists_each_scoring_bin():
+    units = _unit_frame(verticality=[0.6], height_m=[3.0], building_m=[1.0])
+    explain = _points(units)["wall_points_explain"].iloc[0]
+    assert explain == (
+        "verticality 0.5 and over +10; height 2.5 to 5 m +5; building under 2 m +10"
+    )
+
+
+def test_the_floor_and_the_claim_update_apply_on_top_of_the_points():
+    units = _unit_frame(
+        height_m=[9.0, 9.0], gns_wall=[False, True], property_id=["1", "2"]
+    )
+    prior, floor = _probability(units)
+    assert prior["p_prior"].iloc[0] < 0.06
+    assert floor["p_floor"].tolist() == pytest.approx(
+        [prior["p_prior"].iloc[0], constants.BETA_GNS_WALL_UNIT_FLOOR]
+    )
+    assert floor["p_floor_basis"].tolist() == [POINTS, GNS_FLOOR]
+    probability, _ = _update(
+        units.assign(property_id=pd.array(["1", "2"], dtype="string")),
+        floor,
+        _records(**{"1": (1, False)}),
+    )
+    assert probability["p_wall"].iloc[0] == pytest.approx(1.0)
+    assert probability["p_wall_basis"].tolist() == [CLAIMS, GNS_FLOOR]
+
+
+def test_a_gns_only_candidate_takes_its_probability_whatever_its_points():
+    units = _unit_frame(unit_source=["gns_only"], is_siz=[False], height_m=[9.0])
+    prior, floor = _probability(units)
+    assert prior["p_prior_basis"].iloc[0] == GNS_ONLY
+    assert floor["p_floor"].iloc[0] == pytest.approx(
+        constants.BETA_GNS_ONLY_WALL_PROBABILITY
+    )
 
 
 def test_a_candidate_pif_missing_from_step_13_stops_the_members():
@@ -294,7 +448,7 @@ def _two_property_units():
         index=[f"WU{i:07d}" for i in range(1, 6)],
     )
     floor = pd.DataFrame(
-        {"p_floor": [0.5, 0.5, 0.5, 0.0, 0.5], "p_floor_basis": PRIOR},
+        {"p_floor": [0.5, 0.5, 0.5, 0.0, 0.5], "p_floor_basis": POINTS},
         index=units.index,
     )
     return units, floor
@@ -312,15 +466,12 @@ def _records(**rows):
     )
 
 
-def _update(units, floor, records, held_out=None, *, use_nzmm=False, weight=1.0):
+def _update(units, floor, records, held_out=None):
     return gen_wall_unit_probability(
         units,
         floor,
         records=records,
         held_out=pd.Series(dtype=bool) if held_out is None else held_out,
-        nzmm_min_walls=constants.BETA_NZMM_MIN_WALLS,
-        nzmm_weight=weight,
-        use_nzmm=use_nzmm,
     )
 
 
@@ -336,8 +487,8 @@ def test_fewer_units_than_listed_walls_go_to_one_and_report_the_shortfall():
         CLAIMS,
         CLAIMS,
         CLAIMS,
-        PRIOR,
-        PRIOR,
+        POINTS,
+        POINTS,
     ]
     claims = missing[missing["update"] == "claims"].set_index("property_id")
     assert claims.loc["2", "missing"] == 1
@@ -411,20 +562,12 @@ def test_stacked_titles_give_their_record_to_the_lowest_id_only():
     assert result.loc["30", "claim_walls"] == 2
 
 
-def test_the_nzmm_update_is_tempered_by_its_weight():
+def test_the_nzmm_flag_is_no_update():
     units, floor = _two_property_units()
-    records = _records(**{"1": (pd.NA, True), "2": (1, True)})
-    weight = constants.BETA_NZMM_UPDATE_WEIGHT
-    used, _ = _update(units, floor, records, use_nzmm=True, weight=weight)
-    # Property 1: no claim, so the claims update leaves 0.5; the full NZMM
-    # update on two walls takes both units to 1.
-    assert used["p_wall"].iloc[:2].tolist() == pytest.approx([0.5 + weight * 0.5] * 2)
-    assert used["p_claims"].iloc[:2].tolist() == pytest.approx([0.5, 0.5])
-    # Property 2: one unit can be a wall, so the claim takes it to 1 and NZMM
-    # adds nothing.
-    assert used["p_wall"].iloc[2] == pytest.approx(1.0)
-    none, _ = _update(units, floor, records, use_nzmm=True, weight=0.0)
-    assert none["p_claims_nzmm"].tolist() == pytest.approx(none["p_claims"].tolist())
+    probability, missing = _update(units, floor, _records(**{"1": (pd.NA, True)}))
+    assert probability["p_wall"].tolist() == pytest.approx(floor["p_floor"].tolist())
+    assert probability["nzmm_wall"].tolist()[:2] == [True, True]
+    assert missing.empty
 
 
 @pytest.mark.parametrize("source_ids", [[31, 30, 32], [9, 10, 11], [100, 99, 98]])
@@ -482,52 +625,6 @@ def test_a_unit_along_a_boundary_or_a_road_is_flagged():
     assert flags["on_road_frontage"].tolist() == [False, True, False]
 
 
-def test_the_boundary_and_road_frontage_factors_raise_the_prior():
-    units = _unit_frame(height_m=[2.0, 2.0, 2.0]).assign(
-        on_property_boundary=[True, True, False],
-        on_road_frontage=[False, True, False],
-    )
-    prior = gen_wall_prior(units)
-    base = (
-        constants.BETA_SIZ_WALL_PRIOR
-        * constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR.get(1, 1.0)
-    )
-    assert prior["p_prior"].tolist() == pytest.approx(
-        [
-            min(base * constants.BETA_BOUNDARY_WALL_FACTOR, 1.0),
-            min(base * constants.BETA_ROAD_FRONTAGE_WALL_FACTOR, 1.0),
-            base,
-        ]
-    )
-    assert prior["p_prior_basis"].tolist() == [PROPERTY_BOUNDARY, ROAD_FRONTAGE, PRIOR]
-    assert prior["is_road_frontage"].tolist() == [False, True, False]
-    assert prior["is_property_boundary"].tolist() == [True, False, False]
-
-
-# Tall faces --------------------------------------------------------------------
-
-
-def test_the_tall_face_factor_falls_from_five_to_eight_metres():
-    assert tall_face_factor([2.0, 5.0, 6.5, 8.0, 12.0, np.nan]) == pytest.approx(
-        [1.0, 1.0, 0.55, 0.1, 0.1, 1.0]
-    )
-
-
-def test_a_tall_face_lowers_the_prior_but_not_under_the_gns_floor():
-    units = _unit_frame(height_m=[3.0, 9.0, 9.0], gns_wall=[False, False, True])
-    prior = gen_wall_prior(units)
-    assert prior["tall_face_factor"].tolist() == pytest.approx([1.0, 0.1, 0.1])
-    assert prior["p_prior"].iloc[1] == pytest.approx(
-        prior["p_prior"].iloc[0]
-        * 0.1
-        / (constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR.get(1, 1.0))
-        * constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR.get(2, 1.0)
-    )
-    assert prior["p_prior_basis"].tolist()[1:] == [TALL_FACE, TALL_FACE]
-    floor = gen_gns_floor(units, prior)
-    assert floor["p_floor"].iloc[2] == pytest.approx(constants.BETA_GNS_WALL_UNIT_FLOOR)
-
-
 # Properties a unit enters ------------------------------------------------------
 
 
@@ -581,7 +678,7 @@ def test_a_unit_on_two_properties_is_updated_on_both_and_keeps_the_higher():
         index=["WU1", "WU2"],
     )
     floor = pd.DataFrame(
-        {"p_floor": [0.5, 0.5], "p_floor_basis": PRIOR}, index=units.index
+        {"p_floor": [0.5, 0.5], "p_floor_basis": POINTS}, index=units.index
     )
     probability, missing = _update(units, floor, _records(**{"1": (1, False)}))
     # Property 1 holds both units, so its one listed wall lifts both to 2/3;
@@ -609,7 +706,7 @@ def test_a_property_entered_by_another_unit_holds_its_listed_walls():
         index=["WU1", "WU2"],
     )
     floor = pd.DataFrame(
-        {"p_floor": [0.5, 0.5], "p_floor_basis": PRIOR}, index=units.index
+        {"p_floor": [0.5, 0.5], "p_floor_basis": POINTS}, index=units.index
     )
     probability, missing = _update(units, floor, _records(**{"1": (2, False)}))
     # Without the crossing unit property 1 could hold one of its two walls.
@@ -629,19 +726,6 @@ def test_a_gns_only_line_mostly_on_a_road_goes_to_the_lot_it_touches():
     result = _property_of_lines(lines, properties)
     assert result["property_id"].tolist() == ["6"]
     assert result["rateable_property_id"].tolist() == ["5"]
-
-
-def test_nzmm_adds_two_walls_only_when_used():
-    units, floor = _two_property_units()
-    records = _records(**{"1": (pd.NA, True)})
-    without, _ = _update(units, floor, records)
-    assert without["p_wall"].tolist() == pytest.approx(floor["p_floor"].tolist())
-    assert without["p_claims_nzmm"].iloc[:2].tolist() == pytest.approx([1.0, 1.0])
-    used, missing = _update(units, floor, records, use_nzmm=True)
-    # At full weight NZMM is as strong as a claim listing two walls.
-    assert used["p_wall"].iloc[:2].tolist() == pytest.approx([1.0, 1.0])
-    assert used["p_wall_basis"].iloc[:2].tolist() == [NZMM, NZMM]
-    assert missing.empty
 
 
 def test_draws_reproduce_per_world_and_follow_the_probability():

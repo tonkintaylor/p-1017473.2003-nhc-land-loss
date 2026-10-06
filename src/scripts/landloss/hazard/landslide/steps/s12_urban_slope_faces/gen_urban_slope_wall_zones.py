@@ -5,7 +5,12 @@ units and the units of ``low_height`` pifs) gets an element along its line
 (:func:`landloss.hazard.landslide.instability_zones.add_line_elements`), so
 its wall has the minimum polygon too; the elements with these added are
 written to ``urban-slope-wall-elements.parquet``, which landslide step 8
-reads. Then the zones are built twice as the bounds, every element walled
+reads. A unit whose line found no free cell (all of them on other elements,
+or off the DEM) gets its minimum polygon drawn as geometry from its line
+instead, overlapping what it must
+(:mod:`landloss.hazard.landslide.forced_polygons`, the lead, 2026-10-07): its
+element is added to that file with the evacuated band as geometry, and its
+zones are added to every zones file after the built ones. Then the zones are built twice as the bounds, every element walled
 (``walled``) and none (``bare``), and once per exposure world from the wall
 units ``gen_urban_slope_wall_units.py`` drew: an element is walled where its
 pif is a member of a walled unit, or its line is a walled unit's
@@ -30,7 +35,12 @@ first. Settings are in ``config.py``.
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 
+from landloss.hazard.landslide.forced_polygons import (
+    gen_forced_elements,
+    gen_forced_zones,
+)
 from landloss.hazard.landslide.instability_zones import add_line_elements, with_walls
 from landloss.hazard.landslide.slope_polygons import build_slope_polygons
 from landloss.hazard.landslide.wall_units import gen_element_walls
@@ -71,6 +81,65 @@ def units_without_element(units, elements):
         lambda ids: any(int(i) in grown for i in ids)
     )
     return units[~has_element.to_numpy(dtype=bool)]
+
+
+def ground_rows(geometries, ground_map):
+    """The ground map row (by position) under each geometry's representative point.
+
+    -1 where no ground map polygon holds it, as an element off the map.
+    """
+    points = gpd.GeoDataFrame(
+        geometry=geometries.representative_point().to_numpy(), crs=geometries.crs
+    )
+    frame = ground_map[["geometry"]].reset_index(drop=True)
+    joined = gpd.sjoin(points, frame, predicate="within", how="left")
+    first = joined[~joined.index.duplicated()]["index_right"]
+    return first.fillna(-1).astype(np.int64).to_numpy()
+
+
+def with_forced(result, scenario, forced, walled, is_fill, thickness):
+    """A scenario's built zones with the forced polygons' zones after them."""
+    zones = zone_polygons(result, scenario=scenario)
+    zones["forced"] = False
+    zones["side_unknown"] = False
+    first = int(result.polygons.index.max()) + 1 if len(result.polygons) else 1
+    extra = gen_forced_zones(
+        forced,
+        walled,
+        is_fill=is_fill,
+        fill_thickness_m=thickness,
+        first_polygon=first,
+        scenario=scenario,
+    )
+    if extra.empty:
+        return zones
+    return gpd.GeoDataFrame(
+        pd.concat([zones, extra], ignore_index=True), geometry="geometry", crs=zones.crs
+    )
+
+
+def describe_forced(forced, zones):
+    """Print the forced polygons, those on unknown sides and those overlapping."""
+    evacuated = zones[zones["zone"] == "evacuated"]
+    built = evacuated[~evacuated["forced"].astype(bool)]
+    own = evacuated[evacuated["forced"].astype(bool)]
+    tree = shapely.STRtree(built.geometry.to_numpy())
+    overlap = 0
+    for geometry in own.geometry:
+        near = tree.query(geometry, predicate="intersects")
+        if (
+            len(near)
+            and shapely.area(
+                shapely.intersection(geometry, built.geometry.to_numpy()[near])
+            ).sum()
+            > 0.01
+        ):
+            overlap += 1
+    print(
+        f"{len(forced):,} forced polygons (no free cell for a line element), "
+        f"{int(forced['side_unknown'].sum()):,} with the uphill side unknown, "
+        f"{overlap:,} overlapping a built polygon"
+    )
 
 
 def world_scenario(world_id):
@@ -124,7 +193,24 @@ def main(*, extent, use_cached_layers, world_ids):
         f"{int(on_line.sum()):,} given an element along their line (the rest "
         "lie on another element or off the DEM)"
     )
-    element_polygons(found, transform).to_parquet(wall_elements_path(extent=extent))
+    still = lineless[~lineless.index.isin(elements["wall_unit_id"].dropna())]
+    forced = gen_forced_elements(
+        still.geometry,
+        still["height_m"],
+        dem=dem,
+        transform=transform,
+        first_label=int(elements.index.max()) + 1 if len(elements) else 1,
+    )
+    forced["majority_ground_row"] = ground_rows(forced.geometry, ground_map)
+    forced_fill, forced_thickness = fill_by_element(forced, ground_map)
+    element_frame = element_polygons(found, transform)
+    element_frame["forced"] = False
+    element_frame = gpd.GeoDataFrame(
+        pd.concat([element_frame, forced.drop(columns=["line"]).assign(forced=True)]),
+        geometry="geometry",
+        crs=element_frame.crs,
+    )
+    element_frame.to_parquet(wall_elements_path(extent=extent))
     is_fill, thickness = fill_by_element(elements, ground_map)
     in_unit = elements["siz_id"].isin(units["member_pif_ids"].explode().dropna())
     print(
@@ -140,9 +226,17 @@ def main(*, extent, use_cached_layers, world_ids):
             is_fill=is_fill,
             fill_thickness_m=thickness,
         )
-        zone_polygons(result, scenario=scenario).to_parquet(
-            zones_path(scenario, extent=extent)
+        zones = with_forced(
+            result,
+            scenario,
+            forced,
+            pd.Series(walled, index=forced.index),
+            forced_fill,
+            forced_thickness,
         )
+        zones.to_parquet(zones_path(scenario, extent=extent))
+        if scenario == "walled":
+            describe_forced(forced, zones)
         print(
             f"{scenario}: {len(result.polygons):,} polygons, "
             f"{result.polygons['area_m2'].sum():,.0f} m2 evacuated"
@@ -166,9 +260,13 @@ def main(*, extent, use_cached_layers, world_ids):
             fill_thickness_m=thickness,
         )
         scenario = world_scenario(world_id)
-        zone_polygons(result, scenario=scenario).to_parquet(
-            zones_path(scenario, extent=extent)
+        forced_walled = pd.Series(
+            forced["wall_unit_id"].map(walled).fillna(value=False).to_numpy(dtype=bool),
+            index=forced.index,
         )
+        with_forced(
+            result, scenario, forced, forced_walled, forced_fill, forced_thickness
+        ).to_parquet(zones_path(scenario, extent=extent))
         print(
             f"World {world_id}: {flags.mean():.1%} of elements walled, "
             f"{len(result.polygons):,} polygons, "

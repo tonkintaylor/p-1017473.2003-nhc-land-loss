@@ -70,19 +70,29 @@ URBAN_FRAGILITY_ANCHORS_PATH = ASSETS_DIR / "urban-fragility-anchors.csv"
 
 # The localised (no wall) median, m/s, at a rating of 0 and at MAX_RATING: a
 # log-linear fall between them (contract section 7.7). Placeholders, set by the
-# anchoring: run fig_urban_fragility_anchors.py, which prints the fitted pair,
-# and paste them here. The names are the contract's, so they carry no beta_
-# prefix although they are placeholders.
+# anchoring. The area calibration agreed with the project lead on 2026-10-07
+# (hazard/landslide/validations/urban/table_urban_area_calibration.py) fits
+# 0.334 and 0.0668 with a dispersion of 1.01, but every check rejects that fit
+# (urban_area_calibration_findings.md beside the script), so it is not adopted
+# here until the lead decides. The names are the contract's, so they carry no
+# beta_ prefix although they are placeholders.
 LOCALISED_THETA_AT_ZERO_RATING_M_S = 3.0
 LOCALISED_THETA_AT_MAX_RATING_M_S = 0.6
 
-# The columns of the anchor table (contract section 8.2).
+# The columns of the anchor table (contract section 8.2), with the measure
+# and polygon selection columns of the area calibration (2026-10-07).
 ANCHOR_COLUMNS = (
     "anchor_id",
     "source",
+    "measure",
     "zone",
     "rating_min",
     "rating_max",
+    "applies_to",
+    "slope_min_deg",
+    "slope_max_deg",
+    "material",
+    "demand_at",
     "scenario",
     "pga_rock_g_min",
     "pga_rock_g_max",
@@ -91,6 +101,22 @@ ANCHOR_COLUMNS = (
     "set_by",
     "basis",
 )
+
+# What an anchor's fail_fraction is a share of: the damaged share of a
+# Kingsbury zone's non-flat area, or the share of the matching polygons that
+# fail (landloss.hazard.landslide.urban.area_calibration).
+ANCHOR_MEASURES = ("zone_area", "polygon")
+ZONE_AREA_MEASURE, POLYGON_MEASURE = ANCHOR_MEASURES
+
+# Which polygons a polygon anchor speaks about, by the cut or fill position of
+# their wall unit; "all" takes every one.
+ANCHOR_APPLIES_TO = ("all", "cut", "fill")
+
+# Where an anchor's PGA was measured: on rock (a scenario's bedrock PGA,
+# converted to the polygon's site and amplified), or at a recording site (a
+# station value that already carries the amplification).
+ANCHOR_DEMAND_AT = ("rock", "site")
+ROCK_DEMAND, SITE_DEMAND = ANCHOR_DEMAND_AT
 
 # The model file's columns, less world_id, in the order contract section 3.8
 # gives them; the step inserts world_id after slope_id.
@@ -205,11 +231,13 @@ def load_urban_fragility_anchors(
 ) -> pd.DataFrame:
     """Read the anchors the localised fragility is fitted to.
 
-    One row per anchor point: a zone or rating range, a demand range on rock,
-    the source's failure class word and the fraction of polygons failing it is
-    read as, with who set the fraction and why (contract section 8.2; plan
-    section 6). The fractions are judgement, and every row says so in
-    ``set_by``.
+    One row per anchor point: what its fraction measures (``zone_area``, the
+    damaged share of a Kingsbury zone's non-flat area, or ``polygon``, the
+    share of the matching polygons failing), a zone or rating range or the
+    polygons it applies to, a demand range on rock or at a recording site, the
+    source's failure class word and the fraction it is read as, with who set
+    the fraction and why (contract section 8.2; plan section 6). The fractions
+    are judgement, and every row says so in ``set_by``.
 
     Args:
         path: The CSV to read; the packaged table by default.
@@ -218,8 +246,9 @@ def load_urban_fragility_anchors(
         The table, one row per ``anchor_id``.
 
     Raises:
-        ValueError: If a column is missing, an id repeats, or a
-            ``fail_fraction`` is outside ``[0, 1]``.
+        ValueError: If a column is missing, an id repeats, a
+            ``fail_fraction`` is outside ``[0, 1]``, or a ``measure``,
+            ``applies_to`` or ``demand_at`` is blank or unknown.
     """
     table = pd.read_csv(path)
     _require_columns(table, ANCHOR_COLUMNS, "The urban fragility anchor table")
@@ -232,6 +261,18 @@ def load_urban_fragility_anchors(
             "Every fail_fraction in the urban fragility anchor table must be in [0, 1]."
         )
         raise ValueError(msg)
+    for column, allowed in (
+        ("measure", ANCHOR_MEASURES),
+        ("applies_to", ANCHOR_APPLIES_TO),
+        ("demand_at", ANCHOR_DEMAND_AT),
+    ):
+        unknown = sorted(set(table[column].dropna().astype(str)) - set(allowed))
+        if unknown or table[column].isna().any():
+            msg = (
+                f"The urban fragility anchor table's {column} must be one of "
+                f"{list(allowed)} on every row; found {unknown or 'a blank'}."
+            )
+            raise ValueError(msg)
     return table
 
 
@@ -850,6 +891,13 @@ def fit_localised_fragility(
     anchors: pd.DataFrame, *, ratio_m_s_per_g: float
 ) -> LocalisedFit:
     """Fit the localised median's two constants and a dispersion to the anchors.
+
+    The first reading of the anchors, each fraction as a share of polygons at
+    the zone's mid rating. Superseded for the zone anchors by the area
+    calibration (:mod:`landloss.hazard.landslide.urban.area_calibration`),
+    which reads them as damaged shares of the zone's area; kept for the
+    anchor figure. Rows without a rating range (the polygon anchors) are left
+    out.
 
     With ``ln theta(r) = a + b r`` (the log-linear form of
     :func:`localised_theta_base_m_s`) and ``Phi(ln(pgv / theta) / beta) = f``

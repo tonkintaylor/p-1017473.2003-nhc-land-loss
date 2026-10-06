@@ -19,7 +19,7 @@ committed. Nothing here is large enough to belong in a cache.
 | `retaining-wall-type-fragility.csv` | Fragility per retaining wall type and size class, on the moderate damage state, stored as the PGA at which 15% and 50% of walls are replaced; confirmed by the lead; read by `assign_fragility` (landslide step 8) and `wall_failure_probability` (vul shaking step 9) | Converted from Koutsoupaki et al. (2023) Tables A1 to A5, 6 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility` |
 | `beta-retaining-wall-type-shares.csv` | The share of each retaining wall type by age bin and height band, which each wall's type is drawn from; judgement placeholders | Set by the project lead, 6 October 2026, for Nick Peters to revise — see below | `landloss.exposure.rw.wall_type.load_beta_wall_type_shares` |
 | `beta-retaining-wall-frontage-multipliers.csv` | The multiplier each retaining wall type's share takes where the wall stands on a road frontage; judgement placeholders | As above | `landloss.exposure.rw.wall_type.load_beta_frontage_multipliers` |
-| `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a fraction of polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
+| `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a damaged share of a zone's area or a share of matching polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
 | `landslide-slope-thresholds.csv` | The steepest overall angle each ground group stands unsupported at, in two height bands (under 3.5 m, 3.5 m and over): the far-pair test of the seed instability zones | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_slope_thresholds` |
 | `landslide-seed-thresholds.csv` | Per ground group, the near-pair step that makes a seed instability zone (`adjacent_step_m`), and the old free-face step and bank slope | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_seed_thresholds` |
 
@@ -346,46 +346,99 @@ cuts, so they are more often the heavier types.
 
 ## `urban-fragility-anchors.csv`
 
-One row per anchor point: a Kingsbury `zone` or a susceptibility rating range
-(`rating_min`, `rating_max`), a `scenario` with its demand on rock
-(`pga_rock_g_min`, `pga_rock_g_max`), the source's failure `class_word`, the
+One row per anchor point. `measure` says what its `fail_fraction` is a share
+of (below). A zone anchor has a Kingsbury `zone` or a susceptibility rating
+range (`rating_min`, `rating_max`). A polygon anchor has the polygons it
+applies to: `applies_to` (`all`, `cut` or `fill`, matched to the cut or fill
+position of the polygon's wall unit), `slope_min_deg` (exclusive) and
+`slope_max_deg` (inclusive), and `material` (blank for any). Every row also
+has a `scenario` with its demand (`pga_rock_g_min`, `pga_rock_g_max`), where
+that PGA was measured (`demand_at`), the source's failure `class_word`, the
 `fail_fraction` that word is read as, and `set_by` and `basis` recording who
 set the fraction and why. `source` is a `doc/references.bib` key or a GNS
 finding id.
 
 The rows are the anchors of section 6 of
-`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
-Step 8 does not read this file; it is the record the urban validation
+`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`,
+revised with the project lead on 2026-10-07. Step 8 does not read this file.
+The urban validation
 (`src/scripts/landloss/hazard/landslide/validations/urban/`) draws the curves
-against and fits the localised median to.
+against it and fits the localised median to it.
 
 - `A01` to `A15` are Table 1 of [kingsbury_1995], the five susceptibility
-  zones against the three scenarios, with the scenario PGA on rock from its
-  Table 7 (scenario 1, MM V-VI, 0.02 to 0.06 g; intermediate, MM VII-VIII,
-  0.1 to 0.2 g; scenario 2, MM IX-X, 0.5 to 0.8 g). The rating range of each
-  zone is the zone band of `landloss.hazard.landslide.susceptibility.ZONE_BREAKS`.
-- `A16` to `A21` are the GNS findings the plan cites by id: the Wellington
-  low-demand record (Kaikōura 2016), the Port Hills, and the forecasts for
-  Wellington cuts and fills. Each is given the rating range of the ground it
-  speaks about; `zone` is blank.
+  zones against the three scenarios. The scenario PGA on rock comes from its
+  Table 7: scenario 1 (MM V-VI) is 0.02 to 0.06 g, the intermediate scenario
+  (MM VII-VIII) 0.1 to 0.2 g and scenario 2 (MM IX-X) 0.5 to 0.8 g. Each
+  zone's rating range is its band in
+  `landloss.hazard.landslide.susceptibility.ZONE_BREAKS`. `A15` (very
+  severe) is 0.4, not 0.5: about a tenth of very severe damage comes from
+  large landslides, which the urban model excludes (the project lead).
+- `A16` is the Wellington low-demand record (Kaikōura 2016, 0.15 g on rock,
+  no urban failures recorded). Its measure is `zone_area` and it is read on
+  the whole non-flat urban ground.
+- `A17` to `A21` are the GNS findings for cuts and fills, revised as polygon
+  anchors: the Port Hills (cut and fill polygons), cuts steeper than 50
+  degrees, cuts steeper than 45 degrees, 45 to 50 degree cuts on rock, and
+  fills. `A17`'s 1 to 2 g were recorded at strong motion stations
+  (`demand_at` `site`). They already carry the site and topographic
+  amplification, so the comparison uses the polygon's site PGV/PGA ratio and
+  does not apply the amplification factor again.
 - The 2013 Cook Strait findings (`sr2013-042-F03`, `F04`, `F11`) are not rows,
   because the plan gives no rock-site demand for them.
 
+**What a fraction measures.** For a `zone_area` anchor it is the share of the
+Kingsbury zone's non-flat area that small failures damage, not the share of
+polygons. Damaged ground is the union of the evacuated and inundated zones,
+and the area calibration (`landloss.hazard.landslide.urban.area_calibration`)
+computes its expected share. Kingsbury's zones include runout (his section
+4.4.2), but runout onto flat land is not counted. For a `polygon` anchor the
+fraction is the share of the matching polygons that fail. Kingsbury's zoning
+leaves seismically designed retained slopes out of the high category, so his
+High fractions describe unretained or poorly retained ground. They apply to
+the bare (no wall) model unchanged.
+
 **The class-word-to-fraction reading is judgement, not a measurement**, and
-every row says so in `set_by`. The words are Kingsbury's slope failure classes
-read as the fraction of urban failure polygons failing: very minor 0.005,
-minor 0.02, significant 0.08, severe 0.25, very severe 0.5; the GNS findings'
-own words (`none_recorded`, `many`, `widespread`, ...) are read the same way.
-The validation table `report/hazard/landslide/urban-fragility/tab/urban-fragility-anchors.csv`
-lists the words and fractions for the report, and the project lead replaces a
+every row says so in `set_by`. Kingsbury's classes are read as very minor
+0.005, minor 0.02, significant 0.08, severe 0.25 and very severe 0.4. The GNS
+findings' own words (`none_recorded`, `many`, `widespread`, ...) are read the
+same way. The validation table
+`report/hazard/landslide/urban-fragility/tab/urban-fragility-anchors.csv`
+lists the words and fractions for the report. The project lead changes a
 number by editing this file.
 
-Read as three points on the demand axis per zone, Kingsbury's words rise more
-slowly with demand than a lognormal at the dispersion of 0.6 the model carries
-(`LOCALISED_FRAGILITY_BETA`): the fit in
-`landloss.hazard.landslide.urban.fragility.fit_localised_fragility` therefore
-fits the dispersion as well as the two medians, and the validation figure
-prints all three for the project lead to accept or override.
+Kingsbury's words rise more slowly with demand than a lognormal at the model's
+dispersion of 0.6 (`LOCALISED_FRAGILITY_BETA`), so the area calibration fits
+the dispersion together with the median's scale. The first run (2026-10-07)
+showed two problems:
+
+1. On the wlg-pilot the bare footprints cover only 20% of the non-flat
+   ground. `A12`'s 0.25 is therefore out of reach when the whole pilot is
+   the reference.
+2. `A16` (0.001 at 0.15 g) contradicts `A10` and `A11` (0.02 and 0.08 at
+   0.02 to 0.2 g) on the same ground.
+
+**Which anchors set the curve (the project lead, 2026-10-07).** After that
+run the lead chose to fit the localised curve to two kinds of anchor:
+
+1. `A16`, the Kaikōura record, as the expected damaged share of the whole
+   non-flat ground at 0.15 g on rock. It weighs as much as the polygon
+   anchors together.
+2. The polygon anchors `A17` to `A21`, as the mean failure probability of
+   the matching bare polygons.
+
+Implemented in `area_calibration.fit_record_and_polygons`. `A12`
+(Kingsbury High, scenario 2) is an upper limit the curve must stay under,
+not a target. `A01` to `A11` and `A13` to `A15` are kept as checks.
+
+The reasons:
+
+1. Kingsbury's scenario 1 and intermediate classes conflict with the
+   Kaikōura record.
+2. They describe stream-bank, natural-slope and loose-rock failures, while
+   the polygon anchors describe the urban cuts and fills the model draws.
+
+`urban_area_calibration_findings.md` beside the validation scripts has the
+details.
 
 ## `landslide-slope-thresholds.csv` and `landslide-seed-thresholds.csv`
 
@@ -456,3 +509,29 @@ anyway; the upper limit is 90.
 
 Not in these files: the other `BETA_` settings and the step estimator. They are
 constants in `slope_elements.py`.
+
+## `wall-probability-points.csv`
+
+The points that set the probability that a landslide step 12 wall candidate is
+a retaining wall (`wall_units.gen_wall_points`; the lead, 2026-10-07; the plan
+is `.agents/plans/wall-probability-points.md`). One row per bin:
+
+- `attribute`: what is scored. `verticality`, `height` (`height_m`), `length`
+  (`length_m`) and `building` (`building_m`) are numeric; `setting`
+  (`road_frontage`, else `property_boundary`), `class` (landslide step 13's
+  `fill`, `cut_and_fill`, `natural`), `rock_cut`, `soil_cut`, `age` and
+  `nhc_land_attrs` are categories.
+- `bin`: the bin's name, shown in each candidate's `wall_points_explain`. For
+  `age` it names the share column (`p_<bin>`) of exposure rw step 6's wall age
+  table.
+- `lower`, `upper`: a numeric bin is `lower <= value < upper`; a blank is open.
+  For `rock_cut`, `lower` is the depth a cut in rock must exceed.
+- `points`: added to the candidate's total; `age` points are weighted by the
+  property's share in each bin.
+- `reason`: why, with the pilot's GNS rate where it informed the value.
+
+The total sets the probability on a logistic scale:
+`BETA_WALL_POINTS_PER_DOUBLING` points double the odds from `BETA_WALL_BASE_P`
+at 0 points (`landloss.domain.constants`). Every value is judgement until the
+claim reports calibrate it. An attribute the scoring does not read stops the
+run.

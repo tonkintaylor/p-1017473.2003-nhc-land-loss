@@ -78,6 +78,11 @@
   the wall line with the combined realisation's `evacuated land`, so a wall is
   replaced only where its line is reached, not where a large slide grazes its
   polygon's headscarp band.
+- Step 12's forced polygons (a wall's minimum polygon drawn from its line
+  where the label grid could not hold it, 2026-10-07) can overlap other
+  polygons; they go through the same rules, so one that fails sharing ground
+  with a larger failed polygon is absorbed into it, and the dissolved land
+  totals count the shared ground once.
 - **Nested failures are then absorbed largest first** by
   `realisation.resolve_overlaps`, on the `evacuated` geometry of the failed
   polygons that were not superseded: worked in descending area, stable on

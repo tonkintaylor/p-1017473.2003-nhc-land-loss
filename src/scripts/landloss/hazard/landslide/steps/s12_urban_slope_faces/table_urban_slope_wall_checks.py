@@ -82,7 +82,7 @@ ANDERSON_UNDER_HEIGHT_M = 1.5
 ANDERSON_UNDER_SHARE = 0.54
 
 # The probability columns the hold-out scores.
-ESTIMATES = ("p_floor", "p_claims", "p_claims_nzmm")
+ESTIMATES = ("p_prior", "p_floor", "p_claims")
 
 NOT_AVAILABLE = "not available"
 
@@ -342,8 +342,8 @@ def pilot_counts(units, draws, sizs, *, extent, world_ids):
             if flag in units
         ),
         {
-            "metric": "units_tall_face",
-            "value": int((units.get("tall_face_factor", pd.Series(1.0)) < 1).sum()),
+            "metric": "median_wall_points",
+            "value": float(units.get("wall_points", pd.Series(np.nan)).median()),
         },
         *(
             {"metric": f"evacuated_m2_{scenario}", "value": area}
