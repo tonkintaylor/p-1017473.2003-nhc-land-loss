@@ -1,0 +1,1 @@
+SME validation: seven statements of engineering experience of Wellington are tested against the model, each by a script in `src/scripts/landloss/post_processing/sme_validations/` that draws a figure and prints its numbers (T-67). The statements and verdicts are in `sme_statements.md` beside them.
