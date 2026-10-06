@@ -1062,6 +1062,27 @@
       "Affects": "hazard/landslide, loss",
       "Source": "Wgtn land model sense check 2026-10-05",
       "Status": "Open"
+    },
+    {
+      "ID": "L-52",
+      "Limitation": "The NLM release supplies only P(at least Moderate) and P(at least Major), so the Minor, Severe and Very severe states are made by splitting the None and Major bands in fixed shares (None 50/50 with Minor; Major 25%, Severe 50%, Very severe 25%) with no evidence behind them; T-88 is revising the shares.",
+      "Affects": "hazard/liquefaction, vul/liquefaction/land",
+      "Source": "hazard/liquefaction step method files, 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-53",
+      "Limitation": "Each 100 m cell's land damage state is drawn independently, so the share of each state comes out right but the size of damaged patches does not: liquefaction is spatially correlated and the drawn map is salt and pepper.",
+      "Affects": "hazard/liquefaction, vul/liquefaction/land",
+      "Source": "hazard/liquefaction step method files, 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-54",
+      "Limitation": "Lateral spreading free faces follow the NLM's rule rather than a geotechnical judgement: a channel named a stream is not a free face however deep its banks, and the whole coast is one, including rock and seawall coast that cannot spread.",
+      "Affects": "hazard/liquefaction",
+      "Source": "hazard/liquefaction step method files, 2026-10-07",
+      "Status": "Open"
     }
   ],
   "Improvements": [

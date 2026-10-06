@@ -1,0 +1,97 @@
+meta:
+  written: '2026-10-07'
+  commit: ffc0cd9
+  nlm_release: v2026p0rc6
+settings:
+  return_period_years: 2500
+  base_seed: 1017473
+  min_free_face_area_ha: 5.0
+  near_field_m: 100.0
+  far_field_m: 200.0
+  knee: 0.075
+  near_multiplier: 3.0
+  far_divisor: 3.0
+  near_lift_above_knee: 0.14999999999999997
+  far_drop_above_knee: 0.05
+  middle_far_weight: 0.5
+  supersample: 10
+  none_shares:
+    None: 0.5
+    Minor: 0.5
+  major_shares:
+    Major: 0.25
+    Severe: 0.5
+    Very Severe: 0.25
+study_area:
+  grid_resolution_m: 100.0
+  cells_with_probability: 14320
+  area_with_probability_km2: 143.2
+  mean_p_moderate_or_worse: 0.40435415506362915
+  mean_p_major_or_worse_before: 0.12533171474933624
+  mean_p_major_or_worse_after: 0.11961953237417529
+  cells_capped: 0
+  by_zone:
+    near:
+      cells: 2190
+      mean_p_major_before: 0.1592111736536026
+      mean_p_major_after: 0.29250768575020464
+    middle:
+      cells: 1479
+      mean_p_major_before: 0.1440911591053009
+      mean_p_major_after: 0.19371556558076136
+    far:
+      cells: 10651
+      mean_p_major_before: 0.1157606840133667
+      mean_p_major_after: 0.07378223174455882
+  free_faces:
+    coast:
+      features: 2
+      km: 78.5
+    lake:
+      features: 4
+      km: 9.8
+    river:
+      features: 671
+      km: 314.9
+    swamp:
+      features: 6
+      km: 32.8
+  mean_state_probability:
+    None: 0.2978229224681854
+    Minor: 0.2978229224681854
+    Moderate: 0.2847346177254785
+    Major: 0.029904883093543822
+    Severe: 0.059809766187087644
+    Very Severe: 0.029904883093543822
+draw:
+  extent: wlg-pilot
+  realisation_id: 0
+  cells: 239
+  None:
+    drawn: 0.2384937238493724
+    expected: 0.28972119092941284
+    standard_error: 0.029343074030154792
+  Minor:
+    drawn: 0.3682008368200837
+    expected: 0.28972119092941284
+    standard_error: 0.029343074030154792
+  Moderate:
+    drawn: 0.3263598326359833
+    expected: 0.31398117453077046
+    standard_error: 0.030020703913752417
+  Major:
+    drawn: 0.02092050209205021
+    expected: 0.026644112825645657
+    standard_error: 0.010416876409523958
+  Severe:
+    drawn: 0.029288702928870293
+    expected: 0.053288225651291314
+    standard_error: 0.014528660271383947
+  Very Severe:
+    drawn: 0.016736401673640166
+    expected: 0.026644112825645657
+    standard_error: 0.010416876409523958
+figures:
+  zones: report/hazard/liquefaction/fig/lateral-spreading-zones-study-area.png
+  change: report/hazard/liquefaction/fig/lateral-spreading-change-study-area.png
+  correction: report/hazard/liquefaction/fig/lateral-spreading-correction.png
