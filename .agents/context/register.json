@@ -530,42 +530,42 @@
     },
     {
       "ID": "T-67",
-      "Task": "Agree with Maxim Millen how Nick Peters' comments are to become validation checks on the modelled retaining walls and landslides, then build them.",
+      "Task": "Turn Nick Peters' comments into an SME validation report: draw out about 30 statements from his Teams chat with Virginie Lacrosse and the 2026-10-05 sense check, phrased as what engineering experience suggests rather than attributed to him, then test five or six against the model, each with a figure of what the model gives and a verdict of correct, partly correct or incorrect, and list the rest for later. The scripts go in a new src/scripts/landloss/post_processing/sme_validations/ and stay semi-standalone, adding no library code to src/landloss, since they may not be maintained; validations/ folders are kept for validations published in the technical report.",
       "Owner": "Perrie Gilbert",
       "Phase": "3",
-      "Source": "Maxim Millen 2026-10-06",
+      "Source": "Maxim Millen 2026-10-06; Call with Maxim Millen 2026-10-06",
       "Status": "Open"
     },
     {
       "ID": "T-68",
-      "Task": "Run the pipeline across the whole study area once Maxim Millen's changes to how outputs are saved are in, following on from T-51.",
+      "Task": "Run the pipeline across the whole study area once Maxim Millen's changes to how outputs are saved are in, following on from T-51. Hold off until Maxim Millen says the retaining wall work is ready for a full build. The extent suffix on file names is already in.",
       "Owner": "Perrie Gilbert",
       "Phase": "3",
-      "Source": "Maxim Millen 2026-10-06",
+      "Source": "Maxim Millen 2026-10-06; Call with Maxim Millen 2026-10-06",
       "Status": "Open"
     },
     {
       "ID": "T-69",
-      "Task": "Start the output figures from the whole-study-area run.",
+      "Task": "Start the output figures from the whole-study-area run. For now, only the figures the technical report needs; what goes in the executive summary is decided after.",
       "Owner": "Perrie Gilbert",
       "Phase": "4",
-      "Source": "Maxim Millen 2026-10-06",
+      "Source": "Maxim Millen 2026-10-06; Call with Maxim Millen 2026-10-06",
       "Status": "Open"
     },
     {
       "ID": "T-70",
-      "Task": "Write a technical explanation of the code in the style of the NLM technical report, as part of the technical document in T-59.",
+      "Task": "Write a technical explanation of the code in the style of the NLM technical report, as part of the technical document in T-59, for Maxim Millen and Perrie Gilbert to review the model by rather than for NHC. Each section runs context, inputs (with each dataset's licence: CC BY, commercial, sensitive or unknown, short of full attribution), a high-level method that forward-references the detailed sections, results figures, validations, limitations and future improvements, with example figures in the method. One section per exposure submodule and per hazard submodule; start with one of each as examples. Build it in Typst with every number read from YAML that a Python script writes, so each is traceable: model results from the code, and judgement values from the config files where they are set. Check whether the NLM repository has a skill for writing its technical report. Convert to Word for review comments. Whether to highlight poorly supported assumptions is decided after a first draft.",
       "Owner": "Perrie Gilbert",
       "Phase": "4",
-      "Source": "Maxim Millen 2026-10-06",
+      "Source": "Maxim Millen 2026-10-06; Call with Maxim Millen 2026-10-06",
       "Status": "Open"
     },
     {
       "ID": "T-71",
-      "Task": "Write QGIS layers that step through the liquefaction pipeline: the probability of each land damage state, the sampled land damage state, then the evacuated and inundated land, which the pipeline currently holds as areas per property rather than as polygons.",
+      "Task": "Write QGIS layers that step through the liquefaction pipeline: the probability of each land damage state, the sampled land damage state, then the evacuated and inundated land, which the pipeline currently holds as areas per property rather than as polygons. Part of the per-module QGIS projects in T-82.",
       "Owner": "Perrie Gilbert",
       "Phase": "3",
-      "Source": "Maxim Millen 2026-10-06",
+      "Source": "Maxim Millen 2026-10-06; Call with Maxim Millen 2026-10-06",
       "Status": "Open"
     },
     {
@@ -646,6 +646,54 @@
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Perrie Gilbert 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-82",
+      "Task": "Build one QGIS project per module holding its inputs, intermediate files and outputs, and save each project together with the files it reads to a folder on the T: drive so Maxim Millen can open it, rather than pointing at one machine's local files.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Call with Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-83",
+      "Task": "Add the scenario to the output folder alongside the version, as <scenario>_<version> (for example default_v1), so runs such as many or few retaining walls, or a large or small landslide model, sit apart. Scenario values stay in the config files for now and later move to a YAML file defining each scenario.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Call with Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-84",
+      "Task": "Rename the w<nnn> and r<nnn> file name suffixes to e<nnn> and h<nnn>, for the exposure realisation (where the retaining walls, culverts and bridges are) and the hazard realisation (every hazard drawn under one seed). Runs use one of each for now, but the naming has to support many; about 20 of each may be run for one scenario.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "3",
+      "Source": "Call with Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-85",
+      "Task": "Move gen_calc_walkthrough.py, gen_viewer_data.py and gen_viewer_stress_data.py out of loss/validations/ into a new loss/ui/ folder, keeping the get-property-damage name for the four loss input tables (see T-66 for the paths in those scripts).",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Call with Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-86",
+      "Task": "Once the whole-study-area output is in (T-68), review what the loss viewer shows: fix the GST basis rather than leaving it as an input, and revise the inputs against those discussed in recent meetings (lower priority).",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Call with Maxim Millen 2026-10-06",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-87",
+      "Task": "Lay the loss viewer out with the configuration panel on the left and drag-and-drop loading at the top; a main histogram of losses with the land cap scenarios from Bridget Attwood's document (15, 30, 90 and 120) as vertical lines, the share of claims above each cap and the total insured loss under each, and a button to change the cap settings; summary results, including how many claims settle on each basis, on the right; map display settings; and a claim that can be clicked to show its intermediate values. Whether to put a table summarising the map below it is open, since it may be heavy to render.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Call with Maxim Millen 2026-10-06",
       "Status": "Open"
     }
   ],
