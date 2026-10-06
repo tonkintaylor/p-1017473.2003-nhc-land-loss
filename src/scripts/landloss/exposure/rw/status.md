@@ -11,7 +11,7 @@ judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-05
+**Updated:** 2026-10-06
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -57,36 +57,38 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   several), a prior from the height band, a rock cut and fill, a 0.95 floor
   on a unit GNS maps and 0.8 on a `gns_only` unit, and the claim and NZMM
   update below.
-- [ ] **Read each pif's cut and fill class into the prior, before deciding
-  whether there is a wall**, once it is settled; the prior does not read it
-  yet (landslide step 13, built 2026-10-05;
-  `urban-slope-pif-cut-fill.parquet`, joined to the siz table on `pif_id`).
+- [x] **Read each pif's cut and fill class into the prior, before deciding
+  whether there is a wall** (built 2026-10-06 in landslide step 12's wall
+  units, from step 13's `urban-slope-pif-cut-fill.parquet`; the ground map's
+  fill no longer sets the prior).
   - **How the class is read.** Each pif is cut, fill, cut and fill, uncertain
     or natural, from how its crest and the foot of its face sit against a
     robust surface fitted to the ground off the faces.
   - **Walls are less likely on a cut, particularly in rock.** A cut face in
     rock often stands unsupported; Wellington greywacke cuts stand at 55 to
-    75° [nzgs_2025_torlesse]. So the prior falls on a cut, and further on a
-    cut in weak rock (step 12's `ground_group`).
-  - **Fill and cut and fill keep the higher prior.** These are the front of a
+    75° [nzgs_2025_torlesse]. So the rock reduction applies only to a `cut`
+    in rock over 2.5 m; a cut in soil keeps its prior.
+  - **Fill and cut and fill take the higher prior.** These are the front of a
     platform and its back, which is where walls hold fill and soil (Nick
     Peters, below; [monteith_2020]).
-  - **Unclassified faces are left alone.** Uncertain, natural and unknown
-    pifs keep the prior from height and ground.
+  - **Natural ground is lowered, the rest left alone.** A natural face is a
+    bank, not an earthwork (`BETA_NATURAL_WALL_FACTOR`, 0.5); uncertain and
+    unknown (and every `gns_only` unit) keep the prior from siz and height.
   - **Limits.** The class is local: it cannot see a large gully fill, which
     reads as the surface itself, so the SLIDE fill bodies and the ground map
     still carry fill.
   - **Over the pilot:** of the pifs of 10 pips or more, 37% in soil-like
     ground and 31% in weak rock are cut.
-  - **Still open.** The weights are for the lead (step 13 plan, phase 3), and
-    a wall unit takes the class of its longest member.
+  - **A unit takes the class of its longest pif**, or where pifs tie, the
+    tied class most of its pifs hold. Every weight is `BETA_` judgement until
+    **T-50**.
 - [~] **Lower the chance of a wall on a rock cut**, from the 1:50,000 geology
   and the SLIDE materials through the ground map; Wellington greywacke cuts
   commonly stand at 55 to 75° and many long-standing ones are unsupported
-  [nzgs_2025_torlesse]. Three changes, the second built on the wall units
-  (2026-10-05, on a unit's highest face): read "cut" from step 13's class on
-  the pif rather than from the ground map's modification, which is fill on
-  most of the pilot; apply it only to cuts taller than the
+  [nzgs_2025_torlesse]. Three changes, the first two built on the wall units
+  (2026-10-05 and 2026-10-06, on the unit's wall height): read "cut" from step
+  13's class on the pif rather than from the ground map's modification, which
+  is fill on most of the pilot; apply it only to cuts taller than the
   soil cover over the rock (height band 4 and up, over 2.5 m), usually under 1 m and 0.5 to 3 m on
   typical slopes [nzgs_2025_torlesse; hancox_2013_slope_types]; and remap
   SLIDE's mixed fill classes in the ground map, which today make 71% of the
@@ -258,6 +260,13 @@ What this module owes the retaining wall table `loss` reads
   29% of the drawn units are under 1.5 m, against 54% in Canterbury
   [anderson_2015]. These counts predate the review fixes later that day
   (landslide step 12 plan, phase 4); rerun step 12 and then step 6.
+- **The wall height and the class prior (2026-10-06, not yet rerun).** A
+  unit's `height_m`, which sets its size class and `p_poor`, is now the 80th
+  percentile of its pifs' face drops from landslide step 13, not the largest
+  pip drop, which put too few walls under 1.5 m; it also sets the prior's
+  height band. Its `p_wall` prior reads
+  step 13's cut and fill class, and `wall_position` is fill on fill and cut
+  and fill, else cut.
 - `gen_wall_probability.py` reads the wall units, ties each to its claim
   (`claim_of_properties`) and puts the condition on it;
   `gen_wall_population.py` takes which units are walls from step 12's draw
@@ -323,30 +332,27 @@ What this module owes the retaining wall table `loss` reads
 
 1. **Rerun the pilot chain downstream of exposure step 6** (vul and the loss
    inputs), so they read the wall-unit population of 2026-10-05 rather than
-   the one drawn from the lines; landslide step 8 needs its join repaired (4)
+   the one drawn from the lines; landslide step 8 needs its join repaired (3)
    first.
-2. Read landslide step 13's cut and fill class into the wall units' prior
-   (lower on a cut, lower again on a cut in rock), as the "cut" of the rock
-   cut rule and as each wall's `wall_position`, once step 13 is settled.
-3. Decide the ground map's fill: its `modification` marks 88% of the pilot's
-   candidate pifs as fill, rock included, so the prior reads fill from the
-   material and the SLIDE fill bodies only (landslide step 4 plan, phase 2).
-4. Repair landslide step 8's edge join: the drawn walls carry wall unit ids,
+2. Rerun landslide steps 12 and 13 and then step 6 over the pilot, for the
+   new wall height and class prior, and recheck the size classes and the
+   share under 1.5 m against Anderson et al. [anderson_2015] (54%).
+3. Repair landslide step 8's edge join: the drawn walls carry wall unit ids,
    so it matches none of the step 7 lines, and step 8 now stops with an error
    rather than build every polygon `no_wall`; resolved when steps 8 and 9 read
    step 12's zones.
-5. Add walls on the flat land: every wall unit is a face of sloping ground.
-6. Tie a wall on a property boundary, which is one unit on each side, so one
+4. Add walls on the flat land: every wall unit is a face of sloping ground.
+5. Tie a wall on a property boundary, which is one unit on each side, so one
    draw serves both, or count it on both.
-7. Name the six wall classes.
-8. Read step 8's age bin onto the wall units and set the condition probability
+6. Name the six wall classes.
+7. Read step 8's age bin onto the wall units and set the condition probability
    from it.
-9. Bring subdivision age into `p_wall`, and wall type into `p_poor`.
-10. Calibrate the wall units' weights on the held-out claims, GNS and the
-    strata once **T-50** is complete (Wall datasets, above).
-11. Record where the collected input datasets are held, so the inputs are
+8. Bring subdivision age into `p_wall`, and wall type into `p_poor`.
+9. Calibrate the wall units' weights on the held-out claims, GNS and the
+   strata once **T-50** is complete (Wall datasets, above).
+10. Record where the collected input datasets are held, so the inputs are
     reproducible.
-12. Delete the two height-range constants once the loss owner has moved the
+11. Delete the two height-range constants once the loss owner has moved the
     pricing test (**I-14**).
 
 ## Validation

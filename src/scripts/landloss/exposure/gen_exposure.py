@@ -14,9 +14,10 @@ The candidate wall lines read the terrain rasters, ground map and urban slope
 candidates that landslide steps 3, 4 and 6 write, so ``gen_hazard.main`` runs
 before this module; ``gen_all.py`` holds that order. The wall probability and
 population read the wall units and their draws from landslide step 12, which
-no orchestrator runs yet: run ``gen_urban_slope_faces.py`` and
-``gen_urban_slope_wall_units.py`` by hand first, or the wall probability stops
-and says so.
+``gen_hazard.main`` runs (faces, then step 13's pif cut and fill, then the wall
+units); without it, run ``gen_urban_slope_faces.py``,
+``gen_pif_cut_fill.py`` and ``gen_urban_slope_wall_units.py`` by hand first, or
+the wall probability stops and says so.
 """
 
 from scripts.landloss.exposure import config

@@ -16,9 +16,10 @@ liquefaction and the landslide ground work (terrain, ground map, slope units,
 urban slope candidates, and step 12's faces and wall units drawn per world)
 and the large landslide model, none of which reads an exposure output. The exposure module's wall lines then read those landslide
 layers, and its wall population is drawn per world. The hazard module's second
-pass (``gen_hazard.main_urban``) reconciles the urban slope polygons to the
-wall lines, assigns each polygon its fragility for the walls of each world,
-and draws the urban realisation, so it can only run after exposure. The
+pass (``gen_hazard.main_urban``) assigns each of step 12's per-world urban
+slope polygons its fragility for the walls that world drew (the draw
+exposure rw step 6 exposes), and draws the urban realisation, so it can only
+run after exposure. The
 vulnerability module reads everything above.
 """
 

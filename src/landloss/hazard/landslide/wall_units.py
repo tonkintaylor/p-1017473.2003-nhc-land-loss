@@ -10,8 +10,10 @@ module:
    one GNS mapped wall reaches are one unit; a ``gns_only`` piece near a pif
    joins it; elsewhere two pifs join where their facing ends are close, level
    along the fall and facing the same way, or close enough to be a corner.
-2. **Prior.** Puts a prior on each unit from whether it holds a siz, its height
-   band, a rock cut and fill (:func:`gen_wall_prior`).
+2. **Prior.** Puts a prior on each unit from whether it holds a siz, the height
+   band of its wall height and the cut and fill class of landslide step 13:
+   higher on fill and cut and fill, lower on a cut in rock and on natural
+   ground (:func:`gen_wall_prior`).
 3. **Floor.** Lifts a unit with a GNS mapped wall on it to a floor
    (:func:`gen_gns_floor`). GNS is the only dataset that locates a wall, so it
    is the only evidence on a candidate, and it is one-sided: GNS maps only the
@@ -35,13 +37,17 @@ and 5 m (``PIP_DROP_M`` and ``PIP_OFFSETS_M`` in
 :mod:`landloss.hazard.landslide.instability_zones`); such a wall is a
 candidate only where GNS maps it. No prior is lowered for it.
 
-**What the prior does not read yet.** Landslide step 13 classes every pif as
-cut, fill, natural or unknown (``urban-slope-pif-cut-fill{suffix}.parquet``,
-``cut_fill_class``). It is not read here; when it is settled it becomes a
-further factor on the prior, the source of a true "cut" for the rock cut rule
-(which now reads any face in rock as a cut) and of a unit's wall position.
-The ground map's ``modification`` is not read either: it is ``fill`` on 88% of
-the pilot's candidate pifs, rock included, so it would lift nearly every unit.
+**Height and class from landslide step 13.** Step 13 walks every pip to the
+foot of its face and classes every pif (``urban-slope-pif-cut-fill{suffix}``
+tables). A pif's height is a quantile over its pips of the drop from pip to
+foot (:func:`gen_pif_wall_heights`, the 80th percentile as run), not its
+largest pip drop ``max_delta_h_m``, which overstated the retained height
+(kept as a column for reference). Its ``cut_fill_class`` sets the prior's
+fill, rock cut and natural factors; the ground map's material says only
+whether a cut is in rock. Fill on the ground map (its fill materials and its
+``modification``) and the SLIDE fill bodies no longer set the prior: the
+modification is ``fill`` on 88% of the pilot's candidate pifs, rock
+included, so it lifted nearly every unit.
 """
 
 import geopandas as gpd
@@ -56,7 +62,9 @@ from scipy.spatial import cKDTree
 from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.exposure.land.extent import stack_representatives
+from landloss.hazard.landslide import pif_cut_fill
 from landloss.hazard.landslide.ground_map import ROCK_MATERIALS
+from landloss.hazard.landslide.slope_elements import height_band
 from landloss.hazard.landslide.wall_candidates import SIZ_CLASS, SMALL_CLASS
 from landloss.hazard.realisation import realisation_seed
 
@@ -68,8 +76,17 @@ UNIT_SOURCES = (PIF_MEMBER, GNS_ONLY_MEMBER)
 CANDIDATE_CLASSES = (SIZ_CLASS, SMALL_CLASS)
 
 # The basis strings: the last rule that set a unit's probability.
-P_WALL_BASES = ("prior", "rock_cut", "fill", "gns_floor", "gns_only", "claims", "nzmm")
-PRIOR, ROCK_CUT, FILL, GNS_FLOOR, GNS_ONLY, CLAIMS, NZMM = P_WALL_BASES
+P_WALL_BASES = (
+    "prior",
+    "rock_cut",
+    "fill",
+    "natural",
+    "gns_floor",
+    "gns_only",
+    "claims",
+    "nzmm",
+)
+PRIOR, ROCK_CUT, FILL, NATURAL, GNS_FLOOR, GNS_ONLY, CLAIMS, NZMM = P_WALL_BASES
 
 # The two updates written to the candidates missing table.
 UPDATES = ("claims", "claims_nzmm")
@@ -77,8 +94,15 @@ UPDATES = ("claims", "claims_nzmm")
 # The stream each exposure world's wall unit draw comes from.
 DRAW_STREAM = "wall_units"
 
-# The ground map materials read as fill.
-FILL_MATERIALS = ("fill_engineered", "fill_uncontrolled")
+# The landslide step 13 classes that take the fill factor: the front of a
+# platform and a benched face with fill at its crest.
+FILL_CLASSES = (pif_cut_fill.FILL, pif_cut_fill.CUT_AND_FILL)
+
+# The landslide step 13 columns a pif member reads, per pif (the class, and
+# the wall height from gen_pif_wall_heights), and the pip columns the height
+# is read from.
+CUT_FILL_COLUMNS = ("cut_fill_class", "wall_height_m")
+CUT_FILL_PIP_COLUMNS = ("pif_id", "z", "foot_z")
 
 # The siz table columns a pif member reads, and the GNS-only columns.
 PIF_COLUMNS = (
@@ -180,8 +204,45 @@ def gen_gns_wall_features(
     return features
 
 
+def gen_pif_wall_heights(pips: pd.DataFrame, *, quantile: float) -> pd.Series:
+    """The retained height of each pif: a quantile of its pips' face drops.
+
+    A pip's face drop is its elevation less that of the foot of its face, the
+    cell landslide step 13 walks it down to
+    (:func:`~landloss.hazard.landslide.pif_cut_fill.face_feet`). A pif's
+    ``max_delta_h_m`` is the largest drop of any pip pair, which overstates
+    the height a wall along it retains; a high quantile over the pips reads
+    the face as most of its length stands.
+
+    Args:
+        pips: Landslide step 13's pip table, one row per pip, with
+            :data:`CUT_FILL_PIP_COLUMNS`.
+        quantile: The quantile over each pif's pips, from 0 to 1 (linear
+            interpolation between pips).
+
+    Returns:
+        ``wall_height_m`` per pif, indexed by ``pif_id``.
+
+    Raises:
+        ValueError: If a column is missing or the quantile is outside [0, 1].
+    """
+    _require(pips, CUT_FILL_PIP_COLUMNS, "pips")
+    if not 0.0 <= quantile <= 1.0:
+        msg = f"quantile must be within [0, 1], got {quantile}"
+        raise ValueError(msg)
+    drop = pips["z"].to_numpy(dtype=float) - pips["foot_z"].to_numpy(dtype=float)
+    heights = (
+        pd.Series(drop)
+        .groupby(pips["pif_id"].to_numpy(dtype=np.int64))
+        .quantile(quantile)
+    )
+    heights.index.name = "pif_id"
+    heights.name = "wall_height_m"
+    return heights
+
+
 def gen_wall_members(
-    sizs: gpd.GeoDataFrame, gns_only: gpd.GeoDataFrame
+    sizs: gpd.GeoDataFrame, gns_only: gpd.GeoDataFrame, cut_fill: pd.DataFrame
 ) -> gpd.GeoDataFrame:
     """One row per candidate pif and per GNS-only piece, in one shape.
 
@@ -199,6 +260,11 @@ def gen_wall_members(
             (:func:`~landloss.hazard.landslide.wall_candidates.gen_gns_only_candidates`,
             gns_only_id index) with ``step_height_m``, the step the DEM shows
             across each piece.
+        cut_fill: Landslide step 13 per pif, indexed by ``pif_id``, with
+            :data:`CUT_FILL_COLUMNS`: ``cut_fill_class`` (one of
+            :data:`~landloss.hazard.landslide.pif_cut_fill.CLASSES`) and
+            ``wall_height_m`` (:func:`gen_pif_wall_heights`). Every candidate
+            pif must be in it.
 
     Returns:
         On a fresh index: ``member_type`` (:data:`PIF_MEMBER` or
@@ -208,19 +274,30 @@ def gen_wall_members(
         id, NA where none), ``length_m`` (the spine or the line),
         the end columns (a GNS-only piece's ends are its line's ends and its
         falls are NaN), ``max_delta_h_m`` (NaN for GNS-only), ``height_m``
-        (``max_delta_h_m``, or ``step_height_m`` for GNS-only),
-        ``building_m``, ``ground_group``, ``ground_material``, ``height_band``
-        (0 for GNS-only), ``in_slide_fill`` (False for GNS-only), ``gns_wall``
-        (True for GNS-only), ``is_siz``, and ``footprint`` (the pips or the
-        line). The active geometry is the spine or the line.
+        (``wall_height_m``, or ``step_height_m`` for GNS-only),
+        ``cut_fill_class`` (``unknown`` for GNS-only), ``building_m``,
+        ``ground_group``, ``ground_material``, ``height_band`` (0 for
+        GNS-only), ``in_slide_fill`` (False for GNS-only), ``gns_wall`` (True
+        for GNS-only), ``is_siz``, and ``footprint`` (the pips or the line).
+        The active geometry is the spine or the line.
 
     Raises:
-        ValueError: If either frame is missing a column it needs.
+        ValueError: If a frame is missing a column it needs, or a candidate
+            pif has no row in ``cut_fill`` (step 13 predates the siz table).
     """
     _require(sizs, PIF_COLUMNS, "sizs")
     _require(gns_only, GNS_ONLY_COLUMNS, "gns_only")
+    _require(cut_fill, CUT_FILL_COLUMNS, "cut_fill")
     crs = sizs.crs
     pifs = sizs[sizs["candidate_class"].isin(CANDIDATE_CLASSES)]
+    absent = pifs.index.difference(cut_fill.index)
+    if len(absent):
+        msg = (
+            f"{len(absent)} candidate pifs have no cut and fill class (first: "
+            f"{absent[:5].tolist()}): rerun landslide step 13 on this siz table"
+        )
+        raise ValueError(msg)
+    step13 = cut_fill.loc[pifs.index]
     spine = gpd.GeoSeries(pifs["spine"], crs=crs).to_numpy()
     pif_members = pd.DataFrame(
         {
@@ -240,7 +317,8 @@ def gen_wall_members(
                     "max_delta_h_m",
                 )
             },
-            "height_m": pifs["max_delta_h_m"].to_numpy(dtype=float),
+            "height_m": step13["wall_height_m"].to_numpy(dtype=float),
+            "cut_fill_class": step13["cut_fill_class"].astype(object).to_numpy(),
             "building_m": pifs["building_m"].to_numpy(dtype=float),
             "ground_group": pifs["ground_group"].astype(object).to_numpy(),
             "ground_material": pifs["ground_material"].astype(object).to_numpy(),
@@ -270,6 +348,7 @@ def gen_wall_members(
             "end_b_fall_deg": np.nan,
             "max_delta_h_m": np.nan,
             "height_m": gns_only["step_height_m"].to_numpy(dtype=float),
+            "cut_fill_class": pif_cut_fill.UNKNOWN,
             "building_m": gns_only["building_m"].to_numpy(dtype=float),
             "ground_group": None,
             "ground_material": gns_only["ground_material"].astype(object).to_numpy(),
@@ -411,11 +490,13 @@ def gen_wall_units(
         ``n_pifs``, ``n_gns_only``, ``unit_source`` (``pif`` where any member
         is a pif, else ``gns_only``), ``is_siz`` and ``gns_wall`` (any member),
         ``property_id``, ``in_exposure`` (it has a property),
-        ``max_delta_h_m`` (the highest pif), ``height_m`` (the highest
-        member), ``building_m`` (the nearest), ``length_m`` (the sum),
-        :data:`LONGEST_MEMBER_COLUMNS` from the longest member (ties to the
-        lowest member type and id), ``x`` and ``y`` (a representative point)
-        and a MultiLineString of the member geometries.
+        ``max_delta_h_m`` (the highest pif, for reference), ``height_m`` (the
+        highest member's: a pif's ``wall_height_m``, a GNS-only piece's
+        ``step_height_m``), ``building_m`` (the nearest), ``length_m`` (the
+        sum), :data:`LONGEST_MEMBER_COLUMNS` from the longest member (ties to
+        the lowest member type and id), ``cut_fill_class`` (see
+        :func:`_unit_cut_fill_class`), ``x`` and ``y`` (a representative
+        point) and a MultiLineString of the member geometries.
     """
     crs = members.crs
     n = len(members)
@@ -497,6 +578,10 @@ def _unit_rows(
     ).drop_duplicates("unit")
     for column in LONGEST_MEMBER_COLUMNS:
         units[column] = longest.set_index("unit")[column].reindex(units.index)
+    units["cut_fill_class"] = _unit_cut_fill_class(frame[is_pif]).reindex(units.index)
+    units["cut_fill_class"] = units["cut_fill_class"].where(
+        units["cut_fill_class"].notna(), pif_cut_fill.UNKNOWN
+    )
 
     unit = frame["unit"].to_numpy()
     order = np.argsort(unit, kind="mergesort")
@@ -519,57 +604,115 @@ def _unit_rows(
     return units
 
 
+def _unit_cut_fill_class(pifs: pd.DataFrame) -> pd.Series:
+    """The cut and fill class of each unit, from its pif members.
+
+    A unit takes the class of its longest pif. Where several pifs tie for the
+    longest, it takes the tied class held by most of the unit's pifs, and
+    then the class of the tied pif with the lowest id. A unit with no pif has
+    no entry (the caller reads it as ``unknown``).
+
+    Args:
+        pifs: The pif members with ``unit``, ``member_id``, ``length_m`` and
+            ``cut_fill_class``.
+
+    Returns:
+        The class per unit that has a pif, indexed by ``unit``.
+    """
+    longest = pifs.groupby("unit")["length_m"].transform("max")
+    tied = pifs.loc[
+        pifs["length_m"] == longest, ["unit", "member_id", "cut_fill_class"]
+    ]
+    held = pifs.groupby(["unit", "cut_fill_class"]).size().rename("n_held")
+    tied = tied.join(held, on=["unit", "cut_fill_class"])
+    chosen = tied.sort_values(
+        ["unit", "n_held", "member_id"], ascending=[True, False, True], kind="mergesort"
+    ).drop_duplicates("unit")
+    return chosen.set_index("unit")["cut_fill_class"].astype(object)
+
+
 def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
     """The prior probability that each wall unit is a wall.
 
     Applied in this order: :data:`~landloss.domain.constants.BETA_SIZ_WALL_PRIOR`
     for a unit holding a siz, else
     :data:`~landloss.domain.constants.BETA_SMALL_WALL_PRIOR`; times the factor
-    of its height band
-    (:data:`~landloss.domain.constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR`);
-    times :data:`~landloss.domain.constants.BETA_ROCK_CUT_FACTOR` for a rock
-    cut, a unit on a rock material whose highest face is over
-    :data:`~landloss.domain.constants.BETA_ROCK_CUT_MIN_HEIGHT_M` (under it the
-    face is in the soil cover); times
-    :data:`~landloss.domain.constants.BETA_FILL_WALL_FACTOR` on fill, a unit
-    on a fill material or touching a SLIDE fill body. The prior is clipped to
-    [0, 1]. The basis is the last rule that applied. A GNS-only unit has no
-    prior: its probability is set by the floor.
+    (:data:`~landloss.domain.constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR`)
+    of the height band of the unit's ``height_m``
+    (:func:`~landloss.hazard.landslide.slope_elements.height_band`, 0 for
+    NaN), so the wall height sets the band; the unit's ``height_band``, the
+    hazard's band of its longest pif, is not read;
+    then by the unit's landslide step 13 ``cut_fill_class``, one factor at
+    most since the classes exclude each other:
 
-    The landslide step 13 cut and fill class is the slot for a further factor
-    here, and for a true "cut" in the rock cut rule, once it is settled.
+    - ``cut`` on a rock material, with a height over
+      :data:`~landloss.domain.constants.BETA_ROCK_CUT_MIN_HEIGHT_M` (under it
+      the face is in the soil cover), times
+      :data:`~landloss.domain.constants.BETA_ROCK_CUT_FACTOR`; a cut in soil,
+      or in rock under that height, is unchanged;
+    - ``fill`` and ``cut_and_fill`` (:data:`FILL_CLASSES`) times
+      :data:`~landloss.domain.constants.BETA_FILL_WALL_FACTOR`;
+    - ``natural`` times
+      :data:`~landloss.domain.constants.BETA_NATURAL_WALL_FACTOR`;
+    - ``uncertain`` and ``unknown`` unchanged.
+
+    The prior is clipped to [0, 1]. The basis is the rule that applied last.
+    A GNS-only unit has no prior: its probability is set by the floor.
 
     Args:
-        units: From :func:`gen_wall_units`.
+        units: From :func:`gen_wall_units`, with ``unit_source``, ``is_siz``,
+            ``height_m``, ``ground_material`` and ``cut_fill_class``.
 
     Returns:
         A frame indexed like ``units`` with ``p_prior`` (NaN for a GNS-only
-        unit), ``p_prior_basis``, ``is_rock_cut`` and ``is_fill`` (computed for
-        every unit).
+        unit), ``p_prior_basis``, ``prior_height_band`` (the band of
+        ``height_m``), ``is_rock_cut``, ``is_fill`` and ``is_natural``
+        (computed for every unit).
     """
-    material = units["ground_material"]
-    is_rock_cut = material.isin(ROCK_MATERIALS) & (
-        units["max_delta_h_m"].to_numpy(dtype=float)
-        > constants.BETA_ROCK_CUT_MIN_HEIGHT_M
+    _require(
+        units,
+        (
+            "unit_source",
+            "is_siz",
+            "height_m",
+            "ground_material",
+            "cut_fill_class",
+        ),
+        "units",
     )
-    is_fill = material.isin(FILL_MATERIALS) | units["in_slide_fill"].astype(bool)
+    cut_fill = units["cut_fill_class"]
+    rock = (
+        (cut_fill == pif_cut_fill.CUT)
+        & units["ground_material"].isin(ROCK_MATERIALS)
+        & (
+            units["height_m"].to_numpy(dtype=float)
+            > constants.BETA_ROCK_CUT_MIN_HEIGHT_M
+        )
+    ).to_numpy(dtype=bool)
+    fill = cut_fill.isin(FILL_CLASSES).to_numpy(dtype=bool)
+    natural = (cut_fill == pif_cut_fill.NATURAL).to_numpy(dtype=bool)
 
     prior = np.where(
         units["is_siz"].to_numpy(dtype=bool),
         constants.BETA_SIZ_WALL_PRIOR,
         constants.BETA_SMALL_WALL_PRIOR,
     )
-    band = units["height_band"].map(
-        lambda b: constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR.get(int(b), 1.0)
+    prior_band = height_band(units["height_m"].to_numpy(dtype=float))
+    prior = prior * np.array(
+        [
+            constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR.get(int(b), 1.0)
+            for b in prior_band
+        ],
+        dtype=float,
     )
-    prior = prior * band.to_numpy(dtype=float)
     basis = np.full(len(units), PRIOR, dtype=object)
-    rock = is_rock_cut.to_numpy(dtype=bool)
-    prior = np.where(rock, prior * constants.BETA_ROCK_CUT_FACTOR, prior)
-    basis[rock] = ROCK_CUT
-    fill = is_fill.to_numpy(dtype=bool)
-    prior = np.where(fill, prior * constants.BETA_FILL_WALL_FACTOR, prior)
-    basis[fill] = FILL
+    for applies, factor, rule in (
+        (rock, constants.BETA_ROCK_CUT_FACTOR, ROCK_CUT),
+        (fill, constants.BETA_FILL_WALL_FACTOR, FILL),
+        (natural, constants.BETA_NATURAL_WALL_FACTOR, NATURAL),
+    ):
+        prior = np.where(applies, prior * factor, prior)
+        basis[applies] = rule
     prior = np.clip(prior, 0.0, 1.0)
 
     gns_only = units["unit_source"].to_numpy() == GNS_ONLY_MEMBER
@@ -579,8 +722,10 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
         {
             "p_prior": prior,
             "p_prior_basis": basis,
+            "prior_height_band": prior_band.astype(np.int64),
             "is_rock_cut": rock,
             "is_fill": fill,
+            "is_natural": natural,
         },
         index=units.index,
     )

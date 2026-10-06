@@ -365,8 +365,8 @@ def gen_unit_probability_table(
             "size_class": size_class,
             HEIGHT_COLUMN: height,
             "length_m": units["length_m"].to_numpy(dtype=float),
-            # Landslide step 13's cut and fill class replaces this once it is
-            # settled; until then a unit not on fill is read as a cut.
+            # is_fill is landslide step 13's class fill or cut and fill; every
+            # other class (cut, natural, uncertain, unknown) is read as a cut.
             "wall_position": np.where(units["is_fill"].to_numpy(dtype=bool), FILL, CUT),
             # The wall units are faces of sloping ground; walls on the flat
             # land are not candidates yet.

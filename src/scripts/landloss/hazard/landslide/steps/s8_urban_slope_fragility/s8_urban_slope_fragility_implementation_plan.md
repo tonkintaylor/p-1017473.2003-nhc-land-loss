@@ -1,14 +1,18 @@
 # Step 8 — Urban slope fragility: implementation plan
 
-**Status:** Phase 1 complete in code and tested on synthetic polygons, walls
-and grids; the pilot run and the anchoring are the project lead's to launch
-once steps 7, exposure step 6 and shaking steps 2 and 3 have been run.
+**Status:** Phases 1 and 1b complete in code and tested on synthetic inputs:
+since 2026-10-06 the polygons are landslide step 12's zones of each world's
+wall draw, not step 7's. The pilot run and the anchoring are the project
+lead's to launch once step 12, exposure step 6 and shaking steps 2 and 3
+have been run.
 
 ## Background
 
-Step 7 fixes the failure polygons and the geometry of every state each can be
-in; exposure retaining wall step 6 draws, per exposure world, which candidate
-lines carry a wall. This step joins the two for one world and gives every
+Landslide step 12 draws, per exposure world, which wall units are walled and
+builds that world's failure polygons with those walls; exposure retaining
+wall step 6 writes the same draw as the world's walls. (Until 2026-10-06 the
+polygons were step 7's, with every wall state's geometry, and the walls
+candidate lines.) This step joins the two for one world and gives every
 polygon the fragility step 9 draws against: a lognormal on PGV whose median
 comes from the published wall curve where the polygon has a wall and from the
 polygon's continuous Kingsbury rating where it has none, adjusted for
@@ -68,9 +72,35 @@ built against.
       contract's unit checks, the packaged tables read and validated, and the
       three scripts end to end on synthetic inputs in a temporary directory.
 
+## Phase 1b — Step 12's zones in place of step 7's polygons (2026-10-06)
+
+- [x] Read each world's zones from landslide step 12
+      (`urban-slope-zones-wNNN`) as the polygons, through
+      `landloss.hazard.landslide.urban.face_polygons`: the wall is the
+      element's wall unit (the id exposure rw step 6 writes as
+      `wall_line_id`), the geometry and depths the world's own, the Kingsbury
+      rating from the element and the ground map (off-map ground at
+      `BETA_OFF_MAP_GROUND`), the amplification on step 3's 100 m
+      topographic position. `assign_fragility()` is unchanged but for taking
+      a single geometry and depth column where the polygons carry one.
+- [x] Replace the guard that stopped the run on unit ids against step 7's
+      lines with `check_zones_match_walls()`: the zones and the drawn walls
+      must be one draw, polygon by polygon.
+- [x] `WORLD_IDS` from exposure rw step 6's config; `gen_hazard.main_urban`
+      runs steps 8 and 9 only, not step 7.
+- [x] Tests: `face_polygons` and the check in `test_fragility.py`, the step
+      end to end on synthetic step 12 files, and the chain test rebuilt on
+      step 12's files.
+- [ ] Run over the pilot (`gen_all.py`) and review the counts: on the
+      2026-10-05 files, world 0 gives 9,254 polygons, 5,003 walled (3,605 cut,
+      1,398 fill), and the check passes.
+- [ ] Review the inundated depth: the evacuated volume over the inundated
+      area reaches hundreds of metres where a barrier leaves the runout a cell
+      or two (399 m on the pilot); step 12 should carry a depth per zone.
+
 ## Phase 2 — The pilot and the anchoring
 
-- [ ] Run the pilot once step 7 (`urban-slope-polygons-pilot.geoparquet`),
+- [ ] Run the pilot once step 12's zones (`urban-slope-zones-w000-pilot`),
       exposure step 6 (`drawn-walls-w000-pilot.geoparquet`) and shaking
       steps 2 and 3 exist. Review the printed counts, the table and the
       figure.
@@ -100,8 +130,8 @@ for the lead:
 - **The wall state comes from the face, not from edge lines.** On the face
   polygons (faces plan, phase 3) a polygon is one face segment and its wall
   is that face's wall, so `wall_state()`, `drawn_edge_walls()` and the
-  `wall_line_ids` list collapse to a join on the face id. The edge-line rules
-  in the method file go with step 7.
+  `wall_line_ids` list collapse to a join on the face id. Done in phase 1b:
+  the join is on the wall unit, through the one-entry `wall_line_ids`.
 - **The localised median reads the face's Kingsbury rating**, with the height
   factor on the face height rather than `face-height-10m`.
 - **The anchoring and the rate setting:** see the reviewer's answers in

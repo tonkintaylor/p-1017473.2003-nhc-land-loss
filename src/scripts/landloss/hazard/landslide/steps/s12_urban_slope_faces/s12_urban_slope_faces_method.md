@@ -104,13 +104,31 @@
     `WALL_JOIN_BEARING_TOL_DEG` and no more than `WALL_CORNER_MAX_ANGLE_DEG`
     (`gen_wall_units`; two faces falling the same way are never a corner, so
     terraces stacked down a slope stay apart however close their ends). A
-    unit takes the highest face, the nearest building and the ground of its
-    longest member. Each GNS-only piece's height is the step the 1 m DEM makes
-    across it (`landloss.exposure.rw.lines.step_height_m`).
+    unit takes the highest member's height, the nearest building and the
+    ground of its longest member.
+  - **Height and class from step 13.** The script reads step 13's pif and pip
+    tables (`urban-slope-pif-cut-fill.parquet` and
+    `urban-slope-pif-cut-fill-pips.parquet`) and stops, telling you to run
+    step 13, if either is missing or older than the siz table. A pif's
+    `height_m` is the `WALL_HEIGHT_QUANTILE` (0.8) quantile over its pips of
+    the drop from pip to the foot of its face (`gen_pif_wall_heights`);
+    `max_delta_h_m`, the largest drop of any pip pair, overstated the retained
+    height and is kept only for reference. Each GNS-only piece's height is the
+    step the 1 m DEM makes across it (`landloss.exposure.rw.lines.step_height_m`).
+    A unit takes the `cut_fill_class` of its longest pif; where pifs tie for
+    the longest, the tied class most of its pifs hold, then the lowest pif id.
+    A GNS-only unit is `unknown`.
   - **Probability.** `gen_wall_prior` sets the prior from the `BETA_` weights
-    in `landloss.domain.constants` (siz or small, height band, a rock cut over
-    `BETA_ROCK_CUT_MIN_HEIGHT_M`, fill from the ground map material or a SLIDE
-    fill body; the ground map's `modification` is not read). `gen_gns_floor`
+    in `landloss.domain.constants`: siz or small, the height band of the
+    unit's `height_m` (`prior_height_band`; the siz table's `height_band`,
+    from `max_delta_h_m`, is left for the hazard), then one factor by the
+    unit's class. `fill` and `cut_and_fill` take
+    `BETA_FILL_WALL_FACTOR`; `cut` on a rock material with a height over
+    `BETA_ROCK_CUT_MIN_HEIGHT_M` takes `BETA_ROCK_CUT_FACTOR` (a cut in soil,
+    or a lower one in rock, keeps its prior); `natural` takes
+    `BETA_NATURAL_WALL_FACTOR`; `uncertain` and `unknown` are unchanged. The
+    ground map's fill (material or `modification`) and the SLIDE fill bodies
+    no longer set the prior. `gen_gns_floor`
     lifts a unit with a GNS mapped wall to `BETA_GNS_WALL_UNIT_FLOOR` and sets
     a GNS-only unit at `BETA_GNS_ONLY_WALL_PROBABILITY`. The claim and NZMM
     layer (`exposure/rw/validations/config.PROPERTIES_PATH`) is read onto each
@@ -141,7 +159,20 @@
   and the zones are written to `urban-slope-zones-wNNN.parquet` in the shape
   of the two bounds. It reads the found elements the faces script kept, and
   refuses to run if they or the siz table are newer than the wall units.
-- `gen_hazard.main` runs the faces, wall units and wall zones scripts, after
+  These per-world zones are what landslide step 8 reads, in place of step 7's
+  polygons (2026-10-06): each polygon's wall is its element's wall unit, the
+  id exposure rw step 6 writes as the drawn wall's `wall_line_id`, so the
+  hazard and the exposure share one draw (step 8 method file). The bounds
+  are never read downstream.
+- `fig_urban_slope_wall_zones.py` draws, at each site of `FIG_SITES` (the
+  stage D2 pilot sites), one panel per zone file in `FIG_ZONE_SCENARIOS`:
+  the evacuated zones coloured by whether the element is walled, the imminent
+  and inundated zones at their true shape over a hillshade, and the wall
+  units. Set to `("walled", "bare")` it shows what the walls change; a world
+  (`"w000"`) shows the pipeline's zones, its walled units solid. Written to
+  `report/hazard/landslide/urban-slope-faces/fig/`.
+- `gen_hazard.main` runs the faces script, step 13
+  (`gen_pif_cut_fill.py`), then the wall units and wall zones scripts, after
   the ground map and before exposure, so `gen_all.py` runs end to end.
 - `table_urban_slope_wall_checks.py` writes four aggregate tables to
   `report/hazard/landslide/urban-slope-faces/tab/`: `wall-gns-recall.csv`
@@ -173,6 +204,8 @@
   held-out claimed properties the mean expected walls is 0.46 (0.61 with
   NZMM) against 0.19 listed; P(at least one) on the 4 that list a wall is
   suppressed. 29% of the walled units are under 1.5 m, against 54% in
-  Canterbury [anderson_2015].
+  Canterbury [anderson_2015]. These numbers also predate the wall height
+  from step 13's face drops and the prior from its class (2026-10-06): under
+  the old rules the rock cut factor applied to 2,583 units.
 
 Potential future improvements: see `s12_urban_slope_faces_implementation_plan.md`.

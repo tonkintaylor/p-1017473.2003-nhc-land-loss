@@ -2,42 +2,56 @@
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s8_urban_slope_fragility/gen_urban_slope_fragility.py
 
-Run landslide step 7 (the polygons), exposure retaining wall step 6 (the walls
-each world drew) and shaking steps 2 and 3 (the site class grid and the PGV
-grid) first, over the same extent.
+Run landslide step 12 (the faces, the wall units drawn per world and each
+world's zones), exposure retaining wall step 6 (the walls each world drew,
+read from step 12's draw), landslide step 3 (the 100 m topographic position)
+and shaking steps 2 and 3 (the site class grid and the PGV grid) first, over
+the same extent.
 
 The run settings -- the extent, which worlds, the
 rate setting and the return period of the demand -- come from ``config.py``
 beside this script rather than from the command line.
 
-For each world ``w`` the step joins each polygon to the walls drawn on its
-edge in that world (at most one per line, and every line on the edge is read,
-because a wall split at a property boundary is several lines), insured or
-not: step 6's drawn walls are
-every wall the world drew before the claim and coverage filters, because those
-decide what is insured, not whether a wall holds the slope (decision 36 of the
-build contract). An uninsured wall gives its polygon the wall state and curve
-with ``rw_id`` null. It writes one fragility row per polygon
-(``.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md``
+The polygons are landslide step 12's zones of each world's wall draw
+(``urban-slope-zones-wNNN``), not step 7's polygons: step 12 draws which wall
+units are walled once per world, builds that world's zones with those walls,
+and exposure rw step 6 writes the same draw as its drawn walls, so a wall that
+holds the slope in the hazard is the wall that is exposed. Each polygon's wall
+is the wall unit its element's pif belongs to, named ``wall_line_id`` on both
+sides (``landloss.hazard.landslide.urban.face_polygons``). Step 12's two
+whole-scenario zone files, every siz walled and none, are bounds for the
+figures and are not read here.
+
+For each world ``w`` the step joins each polygon to the drawn wall of its
+unit, insured or not: step 6's drawn walls are every wall the world drew
+before the claim and coverage filters, because those decide what is insured,
+not whether a wall holds the slope (decision 36 of the build contract). An
+uninsured wall gives its polygon the wall state and curve with ``rw_id`` null.
+It first checks that the zones and the drawn walls are one draw
+(``face_polygons.check_zones_match_walls``): a polygon is walled in the zones
+exactly where its unit is a drawn wall. It writes one fragility row per
+polygon (``.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md``
 section 4; the build contract, sections 3.8, 6 and 7.7):
 
-1. **The wall state.** A polygon any of whose edge lines drew a sloping-land
-   wall in world ``w``, insured or not, is in the ``fill_wall`` or
-   ``cut_wall`` state of its own ``wall_position`` and takes the curve of the
-   first such wall in edge order; every other polygon is ``no_wall``. A flat-land
-   wall is never taken, even on a polygon edge: vul shaking rw step 9 draws
-   it (when insured), and nowhere else does. The state picks the fixed
-   geometry and depths step 7 computed for it.
+1. **The wall state.** A polygon whose unit drew a sloping-land wall in world
+   ``w``, insured or not, is in the ``fill_wall`` or ``cut_wall`` state of the
+   unit's position (fill where the unit is on fill); every other polygon is
+   ``no_wall``. A flat-land wall is never taken: vul shaking rw step 9 draws
+   it (when insured), and nowhere else does. The geometry and depths are the
+   zones step 12 built for the world.
 2. **The median.** A polygon with a wall takes the published wall curve for
    the wall's size and condition (``retaining-wall-fragility.csv``,
    [koutsoupaki_2023]), converted from PGA to PGV by the study's own PGV/PGA
    ratio at the polygon's representative point: shaking step 3's PGV grid over
    the unscaled TS1170.5 PGA grid on the same cells. A polygon without a wall
-   takes the localised median from its continuous Kingsbury rating
+   takes the localised median from its continuous Kingsbury rating, scored
+   from its element and the ground map
    (``landloss.hazard.landslide.urban.fragility.localised_theta_base_m_s``).
 3. **The adjustments.** The median is divided by the topographic amplification
-   factor step 7 put on the polygon and multiplied by the rate factor of the
-   run's setting (``URBAN_RATE_FACTORS``), both recorded on the row.
+   factor (the placeholder on step 3's 100 m topographic position at the
+   representative point and the element's slope) and multiplied by the rate
+   factor of the run's setting (``URBAN_RATE_FACTORS``), both recorded on the
+   row.
 
 A fragility is a probability of failure at a level of shaking: step 9 samples
 the earthquake's PGV at the representative point and draws against the row's
@@ -45,29 +59,44 @@ lognormal. Nothing is drawn here.
 
 Writes one GeoParquet per world, sorted by ``slope_id`` with a fresh index,
 under ``temp/hazard/landslide/``, with the extent's ``extent_suffix``
-(``-pilot`` for the small Wellington pilot).
+(``-pilot`` for the small Wellington pilot). The ``slope_id`` is minted per
+world, by location, because each world's zones are built anew.
 """
 
 import sys
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rioxarray
 
 from landloss.common.utils.terrain import sample_at_points
 from landloss.domain.loss_contract import RW_ID_COLUMN
 from landloss.hazard.landslide import susceptibility
-from landloss.hazard.landslide.urban import fragility, geometry
+from landloss.hazard.landslide.urban import face_polygons, fragility, geometry
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.ts1170 import get_ts1170_pga
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     drawn_walls_path,
 )
-from scripts.landloss.hazard.landslide.steps.s7_urban_slope_polygons.gen_urban_slope_polygons import (
-    urban_slope_polygons_path,
+from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_terrain_derivatives import (
+    terrain_path,
+)
+from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+    ground_map_path,
 )
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import config
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
+    elements_path,
+    zones_path,
+)
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
+    wall_units_path,
+)
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_zones import (
+    world_scenario,
+)
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
     read_site_class,
     site_class_path,
@@ -190,10 +219,10 @@ def describe_model(model, *, rate_setting):
 
 
 def describe_flatland_walls(polygons, walls):
-    """Print how many flat-land walls the join leaves out, and how many sit on an edge.
+    """Print how many flat-land walls the join leaves out, and how many name a polygon.
 
     A flat-land wall is drawn by vul shaking rw step 9 alone, so a polygon whose
-    edge line drew one stays ``no_wall`` (``fragility.sloping_walls``).
+    unit drew one stays ``no_wall`` (``fragility.sloping_walls``).
     """
     flat = walls[fragility.IS_FLATLAND_COLUMN].fillna(value=False).astype(bool)
     edge_lines = {
@@ -204,43 +233,68 @@ def describe_flatland_walls(polygons, walls):
     on_edge = flat & walls[geometry.WALL_LINE_ID_COLUMN].isin(edge_lines)
     print(
         f"  {int(flat.sum()):,} flat-land walls skipped (drawn by vul shaking rw "
-        f"step 9), {int(on_edge.sum()):,} of them on a polygon edge (step 7 "
-        "records sloping-land lines only, so this should be zero)"
+        f"step 9), {int(on_edge.sum()):,} of them a polygon's unit (the wall "
+        "units are faces of sloping ground, so this should be zero)"
     )
 
 
-def check_walls_name_polygon_lines(polygons, walls):
-    """Refuse a world whose drawn walls name none of the polygons' edge lines.
+def read_step12_inputs(*, extent):
+    """Read the world-free inputs of the face polygons: elements, units, ground map.
 
-    The polygons name step 7's wall lines; exposure rw step 6 now draws wall
-    units from landslide step 12, whose ids are not wall line ids. Joined
-    anyway, no polygon would find its wall and every polygon would be
-    ``no_wall`` without an error, so the run stops instead.
+    Returns:
+        ``(elements, units, ground_map)``: step 12's elements (indexed by
+        element label), its wall units (indexed by ``wall_unit_id``) and the
+        step 4 ground map.
+    """
+    elements = pd.read_parquet(
+        elements_path(extent=extent), columns=list(face_polygons.ELEMENT_COLUMNS)
+    )
+    units = gpd.read_parquet(wall_units_path(extent=extent))
+    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
+    return elements, units, ground_map
+
+
+def read_polygons(world_id, *, extent, elements, units, ground_map):
+    """One world's polygons: step 12's zones of its wall draw, one row each.
+
+    Reads ``urban-slope-zones-wNNN`` (``gen_urban_slope_wall_zones.py``),
+    turns it into one row per polygon
+    (:func:`landloss.hazard.landslide.urban.face_polygons.face_polygons`) and
+    adds the amplification on step 3's 100 m topographic position at each
+    representative point.
 
     Raises:
-        ValueError: If there are drawn walls and edge lines and no id is in both.
+        FileNotFoundError: If step 12 has not written the world's zones.
     """
-    edge_lines = {
-        line
-        for cell in polygons[geometry.WALL_LINE_IDS_COLUMN]
-        for line in geometry.edge_line_ids(cell)
-    }
-    drawn = set(walls[geometry.WALL_LINE_ID_COLUMN].dropna().astype(str))
-    if edge_lines and drawn and not edge_lines & drawn:
+    path = zones_path(world_scenario(world_id), extent=extent)
+    if not path.exists():
         msg = (
-            "no drawn wall names a polygon edge line (drawn ids such as "
-            f"{min(drawn)!r}, edge lines such as {min(edge_lines)!r}): exposure "
-            "rw step 6 draws landslide step 12's wall units, which steps 7 and 8 "
-            "do not read yet, so every polygon would be no_wall"
+            f"{path} not found: add world {world_id} to exposure rw step 6's "
+            "WORLD_IDS and run landslide step 12 (gen_urban_slope_wall_units.py, "
+            "then gen_urban_slope_wall_zones.py)"
         )
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
+    print(f"World {world_id}: reading the zones from {path} ...")
+    zones = gpd.read_parquet(path)
+    polygons = face_polygons.face_polygons(zones, elements, units, ground_map)
+    tpi = sample_at_points(
+        terrain_path("topographic-position-100m", extent=extent),
+        representative_points(polygons),
+    )
+    polygons = face_polygons.with_amplification(polygons, tpi.to_numpy(dtype=float))
+    walled = polygons[face_polygons.IS_WALLED_COLUMN]
+    print(
+        f"  {len(polygons):,} polygons, {int(walled.sum()):,} walled, "
+        f"{int(polygons[geometry.WALL_LINE_ID_COLUMN].notna().sum()):,} on a wall unit"
+    )
+    return polygons
 
 
 def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
     """Assemble one world's model from the polygons and that world's walls.
 
     Args:
-        polygons: The step 7 polygons.
+        polygons: One world's polygons, from :func:`read_polygons`.
         walls: Every wall the world drew, ``rw_id`` null where uninsured.
         wall_table: The packaged wall fragility table.
         rate_setting: ``low``, ``medium`` or ``high``.
@@ -253,10 +307,10 @@ def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
         The model frame of contract section 3.8 less ``world_id``.
 
     Raises:
-        ValueError: If no drawn wall names a polygon edge line
-            (:func:`check_walls_name_polygon_lines`).
+        ValueError: If the zones and the drawn walls are not one wall draw
+            (``face_polygons.check_zones_match_walls``).
     """
-    check_walls_name_polygon_lines(polygons, walls)
+    face_polygons.check_zones_match_walls(polygons, walls)
     describe_flatland_walls(polygons, walls)
     points = representative_points(polygons)
     site_class = sample_site_class(points, extent=extent)
@@ -287,10 +341,9 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
     print(RULE)
     print(f"Rate setting {urban_rate!r}, factor {factor:.4f}")
 
-    polygons_path = urban_slope_polygons_path(extent=extent)
-    print(f"Reading the polygons from {polygons_path} ...")
-    polygons = gpd.read_parquet(polygons_path)
-    print(f"  {len(polygons):,} polygons")
+    print(f"Reading step 12's elements and wall units from {WORK_DIR} ...")
+    elements, units, ground_map = read_step12_inputs(extent=extent)
+    print(f"  {len(elements):,} elements, {len(units):,} wall units")
     wall_table = fragility.load_retaining_wall_fragility()
 
     # The ratio is realisation-free: step 3's PGV over the unscaled PGA, both
@@ -311,6 +364,13 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
         walls = gpd.read_parquet(walls_path)
         insured = int(walls[RW_ID_COLUMN].notna().sum())
         print(f"  {len(walls):,} walls, {insured:,} of them insured (with an rw_id)")
+        polygons = read_polygons(
+            world_id,
+            extent=extent,
+            elements=elements,
+            units=units,
+            ground_map=ground_map,
+        )
 
         model = build_model(
             polygons,

@@ -1,7 +1,8 @@
 """Step 12: wall units on the pifs, their probability, and one draw per world.
 
 Joins the candidate pifs and the GNS-only pieces of each property into wall
-units, puts a prior on each, lifts the units GNS maps to the floor, updates
+units, reads each pif's wall height and cut and fill class from landslide step
+13, puts a prior on each, lifts the units GNS maps to the floor, updates
 every property's units on the walls its claim report lists (and, flagged
 unreliable, on NZMM), and draws each unit walled or not per exposure world
 (:mod:`landloss.hazard.landslide.wall_units`). The plan is
@@ -25,7 +26,9 @@ Run from the repository root::
     uv run --frozen python \
         src/scripts/landloss/hazard/landslide/steps/s12_urban_slope_faces/gen_urban_slope_wall_units.py
 
-Run ``gen_urban_slope_faces.py`` first. The claim and NZMM layer is
+Run ``gen_urban_slope_faces.py`` and then step 13's ``gen_pif_cut_fill.py``
+first; this stops if step 13's tables are missing or older than the siz
+table. The claim and NZMM layer is
 ``validations/config.PROPERTIES_PATH`` in exposure rw, written by
 ``gen_rw_dataset_properties.py``; where it is absent no update is applied.
 Settings are in ``config.py``.
@@ -43,6 +46,7 @@ from landloss.hazard.landslide.wall_units import (
     gen_claim_holdout,
     gen_gns_floor,
     gen_gns_wall_features,
+    gen_pif_wall_heights,
     gen_property_wall_records,
     gen_wall_draws,
     gen_wall_members,
@@ -64,6 +68,10 @@ from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slo
     dem_bbox,
     gns_only_path,
     siz_table_path,
+)
+from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
+    pif_cut_fill_path,
+    pif_cut_fill_pips_path,
 )
 
 # The siz table columns that only a run of the faces script with the spines
@@ -131,6 +139,47 @@ def read_gns_only(*, extent):
     return gns_only
 
 
+def read_cut_fill(*, extent, wall_height_quantile):
+    """Step 13's class and the wall height of every pif, refused if stale.
+
+    Args:
+        extent: The build extent.
+        wall_height_quantile: The quantile of the pips' face drops a pif's
+            wall height is.
+
+    Returns:
+        One row per pif, indexed by ``pif_id``, with ``cut_fill_class``,
+        ``face_drop_m`` and ``wall_height_m``.
+
+    Raises:
+        FileNotFoundError: If step 13 has not written its tables.
+        ValueError: If either table is older than the siz table.
+    """
+    sizs_written = siz_table_path(extent=extent).stat().st_mtime
+    rerun = (
+        "run landslide step 13 (steps/s13_pif_cut_fill/gen_pif_cut_fill.py) "
+        "after gen_urban_slope_faces.py and before gen_urban_slope_wall_units.py"
+    )
+    for path in (
+        pif_cut_fill_path(extent=extent),
+        pif_cut_fill_pips_path(extent=extent),
+    ):
+        if not path.exists():
+            msg = f"{path} not found: {rerun}"
+            raise FileNotFoundError(msg)
+        if path.stat().st_mtime < sizs_written:
+            msg = f"{path} is older than the siz table: {rerun}"
+            raise ValueError(msg)
+    pifs = pd.read_parquet(
+        pif_cut_fill_path(extent=extent), columns=["cut_fill_class", "face_drop_m"]
+    )
+    pips = pd.read_parquet(
+        pif_cut_fill_pips_path(extent=extent), columns=["pif_id", "z", "foot_z"]
+    )
+    heights = gen_pif_wall_heights(pips, quantile=wall_height_quantile)
+    return pifs.join(heights)
+
+
 def read_records(*, properties, bbox):
     """The claim and NZMM records on the LINZ properties, or None if not held."""
     if not PROPERTIES_PATH.exists():
@@ -168,6 +217,9 @@ def describe_units(units):
         .reindex(UNIT_SOURCES, fill_value=0)
         .to_string()
     )
+    pif_units = units["unit_source"] == "pif"
+    print("Pif units by cut and fill class:")
+    print(units.loc[pif_units, "cut_fill_class"].value_counts().to_string())
     for column in ("p_prior_basis", "p_floor_basis", "p_wall_basis"):
         print(f"By {column}:")
         print(units[column].value_counts().to_string())
@@ -209,6 +261,7 @@ def main(
     corner_gap_m,
     corner_max_deg,
     gns_only_merge_m,
+    wall_height_quantile,
     holdout_share,
     holdout_seed,
     use_nzmm,
@@ -228,12 +281,15 @@ def main(
         corner_gap_m: The largest gap at a corner, in metres.
         corner_max_deg: The largest turn at a corner, in degrees.
         gns_only_merge_m: A GNS-only piece this close to a pif joins it.
+        wall_height_quantile: A pif's wall height is this quantile of its
+            pips' face drops (step 13's pip table).
         holdout_share: The share of claimed properties held out of the update.
         holdout_seed: The seed that picks them.
         use_nzmm: Whether ``p_wall`` takes the NZMM update.
         world_ids: The exposure worlds to draw.
     """
     sizs = read_sizs(extent=extent)
+    cut_fill = read_cut_fill(extent=extent, wall_height_quantile=wall_height_quantile)
     gns_only = read_gns_only(extent=extent)
     bbox = dem_bbox(extent=extent)
     gns_only["step_height_m"] = step_height_m(
@@ -248,7 +304,7 @@ def main(
     features = gen_gns_wall_features(
         morphology[morphology["Type"] == MAPPED_WALL_TYPE], snap_m=gns_feature_snap_m
     )
-    members = gen_wall_members(sizs, gns_only)
+    members = gen_wall_members(sizs, gns_only, cut_fill)
     units = gen_wall_units(
         members,
         features,
@@ -322,6 +378,7 @@ if __name__ == "__main__":
         corner_gap_m=config.WALL_CORNER_GAP_M,
         corner_max_deg=config.WALL_CORNER_MAX_ANGLE_DEG,
         gns_only_merge_m=config.GNS_ONLY_MERGE_M,
+        wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
         holdout_share=config.CLAIM_HOLDOUT_SHARE,
         holdout_seed=config.CLAIM_HOLDOUT_SEED,
         use_nzmm=config.USE_NZMM_UPDATE,

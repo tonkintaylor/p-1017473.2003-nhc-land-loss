@@ -22,6 +22,11 @@ EXTENT = "wlg-pilot"
 # Which exposure worlds to draw for. A world is one draw of the wall population
 # (`exposure/rw/steps/s6_wall_population/gen_wall_population.py`), and step 8's
 # model file for that world is what this step reads.
+#
+# Figure mode: fig_urban_slope_realisation.py draws each world's realisation,
+# on the walls that world drew (the pipeline). The every-walled and
+# none-walled bounds are drawn by landslide step 12's
+# fig_urban_slope_wall_zones.py.
 WORLD_IDS = [0]
 
 # Which modelled earthquakes to draw. A realisation id is the whole event: the

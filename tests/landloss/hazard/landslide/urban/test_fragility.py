@@ -2,9 +2,11 @@
 
 The library is checked on the contract's unit cases (section 7.7 of
 ``.agents/plans/urban-slope-build-contract.md``), the two packaged tables are
-read and validated, and the step's three scripts and the two urban validation
-scripts are run end to end on synthetic polygons, walls and 100 m grids
-written where each step looks for them, with the TS1170.5 reader and the
+read and validated, step 12's zones are turned into the polygons step 8 reads
+(``face_polygons``) and checked against the drawn walls, and the step's three
+scripts and the two urban validation scripts are run end to end on synthetic
+step 12 zones, elements and wall units, walls and 100 m grids written where
+each step looks for them, with the TS1170.5 reader and the
 basemap tiles faked, so nothing here touches a network drive or a real run.
 """
 
@@ -19,17 +21,22 @@ from shapely.geometry import box
 from landloss.common.utils.terrain import write_raster
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
-from landloss.hazard.landslide.urban import fragility, geometry
+from landloss.hazard.landslide.urban import face_polygons, fragility, geometry
 from scripts.landloss.exposure.rw.steps.s6_wall_population import gen_wall_population
-from scripts.landloss.hazard.landslide.steps.s7_urban_slope_polygons import (
-    gen_urban_slope_polygons,
+from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
+    gen_terrain_derivatives,
 )
+from scripts.landloss.hazard.landslide.steps.s4_ground_map import gen_ground_map
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
     fig_urban_slope_model,
     table_urban_slope_model,
 )
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
     gen_urban_slope_fragility as step,
+)
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
+    gen_urban_slope_faces,
+    gen_urban_slope_wall_units,
 )
 from scripts.landloss.hazard.landslide.validations.urban import (
     fig_urban_fragility_anchors,
@@ -209,6 +216,99 @@ def one_uninsured_wall():
     walls["claim_id"] = walls["claim_id"].astype(object)
     walls.loc[0, ["rw_id", "claim_id"]] = None
     return walls
+
+
+# Step 12's files for one world: three polygons in the three 100 m cells left
+# to right. Polygon 1 grew from pif 11, a member of the fill unit WU0000001;
+# polygon 2 from pif 12, the cut unit WU0000002; polygon 3 from pif 13, in no
+# unit and off the ground map. The world walled both units.
+FACE_XS = (10, 110, 210)
+
+
+def step12_zones(*, walled=(True, True, False)):
+    """Step 12's zones of one world, one row per polygon and zone."""
+    rows = []
+    for polygon, (x, is_walled) in enumerate(zip(FACE_XS, walled, strict=True), 1):
+        evacuated = square(x, 10, 20)
+        common = {
+            "polygon": polygon,
+            "element": polygon,
+            "element_type": "free_face" if is_walled else "bank",
+            "height_m": 6.0,
+            "area_m2": evacuated.area,
+            "depth_m": 1.0,
+            "volume_m3": evacuated.area,
+            "scenario": f"w{WORLD:03d}",
+        }
+        rows.append({**common, "zone": "evacuated", "geometry": evacuated})
+        rows.append({**common, "zone": "imminent", "geometry": square(x, 30, 5)})
+        if polygon != 3:
+            # 100 m2 under the toe: the 400 m3 spread 4 m deep.
+            rows.append(
+                {
+                    **common,
+                    "zone": "inundated",
+                    "geometry": box(X0 + x, Y0 + 5, X0 + x + 20, Y0 + 10),
+                }
+            )
+    return gpd.GeoDataFrame(rows, geometry="geometry", crs=constants.DEFAULT_CRS)
+
+
+def step12_elements():
+    return pd.DataFrame(
+        {
+            "siz_id": [11, 12, 13],
+            "majority_ground_row": [0, 0, -1],
+            "overall_angle_deg": [40.0, 40.0, 40.0],
+        },
+        index=pd.Index([1, 2, 3], name="label"),
+    )
+
+
+def step12_units():
+    return gpd.GeoDataFrame(
+        {
+            "member_pif_ids": [[11], [12]],
+            "is_fill": [True, False],
+        },
+        geometry=[square(x, 10, 20).boundary for x in FACE_XS[:2]],
+        index=pd.Index(["WU0000001", "WU0000002"], name="wall_unit_id"),
+        crs=constants.DEFAULT_CRS,
+    )
+
+
+def step12_ground_map():
+    return gpd.GeoDataFrame(
+        {
+            "material": ["colluvium"],
+            "modification": ["natural"],
+            "geology_value": [susceptibility.GEOLOGY_COLLUVIUM_OR_ALLUVIUM],
+            "prior_failure": ["none"],
+            "gw_depth_m": [4.0],
+        },
+        geometry=[square(0, 0, 200)],
+        crs=constants.DEFAULT_CRS,
+    )
+
+
+def unit_walls():
+    """Rw step 6's drawn walls of the two units, the fill one uninsured."""
+    walls = wall_population(
+        ["C1-RW01", "C2-RW01"],
+        ["WU0000001", "WU0000002"],
+        ["small", "large"],
+        ["modern", "poor"],
+    )
+    walls["rw_id"] = walls["rw_id"].astype(object)
+    walls["claim_id"] = walls["claim_id"].astype(object)
+    walls.loc[0, ["rw_id", "claim_id"]] = None
+    return walls
+
+
+def three_face_polygons(**kwargs):
+    return face_polygons.face_polygons(
+        step12_zones(**kwargs), step12_elements(), step12_units(), step12_ground_map()
+    )
 
 
 def site_class_at(polygons_frame, value=3):
@@ -745,6 +845,113 @@ def test_too_few_anchors_are_refused():
         )
 
 
+# --- step 12's zones as polygons ------------------------------------------------------
+
+
+def test_face_polygons_take_their_wall_from_their_elements_unit():
+    frame = three_face_polygons()
+    assert list(frame["slope_id"]) == ["SP0000001", "SP0000002", "SP0000003"]
+    assert list(frame["polygon"]) == [1, 2, 3]
+    assert list(frame["wall_line_id"]) == ["WU0000001", "WU0000002", None]
+    assert [list(cell) for cell in frame["wall_line_ids"]] == [
+        ["WU0000001"],
+        ["WU0000002"],
+        [],
+    ]
+    assert list(frame["wall_position"]) == ["fill", "cut", None]
+    assert list(frame[face_polygons.IS_WALLED_COLUMN]) == [True, True, False]
+    assert (frame[geometry.SCALE_COLUMN] == face_polygons.FACE_SCALE_M).all()
+
+
+def test_face_polygons_carry_the_worlds_zones_and_depths():
+    frame = three_face_polygons()
+    assert frame.geometry.iloc[0].equals(square(10, 10, 20))
+    assert frame["evacuated"].iloc[0].equals(square(10, 10, 20))
+    assert frame["imminent"].iloc[1].equals(square(110, 30, 5))
+    assert frame["inundated"].iloc[2] is None
+    np.testing.assert_allclose(frame["depth_evacuated_m"], 1.0)
+    np.testing.assert_allclose(frame["depth_inundated_m"].iloc[:2], 4.0)
+    assert np.isnan(frame["depth_inundated_m"].iloc[2])
+
+
+def test_an_element_off_the_ground_map_is_scored_on_the_default_ground():
+    frame = three_face_polygons()
+    assert (
+        frame["geology_value"].iloc[0] == susceptibility.GEOLOGY_COLLUVIUM_OR_ALLUVIUM
+    )
+    assert (
+        frame["geology_value"].iloc[2]
+        == (face_polygons.BETA_OFF_MAP_GROUND["geology_value"])
+    )
+    assert frame["material"].iloc[2] == "rock"
+    assert frame["continuous_rating"].notna().all()
+    assert frame["kingsbury_rating"].iloc[2] < frame["kingsbury_rating"].iloc[0]
+
+
+def test_the_amplification_reads_the_topographic_position():
+    frame = face_polygons.with_amplification(three_face_polygons(), [0.0, 10.0, np.nan])
+    top = constants.TOPOGRAPHIC_AMPLIFICATION_MAX
+    steep = 1.0 + (top - 1.0) * (10.0 / 30.0)
+    np.testing.assert_allclose(frame["amp_factor"], [steep, top, steep])
+
+
+def test_a_pif_in_two_units_is_refused():
+    units = step12_units()
+    units["member_pif_ids"] = [[11], [11, 12]]
+    with pytest.raises(ValueError, match="pifs in two wall units"):
+        face_polygons.face_polygons(
+            step12_zones(), step12_elements(), units, step12_ground_map()
+        )
+
+
+def test_zones_and_walls_of_one_draw_pass_the_check():
+    face_polygons.check_zones_match_walls(three_face_polygons(), unit_walls())
+
+
+def test_walls_named_by_old_line_ids_are_refused():
+    walls = unit_walls()
+    walls["wall_line_id"] = ["WL0000001", "WL0000002"]
+    with pytest.raises(ValueError, match="walled in the zones but their unit is not"):
+        face_polygons.check_zones_match_walls(three_face_polygons(), walls)
+
+
+def test_a_bare_polygon_on_a_drawn_wall_is_refused():
+    with pytest.raises(ValueError, match="bare in the zones but their unit is a drawn"):
+        face_polygons.check_zones_match_walls(
+            three_face_polygons(walled=(True, False, False)), unit_walls()
+        )
+
+
+def test_a_flat_land_wall_does_not_count_as_drawn_for_the_check():
+    walls = unit_walls()
+    walls.loc[1, "is_flatland"] = True
+    with pytest.raises(ValueError, match="not a drawn wall"):
+        face_polygons.check_zones_match_walls(three_face_polygons(), walls)
+
+
+def test_face_polygons_take_the_wall_curve_and_keep_their_own_geometry():
+    frame = face_polygons.with_amplification(three_face_polygons(), np.zeros(3))
+    model = fragility.assign_fragility(
+        frame,
+        unit_walls(),
+        wall_table(),
+        rate_setting="medium",
+        site_class=site_class_at(frame),
+        pgv_pga_ratio=ratio_at(frame),
+    )
+    assert list(model["wall_state"]) == ["fill_wall", "cut_wall", "no_wall"]
+    assert list(model["fragility_basis"]) == ["wall", "wall", "localised"]
+    assert pd.isna(model["rw_id"].iloc[0])
+    assert model["rw_id"].iloc[1] == "C2-RW01"
+    assert [list(cell) for cell in model["wall_line_ids"]] == [
+        ["WU0000001"],
+        ["WU0000002"],
+        [],
+    ]
+    assert model["evacuated"].iloc[2].equals(square(210, 10, 20))
+    np.testing.assert_allclose(model["depth_inundated_m"].iloc[:2], 4.0)
+
+
 # --- the step end to end --------------------------------------------------------------
 
 
@@ -756,7 +963,10 @@ def work_dirs(tmp_path, monkeypatch):
     exposure = tmp_path / "exposure"
     for path in (landslide, shaking, exposure):
         path.mkdir()
-    monkeypatch.setattr(gen_urban_slope_polygons, "WORK_DIR", landslide)
+    monkeypatch.setattr(gen_urban_slope_faces, "WORK_DIR", landslide)
+    monkeypatch.setattr(gen_urban_slope_wall_units, "WORK_DIR", landslide)
+    monkeypatch.setattr(gen_ground_map, "WORK_DIR", landslide)
+    monkeypatch.setattr(gen_terrain_derivatives, "TERRAIN_DIR", landslide / "terrain")
     monkeypatch.setattr(step, "WORK_DIR", landslide)
     monkeypatch.setattr(gen_site_class, "WORK_DIR", shaking)
     monkeypatch.setattr(gen_pgv, "WORK_DIR", shaking)
@@ -769,13 +979,20 @@ def work_dirs(tmp_path, monkeypatch):
 
 
 def write_inputs(monkeypatch):
-    """Write the polygons, the walls and the three grids where the step reads them."""
-    three_polygons().to_parquet(
-        gen_urban_slope_polygons.urban_slope_polygons_path(extent="wlg-pilot")
+    """Write step 12's files, the walls and the four grids where the step reads them."""
+    extent = "wlg-pilot"
+    step12_zones().to_parquet(
+        gen_urban_slope_faces.zones_path(f"w{WORLD:03d}", extent=extent)
     )
-    one_uninsured_wall().to_parquet(
-        gen_wall_population.drawn_walls_path(WORLD, extent="wlg-pilot")
+    step12_elements().to_parquet(gen_urban_slope_faces.elements_path(extent=extent))
+    step12_units().to_parquet(gen_urban_slope_wall_units.wall_units_path(extent=extent))
+    step12_ground_map().to_parquet(gen_ground_map.ground_map_path(extent=extent))
+    tpi_path = gen_terrain_derivatives.terrain_path(
+        "topographic-position-100m", extent=extent
     )
+    tpi_path.parent.mkdir(parents=True, exist_ok=True)
+    write_raster(make_grid(np.zeros((2, 3))).astype("float32"), tpi_path)
+    unit_walls().to_parquet(gen_wall_population.drawn_walls_path(WORLD, extent=extent))
     # Two rows of three 100 m cells: the three polygons sit in the bottom row
     # left to right (a one-row grid has no y resolution to write).
     site_class = make_grid([[2.0, 2.0, 2.0], [1.0, 3.0, 5.0]])
@@ -807,7 +1024,7 @@ def test_the_step_prints_the_flat_land_walls_it_skips(capsys):
     step.describe_flatland_walls(three_polygons(), walls)
     out = capsys.readouterr().out
     assert "2 flat-land walls skipped" in out
-    assert "1 of them on a polygon edge" in out
+    assert "1 of them a polygon's unit" in out
 
 
 def test_the_path_names_the_world_and_the_extent():
@@ -839,11 +1056,11 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
     assert written["world_id"].dtype == "int64"
     assert written["site_class"].dtype == "Int64"
     # The site class and the ratio were read at each polygon's cell: the
-    # polygons sit in the three cells left to right, in reverse id order.
+    # polygons sit in the three cells left to right, in id order.
     by_id = written.set_index("slope_id")
-    assert by_id.loc["SP0000003", "site_class"] == 1
-    assert by_id.loc["SP0000003", "pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
-    assert by_id.loc["SP0000003", "theta_base"] == pytest.approx(
+    assert by_id.loc["SP0000001", "site_class"] == 1
+    assert by_id.loc["SP0000001", "pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
+    assert by_id.loc["SP0000001", "theta_base"] == pytest.approx(
         fragility.load_retaining_wall_fragility().pipe(
             fragility.wall_curve,
             wall_class="unnamed",
@@ -852,17 +1069,23 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
         )["theta"]
         * 1.2
     )
-    assert by_id.loc["SP0000001", "site_class"] == 5
-    assert pd.isna(by_id.loc["SP0000001", "pgv_pga_ratio_m_s_per_g"])
-    assert by_id.loc["SP0000001", "fragility_basis"] == "localised"
+    assert by_id.loc["SP0000003", "site_class"] == 5
+    assert pd.isna(by_id.loc["SP0000003", "pgv_pga_ratio_m_s_per_g"])
+    assert by_id.loc["SP0000003", "fragility_basis"] == "localised"
+    assert by_id.loc["SP0000003", "wall_state"] == "no_wall"
     assert set(written["rate_setting"]) == {"medium"}
     assert written["evacuated"].notna().all()
+    # The polygons are step 12's zones of the world: their geometry is the
+    # zones' and their wall is their element's wall unit.
+    assert by_id.loc["SP0000001", "evacuated"].equals(square(10, 10, 20))
+    assert list(written["wall_line_id"].iloc[:2]) == ["WU0000001", "WU0000002"]
     # The drawn walls were read, not the insured population: the uninsured
-    # wall on SP0000003's edge gives it the wall curve with rw_id null.
-    assert pd.isna(by_id.loc["SP0000003", "rw_id"])
-    assert by_id.loc["SP0000003", "wall_state"] == "fill_wall"
-    assert by_id.loc["SP0000003", "fragility_basis"] == "wall"
+    # wall unit of SP0000001 gives it the wall curve with rw_id null.
+    assert pd.isna(by_id.loc["SP0000001", "rw_id"])
+    assert by_id.loc["SP0000001", "wall_state"] == "fill_wall"
+    assert by_id.loc["SP0000001", "fragility_basis"] == "wall"
     assert by_id.loc["SP0000002", "rw_id"] == "C2-RW01"
+    assert by_id.loc["SP0000002", "wall_state"] == "cut_wall"
 
 
 @ignore_affine_matmul
@@ -976,11 +1199,31 @@ def test_the_validation_figure_draws_without_a_fit():
     assert len(fig.axes) >= 5
 
 
-def test_drawn_walls_naming_no_edge_line_stop_the_run():
-    polygons = pd.DataFrame({"wall_line_ids": [["WL0000001"], None]})
-    units = pd.DataFrame({"wall_line_id": ["WU0000001", "WU0000002"]})
-    with pytest.raises(ValueError, match="no drawn wall names a polygon edge line"):
-        step.check_walls_name_polygon_lines(polygons, units)
-    lines = pd.DataFrame({"wall_line_id": ["WL0000001", "WL0000009"]})
-    step.check_walls_name_polygon_lines(polygons, lines)
-    step.check_walls_name_polygon_lines(polygons, lines.iloc[:0])
+@ignore_affine_matmul
+def test_the_step_stops_on_zones_and_walls_from_different_draws(work_dirs, monkeypatch):
+    write_inputs(monkeypatch)
+    # Step 7's wall line ids, as rw step 6 wrote them before the wall units.
+    old = unit_walls()
+    old["wall_line_id"] = ["WL0000001", "WL0000002"]
+    old.to_parquet(gen_wall_population.drawn_walls_path(WORLD, extent="wlg-pilot"))
+    with pytest.raises(ValueError, match="not one wall draw"):
+        step.main(
+            extent="wlg-pilot",
+            world_ids=[WORLD],
+            urban_rate="medium",
+            return_period_yr=RETURN_PERIOD_YR,
+        )
+
+
+@ignore_affine_matmul
+def test_a_world_without_zones_is_refused(work_dirs, monkeypatch):
+    write_inputs(monkeypatch)
+    elements, units, ground_map = step.read_step12_inputs(extent="wlg-pilot")
+    with pytest.raises(FileNotFoundError, match="gen_urban_slope_wall_zones"):
+        step.read_polygons(
+            7,
+            extent="wlg-pilot",
+            elements=elements,
+            units=units,
+            ground_map=ground_map,
+        )

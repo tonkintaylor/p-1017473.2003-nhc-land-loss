@@ -6,25 +6,25 @@
 then the PGA and PGV realisations), liquefaction (free faces, land damage
 probabilities, then states), then the landslide ground work -- the multiscale
 slope and terrain derivatives, the ground map, the slope units, the urban slope
-candidates, and step 12's urban slope faces, wall units (drawn per exposure
-world) and per-world zones -- and last the large-model landslide realisations,
+candidates, step 12's urban slope faces, step 13's pif cut and fill (which
+the wall units read), and step 12's wall units (drawn per exposure world) and
+per-world zones -- and last the large-model landslide realisations,
 which read only hazard outputs. Exposure rw step 6 reads step 12's wall units,
 so they are built in this pass. The extent, realisations and worlds come from ``config.py``
 beside this; anything else a step reads comes from that step's own
 ``config.py``.
 
-:func:`main_urban` runs the rest of the landslide chain, steps 7 to 9: the
-urban failure polygons, their fragility per exposure world, and the urban
-realisation per world and earthquake. These read the exposure module's wall
-lines and wall population, so the hazard module no longer runs in one pass
-before or after exposure: ``gen_all.py`` runs :func:`main`, then the exposure
-module (whose wall lines read the landslide ground work), then
-:func:`main_urban`, then vul. Running this file runs :func:`main` only: it can
-renumber or reshape the urban slope candidates, and step 7 reconciles them to
-wall lines the exposure module drew from the candidates before, so running
-:func:`main_urban` straight after it would build the polygons on stale lines
-without an error. Run ``gen_all.py`` for the whole chain, or the exposure
-module and then :func:`main_urban` by hand.
+:func:`main_urban` runs the rest of the landslide chain, steps 8 and 9: the
+fragility of each world's urban failure polygons (step 12's zones of that
+world's wall draw) and the urban realisation per world and earthquake. These
+read the exposure module's drawn walls and wall population, so the hazard
+module no longer runs in one pass before or after exposure: ``gen_all.py``
+runs :func:`main`, then the exposure module (whose wall population reads step
+12's draw), then :func:`main_urban`, then vul. Running this file runs
+:func:`main` only: it redraws the wall units, and step 8 stops on zones and
+drawn walls from different draws, so run ``gen_all.py`` for the whole chain,
+or the exposure module and then :func:`main_urban` by hand. Step 7's
+polygons are no longer built; step 12's zones replace them.
 
 The slope failure susceptibility step is not run: nothing downstream reads it
 yet, as it rebuilds the GWRC model for comparison against the supplied grid
@@ -59,12 +59,6 @@ from scripts.landloss.hazard.landslide.steps.s6_urban_slope_candidates import (
 from scripts.landloss.hazard.landslide.steps.s6_urban_slope_candidates import (
     gen_urban_slope_candidates,
 )
-from scripts.landloss.hazard.landslide.steps.s7_urban_slope_polygons import (
-    config as polygons_config,
-)
-from scripts.landloss.hazard.landslide.steps.s7_urban_slope_polygons import (
-    gen_urban_slope_polygons,
-)
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
     config as fragility_config,
 )
@@ -87,6 +81,12 @@ from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
     gen_urban_slope_faces,
     gen_urban_slope_wall_units,
     gen_urban_slope_wall_zones,
+)
+from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill import (
+    config as cut_fill_config,
+)
+from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill import (
+    gen_pif_cut_fill,
 )
 from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
     gen_liq_free_faces,
@@ -231,6 +231,13 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
+                "landslide s13, pif cut and fill",
+                lambda: gen_pif_cut_fill.main(
+                    extent=extent,
+                    use_cached_layers=cut_fill_config.USE_CACHED_LAYERS,
+                ),
+            ),
+            (
                 "landslide s12, wall units",
                 lambda: gen_urban_slope_wall_units.main(
                     extent=extent,
@@ -243,6 +250,7 @@ def main(*, extent, realisation_ids, world_ids):
                     corner_gap_m=faces_config.WALL_CORNER_GAP_M,
                     corner_max_deg=faces_config.WALL_CORNER_MAX_ANGLE_DEG,
                     gns_only_merge_m=faces_config.GNS_ONLY_MERGE_M,
+                    wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
                     holdout_share=faces_config.CLAIM_HOLDOUT_SHARE,
                     holdout_seed=faces_config.CLAIM_HOLDOUT_SEED,
                     use_nzmm=faces_config.USE_NZMM_UPDATE,
@@ -287,7 +295,11 @@ def main(*, extent, realisation_ids, world_ids):
 
 
 def main_urban(*, extent, realisation_ids, world_ids):
-    """Run the urban slope chain, landslide steps 7 to 9, after exposure.
+    """Run the urban slope chain, landslide steps 8 and 9, after exposure.
+
+    Step 8 reads step 12's zones of each world's wall draw (built in
+    :func:`main`) and exposure rw step 6's drawn walls of the same draw; step
+    7's polygons are not built, as step 12's zones replace them.
 
     Args:
         extent: The extent to run over, a name from
@@ -298,14 +310,6 @@ def main_urban(*, extent, realisation_ids, world_ids):
     run_steps(
         "hazard urban",
         [
-            (
-                "landslide s7, urban slope polygons",
-                lambda: gen_urban_slope_polygons.main(
-                    extent=extent,
-                    use_cached_layers=polygons_config.USE_CACHED_LAYERS,
-                    road_half_width_m=polygons_config.ROAD_HALF_WIDTH_M,
-                ),
-            ),
             (
                 "landslide s8, urban slope fragility",
                 lambda: gen_urban_slope_fragility.main(
@@ -337,8 +341,8 @@ if __name__ == "__main__":
     print("-" * 72)
     print(
         "Ran the first hazard pass only. The urban slope chain (landslide steps "
-        "7 to 9, gen_hazard.main_urban) reads the exposure module's wall lines "
-        "and wall population, which must be rebuilt from these candidates "
+        "8 and 9, gen_hazard.main_urban) reads the exposure module's drawn walls "
+        "and wall population, which must be redrawn from these wall units "
         "first: run gen_all.py, or exposure/gen_exposure.py and then "
         "gen_hazard.main_urban."
     )

@@ -88,6 +88,10 @@ the contract is sections 3.10, 5 and 7.11 of
       exists; the stand-in spells the contract path exactly.
 - [x] Point `draw_failures` at `urban.fragility.lognormal_failure_probability`
       in place of the module's own evaluation of the same curve.
+- [x] Read step 8's model on step 12's zones (2026-10-06): the model's
+      `wall_line_id` and `wall_line_ids` name the wall unit, so the draw,
+      the groups and the outcome join run unchanged and the chain test runs
+      from step 12's files to the loss input tables.
 - [ ] Run the pilot end to end once step 1 writes `population`, `unit_id` and
       string `landslide_id` rows (contract section 3.9) and step 8 writes the
       model file.
@@ -104,7 +108,10 @@ lead, follows from the face polygons (faces plan, phase 3):
       any of its polygons" rule then fails one segment of a long wall, not the
       whole of it, which matches walls that collapsed in part in Canterbury
       (`anderson2015-F24`). The shared-uniform and transitive-line grouping
-      reduce to the face segment id.
+      reduce to the face segment id. As built on 2026-10-06 the group is the
+      wall unit, which joins the segments of an element and the pifs of a
+      property, so a unit still fails whole; per segment waits on this
+      decision.
 - [ ] **The geometry is read, not computed here.** The inundated polygon is
       the reach-angle runout from the crest, clipped at the next building or
       road, and the imminent polygon the band to a 35° repose line from the

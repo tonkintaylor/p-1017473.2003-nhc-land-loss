@@ -355,18 +355,25 @@ BETA_SMALL_WALL_PRIOR = 0.3
 # 0.5 m, 2 from 3.5 m): faces of 3.5 m and over are more often unretained
 # banks or cuttings. A band not listed keeps 1. Replaced by T-50.
 BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR = {0: 1.0, 1: 1.0, 2: 0.8}
-# What a cut face in rock keeps of its prior: a rock cut stands unsupported
-# (Wellington greywacke cuts stand at 55 to 75 degrees, nzgs_2025_torlesse) and
-# is claimed for spalling or slides rather than wall failure (Oriental Bay and
-# Evans Bay are the worked examples). Replaced by T-50.
+# What a unit landslide step 13 classes as a cut, on rock, keeps of its prior:
+# a rock cut stands unsupported (Wellington greywacke cuts stand at 55 to 75
+# degrees, nzgs_2025_torlesse) and is claimed for spalling or slides rather than
+# wall failure (Oriental Bay and Evans Bay are the worked examples). Replaced by
+# T-50.
 BETA_ROCK_CUT_FACTOR = 0.3
-# The rock cut factor applies only to faces taller than this, in metres: under
-# it the face is in the soil cover over the rock, which is retained like soil.
-# Replaced by T-50.
+# The rock cut factor applies only to faces whose wall height is over this, in
+# metres: under it the face is in the soil cover over the rock, which is
+# retained like soil. Replaced by T-50.
 BETA_ROCK_CUT_MIN_HEIGHT_M = 2.5
-# What a unit on fill multiplies its prior by: fill is placed and so more often
-# retained. Replaced by T-50.
+# What a unit landslide step 13 classes as fill or cut and fill multiplies its
+# prior by: fill is placed, and the front of a platform is where walls hold it,
+# so it is more often retained. Replaced by T-50.
 BETA_FILL_WALL_FACTOR = 1.3
+# What a unit landslide step 13 classes as natural keeps of its prior: its
+# face falls no more than the ground around it does (excess drop under 1 m),
+# a bank rather than an earthwork, and walls are built to retain earthworks.
+# Replaced by T-50.
+BETA_NATURAL_WALL_FACTOR = 0.5
 # The least probability of a wall unit with a GNS mapped wall on it. Not 1,
 # because the mapping is from imagery and a line can be a road batter or the
 # neighbour's wall. Replaced by T-50.

@@ -11,26 +11,40 @@ The fragility numbers are not here. The wall curves are the packaged
 `landloss.hazard.landslide.urban.fragility`, because they are the model, not a
 setting of a run.
 
+`WORLD_IDS` is taken from exposure rw step 6's `config.py`, as landslide step
+12 takes it: step 12 draws and zones those worlds and rw step 6 populates
+them, so a second copy could only ask for a world neither wrote.
+
 `RETURN_PERIOD_YR` is taken from shaking step 3's own `config.py` rather than
 repeated here. This step reads the PGV grid step 3 wrote at that return period,
 so a second copy of the setting would only ever send it to look for a file step
 3 never wrote, or read a stale one.
 """
 
+from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    config as wall_population_config,
+)
 from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
 
 # The extent to run over: "wlg-pilot" for the small Wellington pilot box,
 # "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
 # the four territorial authorities.
-# Must match the run of landslide step 7 whose polygons this step reads, the
-# run of exposure step 6 whose drawn walls it joins, and the run of shaking
-# steps 2 and 3 whose grids the PGV/PGA ratio is read from.
+# Must match the run of landslide step 12 whose per-world zones, elements and
+# wall units this step reads, the run of exposure rw step 6 whose drawn walls
+# it joins, and the run of shaking steps 2 and 3 whose grids the PGV/PGA ratio
+# is read from.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
 EXTENT = "wlg-pilot"
 
-# Which exposure worlds to build a model file for. One file per world, joining
-# the polygons to the walls that world drew (exposure step 6's WORLD_IDS).
-WORLD_IDS = [0]
+# Which exposure worlds to build a model file for. One file per world: step
+# 12's zones of the walls that world drew, joined to the same walls as
+# exposure rw step 6 drew them. Change them in that step's config.py.
+#
+# Figure mode: fig_urban_slope_model.py and table_urban_slope_model.py draw
+# each world's model, the pipeline's drawn walls. The two whole-scenario
+# bounds, every candidate walled and none walled, are drawn by landslide step
+# 12's fig_urban_slope_wall_zones.py (FIG_ZONE_SCENARIOS in its config.py).
+WORLD_IDS = wall_population_config.WORLD_IDS
 
 # The rate setting of plan section 4.4: one of the keys of
 # URBAN_RATE_FACTORS in landloss.domain.constants, low, medium or high,
