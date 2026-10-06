@@ -16,14 +16,17 @@ So the Moderate band is ``p_moderate - p_major`` and the None band is
 mass twice, which is why :func:`beta_expand_ld_probabilities` takes the exceedance
 grids and differences them itself rather than trusting a caller to have done it.
 
-**Second, subdividing.** Half the None mass becomes Minor, and the Major band
-splits into Severe (a half), Very Severe (a quarter) and Major (the remaining
-quarter). This subdivides rather than adds, so probability is conserved by
-construction and nothing is renormalised.
+**Second, subdividing.** A tenth of the None band becomes Minor, and the Major
+band is split by exceedance: P(at least Severe) is two thirds of P(at least
+Major) and P(Very Severe) a fifth of it, so the band is Major 1/3, Severe 7/15
+and Very Severe 1/5. This subdivides rather than adds, so probability is
+conserved by construction and nothing is renormalised.
 
-The subdivision fractions are a beta shortcut with no evidence behind them. They
-exist to give the chain a six state raster of the right shape; see
-`.agents/plans/beta-build.md`.
+The ratios are read off the Canterbury exceedance curves of land damage rank
+against LSN (NLM groundwater, PL = 50), on which the rank 3 and rank 4 curves
+match the NLM's Minor-to-Moderate and Moderate-to-Severe fragility curves
+(Maxim Millen, 2026-10-07; register task T-88). They are constant ratios applied
+at every LSN, where the curves show them drifting with it.
 
 **The ``beta_`` prefix marks what gets deleted.** Everything carrying it
 manufactures states the NLM does not supply, and goes when the model produces
@@ -39,11 +42,23 @@ import xarray as xr
 # ``ld_state`` value written to the raster, so the order is load-bearing.
 LD_STATES = ("None", "Minor", "Moderate", "Major", "Severe", "Very Severe")
 
+# The ratios the two derived bands are subdivided by, from the Canterbury
+# exceedance curves (T-88). Minor is a tenth of the None band. Within the Major
+# band, these are exceedances: P(at least Severe) and P(Very Severe) as shares of
+# P(at least Major).
+MINOR_SHARE_OF_NONE = 0.1
+SEVERE_OR_WORSE_SHARE_OF_MAJOR = 2 / 3
+VERY_SEVERE_SHARE_OF_MAJOR = 1 / 5
+
 # How the two derived bands are subdivided. Each entry is the share of the named
 # band that becomes that state; each band's shares sum to one, which is what
 # conserves probability.
-BETA_NONE_SHARES = {"None": 0.5, "Minor": 0.5}
-BETA_MAJOR_SHARES = {"Major": 0.25, "Severe": 0.5, "Very Severe": 0.25}
+BETA_NONE_SHARES = {"None": 1.0 - MINOR_SHARE_OF_NONE, "Minor": MINOR_SHARE_OF_NONE}
+BETA_MAJOR_SHARES = {
+    "Major": 1.0 - SEVERE_OR_WORSE_SHARE_OF_MAJOR,
+    "Severe": SEVERE_OR_WORSE_SHARE_OF_MAJOR - VERY_SEVERE_SHARE_OF_MAJOR,
+    "Very Severe": VERY_SEVERE_SHARE_OF_MAJOR,
+}
 
 # Floating point accumulation over millions of cells, not a tolerance for a grid
 # that is genuinely wrong. A grid in per cent, or a pair the wrong way round,

@@ -94,10 +94,16 @@ between the Moderate band and the states above it rather than adding any.
 
 *Six states.* The pair is differenced into three bands: None (below Moderate),
 Moderate, and Major or worse. The release carries no Minor, Severe or Very
-severe, so they are made by splitting bands in fixed shares: None is split
-#pct(s.none_shares.None) None and #pct(s.none_shares.Minor) Minor, and Major or
-worse #pct(s.major_shares.Major) Major, #pct(s.major_shares.Severe) Severe and
-#pct(s.major_shares.at("Very Severe")) Very severe. Splitting conserves the
+severe, so they are made by splitting the bands in fixed ratios read off the
+Canterbury exceedance curves of land damage rank against LSN, whose rank 3 and
+rank 4 curves match the NLM's two fragility curves. None is split
+#pct(s.none_shares.None) None and #pct(s.none_shares.Minor) Minor. Major or
+worse is split by exceedance: P(at least Severe) is
+#pct(s.major_shares.Severe + s.major_shares.at("Very Severe")) of it and
+P(Very severe) #pct(s.major_shares.at("Very Severe")), giving
+#pct(s.major_shares.Major) Major, #pct(s.major_shares.Severe) Severe and
+#pct(s.major_shares.at("Very Severe")) Very severe. The ratios are held constant
+at every LSN, where the curves show them drifting. Splitting conserves the
 probability in each cell, and the step refuses a cell whose six do not sum to
 one.
 

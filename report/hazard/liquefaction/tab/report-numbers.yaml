@@ -1,6 +1,6 @@
 meta:
   written: '2026-10-07'
-  commit: 84bcf75
+  commit: ed5a62d
   nlm_release: v2026p0rc6
 settings:
   return_period_years: 2500
@@ -16,12 +16,12 @@ settings:
   middle_far_weight: 0.5
   supersample: 10
   none_shares:
-    None: 0.5
-    Minor: 0.5
+    None: 0.9
+    Minor: 0.1
   major_shares:
-    Major: 0.25
-    Severe: 0.5
-    Very Severe: 0.25
+    Major: 0.33333333333333337
+    Severe: 0.4666666666666666
+    Very Severe: 0.2
 study_area:
   grid_resolution_m: 100.0
   cells_with_probability: 14320
@@ -57,12 +57,12 @@ study_area:
       features: 6
       km: 32.8
   mean_state_probability:
-    None: 0.2978229224681854
-    Minor: 0.2978229224681854
+    None: 0.5360812544822693
+    Minor: 0.059564583003520966
     Moderate: 0.2847346177254785
-    Major: 0.029904883093543822
-    Severe: 0.059809766187087644
-    Very Severe: 0.029904883093543822
+    Major: 0.039873177458058434
+    Severe: 0.055822448441281806
+    Very Severe: 0.02392390647483506
 draw:
   extent: wlg-pilot
   realisation_id: 0

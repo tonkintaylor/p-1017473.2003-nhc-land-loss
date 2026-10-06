@@ -34,12 +34,18 @@
   P(at least Moderate) as the Moderate band would count the Major mass twice.
   It refuses a grid outside [0, 1] and a pair where Major exceeds Moderate,
   which is how a swapped pair presents.
-- **The four states the release does not carry are manufactured here.** Half the
-  None mass becomes Minor, and the Major band splits into Major, Severe and Very
-  Severe in the shares `BETA_MAJOR_SHARES` holds. The shares have no evidence
-  behind them; they subdivide rather than add, so probability is conserved by
-  construction and the function raises if the six do not sum to one. This is a
-  beta shortcut and is named as one — `beta_expand_ld_probabilities()`,
+- **The four states the release does not carry are manufactured here.** A
+  tenth of the None band becomes Minor, and the Major band splits by exceedance:
+  P(at least Severe) is two thirds of P(at least Major) and P(Very Severe) a
+  fifth of it, so Major 1/3, Severe 7/15 and Very Severe 1/5
+  (`BETA_NONE_SHARES`, `BETA_MAJOR_SHARES`). The ratios are read off the
+  Canterbury exceedance curves of land damage rank against LSN (NLM groundwater,
+  PL = 50), whose rank 3 and rank 4 curves match the NLM's Minor-to-Moderate and
+  Moderate-to-Severe fragility curves (T-88, Maxim Millen, 2026-10-07). They are
+  held constant at every LSN, where the curves show them drifting. They
+  subdivide rather than add, so probability is conserved by construction and
+  the function raises if the six do not sum to one. This is still a shortcut
+  and is named as one — `beta_expand_ld_probabilities()`,
   `beta_probability_path()`, and a `beta-` opening every file name the step
   writes.
 - The run prints the extent of the clipped grid, its cell size, how many cells it

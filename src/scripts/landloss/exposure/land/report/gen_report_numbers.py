@@ -126,7 +126,11 @@ def settings():
 
 def land_value(extent):
     """Return the land value over an extent, its calibration and ranking check."""
-    path = TEMP_DIR / "exposure" / f"land-value-by-address{extent_suffix(extent)}.geoparquet"
+    path = (
+        TEMP_DIR
+        / "exposure"
+        / f"land-value-by-address{extent_suffix(extent)}.geoparquet"
+    )
     valued = gpd.read_parquet(path)
     indexed = index_base_rates(load_base_rates()).set_index("ta_name")
     modelled = ta_mean_land_value(valued)
@@ -151,7 +155,9 @@ def land_value(extent):
         "addresses": len(valued),
         "landform_share": {
             str(form): float(share)
-            for form, share in valued["landform_class"].value_counts(normalize=True).items()
+            for form, share in valued["landform_class"]
+            .value_counts(normalize=True)
+            .items()
         },
         "by_ta": by_ta,
         "suburb_ranking": {
@@ -182,7 +188,9 @@ def insured_land(extent):
         "median_share_of_property": float(share_of_property.median()),
         "driveways": len(driveways),
         "median_driveway_m": float(np.median(full_length)),
-        "share_cut_at_insured_access": float(np.mean(full_length > MAX_INSURED_ACCESS_M)),
+        "share_cut_at_insured_access": float(
+            np.mean(full_length > MAX_INSURED_ACCESS_M)
+        ),
     }
 
 
@@ -207,7 +215,10 @@ def figures(insured_extent, value_extent):
 def main(*, value_extent, insured_extent, figure_value_extent):
     """Compute the numbers and write the YAML."""
     numbers = {
-        "meta": {"written": dt.datetime.now().astimezone().date().isoformat(), "commit": git_commit()},
+        "meta": {
+            "written": dt.datetime.now().astimezone().date().isoformat(),
+            "commit": git_commit(),
+        },
         "settings": settings(),
         "land_value": land_value(value_extent),
         "insured_land": insured_land(insured_extent),
