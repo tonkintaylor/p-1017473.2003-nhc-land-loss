@@ -578,11 +578,11 @@
     },
     {
       "ID": "T-73",
-      "Task": "Look up the ID of the property whose generated driveway passes through a neighbouring house, found in the QGIS review, and check what the driveway generation is doing there.",
+      "Task": "Look up the ID of the property whose generated driveway passes through a neighbouring house, found in the QGIS review, and check what the driveway generation is doing there. Checked 2026-10-07: the straight-line routing does this by design, and 382 of the pilot's 4,295 driveways (9%) cross at least 5 m2 of a building on another property. The insured land is clipped to the property afterwards, so a neighbour's ground is never counted; the full route length, which the construction access rating reads, can be wrong. Parked as I-18.",
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Wgtn land model sense check 2026-10-05",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-74",
@@ -634,11 +634,11 @@
     },
     {
       "ID": "T-80",
-      "Task": "Check how the driveway for 3416ee25-80ea-4728-9765-3c92569150c7 is formed, since a shorter route to the road appears to be available but is not used.",
+      "Task": "Check how the driveway for 3416ee25-80ea-4728-9765-3c92569150c7 is formed, since a shorter route to the road appears to be available but is not used. Checked 2026-10-07: the property has one building and the driveway goes to the nearest road centreline, Sutherland Crescent at 43.5 m, with Melrose Crescent a close second at 44.6 m, so it is working as designed but the road chosen is a near tie.",
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Perrie Gilbert 2026-10-06",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-81",
@@ -1202,8 +1202,8 @@
     },
     {
       "ID": "I-18",
-      "Improvement": "Route generated driveways so they cannot pass through a building or across another property, allowing non-straight paths.",
-      "Rationale": "Straight-line driveways sometimes cut through a neighbouring house; judged too complex for now and a good one for the future.",
+      "Improvement": "Route generated driveways so they cannot pass through a building or across another property, allowing non-straight paths, and route to the road in the property's street address rather than the nearest road centreline.",
+      "Rationale": "Straight-line driveways sometimes cut through a neighbouring house: 382 of the pilot's 4,295 (9%) cross at least 5 m2 of a building on another property (2026-10-07). The insured land is clipped to the property so a neighbour's ground is not counted, but the full route length the construction access rating reads can be wrong, and where two roads are near equidistant the road chosen is a toss-up (T-80). Judged too complex for now and a good one for the future.",
       "Phase": "Future",
       "Source": "Wgtn land model sense check 2026-10-05",
       "Status": "Parked"
