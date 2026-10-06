@@ -5,7 +5,7 @@ cell covers the whole pilot box. A PGV field per realisation, scaled by the
 same factor, is built (step 5) and tested on synthetic inputs, and has not yet
 been run over the pilot.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-06
 
 ## Approach
 
@@ -54,8 +54,14 @@ of each per realisation.
 `steps/s2_site_class/` writes a TS1170.5 site class per 100 m cell over the
 extent, from the Foster et al. (2019) V<sub>s</sub>30 model on that model's own
 grid; cells Foster leaves empty along the harbour edge take the class of the
-nearest classed cell within 200 m. The profile criteria of TS1170.5 Table 3.3
-are not applied (**L-38**).
+nearest classed cell within 200 m, and any still unclassed take a default
+V<sub>s</sub>30 for their majority material on landslide step 4's ground map
+(uncontrolled fill 200 m/s, Class VI; `BETA_GROUND_MAP_DEFAULT_VS30_M_S`, the
+whole table confirmed by the lead on 2026-10-06), so
+landslide step 4 now runs first. Over the pilot every urban slope polygon now
+has a site class: 8 harbour-edge cells on reclaimed fill took the fill default.
+A source raster records which cells came from where. The profile criteria of
+TS1170.5 Table 3.3 are not applied (**L-38**).
 
 `steps/s3_pgv/` writes Sa(1.0 s) and PGV per cell, the TS1170.5 Table 3.2
 demand of each cell's site class at 2500 years, with PGV (mm/s) =

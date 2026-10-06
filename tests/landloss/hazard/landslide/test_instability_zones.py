@@ -1,5 +1,7 @@
 """Tests for the pip, pif and siz stage of the urban slope model."""
 
+import math
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -7,9 +9,11 @@ import pytest
 import shapely
 from rasterio.transform import Affine
 
+from landloss.hazard.landslide import bend_split, slope_elements
 from landloss.hazard.landslide import instability_zones as zones
 from landloss.hazard.landslide.slope_elements import BANK, FREE_FACE, GROUND_GROUPS
 from landloss.hazard.landslide.slope_polygons import (
+    BETA_MIN_EVACUATED_WIDTH_H,
     HEADSCARP_BAND,
     WALL_WEDGE,
     build_slope_polygons,
@@ -36,6 +40,17 @@ def _assess(dem: np.ndarray, group: str) -> pd.DataFrame:
     labels, _ = zones.cluster_pifs(pips.mask, 1.0)
     ground = np.full(dem.shape, GROUND_GROUPS.index(group), dtype=np.int8)
     return zones.assess_pifs(dem, pips, labels, ground, TRANSFORM)
+
+
+def _slot(n_rows: int, height_m: float = 1.0) -> np.ndarray:
+    """High ground with a slot ``n_rows`` wide cut east from column C_TOP.
+
+    Only the slot's west end makes pips (one per row, falling east): the slot's
+    sides are too close to the high ground opposite to drop at 5 m.
+    """
+    dem = np.full(SHAPE, height_m)
+    dem[10 : 10 + n_rows, C_TOP + 1 :] = 0.0
+    return dem
 
 
 def _zones(dem: np.ndarray, group: str) -> zones.InstabilityZones:
@@ -70,18 +85,188 @@ def test_nodata_neighbours_make_no_pip():
 def test_pips_two_metres_apart_share_a_pif_and_three_do_not():
     mask = np.zeros((20, 30), dtype=bool)
     mask[5, 5] = mask[5, 7] = mask[5, 10] = True
-    labels, n = zones.cluster_pifs(mask, 1.0)
+    labels, n = zones.cluster_pifs(mask, 1.0, min_pips=1)
     assert n == 2
     assert labels[5, 5] == labels[5, 7] != 0
     assert labels[5, 10] not in (0, labels[5, 5])
     assert labels[~mask].max() == 0
 
 
+def test_clusters_under_three_pips_are_not_pifs_and_the_rest_are_renumbered():
+    mask = np.zeros((20, 30), dtype=bool)
+    mask[2, 2:4] = True  # two pips: not a pif
+    mask[8, 2:5] = True  # three pips: a pif
+    mask[14, 20] = True  # one pip: not a pif
+    mask[16, 10:15] = True  # five pips: a pif
+    labels, n = zones.cluster_pifs(mask, 1.0)
+    assert zones.BETA_MIN_PIF_PIPS == 3
+    assert n == 2
+    assert not labels[2].any()
+    assert labels[14, 20] == 0
+    assert set(labels[8, 2:5]) == {1}
+    assert set(labels[16, 10:15]) == {2}
+
+
+def test_a_slot_of_two_pips_has_no_pif_and_one_of_three_is_a_siz():
+    narrow = _zones(_slot(2), "soil_like")
+    assert narrow.pips.mask.sum() == 2
+    assert narrow.sizs.empty
+    assert narrow.found.elements.empty
+    assert zones.gen_siz_table(narrow, TRANSFORM, crs=2193).empty
+    # Three pips span 2 m, under the 3 m a pif needs; four span 3 m.
+    three = _zones(_slot(3), "soil_like")
+    assert three.sizs.empty
+    assert three.n_pifs_short == 1
+    wide = _zones(_slot(4), "soil_like")
+    assert len(wide.sizs) == 1
+    assert wide.sizs["is_siz"].all()
+    assert wide.sizs["n_pips"].iloc[0] == 4
+    assert wide.pif_lines.iloc[0].length >= zones.BETA_MIN_PIF_LENGTH_M
+
+
+def test_pifs_mostly_in_a_building_are_dropped_and_the_rest_renumbered():
+    labels = np.zeros((10, 20), dtype=np.int32)
+    labels[1, 0:4] = 1  # all four pips on a roof
+    labels[4, 0:4] = 2  # two of four: not a majority, kept
+    labels[7, 0:5] = 3  # none
+    roof = np.zeros(labels.shape, dtype=bool)
+    roof[0:2, :] = True
+    roof[4, 0:2] = True
+    kept, n_kept, n_dropped = zones.exclude_pifs(labels, roof)
+    assert (n_kept, n_dropped) == (2, 1)
+    assert not kept[1].any()
+    assert set(kept[4, 0:4]) == {1}
+    assert set(kept[7, 0:5]) == {2}
+
+
+def test_a_wall_under_a_building_outline_is_no_pif_siz_or_element():
+    dem = _wall(1.0)
+    building = np.zeros(dem.shape, dtype=bool)
+    building[:, C_TOP - 3 : C_TOP + 1] = True
+    ground = np.full(dem.shape, GROUND_GROUPS.index("soil_like"), dtype=np.int8)
+    result = zones.find_instability_zones(dem, ground, TRANSFORM, exclude=building)
+    assert result.n_pifs_excluded == 1
+    assert result.sizs.empty
+    assert result.found.elements.empty
+    assert result.pips.mask.sum() == SHAPE[0]
+    assert zones.gen_siz_table(result, TRANSFORM, crs=2193).empty
+
+
+def _zigzag_pif(n_turns, leg=10):
+    """A one-cell-wide pif of square steps: east, south, east, south, ..."""
+    labels = np.zeros((80, 80), dtype=np.int32)
+    r, c = 2, 2
+    for k in range(n_turns + 1):
+        for _ in range(leg):
+            labels[r, c] = 1
+            if k % 2 == 0:
+                c += 1
+            else:
+                r += 1
+    labels[r, c] = 1
+    return labels
+
+
+def test_a_pif_is_cut_along_its_spine_by_the_bends_rule():
+    labels = _zigzag_pif(7)
+    rule = {"max_bends": 3, "stray_tolerance_m": 2.0, "min_segment_m": 3.0}
+    pieces, parent, lines = zones.split_pifs(labels, 1.0, max_span_m=50.0, **rule)
+    # Each piece's line is its stretch of path, and keeps every rule.
+    for xy in lines[1:]:
+        assert not bend_split.rule_breaks(
+            shapely.LineString(xy), max_bends=3, min_length_m=3.0, max_length_m=50.0
+        )
+    # With the 185 degree turning cap the 90 degree steps go two to a piece.
+    _turned, turned_parent, turned_lines = zones.split_pifs(
+        labels, 1.0, max_span_m=50.0, max_turn_deg=185.0, **rule
+    )
+    assert len(turned_parent) - 1 == 3
+    for xy in turned_lines[1:]:
+        assert not bend_split.rule_breaks(
+            shapely.LineString(xy),
+            max_bends=3,
+            min_length_m=3.0,
+            max_length_m=50.0,
+            max_turn_deg=185.0,
+        )
+    on_pips = labels > 0
+    assert (pieces[on_pips] > 0).all()
+    assert not pieces[~on_pips].any()
+    assert set(parent[1:]) == {1}
+    # Eight 10 m legs and seven bends: two pieces, each needing at most three.
+    assert len(parent) - 1 == 2
+    # Without the bends rule only the 50 m cap cuts the 80 m spine: two pieces.
+    pieces, parent, _ = zones.split_pifs(labels, 1.0, max_span_m=50.0)
+    assert len(parent) - 1 == 2
+    # A short straight pif is one piece either way.
+    short = np.zeros((10, 20), dtype=np.int32)
+    short[5, 2:12] = 1
+    assert len(zones.split_pifs(short, 1.0, max_span_m=50.0, **rule)[1]) == 2
+
+
+def test_the_wall_height_is_the_near_drop_not_the_walk_to_the_foot():
+    # A 1 m wall at the top of a long 30 degree slope: the near drop reads the
+    # wall and the next 2 m of slope, not the whole slope.
+    cols = np.arange(SHAPE[1], dtype=float)
+    z = np.where(
+        cols <= C_TOP, 20.0, 19.0 - (cols - C_TOP - 1) * math.tan(math.radians(30))
+    )
+    dem = np.tile(np.clip(z, 0.0, None), (SHAPE[0], 1))
+    pips = zones.find_pips(dem, 1.0)
+    labels, _ = zones.cluster_pifs(pips.mask, 1.0)
+    heights = zones.gen_pif_near_drops(
+        dem, pips, labels, 1.0, reach_m=3.0, quantile=0.8
+    )
+    assert heights.name == "near_drop_p80_m"
+    top = heights.loc[labels[0, C_TOP]]
+    assert top == pytest.approx(1.0 + 2.0 * math.tan(math.radians(30)), abs=0.05)
+    assert top < 5.0
+
+
+def test_a_pif_with_a_spine_under_three_metres_is_dropped():
+    labels = np.zeros((10, 20), dtype=np.int32)
+    labels[2, 2:5] = 1  # three pips, 2 m spine
+    labels[6, 2:7] = 2  # five pips, 4 m spine
+    kept, n_dropped = zones.drop_short_pifs(labels, 1.0, min_length_m=3.0)
+    assert n_dropped == 1
+    assert not kept[2].any()
+    assert set(kept[6, 2:7]) == {1}
+
+
+def test_a_piece_takes_the_siz_test_of_its_whole_pif():
+    whole = pd.DataFrame(
+        {
+            "threshold_angle_deg": [35.0],
+            "near_step_pass": [True],
+            "far_angle_pass": [False],
+            "is_siz": [True],
+            "max_delta_h_m": [6.0],
+        },
+        index=pd.Index([1], name="pif_id"),
+    )
+    pieces = pd.DataFrame(
+        {
+            "threshold_angle_deg": [45.0, 45.0],
+            "near_step_pass": [False, False],
+            "far_angle_pass": [False, False],
+            "is_siz": [False, False],
+            "max_delta_h_m": [1.0, 2.0],
+        },
+        index=pd.Index([1, 2], name="pif_id"),
+    )
+    table = zones.piece_table(pieces, np.array([0, 1, 1]), whole)
+    assert table["parent_pif_id"].tolist() == [1, 1]
+    assert table["is_siz"].tolist() == [True, True]
+    assert table["threshold_angle_deg"].tolist() == [35.0, 35.0]
+    # The piece's own height stays its own.
+    assert table["max_delta_h_m"].tolist() == [1.0, 2.0]
+
+
 def test_a_long_pif_is_cut_into_pieces_no_longer_than_the_limit():
     labels = np.zeros((10, 100), dtype=np.int32)
     labels[5, :70] = 1
     labels[2, 90:95] = 2
-    pieces, parent = zones.split_pifs(labels, 1.0, max_span_m=20.0)
+    pieces, parent, _ = zones.split_pifs(labels, 1.0, max_span_m=20.0)
     on_pips = labels > 0
     assert (pieces[on_pips] > 0).all()
     assert not pieces[~on_pips].any()
@@ -187,12 +372,42 @@ def test_a_soil_cut_makes_one_walled_element_with_its_siz_recorded(monkeypatch):
     assert row["siz_max_delta_h_m"] > 5.0
 
 
-def test_a_cut_longer_than_the_span_limit_makes_several_elements_of_one_siz():
+def test_a_cut_longer_than_the_span_limit_makes_several_elements_of_one_siz(
+    monkeypatch,
+):
+    # The 30 m cut is under the 50 m cap; a 20 m cap cuts it in two.
+    assert len(_zones(_ramp(6.0, 60.0), "soil_like").found.elements) == 1
+    monkeypatch.setattr(zones, "MAX_PIF_SPAN_M", 20.0)
     result = _zones(_ramp(6.0, 60.0), "soil_like")
     elements = result.found.elements
+    # Each piece is a pif of its own, with its own element, under one parent
+    # whose siz test it inherits.
     assert len(elements) == 2
-    assert elements["siz_id"].nunique() == 1
-    assert len(result.sizs) == 1
+    assert elements["siz_id"].nunique() == 2
+    assert len(result.sizs) == 2
+    assert set(elements["siz_id"]) == set(result.sizs.index)
+    assert result.sizs["parent_pif_id"].nunique() == 1
+    assert result.sizs["is_siz"].all()
+
+
+def test_every_siz_grows_an_element_even_one_the_keep_rule_drops(monkeypatch):
+    dem = _slot(4)
+    result = _zones(dem, "soil_like")
+    assert result.found.elements["kept_by_rule"].all()
+    # A minimum length longer than the slot: the keep rule now drops it, and
+    # the siz keeps it all the same, with a polygon behind its crest.
+    monkeypatch.setattr(slope_elements, "BETA_MIN_ELEMENT_LENGTH_M", 10.0)
+    result = _zones(dem, "soil_like")
+    elements = result.found.elements
+    assert len(elements) == 1
+    assert not elements["kept_by_rule"].iloc[0]
+    assert elements["siz_id"].iloc[0] == result.sizs.index[0]
+    walled = True
+    polygons = build_slope_polygons(
+        zones.with_walls(result.found, walled), dem, TRANSFORM
+    ).polygons
+    assert len(polygons) == 1
+    assert polygons["width_behind_crest_m"].iloc[0] >= 1.0
 
 
 def test_a_rock_wall_of_2_m_makes_no_element():
@@ -203,7 +418,8 @@ def test_a_gentle_slope_makes_no_element():
     assert _zones(_ramp(10.0, 25.0), "soil_like").found.elements.empty
 
 
-def test_with_walls_switches_the_element_type_per_element():
+def test_with_walls_switches_the_element_type_per_element(monkeypatch):
+    monkeypatch.setattr(zones, "MAX_PIF_SPAN_M", 20.0)
     found = _zones(_ramp(6.0, 60.0), "soil_like").found
     walled, bare = True, False
     assert (zones.with_walls(found, walled).elements["element_type"] == FREE_FACE).all()
@@ -221,6 +437,68 @@ def test_the_wall_scenarios_set_the_width_rule_behind_the_crest():
     bare = build_slope_polygons(zones.with_walls(found, without_wall), dem, TRANSFORM)
     assert set(walled.polygons["width_rule"]) == {WALL_WEDGE}
     assert set(bare.polygons["width_rule"]) == {HEADSCARP_BAND}
+    # Half the 6 m height is wider than the fill's wedge (0.45 H) and the
+    # T-44 band, so the floor sets both widths; on weaker retained ground the
+    # wedge is wider than the floor and sets it.
+    for result in (walled, bare):
+        assert result.polygons["width_floored"].all()
+        heights = result.polygons["base_height_m"].to_numpy()
+        assert result.polygons["width_behind_crest_m"].to_numpy() == pytest.approx(
+            BETA_MIN_EVACUATED_WIDTH_H * heights
+        )
+    weak = build_slope_polygons(
+        zones.with_walls(found, with_wall),
+        dem,
+        TRANSFORM,
+        retained_phi_deg=pd.Series(28.0, index=found.elements.index),
+    )
+    assert not weak.polygons["width_floored"].any()
+
+
+def test_a_gns_only_line_gets_an_element_and_a_polygon_on_its_uphill_side():
+    # A soil cut gives one element; a line on the level ground above it,
+    # 0.4 m of step, gets its own, with the floor's metre behind its crest.
+    dem = _ramp(6.0, 60.0)
+    dem[:, :8] += np.where(np.arange(8) < 5, 0.4, 0.0)
+    ground = np.full(dem.shape, GROUND_GROUPS.index("soil_like"), dtype=np.int8)
+    result = zones.find_instability_zones(dem, ground, TRANSFORM)
+    n_old = len(result.found.elements)
+    lines = gpd.GeoSeries(
+        [
+            shapely.LineString([(5.0, 2.0), (5.0, 28.0)]),
+            shapely.LineString([(30.0, 3.0), (30.0, 3.5)]),
+        ],
+        index=pd.Index(["WU0000007", "WU0000008"], name="wall_unit_id"),
+    )
+    found = zones.add_line_elements(
+        result.found,
+        lines,
+        pd.Series([0.4, np.nan], index=lines.index),
+        dem=dem,
+        ground_group=ground,
+        transform=TRANSFORM,
+    )
+    elements = found.elements
+    # The old elements keep their labels and columns.
+    pd.testing.assert_frame_equal(
+        elements.loc[:n_old, result.found.elements.columns],
+        result.found.elements,
+        check_dtype=False,
+    )
+    new = elements[elements["wall_unit_id"].notna()]
+    assert len(new) == 2
+    assert set(new["wall_unit_id"]) == {"WU0000007", "WU0000008"}
+    assert (new["grown_in"] == zones.WALL_LINE).all()
+    assert (new["siz_id"] == 0).all()
+    assert new["height_m"].tolist() == pytest.approx([0.5, 0.5])
+    assert (new["overall_angle_deg"] == 90.0).all()
+    walled = True
+    polygons = build_slope_polygons(
+        zones.with_walls(found, walled), dem, TRANSFORM
+    ).polygons
+    on_line = polygons[polygons["element"].isin(new.index)]
+    assert len(on_line) >= 1
+    assert (on_line["width_behind_crest_m"] == 1.0).all()
 
 
 def test_grids_of_different_shapes_are_rejected():
@@ -270,7 +548,10 @@ def _bearing_gap(a: float, b: float) -> float:
     return abs((a - b + 180.0) % 360.0 - 180.0)
 
 
-def test_a_straight_wall_has_a_straight_spine_facing_east_at_both_ends():
+def test_a_straight_wall_has_a_straight_spine_facing_east_at_both_ends(
+    monkeypatch,
+):
+    monkeypatch.setattr(zones, "MAX_PIF_SPAN_M", 100.0)
     spines = _spines(_wall(1.0))
     assert len(spines) == 1
     row = spines.iloc[0]
@@ -284,7 +565,8 @@ def test_a_straight_wall_has_a_straight_spine_facing_east_at_both_ends():
     assert row["fall_resultant"] == pytest.approx(1.0)
 
 
-def test_an_l_shaped_face_turns_between_its_ends():
+def test_an_l_shaped_face_turns_between_its_ends(monkeypatch):
+    monkeypatch.setattr(zones, "MAX_PIF_SPAN_M", 100.0)
     rows, cols = np.indices(SHAPE)
     dem = np.where((cols <= C_TOP) & (rows >= 15), 2.0, 0.0)
     table = zones.gen_siz_table(_zones(dem, "soil_like"), TRANSFORM, crs=2193)

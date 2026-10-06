@@ -45,7 +45,7 @@ from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from landloss.exposure.rw.age import AGE_BIN_COLUMN
 from landloss.hazard.landslide.instability_zones import read_siz_table
 from landloss.hazard.landslide.slope_polygons import EVACUATED
-from landloss.hazard.landslide.wall_units import CANDIDATE_CLASSES
+from landloss.hazard.landslide.wall_units import CANDIDATE_CLASSES, unit_property_ids
 from landloss.io.readers import get_gns_slide_morphology
 from scripts.landloss.exposure.rw.steps.s8_infer_rwt_age.gen_rwt_age import (
     rwt_age_path,
@@ -127,9 +127,16 @@ def gns_recall(sizs, gns_only, walls, *, match_m):
 
 
 def property_estimates(units, column):
-    """Per property: the expected walls and P(at least one) from one column."""
-    on = units[units["property_id"].notna()]
-    p = on[column].to_numpy(dtype=float)
+    """Per property: the expected walls and P(at least one) from one column.
+
+    A unit counts on every property it enters by at least 1 m
+    (``property_lengths_m``), as the claim update counts it.
+    """
+    on = pd.DataFrame(
+        {"property_id": unit_property_ids(units), "p": units[column].to_numpy()}
+    ).explode("property_id")
+    on = on[on["property_id"].notna()]
+    p = on["p"].to_numpy(dtype=float)
     frame = pd.DataFrame(
         {
             "property_id": on["property_id"].astype(str).to_numpy(),
@@ -210,7 +217,7 @@ def read_age_bins(*, extent):
 
 
 def strata(units, records, age_bins):
-    """By council, NZMM slope class and age bin, the modelled and recorded shares.
+    """By council, NZMM slope class, age bin and setting, the modelled and recorded shares.
 
     Args:
         units: The wall unit table.
@@ -226,10 +233,11 @@ def strata(units, records, age_bins):
     frame["has_gns_wall"] = (
         frame["gns_walls_2m"].fillna(0.0) > 0 if "gns_walls_2m" in frame else np.nan
     )
+    frame["setting"] = wall_setting(units).reindex(frame.index).fillna("no_unit")
     claimed = frame["claim_walls"].notna()
     frame["claim_wall"] = frame["claim_walls"].fillna(0).astype(float) >= 1
     rows = []
-    for stratum in ("ta", "nzmm_slope_class", "age_bin"):
+    for stratum in ("ta", "nzmm_slope_class", "age_bin", "setting"):
         if stratum not in frame:
             continue
         for value, group in frame.groupby(frame[stratum].astype(str), dropna=False):
@@ -274,6 +282,28 @@ def strata(units, records, age_bins):
     return pd.DataFrame(rows)
 
 
+def wall_setting(units):
+    """Per property, the setting of its units, for the strata.
+
+    ``road_frontage`` where any unit on the property takes the road frontage
+    factor, else ``property_boundary`` where any takes the boundary factor,
+    else ``interior``; a unit counts on every property it enters by 1 m.
+    """
+    if "is_road_frontage" not in units:
+        return pd.Series(dtype=object)
+    setting = np.where(
+        units["is_road_frontage"].to_numpy(dtype=bool),
+        2,
+        np.where(units["is_property_boundary"].to_numpy(dtype=bool), 1, 0),
+    )
+    frame = pd.DataFrame(
+        {"property_id": unit_property_ids(units), "setting": setting}
+    ).explode("property_id")
+    frame = frame[frame["property_id"].notna()]
+    best = frame.groupby(frame["property_id"].astype(str))["setting"].max()
+    return best.map({0: "interior", 1: "property_boundary", 2: "road_frontage"})
+
+
 def below_recorded(row):
     """Whether the modelled share falls below the largest recorded share.
 
@@ -306,6 +336,15 @@ def pilot_counts(units, draws, sizs, *, extent, world_ids):
         {"metric": "wall_units_in_exposure", "value": int(units["in_exposure"].sum())},
         {"metric": "expected_walls", "value": float(units["p_wall"].sum())},
         {"metric": "expected_walls_floor", "value": float(units["p_floor"].sum())},
+        *(
+            {"metric": f"units_{flag}", "value": int(units[flag].sum())}
+            for flag in ("is_property_boundary", "is_road_frontage")
+            if flag in units
+        ),
+        {
+            "metric": "units_tall_face",
+            "value": int((units.get("tall_face_factor", pd.Series(1.0)) < 1).sum()),
+        },
         *(
             {"metric": f"evacuated_m2_{scenario}", "value": area}
             for scenario, area in bounds.items()

@@ -34,12 +34,42 @@
   Foster's model has no value on some land cells along the harbour edge;
   over the pilot 73 of 522 cells have none and 25 are filled, which gives a
   class to all 17 retaining walls that sat on them. The fill also reaches up
-  to 200 m offshore, where no asset is. Cells further than 200 m from a
-  classed cell stay NaN.
-- The filled cells are marked in
-  `temp/hazard/shaking/site-class-filled-100m[-pilot].tif`, from
-  `filled_mask_path()` (1 where filled), so demand on them can be told
-  apart from demand on a mapped Vs30.
+  to 200 m offshore, where no asset is. The lead tried 300 m on 2026-10-06 and
+  set it back to 200 m in favour of the ground map default below.
+- **Cells still unclassed take a default Vs30 for their ground**, by
+  `landloss.hazard.shaking.site_class.fill_site_class_from_ground_map`: the
+  material covering most of the 100 m cell on landslide step 4's ground map
+  (`ground_map_path()`; pieces of `unknown` material are left out of the
+  count), its Vs30 from `BETA_GROUND_MAP_DEFAULT_VS30_M_S` in
+  `landloss.domain.constants`, and the class of that Vs30 by the same Table
+  3.3 bounds. The values are judgement, the fill value the lead's, and the
+  lead confirmed the whole table on 2026-10-06 (every material, the five
+  added ones and rock at 750 m/s in Class II included):
+
+  | Material | Vs30 (m/s) | Class |
+  | --- | --- | --- |
+  | `fill_uncontrolled`, `reclamation` | 200 | VI |
+  | `fill_engineered`, `alluvium` | 250 | V |
+  | `colluvium`, `loess` | 300 | IV |
+  | `rock_hw_cw`, `rock_crushed` | 450 | III |
+  | `rock`, `rock_uw_mw` | 750 | II |
+  | `unknown` | none | none |
+
+  Each value is the inclusive top of its class. Cells the ground map does not
+  reach (open sea), or whose only material is `unknown`, stay NaN. Over the
+  pilot 8 cells are classed this way, all on uncontrolled fill on the
+  reclaimed harbour edge, Class VI; they carry the 42 urban slope polygons
+  that had no site class before.
+- **Landslide step 4 has to have run first, over the same extent.** Step 2
+  stops with a message naming `s4_ground_map/gen_ground_map.py` when the
+  ground map is missing, and `gen_hazard.main` runs landslide steps 3 and 4
+  before the shaking steps.
+- Where each cell's class came from is written to
+  `temp/hazard/shaking/site-class-source-100m[-pilot].tif`, from
+  `source_path()`, as uint8 codes (`SITE_CLASS_SOURCES`): 0 none, 1 Foster
+  Vs30, 2 nearest classed cell, 3 ground map default. Over the pilot: 449
+  Foster, 25 nearest cell, 8 ground map, 40 none (sea). The run prints these
+  counts, and the ground map cells by material.
 - `read_site_class()` reads the output back for steps 3 and 4.
 - The site class is mapped in the left panel of the figure produced by step 3's
   `fig_pgv.py`, written to `report/hazard/shaking/pgv/fig/`.

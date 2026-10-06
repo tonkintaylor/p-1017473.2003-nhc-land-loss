@@ -1,15 +1,16 @@
-"""The size classes and initial conditions a retaining wall is carried in.
+"""The size classes a retaining wall is carried in.
 
 Every wall the chain reads carries a size class, from its retained height on
-the agreed boundaries, and an initial condition, modern or poor. The boundaries
-are set by what the costing can tell apart rather than by engineering
-interest: above the sub-cap the settlement stops depending on height, so a
-three metre and a six metre wall settle the same and do not need separating
-(``.agents/plans/asset-pricing-approach.md``, section 1.1).
+the agreed boundaries. The boundaries are set by what the costing can tell
+apart rather than by engineering interest: above the sub-cap the settlement
+stops depending on height, so a three metre and a six metre wall settle the
+same and do not need separating
+(``.agents/plans/asset-pricing-approach.md``, section 1.1). Each wall also
+carries a wall type (:mod:`landloss.exposure.rw.wall_type`), which replaced the
+modern and poor initial condition.
 
-The module keeps its ``beta`` name for the one judgement left in it,
-:data:`BETA_POOR_SHARE`, the share of walls in poor condition where nothing
-better is known. The slope-driven stand-in population that used to live here
+The module keeps its ``beta`` name for the height range the loss module's
+tests still read. The slope-driven stand-in population that used to live here
 is gone: the population is now drawn line by line from
 :mod:`landloss.exposure.rw.wall_probability` by
 :mod:`landloss.exposure.rw.population`, and the height of each wall is read
@@ -23,12 +24,6 @@ import pandas as pd
 SMALL_MAX_HEIGHT_M = 1.0
 MEDIUM_MAX_HEIGHT_M = 2.5
 SIZE_CLASSES = ("small", "medium", "large")
-
-# The two initial condition classes, and the share of walls in the poor one
-# where neither the dwelling age nor the height says otherwise. Judgement: the
-# real share comes from the claim report extraction (T-50).
-INITIAL_CONDITIONS = ("modern", "poor")
-BETA_POOR_SHARE = 0.5
 
 # The range of retained heights the beta wall population once drew, in metres.
 # The population no longer draws heights (each is read off the DEM), but the
@@ -57,19 +52,21 @@ def classify_wall_size(height_m: np.ndarray | float) -> np.ndarray:
 
 
 def describe_population(walls: pd.DataFrame) -> pd.DataFrame:
-    """Return the wall count by size class and initial condition.
+    """Return the wall count by size class and wall type.
 
     Args:
-        walls: The drawn wall population.
+        walls: The drawn wall population, carrying ``size_class`` and
+            ``wall_type``.
 
     Returns:
-        A table of counts, one row per size class, one column per condition.
+        A table of counts, one row per size class, one column per wall type
+        drawn (no columns where no wall is drawn).
     """
     if walls.empty:
-        return pd.DataFrame(index=list(SIZE_CLASSES), columns=list(INITIAL_CONDITIONS))
+        return pd.DataFrame(index=list(SIZE_CLASSES))
     counts = walls.pivot_table(
         index="size_class",
-        columns="initial_condition",
+        columns="wall_type",
         values="height_m",
         aggfunc="size",
         fill_value=0,

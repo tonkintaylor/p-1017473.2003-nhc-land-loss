@@ -7,24 +7,33 @@ its TS1170.5:2025 Table 3.3 site class from Vs30 alone
 (``landloss.hazard.shaking.site_class``; see its docstring for what Vs30 alone
 leaves out). Cells the model leaves without a Vs30 value, along the harbour
 edge, take the class of the nearest classed cell within 200 m
-(``fill_site_class_gaps``), and a mask of those cells is written beside the
-grid. The model's own grid -- 100 m NZTM cells on 100 m-aligned bounds --
-is the grid written, and the grid the shaking steps that read the site class
-(PGV, and PGA to follow) put their demand on.
+(``fill_site_class_gaps``). Cells still unclassed take the class of a default
+Vs30 for their majority material on the landslide ground map
+(``fill_site_class_from_ground_map``, ``BETA_GROUND_MAP_DEFAULT_VS30_M_S``), so
+landslide step 4 (``s4_ground_map/gen_ground_map.py``) has to have been run over
+the same extent first. A raster coding where each cell's class came from is
+written beside the grid. The model's own grid -- 100 m NZTM cells on 100
+m-aligned bounds -- is the grid written, and the grid the shaking steps that
+read the site class put their demand on.
 
 What it runs over comes from ``config.py`` beside it.
 """
 
 import sys
 
+import geopandas as gpd
 import numpy as np
 import rioxarray
+import xarray as xr
 
 from landloss.common.utils.terrain import write_raster
 from landloss.domain import constants
 from landloss.hazard.shaking.site_class import (
     GAP_FILL_MAX_DISTANCE_M,
+    SITE_CLASS_SOURCES,
+    fill_site_class_from_ground_map,
     fill_site_class_gaps,
+    site_class_source,
     ts1170_site_class_from_vs30,
 )
 from landloss.io.area_of_interest import (
@@ -34,6 +43,9 @@ from landloss.io.area_of_interest import (
 )
 from landloss.io.ts1170 import SITE_CLASS_NUMERALS
 from landloss.io.vs30 import get_foster_2019_vs30
+from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+    ground_map_path,
+)
 from scripts.landloss.hazard.shaking.steps.s2_site_class import config
 from scripts.landloss.paths import TEMP_DIR
 
@@ -72,18 +84,36 @@ def site_class_path(*, extent):
     return WORK_DIR / f"site-class-100m{suffix}.tif"
 
 
-def filled_mask_path(*, extent):
-    """Return the file a run writes the mask of gap-filled cells to.
+def source_path(*, extent):
+    """Return the file a run writes the site class source codes to.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
-        The output path, under ``temp/hazard/shaking/``.
+        The output path, under ``temp/hazard/shaking/``. Codes as in
+        ``landloss.hazard.shaking.site_class.SITE_CLASS_SOURCES``.
     """
     suffix = extent_suffix(extent)
-    return WORK_DIR / f"site-class-filled-100m{suffix}.tif"
+    return WORK_DIR / f"site-class-source-100m{suffix}.tif"
+
+
+def read_ground_map(*, extent):
+    """Read landslide step 4's ground map materials over the extent.
+
+    Raises:
+        FileNotFoundError: If landslide step 4 has not been run over this
+            extent.
+    """
+    path = ground_map_path(extent=extent)
+    if not path.exists():
+        msg = f"No ground map at {path}. Shaking step 2 reads landslide step 4's "
+        msg += "materials for the cells Foster leaves unclassed: run "
+        msg += "landslide/steps/s4_ground_map/gen_ground_map.py with "
+        msg += f'EXTENT = "{extent}" first.'
+        raise FileNotFoundError(msg)
+    return gpd.read_parquet(path, columns=["material", "geometry"])
 
 
 def read_site_class(*, extent):
@@ -109,10 +139,16 @@ def main(*, extent):
             landloss.io.area_of_interest.EXTENTS or "full".
     """
     bbox, extent_name = resolve_extent(extent=extent)
+    ground = read_ground_map(extent=extent)
 
     print("Reading the Foster et al. (2019) Vs30 model ...", flush=True)
     vs30 = get_foster_2019_vs30(bbox)
-    site_class, was_filled = fill_site_class_gaps(ts1170_site_class_from_vs30(vs30))
+    site_class, nearest_filled = fill_site_class_gaps(ts1170_site_class_from_vs30(vs30))
+    print("Classing the rest from the ground map ...", flush=True)
+    site_class, ground_filled, materials = fill_site_class_from_ground_map(
+        site_class, ground.to_crs(vs30.rio.crs)
+    )
+    source = site_class_source(vs30.values, nearest_filled.values, ground_filled.values)
 
     values = vs30.values[np.isfinite(vs30.values)]
     classes = site_class.values[np.isfinite(site_class.values)]
@@ -124,12 +160,20 @@ def main(*, extent):
             f"Vs30 (m/s): min {values.min():.0f}   median {np.median(values):.0f}   "
             f"max {values.max():.0f}"
         )
-    gaps = int(np.isnan(vs30.values).sum())
-    filled = int(was_filled.values.sum())
+    print("Cells by where their site class came from:")
+    for code, name in SITE_CLASS_SOURCES.items():
+        print(f"  {code} {name:<26} {int((source == code).sum()):>9,}")
     print(
-        f"Cells without a Vs30 value: {gaps:,}; {filled:,} took the class of a "
-        f"classed cell within {GAP_FILL_MAX_DISTANCE_M:.0f} m"
+        f"  (nearest classed cell within {GAP_FILL_MAX_DISTANCE_M:.0f} m; "
+        "none is mostly open sea)"
     )
+    filled_from = materials[ground_filled.values]
+    if filled_from.size:
+        print("Ground map default cells by majority material:")
+        names, counts = np.unique(filled_from.astype(str), return_counts=True)
+        for name, count in zip(names, counts, strict=True):
+            vs30_default = constants.BETA_GROUND_MAP_DEFAULT_VS30_M_S[name]
+            print(f"  {name:<20} {count:>7,}  ({vs30_default:.0f} m/s)")
     print("Site class share of cells:")
     for numeral, cls in SITE_CLASS_NUMERALS.items():
         share = np.mean(classes == cls) if classes.size else 0.0
@@ -139,8 +183,13 @@ def main(*, extent):
     path = site_class_path(extent=extent)
     write_raster(site_class.astype("float32"), path)
     print(f"Wrote {path}")
-    path = filled_mask_path(extent=extent)
-    write_raster(was_filled.astype("uint8"), path)
+    path = source_path(extent=extent)
+    # A fresh array: the Vs30 grid's float nodata does not fit uint8 codes, and
+    # code 0 (no class) is a value here, not nodata.
+    codes = xr.DataArray(
+        source, coords=vs30.coords, dims=vs30.dims, name="site_class_source"
+    ).rio.write_crs(vs30.rio.crs)
+    write_raster(codes, path)
     print(f"Wrote {path}")
     print(
         "Site class is from Vs30 alone, without the profile criteria of TS1170.5 "

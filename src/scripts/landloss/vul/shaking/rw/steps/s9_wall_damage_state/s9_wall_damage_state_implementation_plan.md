@@ -1,10 +1,10 @@
 # Step 9 — Retaining wall damage state: implementation plan
 
 **Status:** Phases 1, 1a and 2 complete. The step is restricted to flat-land
-walls on the published wall curves, and `retaining-wall-fragility.csv` carries
-the six `unnamed`-class rows read out of [koutsoupaki_2023]. Still open: naming
-the wall classes, and the pilot rerun on the world-keyed population and the
-PGV realisations.
+walls on the wall type curves (`retaining-wall-type-fragility.csv`, read out of
+[koutsoupaki_2023] on the moderate damage state, scaled by each wall's fill or
+cut position; `.agents/plans/assigning-retaining-wall-types.md`). Still open:
+the pilot rerun on the world-keyed population and the PGV realisations.
 
 ## Phase 1 — A damage state on every wall (complete)
 

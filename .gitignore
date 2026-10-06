@@ -214,3 +214,6 @@ skills-lock.json
 
 # Claude Code session lock
 .claude/scheduled_tasks.lock
+
+# Claude Code's local junction to .agents/skills (see AGENTS.md)
+.claude/skills

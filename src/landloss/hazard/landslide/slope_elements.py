@@ -1814,6 +1814,46 @@ def find_slope_elements(
     )
 
 
+def _measure_regardless(measured: pd.DataFrame) -> pd.DataFrame:
+    """Measure the regions kept whatever the keep rule says, so each can be built.
+
+    A region the keep rule would drop for being short or gentler than the grow
+    angle is measured as it is: its length and angle stand. Two of the rule's
+    conditions leave a region that the polygon builder cannot measure, and
+    these are set here (judgement, 2026-10-06):
+
+    - **Under :data:`MIN_WALL_HEIGHT_M` high:** the height is raised to it, the
+      smallest element's height. A siz's pips each drop more than 0.7 m
+      within 1 m, so a region measuring lower is a transect artefact on a
+      short or thin face, and the floor keeps its width behind the crest and
+      its depth from being nil.
+    - **No transect:** ``run_m`` is set to 0, the face read as a step the DEM
+      cannot resolve (as a one-interval transect is), so the overall angle is
+      90 degrees; the height is already the region's elevation range
+      (:func:`_measure`). A siz's pips are such steps.
+
+    The height band, threshold angle and free-face test are then recomputed.
+    A region that passed the keep rule is unchanged: it is at least
+    :data:`MIN_WALL_HEIGHT_M` high and has a transect.
+    """
+    out = measured.copy()
+    height = np.fmax(out["height_m"].to_numpy(dtype=float), MIN_WALL_HEIGHT_M)
+    run = np.where(
+        out["n_transects"].to_numpy() > 0, out["run_m"].to_numpy(dtype=float), 0.0
+    )
+    angle = np.degrees(np.arctan2(height, run))
+    band = height_band(height)
+    threshold = step_angle_deg(out["ground_group_code"].to_numpy(), band)
+    out["height_m"] = height
+    out["height_max_m"] = np.fmax(out["height_max_m"].to_numpy(dtype=float), height)
+    out["run_m"] = run
+    out["overall_angle_deg"] = angle
+    out["height_band"] = band
+    out["threshold_angle_deg"] = threshold
+    out["is_free_face"] = (band > 0) & (angle > threshold)
+    return out
+
+
 def _assemble_elements(
     elevation: NDArray[np.float64],
     groups: NDArray[np.int8],
@@ -1826,6 +1866,8 @@ def _assemble_elements(
     element_type_by_label: NDArray[np.str_] | None,
     core_grid: NDArray[np.bool_],
     categories: Mapping[str, ArrayLike] | None,
+    *,
+    keep_all: bool = False,
 ) -> SlopeElements:
     """Measure grown regions, keep the ones that are elements, and build the table.
 
@@ -1833,6 +1875,12 @@ def _assemble_elements(
     with :mod:`landloss.hazard.landslide.instability_zones`: the regions in
     ``labels`` are measured, the ones that are not elements are dropped, and the
     element table, catchments and stack links are built.
+
+    With ``keep_all`` no region is dropped (every siz is a wall candidate, so
+    every region a siz grows needs a polygon; the lead, 2026-10-06), and a
+    region the keep rule would have dropped is measured so that a polygon can
+    be built on it (:func:`_measure_regardless`); ``kept_by_rule`` records
+    which regions passed the rule.
 
     Args:
         elevation: The DEM, NaN for nodata.
@@ -1848,9 +1896,12 @@ def _assemble_elements(
             it from the measured region.
         core_grid: A tile's core.
         categories: Integer grids to take the majority of over each element.
+        keep_all: Keep every region, whatever the keep rule says.
 
     Returns:
-        The elements and their links.
+        The elements and their links. The element table has ``kept_by_rule``:
+        whether the region passed the keep rule (always True without
+        ``keep_all``).
     """
     cell_size_m = _cell_size(transform)
     n_labels = int(labels.max())
@@ -1872,6 +1923,9 @@ def _assemble_elements(
                 < BETA_GROW_ANGLE_DEG - _ANGLE_SLACK_DEG
             )
         )
+    passes = keep.copy()
+    if keep_all:
+        keep[1:] = True
 
     # Each seed's priority as its own pass measured it: a free-face seed's 3 m
     # slope less its step test angle, a bank seed's less the grow angle.
@@ -1900,6 +1954,8 @@ def _assemble_elements(
     grown_in = grown_in_by_label[kept]
 
     measured, roles = _measure(labels, n_labels, elevation, groups, layers, cell_size_m)
+    if keep_all:
+        measured = _measure_regardless(measured)
     elements = measured.drop(
         columns=["ground_group_code", "is_free_face", "length_m", "aspect_deg"]
     )
@@ -1937,6 +1993,7 @@ def _assemble_elements(
         seeded, transform.f + (seed_rows[kept] + 0.5) * transform.e, np.nan
     )
     elements["in_core"] = in_core[kept]
+    elements["kept_by_rule"] = passes[kept]
     # Ground with no 1 m slope next to an element (nodata, its rim, the edge
     # of the grid) means the survey's edge, not the ground, stopped it there.
     unmeasured = ndimage.binary_dilation(

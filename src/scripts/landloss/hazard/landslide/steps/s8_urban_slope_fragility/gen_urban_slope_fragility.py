@@ -39,10 +39,11 @@ section 4; the build contract, sections 3.8, 6 and 7.7):
    ``no_wall``. A flat-land wall is never taken: vul shaking rw step 9 draws
    it (when insured), and nowhere else does. The geometry and depths are the
    zones step 12 built for the world.
-2. **The median.** A polygon with a wall takes the published wall curve for
-   the wall's size and condition (``retaining-wall-fragility.csv``,
-   [koutsoupaki_2023]), converted from PGA to PGV by the study's own PGV/PGA
-   ratio at the polygon's representative point: shaking step 3's PGV grid over
+2. **The median.** A polygon with a wall takes the wall type curve for the
+   wall's type and size (``retaining-wall-type-fragility.csv``,
+   [koutsoupaki_2023]), its PGA median scaled by the wall's own fill or cut
+   position, converted from PGA to PGV by the study's own PGV/PGA ratio at
+   the polygon's representative point: shaking step 3's PGV grid over
    the unscaled TS1170.5 PGA grid on the same cells. A polygon without a wall
    takes the localised median from its continuous Kingsbury rating, scored
    from its element and the ground map
@@ -73,9 +74,14 @@ import rioxarray
 from landloss.common.utils.terrain import sample_at_points
 from landloss.domain.loss_contract import RW_ID_COLUMN
 from landloss.hazard.landslide import susceptibility
-from landloss.hazard.landslide.urban import face_polygons, fragility, geometry
+from landloss.hazard.landslide.urban import (
+    face_polygons,
+    fragility,
+    geometry,
+    wall_type_fragility,
+)
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
-from landloss.io.area_of_interest import extent_suffix
+from landloss.io.area_of_interest import extent_suffix, get_area_of_interest
 from landloss.io.ts1170 import get_ts1170_pga
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     drawn_walls_path,
@@ -88,7 +94,7 @@ from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import
 )
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import config
 from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    elements_path,
+    wall_elements_path,
     zones_path,
 )
 from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
@@ -246,8 +252,11 @@ def read_step12_inputs(*, extent):
         element label), its wall units (indexed by ``wall_unit_id``) and the
         step 4 ground map.
     """
+    # The elements with the GNS-only units' lines added, which the zones
+    # were built on (step 12's gen_urban_slope_wall_zones.py).
     elements = pd.read_parquet(
-        elements_path(extent=extent), columns=list(face_polygons.ELEMENT_COLUMNS)
+        wall_elements_path(extent=extent),
+        columns=[*face_polygons.ELEMENT_COLUMNS, "wall_unit_id"],
     )
     units = gpd.read_parquet(wall_units_path(extent=extent))
     ground_map = gpd.read_parquet(ground_map_path(extent=extent))
@@ -276,7 +285,16 @@ def read_polygons(world_id, *, extent, elements, units, ground_map):
         raise FileNotFoundError(msg)
     print(f"World {world_id}: reading the zones from {path} ...")
     zones = gpd.read_parquet(path)
-    polygons = face_polygons.face_polygons(zones, elements, units, ground_map)
+    aoi = get_area_of_interest(extent)
+    bbox = None if aoi is None else aoi.bbox(zones.crs)
+    polygons = face_polygons.face_polygons(
+        zones, elements, units, ground_map, bbox=bbox
+    )
+    n_zone_polygons = int(zones["polygon"].nunique())
+    print(
+        f"  {n_zone_polygons - len(polygons):,} polygons outside the extent left "
+        "out (step 12's DEM margin, where the shaking grids give no demand)"
+    )
     tpi = sample_at_points(
         terrain_path("topographic-position-100m", extent=extent),
         representative_points(polygons),
@@ -344,7 +362,7 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
     print(f"Reading step 12's elements and wall units from {WORK_DIR} ...")
     elements, units, ground_map = read_step12_inputs(extent=extent)
     print(f"  {len(elements):,} elements, {len(units):,} wall units")
-    wall_table = fragility.load_retaining_wall_fragility()
+    wall_table = wall_type_fragility.load_wall_type_fragility()
 
     # The ratio is realisation-free: step 3's PGV over the unscaled PGA, both
     # on the site class grid, so it is built once for every world.

@@ -26,8 +26,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   damaged walls are repaired; condition (modern or poor) is a separate axis.
 - [x] **Size walls small (below 1 m), medium (1 to 2.5 m) and large (above
   2.5 m)** of retained height, by what the costing can tell apart.
-- [ ] **Name six wall classes**, so each class, size and condition can carry a
-  published fragility curve (`.agents/context/retaining-wall-fragility.md`).
+- [~] **Draw a type for every wall from its age, height and road frontage**,
+  and give each type its own curve, in place of the condition axis
+  (`.agents/plans/assigning-retaining-wall-types.md`). The seven type curves
+  are set (the lead, 2026-10-06); the draw is not built.
 - [~] **Identify where walls are, as lines, with a probability on each**
   (`steps/s6_wall_population/`). No wall dataset exists (**L-04**), so the
   lines are inferred: GNS mapped walls [townsend_2020], SLIDE cut and fill
@@ -100,8 +102,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [~] **Give every wall on sloping land the polygon of ground it holds up**, so
   the two fail together through the wall's fragility (landslide steps 7 to 9);
   walls on flat land fail by shaking in `vul/shaking/rw`.
-- [~] **Set condition from the age of the dwelling** (step 8, below); not yet
-  read onto the lines.
+- [x] **Date each wall from its dwelling**, the QV rating roll's building age
+  decade, with step 8's title age where that is missing or the lot is much
+  older (below); built 2026-10-06 (`gen_wall_age.py`), not yet run.
 - [x] **Raise the wall probabilities on a claimed property from the walls
   its claim report lists** (**T-50**), holding a share of claims out for the
   cross-validation (Wall datasets, below; the lead, 2026-10-02). Built
@@ -137,11 +140,11 @@ they are not independent of his advice.
   with no surcharge [nz_parliament_2004]; in Canterbury 54% of 2,991 walls
   retained under 1.5 m [anderson_2015], though their classes cannot show a
   cluster within that.
-- [ ] **Read age as a proxy for condition and size**: pre-1990 walls more often
-  cast in situ gravity walls prone to deterioration; post-1991 walls bigger,
-  recent ones often timber anchored. In Canterbury wall type tracked era, and
-  stone masonry, the oldest, collapsed most (about 18% very poor against
-  under 6% for block, gabion and timber pole) [anderson_2015].
+- [ ] **Read age as a proxy for wall type**: pre-1970 walls mostly gravity
+  masonry, 1970s and 1980s crib, timber pole and block, later ones engineered.
+  In Canterbury wall type tracked era, and stone masonry, the oldest,
+  collapsed most (about 18% very poor against under 6% for block, gabion and
+  timber pole) [anderson_2015].
 - [ ] **Expect walls in new subdivisions.** Suburb-scale cut and fill followed
   the earth-moving machinery of the 1950s [lyndsell_2019].
 - [ ] **Houses across gullies may sit on thicker colluvium or fill**; Nick was
@@ -157,7 +160,7 @@ they are not independent of his advice.
   flag sits on claimed properties four to six times as often as on others;
   ask NHC how it is populated before using it.
 
-### Wall condition from building age
+### Wall age, for the wall type
 
 Step 8 (`steps/s8_infer_rwt_age/`) estimates the age per claim property, from
 the dates of its titles and survey plan. The wall probability does not read it
@@ -169,11 +172,11 @@ yet.
 - [~] Infer each property's bin from the issue date of its title, with rules
   for an infilled, converted or reissued title, set against Christchurch's open
   valuation roll (`s8_infer_rwt_age`).
-- The District Valuation Roll's building age is the property-level source; QV
-  supplied it for the four councils on 2026-10-02 as sensitive data
-  (`landloss.io.qv_rating_roll`), and the open-data estimate stays in use for
-  now (the lead, 2026-10-02). Failing a property-level age, an SA2 proxy from
-  Stats NZ consents; detail in `rw-notes.md`.
+- [ ] Take the dwelling age from the QV rating roll's building age decade
+  (`landloss.io.qv_rating_roll`, supplied 2026-10-02 as sensitive data), with
+  step 8's title age second (the lead, 2026-10-06; rules in
+  `.agents/plans/assigning-retaining-wall-types.md`). Failing both, the
+  suburb's bin shares.
 
 ## Wall datasets: access and use
 
@@ -251,6 +254,14 @@ What this module owes the retaining wall table `loss` reads
 
 ## Where it is now
 
+- **The wall type curves (2026-10-06).** Seven types, on the moderate damage
+  state since moderate damage usually means replacement in a claim, each
+  stored as the PGA at which 15% and 50% of walls are replaced
+  (`src/landloss/io/assets/retaining-wall-type-fragility.csv`, read by
+  `landloss.hazard.landslide.urban.wall_type_fragility`), with fill walls
+  15% weaker and cut walls 15% stronger. Set beside the published curves and
+  the Canterbury shares in `src/scripts/landloss/vul/research/fig_rw_type_fragility.md`.
+  Nothing in the model reads them yet.
 - **The pilot run of 2026-10-05 on the wall units** (landslide step 12 method
   file): 7,248 units, 3,458 expected walls (3,336 before the claim and NZMM
   update), 6,821 units on a claim. 67% of the GNS mapped wall length is within
@@ -261,16 +272,17 @@ What this module owes the retaining wall table `loss` reads
   [anderson_2015]. These counts predate the review fixes later that day
   (landslide step 12 plan, phase 4); rerun step 12 and then step 6.
 - **The wall height and the class prior (2026-10-06, not yet rerun).** A
-  unit's `height_m`, which sets its size class and `p_poor`, is now the 80th
+  unit's `height_m`, which sets its size class and type band, is now the 80th
   percentile of its pifs' face drops from landslide step 13, not the largest
   pip drop, which put too few walls under 1.5 m; it also sets the prior's
   height band. Its `p_wall` prior reads
   step 13's cut and fill class, and `wall_position` is fill on fill and cut
   and fill, else cut.
 - `gen_wall_probability.py` reads the wall units, ties each to its claim
-  (`claim_of_properties`) and puts the condition on it;
+  (`claim_of_properties`);
   `gen_wall_population.py` takes which units are walls from step 12's draw
-  for the world (`draw_wall_population(walled=...)`) and draws the condition.
+  for the world (`draw_wall_population(walled=...)`) and draws each wall's
+  age bin and type (2026-10-06, wall types plan).
 - **The pilot run of 2026-10-02**: 8,342 candidate lines, 2,921 walls drawn in
   world 0, 1,760 of them insured on 1,058 claims. Property boundaries were
   4,540 of the lines, 110 km. With the step test on the boundaries, road
@@ -283,7 +295,7 @@ What this module owes the retaining wall table `loss` reads
   are the three scripts of step 6; their method file says what each does.
   The lines' `p_wall` (from the source, lowered on rock cuts, capped on flat
   land and raised where a wall is mapped) stays in the library for the chain
-  test; `p_poor` is raised under 1.5 m. Every number is `BETA_` judgement.
+  test. Every number is `BETA_` judgement.
 - Every wall a world drew, insured or not, is written to
   `drawn-walls-wNNN[-pilot].geoparquet` for the urban slope model; the insured
   ones, with their `rw_id`, to `wall-population-wNNN[-pilot].geoparquet`.
@@ -327,6 +339,13 @@ What this module owes the retaining wall table `loss` reads
   - **one naming fix**: `wall_probability` splits `p_poor` at 1990, where
     the bins and the Building Act split at 1992, so the constants should be
     renamed to follow the bins.
+- **Wall lines and properties from step 12's units (2026-10-06).** A drawn
+  wall's line is its unit's simplified line (at most 3 bends, no section
+  under 3 m) and `length_m` is that line's length; a unit can cross property
+  boundaries and is drawn once on its primary property, carrying
+  `property_lengths_m` and `n_properties` for the loss side to count it on
+  each property it enters by 1 m (vul rw status files, Next). Pilot world 0:
+  1,940 walls drawn, 1,141 insured.
 
 ## Next
 
@@ -344,16 +363,24 @@ What this module owes the retaining wall table `loss` reads
 4. Add walls on the flat land: every wall unit is a face of sloping ground.
 5. Tie a wall on a property boundary, which is one unit on each side, so one
    draw serves both, or count it on both.
-6. Name the six wall classes.
-7. Read step 8's age bin onto the wall units and set the condition probability
-   from it.
-8. Bring subdivision age into `p_wall`, and wall type into `p_poor`.
+6. **Run `gen_wall_age.py` from the console** (it reads the QV roll on T:),
+   then rerun step 6's population and the pilot chain, so the drawn walls
+   carry their age bin and wall type (wall types plan, phase 3).
+7. Have Nick Peters review the type shares and frontage multipliers
+   (wall types plan, phase 4).
+8. Bring subdivision age into `p_wall`.
 9. Calibrate the wall units' weights on the held-out claims, GNS and the
    strata once **T-50** is complete (Wall datasets, above).
 10. Record where the collected input datasets are held, so the inputs are
     reproducible.
 11. Delete the two height-range constants once the loss owner has moved the
     pricing test (**I-14**).
+12. Possibly correlate the wall draw between nearby units, so a wall makes its
+    neighbours likelier while each unit keeps its `p_wall`: a Gaussian copula
+    whose correlation reaches zero at a set range (spherical or Wendland),
+    factored once per cluster of nearby units, so milliseconds per world. The
+    claim update's assumption of independent units on a property is accepted
+    (the lead, 2026-10-06). It changes every world's draw.
 
 ## Validation
 
@@ -379,15 +406,11 @@ What this module owes the retaining wall table `loss` reads
 - Ask NHC how the NZMM `RetainingWallInd` is filled. It flags 3% of
   properties, and claimed properties far more often than others.
 
-- The six wall classes, which the fragility table waits on; the review
-  proposes Anderson's types.
+- The share of each wall type by age bin and height band, and the road
+  frontage multipliers: placeholders in the wall types plan, for Nick Peters
+  to review.
 - Whether repair cost scales with wall length or height, and the fixed costs per
   job (**T-32**).
-- What separates modern from poor, and the age that divides them. The step 8
-  bins open at 1970, July 1992 and 2005; the literature also marks the
-  mid-1970s, when NZ earthfill standards arrived [monteith_2020], and 1960,
-  before which cuts and non-engineered fills are a warning sign
-  [nzgs_2025_recognition]. Neither is a bin edge today.
 - The rock-cut factor from height band 4 (over 2.5 m), the cut height taken
   to be through the soil cover, within the published 0.5 to 3 m.
 - **T-11**, **T-20**: the council wall database and cut-and-fill models;
@@ -395,9 +418,9 @@ What this module owes the retaining wall table `loss` reads
 
 ## Future improvements
 
-- Switch the condition's building age from step 8's open-data estimate to the
-  QV rating roll's `building_age_indicator`. Low priority: the open-data
-  approach is preferred for now.
+- The held improvements to the wall type draw: one draw per property, geology
+  as a multiplier, large and frontage walls dated from the lot, and a
+  retained-material shift (wall types plan, "Future improvements").
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

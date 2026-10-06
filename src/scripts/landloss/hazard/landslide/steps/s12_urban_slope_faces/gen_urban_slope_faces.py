@@ -1,7 +1,9 @@
 """Step 12: urban slope faces, from pips to evacuated zones, over an extent.
 
 Finds the potential instability points (pips), groups them into faces (pifs),
-tests every face for a seed instability zone (siz), grows the sizs into
+drops the faces most of whose pips lie in a LINZ building outline (a roof's
+edge is not a slope), tests every face for a seed instability zone (siz),
+grows the sizs into
 elements and builds the evacuated, imminent and inundated zones twice: once
 with every siz walled and once with none. It also reads the evidence for a
 retaining wall onto each pif (:mod:`landloss.hazard.landslide.wall_candidates`).
@@ -27,15 +29,14 @@ from rasterio import features
 from landloss.hazard.landslide.instability_zones import (
     MAX_PIF_SPAN_M,
     find_instability_zones,
+    gen_pif_near_drops,
     gen_pif_spines,
     gen_siz_table,
-    with_walls,
     write_siz_table,
 )
 from landloss.hazard.landslide.slope_elements import rasterise_ground_map
 from landloss.hazard.landslide.slope_polygons import (
     ZONES,
-    build_slope_polygons,
     polygon_geometries,
 )
 from landloss.hazard.landslide.wall_candidates import (
@@ -85,6 +86,14 @@ def elements_path(*, extent):
 def gns_only_path(*, extent):
     """Where the GNS-only wall candidates (lines) are written."""
     return WORK_DIR / f"urban-slope-gns-wall-candidates{extent_suffix(extent)}.parquet"
+
+
+def wall_elements_path(*, extent):
+    """Where the elements with the GNS-only wall lines added are written.
+
+    ``gen_urban_slope_wall_zones.py`` writes it; landslide step 8 reads it.
+    """
+    return WORK_DIR / f"urban-slope-wall-elements{extent_suffix(extent)}.parquet"
 
 
 def zones_path(scenario, *, extent):
@@ -215,19 +224,31 @@ def zone_polygons(result, *, scenario):
     return gpd.GeoDataFrame(zones, geometry="geometry", crs=CRS)
 
 
-def describe(zones, elapsed, scenario_results):
+def building_mask(buildings, transform, shape):
+    """True on the cells whose centre lies in a LINZ building outline."""
+    if buildings.empty:
+        return np.zeros(shape, dtype=bool)
+    return features.rasterize(
+        [(geometry, 1) for geometry in buildings.geometry],
+        out_shape=shape,
+        transform=transform,
+        fill=0,
+        dtype="uint8",
+    ).astype(bool)
+
+
+def describe(zones, elapsed):
     """Print the counts and timings of the run."""
     sizs = zones.sizs
+    print(
+        f"{zones.n_pifs_excluded:,} pifs dropped with most of their pips in a "
+        f"building outline, {zones.n_pifs_short:,} with a spine under 3 m"
+    )
     print(f"{int(zones.pips.mask.sum()):,} pips, {len(sizs):,} pifs, ", end="")
     print(f"{int(sizs['is_siz'].sum()):,} sizs, {len(zones.found.elements):,} elements")
     print(sizs.groupby("ground_group")["is_siz"].agg(["size", "sum"]).to_string())
     print(f"Pips to grown elements: {elapsed:.1f} s")
-    for scenario, (result, seconds) in scenario_results.items():
-        polygons = result.polygons
-        print(
-            f"{scenario}: {len(polygons):,} polygons in {seconds:.1f} s, "
-            f"{polygons['area_m2'].sum():,.0f} m2 evacuated"
-        )
+    print(f"Pif pieces the 50 m cap cut, by stage: {zones.cap_cuts}")
 
 
 def describe_properties(table):
@@ -249,6 +270,12 @@ def main(
     search_m,
     gns_only_min_length_m,
     end_window_m,
+    max_bends,
+    stray_tolerance_m,
+    min_segment_m,
+    max_turn_deg,
+    wall_height_reach_m,
+    wall_height_quantile,
 ):
     """Run the pipeline over the extent and write the siz table, elements and zones.
 
@@ -261,42 +288,57 @@ def main(
             of its own if at least this long, in metres.
         end_window_m: The fall direction at each end of a pif's spine is the
             mean over its pips within this many metres of the end.
+        max_bends: The bends rule the pifs are cut by, as the walls are.
+        stray_tolerance_m: How far a piece may stray from its pif's spine.
+        min_segment_m: The shortest pif piece.
+        max_turn_deg: The most a pif piece's line may turn in all.
+        wall_height_reach_m: A pip's near drop is read this far below it.
+        wall_height_quantile: A pif's wall height is this quantile of its
+            pips' near drops.
     """
     dem, transform, bbox, ground_map, group, position = get_inputs(
         extent=extent, use_cached_layers=use_cached_layers
     )
+    buildings = get_nz_building_outlines(
+        bbox=bbox, crs=CRS, use_cache=use_cached_layers
+    )
     start = time.perf_counter()
     zones = find_instability_zones(
-        dem, group, transform, categories={"ground_row": position}
+        dem,
+        group,
+        transform,
+        categories={"ground_row": position},
+        exclude=building_mask(buildings, transform, dem.shape),
+        max_bends=max_bends,
+        stray_tolerance_m=stray_tolerance_m,
+        min_segment_m=min_segment_m,
+        max_turn_deg=max_turn_deg,
     )
     elapsed = time.perf_counter() - start
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     write_found(zones.found, extent=extent)
-    elements = zones.found.elements
-    is_fill, thickness = fill_by_element(elements, ground_map)
-
-    scenario_results = {}
-    for scenario, walled in SCENARIOS.items():
-        start = time.perf_counter()
-        found = with_walls(zones.found, walled)
-        result = build_slope_polygons(
-            found, dem, transform, is_fill=is_fill, fill_thickness_m=thickness
-        )
-        scenario_results[scenario] = (result, time.perf_counter() - start)
-        output = zone_polygons(result, scenario=scenario)
-        output.to_parquet(zones_path(scenario, extent=extent))
-    describe(zones, elapsed, scenario_results)
+    describe(zones, elapsed)
 
     morphology = get_gns_slide_morphology(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     genesis = get_slide_genesis(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
-    buildings = get_nz_building_outlines(
-        bbox=bbox, crs=CRS, use_cache=use_cached_layers
-    )
     table = gen_siz_table(zones, transform, crs=CRS)
+    table["near_drop_p80_m"] = gen_pif_near_drops(
+        dem,
+        zones.pips,
+        zones.pif_labels,
+        abs(transform.a),
+        reach_m=wall_height_reach_m,
+        quantile=wall_height_quantile,
+    ).reindex(table.index)
     table = table.join(
-        gen_pif_spines(table, cell_size_m=abs(transform.a), end_window_m=end_window_m)
+        gen_pif_spines(
+            table,
+            cell_size_m=abs(transform.a),
+            end_window_m=end_window_m,
+            lines=zones.pif_lines,
+        )
     )
     properties = get_nz_property_boundaries(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
@@ -347,4 +389,10 @@ if __name__ == "__main__":
         search_m=config.SEARCH_M,
         gns_only_min_length_m=config.GNS_ONLY_MIN_LENGTH_M,
         end_window_m=config.PIF_END_WINDOW_M,
+        max_bends=config.WALL_MAX_BENDS,
+        stray_tolerance_m=config.WALL_STRAY_TOLERANCE_M,
+        min_segment_m=config.WALL_MIN_SEGMENT_M,
+        max_turn_deg=config.MAX_TOTAL_TURN_DEG,
+        wall_height_reach_m=config.WALL_HEIGHT_REACH_M,
+        wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
     )

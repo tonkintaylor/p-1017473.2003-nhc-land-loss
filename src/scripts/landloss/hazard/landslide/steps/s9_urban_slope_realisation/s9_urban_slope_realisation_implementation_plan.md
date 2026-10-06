@@ -146,6 +146,19 @@ lead, follows from the face polygons (faces plan, phase 3):
 
 ## Potential future improvements
 
+- **Evaluate the wall curves in PGA (the lead, 2026-10-06).** The wall
+  fragility curves are published in PGA [koutsoupaki_2023], and step 8
+  converts their medians to PGV with the TS1170.5 PGV/PGA ratio at each
+  polygon's representative point
+  (`landloss.hazard.landslide.urban.fragility.pgv_pga_ratio_m_s_per_g`). That
+  is exact today, because shaking steps 4 and 5 scale PGA and PGV by one
+  draw, so the ratio of the realised fields is the ratio of the medians. This
+  step could instead sample the realised PGA field (shaking step 4) at each
+  walled polygon and evaluate the wall curves in PGA directly: the ratio, and
+  the site class it is read on, would drop out of the wall median, and the
+  draw would stay right if the PGA and PGV realisations are ever drawn
+  apart. Step 8 would then carry the wall median in g, and this step would
+  read both fields.
 - Absorption and supersession are tested on the evacuated geometry only; an
   inundated strip of an absorbed failure that reaches past its absorber's is
   lost with it. Whether that ground should still count is open.

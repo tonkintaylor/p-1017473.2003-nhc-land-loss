@@ -33,14 +33,22 @@ Limitations -- the classification is on Vs30 alone:
   class of the nearest classed cell within :data:`GAP_FILL_MAX_DISTANCE_M`. The
   Foster model leaves such gaps along the harbour edge, where the class is
   assumed to carry on from the ground beside it.
+- Where no classed cell is that near, :func:`fill_site_class_from_ground_map`
+  takes a default Vs30 for the cell's majority ground map material,
+  :data:`landloss.domain.constants.BETA_GROUND_MAP_DEFAULT_VS30_M_S`. One value
+  per material, a judgement rather than a measurement.
 """
 
 from collections.abc import Callable, Mapping
 
+import geopandas as gpd
 import numpy as np
 import rioxarray  # noqa: F401 -- registers the .rio accessor
+import shapely
 import xarray as xr
 from rasterio.enums import Resampling
+
+from landloss.domain.constants import BETA_GROUND_MAP_DEFAULT_VS30_M_S
 
 # The upper Vs30 bound of each class, in m/s, from the softest up; a site with
 # Vs30 above the last bound is Class I. Each bound is inclusive: Vs30 = 750 m/s
@@ -54,6 +62,19 @@ ROCK_SITE_CLASS = 1
 # classed cell over the pilot), near enough that the class it takes is the
 # ground next to it rather than across a valley.
 GAP_FILL_MAX_DISTANCE_M = 200.0
+
+# Where each cell's site class came from, the codes of the source raster step 2
+# writes beside the grid.
+SOURCE_NONE = 0
+SOURCE_FOSTER = 1
+SOURCE_NEAREST_CELL = 2
+SOURCE_GROUND_MAP = 3
+SITE_CLASS_SOURCES = {
+    SOURCE_NONE: "none",
+    SOURCE_FOSTER: "Foster Vs30",
+    SOURCE_NEAREST_CELL: "nearest classed cell",
+    SOURCE_GROUND_MAP: "ground map default Vs30",
+}
 
 
 def ts1170_site_class_from_vs30(
@@ -140,6 +161,147 @@ def fill_site_class_gaps(
         site_class.copy(data=filled),
         site_class.copy(data=was_filled).rename("site_class_filled"),
     )
+
+
+def majority_material_per_cell(
+    ground: gpd.GeoDataFrame,
+    grid: xr.DataArray,
+    cells: np.ndarray,
+    *,
+    ignore: tuple[str, ...] = ("unknown",),
+) -> np.ndarray:
+    """Find the material covering the most of each chosen cell.
+
+    Each cell is the square around its centre, the grid's x spacing across
+    (the grid's cells are square, as in :func:`fill_site_class_gaps`). The
+    ground map pieces are cut to the cell and their areas summed by material;
+    the material with the largest area wins, and a tie goes to the material
+    first in alphabetical order, so the result does not hang on row order.
+
+    Args:
+        ground: The ground map, with a ``material`` column, in the grid's
+            coordinate system.
+        grid: The grid the cells are on, with ``x`` and ``y`` cell centres.
+        cells: A boolean array the shape of ``grid``, True for the cells to
+            look at; the rest come back as None.
+        ignore: Materials that say nothing about the ground, left out of the
+            count: a cell half unknown and half fill is fill.
+
+    Returns:
+        An object array the shape of ``grid`` holding the material name, or
+        None where the cell was not looked at or no counted material covers it.
+    """
+    majority = np.full(grid.shape, None, dtype=object)
+    rows, cols = np.nonzero(cells)
+    known = ground.loc[~ground["material"].isin(ignore), ["material", "geometry"]]
+    if rows.size == 0 or known.empty:
+        return majority
+
+    half = abs(float(grid.x.values[1] - grid.x.values[0])) / 2
+    x = grid.x.values[cols]
+    y = grid.y.values[rows]
+    boxes = gpd.GeoDataFrame(
+        {"cell": np.arange(rows.size)},
+        geometry=shapely.box(x - half, y - half, x + half, y + half),
+        crs=ground.crs,
+    )
+    pieces = gpd.overlay(boxes, known, how="intersection", keep_geom_type=True)
+    if pieces.empty:
+        return majority
+
+    areas = (
+        pieces.assign(area=pieces.area)[["cell", "material", "area"]]
+        .groupby(["cell", "material"], as_index=False)["area"]
+        .sum()
+        .sort_values(["cell", "area", "material"], ascending=[True, False, True])
+        .drop_duplicates("cell")
+    )
+    cell = areas["cell"].to_numpy()
+    majority[rows[cell], cols[cell]] = areas["material"].to_numpy()
+    return majority
+
+
+def vs30_from_material(
+    materials: np.ndarray,
+    defaults: Mapping[str, float | None] = BETA_GROUND_MAP_DEFAULT_VS30_M_S,
+) -> np.ndarray:
+    """Look up the default Vs30 of each cell's material.
+
+    Args:
+        materials: An object array of material names, None where there is none.
+        defaults: The Vs30 per material, in m/s; a material missing or mapped
+            to None gives none.
+
+    Returns:
+        A float array the shape of ``materials``, NaN where no Vs30 is given.
+    """
+    vs30 = np.full(materials.shape, np.nan)
+    for index, material in np.ndenumerate(materials):
+        value = defaults.get(material) if material is not None else None
+        if value is not None:
+            vs30[index] = value
+    return vs30
+
+
+def fill_site_class_from_ground_map(
+    site_class: xr.DataArray,
+    ground: gpd.GeoDataFrame,
+    *,
+    defaults: Mapping[str, float | None] = BETA_GROUND_MAP_DEFAULT_VS30_M_S,
+) -> tuple[xr.DataArray, xr.DataArray, np.ndarray]:
+    """Class the cells still unclassed from a default Vs30 for their ground.
+
+    Run after :func:`fill_site_class_gaps`, for the cells too far from a
+    classed one. Each takes the default Vs30 of its majority material
+    (:func:`majority_material_per_cell`) and the class of that Vs30
+    (:func:`ts1170_site_class_from_vs30`). Cells the ground map does not reach,
+    such as open sea, or whose material has no default, stay NaN.
+
+    Args:
+        site_class: The site class per cell, NaN where there is none.
+        ground: The ground map, with a ``material`` column, in the grid's
+            coordinate system.
+        defaults: The Vs30 per material, in m/s.
+
+    Returns:
+        The filled site class grid; a boolean grid, True where a cell was
+        filled here; and the material each cell was filled from (None
+        elsewhere).
+    """
+    gaps = np.isnan(site_class.values)
+    ignore = tuple(name for name, value in defaults.items() if value is None)
+    materials = majority_material_per_cell(ground, site_class, gaps, ignore=ignore)
+    vs30 = vs30_from_material(materials, defaults)
+    from_ground = ts1170_site_class_from_vs30(vs30)
+    filled = np.where(gaps, from_ground, site_class.values)
+    was_filled = gaps & np.isfinite(filled)
+    materials[~was_filled] = None
+    return (
+        site_class.copy(data=filled),
+        site_class.copy(data=was_filled).rename("site_class_from_ground_map"),
+        materials,
+    )
+
+
+def site_class_source(
+    vs30: np.ndarray, nearest_filled: np.ndarray, ground_filled: np.ndarray
+) -> np.ndarray:
+    """Code where each cell's site class came from.
+
+    Args:
+        vs30: The Foster Vs30 per cell, NaN where the model has none.
+        nearest_filled: True where :func:`fill_site_class_gaps` filled a cell.
+        ground_filled: True where :func:`fill_site_class_from_ground_map`
+            filled a cell.
+
+    Returns:
+        A uint8 array of the codes in :data:`SITE_CLASS_SOURCES`.
+    """
+    source = np.full(np.shape(vs30), SOURCE_NONE, dtype="uint8")
+    source[np.isfinite(vs30)] = SOURCE_FOSTER
+    source[np.asarray(nearest_filled, dtype=bool)] = SOURCE_NEAREST_CELL
+    source[np.asarray(ground_filled, dtype=bool)] = SOURCE_GROUND_MAP
+    return source
 
 
 def select_by_site_class(

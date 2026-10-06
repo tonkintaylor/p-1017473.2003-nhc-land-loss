@@ -1,6 +1,6 @@
 # Step 2 — Site class: implementation plan
 
-**Status:** Phases 1 to 4 complete. Site class is from Vs30 alone (**L-38**).
+**Status:** Phases 1 to 5 complete. Site class is from Vs30 alone (**L-38**).
 
 The design is in `.agents/plans/pgv-from-vs30-site-class.md`. The grid this
 step writes is the one the shaking demand steps put their demand on: PGV
@@ -35,7 +35,23 @@ step writes is the one the shaking demand steps put their demand on: PGV
       Decided 2026-09-30, over leaving them empty or assuming one soft
       class.
 
+## Phase 5 — Cells too far from a classed cell (complete)
+
+- [x] Give the cells still unclassed after the 200 m fill a default Vs30 for
+      their majority landslide ground map material
+      (`BETA_GROUND_MAP_DEFAULT_VS30_M_S`), and the class of it. Decided by
+      the lead 2026-10-06, after a 300 m fill still left reclaimed fill on
+      the harbour edge unclassed.
+- [x] Replace the filled-cell mask with a source code raster: Foster, nearest
+      cell, ground map default, none.
+- [x] Run landslide step 4 before the shaking steps in `gen_hazard.main`, and
+      stop step 2 with a clear message when the ground map is missing.
+
 ## Potential future improvements
+
+- Replace the per-material default Vs30 with mapped or measured values where
+  they exist (for example the GNS Wellington site class or CPT-derived Vs30
+  on the reclamation), and check the 200 m/s fill value against them.
 
 - Use the Vs30 sigma layer for the multiple site classes of clause 3.1.3.4:
   either the envelope of the classes a Vs30 range spans, or one class drawn per

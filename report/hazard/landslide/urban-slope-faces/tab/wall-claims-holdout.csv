@@ -1,4 +1,4 @@
 estimate,n,mean_expected_walls,mean_listed_walls,share_reaching_count,n_listing,mean_p_any_where_listed,suppressed
-p_floor,21,0.524,0.190,0.857,4,,listing
-p_claims,21,0.524,0.190,0.857,4,,listing
-p_claims_nzmm,21,0.565,0.190,0.857,4,,listing
+p_floor,21,1.435,0.190,0.857,4,,listing
+p_claims,21,1.435,0.190,0.857,4,,listing
+p_claims_nzmm,21,1.463,0.190,0.857,4,,listing

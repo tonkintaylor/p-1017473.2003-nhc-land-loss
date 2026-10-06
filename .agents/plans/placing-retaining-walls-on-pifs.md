@@ -57,11 +57,25 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
 (`property_id`).
 
 1. **Wall units.** One wall can be several pifs (a long wall is cut at 20 m, and a
-   wall with a gap is two pifs), so count walls, not pifs. Join candidate pifs
-   (`candidate_class` in `siz`, `small`) and `gns_only` pieces of one property
-   into wall units **end to end only**:
+   wall with a gap is two pifs), so count walls, not pifs. Since 2026-10-06
+   the siz table's pifs are pieces cut by the walls' bends rule along each
+   pif's spine, 3 to 50 m (`parent_pif_id` names the whole pif; a pif under
+   3 m is none), and a pif's wall height is the 70th percentile of its
+   pips' near drops (the lowest cell within 2 m below each pip), not step
+   13's walk to the foot. Every wall unit is one line of 3 to 50 m with at
+   most 3 bends turning at most 185° in all; a longer wall is cut at its
+   bends, then at property boundaries, then evenly. Join candidate pifs
+   (`candidate_class` in `siz`, `small`) and `gns_only` pieces into wall
+   units **end to end only**, across property boundaries (the lead,
+   2026-10-06; before, each join needed one property). The joined members
+   are cut into walls where following them within 2 m needs a fourth bend,
+   and a wall over 50 m again at the property boundaries it crosses; each
+   wall is a unit. A unit is drawn as a line of at most 3 bends and no
+   section under 3 m, and carries its length
+   in every property it enters by at least 1 m (`property_lengths_m`); its
+   primary property holds most of the line:
    - **Where GNS maps the wall, it is the join.** Pifs within 2 m of one GNS
-     mapped wall feature are one unit (on each property it crosses).
+     mapped wall feature are one unit, however many properties it crosses.
    - **Elsewhere, two pieces join when** the gap between their facing ends is
      within the joining distance (start at 5 m), they are offset up or down the
      slope by no more than about 1.5 m (the offset measured along the fall
@@ -147,8 +161,13 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
    (`gns_wall`) is at least **0.95**. A `gns_only` unit is set at **0.8**; a
    `gns_only` unit that joins a pif wall unit takes the 0.95 floor from the
    join. A `gns_only` piece within 5 m of a candidate pif on the same property
-   joins that pif's unit whatever its direction (a `config.py` setting), so one
-   wall is not counted twice: about 17% of mapped wall length (about 5 km over
+   joins that pif's unit (a `config.py` setting), so one wall is not counted
+   twice, but only where it runs roughly along the pif's face: the angle
+   between the piece's bearing and the pif's strike (perpendicular to the
+   fall at the pif's spine end nearest the piece) is at most 45°
+   (`GNS_ONLY_MERGE_MAX_ANGLE_DEG`; the lead's quick fix of 2026-10-06, after
+   pilot unit `WU0001918` joined an east-west mapped wall to a north-south
+   3-pip pif across it). Before that it joined whatever its direction: about 17% of mapped wall length (about 5 km over
    the pilot) is 2 to 5 m from a pip. Those stretches show a step of only 0.4
    to 0.5 m on the 1 m DEM (against 1.0 m at walls within 2 m of a pip), under
    the 0.7 m pip drop, so some may be a lower second wall beside the pif rather
@@ -204,6 +223,12 @@ One-sided, because a dataset with no wall is not evidence of no wall.
 - **Strata** (NZMM slope class, council, age bin): modelled share of properties
   with a wall should not fall below the share any dataset records.
 - **Height shape** of the drawn walls against Anderson et al. [anderson_2015].
+- **Every wall on a siz has a polygon** (2026-10-06): a pif needs at least
+  three pips (`BETA_MIN_PIF_PIPS`), and every siz pif grows an element kept
+  whatever the element keep rule says, so a wall drawn on a siz pif always
+  has an evacuated polygon in landslide step 9 (before, 2,782 of 8,223 pilot
+  siz pifs grew no element and 573 walls had no polygon). A `small` pif (a
+  GNS wall with no siz) and a GNS-only unit still grow none.
 - **Pilot counts:** expected walls, units, walled share of sizs and the change in
   the evacuated area against the two scenarios (640,878 m² walled, 612,654 m²
   bare, over the `wlg-pilot`).
@@ -237,11 +262,19 @@ One-sided, because a dataset with no wall is not evidence of no wall.
 
 - The joining distance, the up-or-down-slope offset, the end bearing tolerance
   and the corner distance for wall units (start values above).
-- **Boundary walls.** Over the pilot, 44% of neighbouring pifs that one GNS wall
-  crosses lie on different properties, so a wall on a boundary is often one
-  unit on each side. A claim report on either neighbour may list it. The
-  per-property update needs a rule for this (count it on both, or tie the two
-  units so one draw serves both); left for later.
+- **Setting factors (approved 2026-10-06).** A unit mostly within 2 m of a
+  road parcel boundary takes 2.0 on its prior, one mostly within 2 m of a
+  property boundary 1.5, and a face over 5 m tapers to 0.1 of its prior at
+  8 m (`BETA_ROAD_FRONTAGE_WALL_FACTOR`, `BETA_BOUNDARY_WALL_FACTOR`,
+  `BETA_TALL_FACE_*`). Judgement until T-50.
+- **Boundary walls (settled 2026-10-06).** Over the pilot, 44% of
+  neighbouring pifs that one GNS wall crosses lie on different properties.
+  A wall is now one unit across them, counted as a wall on every property
+  it enters by 1 m in the claim update (a unit keeps the highest of its
+  properties' updates) and drawn once on its primary property; the loss
+  side is to count it on each property at the length inside it (vul rw
+  status, Next). Whether a boundary changes the wall probability is the
+  lead's, separately.
 - Whether the straddling-pif rule should prefer the property whose building is
   nearer rather than most pips.
 - NZMM's n, its weight (`BETA_NZMM_UPDATE_WEIGHT`, 0.3 from 2026-10-05, so

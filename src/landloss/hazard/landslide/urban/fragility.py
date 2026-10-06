@@ -1,13 +1,16 @@
 """Fragility of an urban failure polygon on peak ground velocity.
 
-What belongs here: the readers of the two packaged tables
-(``retaining-wall-fragility.csv`` and ``urban-fragility-anchors.csv`` in
-:mod:`landloss.io.assets`), the lognormal failure probability, the conversion
-of a PGA-based median by the PGV/PGA ratio, the localised (no wall) median
-from the susceptibility rating, the rate factor, the row assembly
+What belongs here: the reader of the anchor table
+(``urban-fragility-anchors.csv`` in :mod:`landloss.io.assets`), the
+conversion of a PGA-based median by the PGV/PGA ratio, the localised (no
+wall) median from the susceptibility rating, the rate factor, the row assembly
 :func:`assign_fragility` that landslide step 8 writes out, and the fit of the
-localised median to the anchor table that the urban validation draws. Used by
-landslide step 8 (``s8_urban_slope_fragility``), the urban validations and
+localised median to the anchor table that the urban validation draws. The
+lognormal failure probability lives in
+:mod:`landloss.hazard.landslide.urban.lognormal` and is re-exported here; the
+wall curves are read from
+:mod:`landloss.hazard.landslide.urban.wall_type_fragility`. Used by landslide
+step 8 (``s8_urban_slope_fragility``), the urban validations and
 ``landloss.vul.shaking.fragility`` for flat-land walls.
 
 Every fragility is a lognormal cumulative distribution on PGV in m/s,
@@ -16,9 +19,10 @@ Every fragility is a lognormal cumulative distribution on PGV in m/s,
 probability because that is what a fragility is: the realisation draws
 against it.
 
-A polygon with a wall on its edge takes the published wall curve for the
-wall's size and condition [koutsoupaki_2023], converted from PGA to PGV by the
-study's own ratio at the polygon's representative point. The wall is any the
+A polygon with a wall on its edge takes the wall type curve for the wall's
+type and size [koutsoupaki_2023], its PGA median scaled by the wall's own
+fill or cut position, then converted from PGA to PGV by the study's own ratio
+at the polygon's representative point. The wall is any the
 world drew on the line, insured or not (decision 36 of the build contract):
 an uninsured wall holds the slope all the same, and only its ``rw_id`` is
 null. A polygon without a
@@ -45,25 +49,23 @@ from scipy.stats import norm
 
 from landloss.domain import constants
 from landloss.domain.loss_contract import RW_ID_COLUMN
-from landloss.exposure.rw.beta_population import INITIAL_CONDITIONS, SIZE_CLASSES
+from landloss.exposure.rw.beta_population import SIZE_CLASSES
 from landloss.hazard.landslide import susceptibility
-from landloss.hazard.landslide.urban import geometry
+from landloss.hazard.landslide.urban import geometry, wall_type_fragility
+from landloss.hazard.landslide.urban.lognormal import (  # noqa: F401 -- re-exported
+    PGA_IM,
+    lognormal_failure_probability,
+)
 from landloss.io import ASSETS_DIR
 
-# The intensity measure every urban fragility is on, and the published measure
-# a wall row may be in before conversion.
+# The intensity measure every urban fragility is on; the wall curves are
+# published on PGA_IM and converted.
 IM = "pgv_m_s"
-PGA_IM = "pga_g"
-WALL_INTENSITY_MEASURES = (PGA_IM, IM)
 
 # What a row's median came from (contract section 6).
 FRAGILITY_BASES = ("wall", "localised")
 WALL_BASIS, LOCALISED_BASIS = FRAGILITY_BASES
 
-# The one wall class until the six classes are named (plan section 4.1).
-UNNAMED_WALL_CLASS = "unnamed"
-
-RETAINING_WALL_FRAGILITY_PATH = ASSETS_DIR / "retaining-wall-fragility.csv"
 URBAN_FRAGILITY_ANCHORS_PATH = ASSETS_DIR / "urban-fragility-anchors.csv"
 
 # The localised (no wall) median, m/s, at a rating of 0 and at MAX_RATING: a
@@ -74,20 +76,7 @@ URBAN_FRAGILITY_ANCHORS_PATH = ASSETS_DIR / "urban-fragility-anchors.csv"
 LOCALISED_THETA_AT_ZERO_RATING_M_S = 3.0
 LOCALISED_THETA_AT_MAX_RATING_M_S = 0.6
 
-# The columns of the two packaged tables (contract section 8).
-WALL_TABLE_COLUMNS = (
-    "wall_class",
-    "size_class",
-    "initial_condition",
-    "im",
-    "theta",
-    "beta",
-    "published_height_m",
-    "damage_state",
-    "source",
-    "basis",
-)
-WALL_TABLE_KEY = ("wall_class", "size_class", "initial_condition")
+# The columns of the anchor table (contract section 8.2).
 ANCHOR_COLUMNS = (
     "anchor_id",
     "source",
@@ -106,18 +95,16 @@ ANCHOR_COLUMNS = (
 # The model file's columns, less world_id, in the order contract section 3.8
 # gives them; the step inserts world_id after slope_id.
 STATE_COLUMN = "wall_state"
-WALL_CLASS_COLUMN = "wall_class"
+WALL_TYPE_COLUMN = "wall_type"
 SIZE_CLASS_COLUMN = "size_class"
-CONDITION_COLUMN = "initial_condition"
 MODEL_COLUMNS = (
     geometry.SLOPE_ID_COLUMN,
     geometry.WALL_LINE_ID_COLUMN,
     geometry.WALL_LINE_IDS_COLUMN,
     RW_ID_COLUMN,
     STATE_COLUMN,
-    WALL_CLASS_COLUMN,
+    WALL_TYPE_COLUMN,
     SIZE_CLASS_COLUMN,
-    CONDITION_COLUMN,
     "im",
     "theta_base",
     "theta_base_pga_g",
@@ -162,13 +149,17 @@ _CARRIED_POLYGON_COLUMNS = (
 # The drawn wall columns the join reads (contract section 3.7). ``rw_id`` is
 # carried onto the model and is null on a wall that is not insured (decision
 # 36); whether a polygon has a wall is read from the wall lines on its edge
-# alone.
+# alone. The wall's own ``wall_position`` shifts its curve; it is merged as
+# _WALL_OWN_POSITION_COLUMN so it is never read for the polygon's position,
+# which sets the wall state and can come from another edge line.
 _WALL_COLUMNS = (
     RW_ID_COLUMN,
     geometry.WALL_LINE_ID_COLUMN,
-    "size_class",
-    "initial_condition",
+    SIZE_CLASS_COLUMN,
+    WALL_TYPE_COLUMN,
+    geometry.WALL_POSITION_COLUMN,
 )
+_WALL_OWN_POSITION_COLUMN = "wall_own_position"
 
 # The drawn wall column that marks a wall on flat land (contract section
 # 3.7). A flat-land wall is drawn by vul shaking rw step 9 and nowhere else
@@ -199,7 +190,7 @@ class LocalisedFit(NamedTuple):
     anchors_used: tuple[str, ...]
 
 
-# --- the two tables -----------------------------------------------------------
+# --- the anchor table -----------------------------------------------------------
 
 
 def _require_columns(table: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:
@@ -207,49 +198,6 @@ def _require_columns(table: pd.DataFrame, columns: tuple[str, ...], name: str) -
     if missing:
         msg = f"{name} is missing the columns {missing}; expected {list(columns)}."
         raise ValueError(msg)
-
-
-def load_retaining_wall_fragility(
-    path: Path = RETAINING_WALL_FRAGILITY_PATH,
-) -> pd.DataFrame:
-    """Read the published wall fragility per class, size and condition.
-
-    One row per ``(wall_class, size_class, initial_condition)`` with the
-    published median ``theta`` in the units ``im`` names, the dispersion
-    ``beta``, and where each came from (contract section 8.1). The packaged
-    rows are read out of [koutsoupaki_2023]; the README beside the CSV says
-    how.
-
-    Args:
-        path: The CSV to read; the packaged table by default.
-
-    Returns:
-        The table, one row per triple.
-
-    Raises:
-        ValueError: If a column is missing, a triple repeats, an ``im`` is not
-            one of :data:`WALL_INTENSITY_MEASURES`, or a median or dispersion
-            is not positive.
-    """
-    table = pd.read_csv(path)
-    _require_columns(table, WALL_TABLE_COLUMNS, "The retaining wall fragility table")
-    duplicated = table.duplicated(subset=list(WALL_TABLE_KEY), keep=False)
-    if duplicated.any():
-        rows = table.loc[duplicated, list(WALL_TABLE_KEY)].to_dict("records")
-        msg = f"The retaining wall fragility table repeats the triples {rows}."
-        raise ValueError(msg)
-    unknown = sorted(set(table["im"]) - set(WALL_INTENSITY_MEASURES))
-    if unknown:
-        msg = (
-            f"Unknown intensity measure {unknown}; expected {WALL_INTENSITY_MEASURES}."
-        )
-        raise ValueError(msg)
-    for column in ("theta", "beta"):
-        values = table[column].to_numpy(dtype=float)
-        if not np.all(np.isfinite(values) & (values > 0)):
-            msg = f"Every {column} in the retaining wall fragility table must be > 0."
-            raise ValueError(msg)
-    return table
 
 
 def load_urban_fragility_anchors(
@@ -287,69 +235,7 @@ def load_urban_fragility_anchors(
     return table
 
 
-def wall_curve(
-    table: pd.DataFrame, *, wall_class: str, size_class: str, initial_condition: str
-) -> pd.Series:
-    """Pick the one wall table row for a class, size and condition.
-
-    Args:
-        table: The table :func:`load_retaining_wall_fragility` returns.
-        wall_class: The wall class, :data:`UNNAMED_WALL_CLASS` until named.
-        size_class: One of ``SIZE_CLASSES``.
-        initial_condition: One of ``INITIAL_CONDITIONS``.
-
-    Returns:
-        The row, as a Series over the table's columns.
-
-    Raises:
-        ValueError: If the triple is missing from the table or repeats in it.
-    """
-    hit = table[
-        (table["wall_class"] == wall_class)
-        & (table["size_class"] == size_class)
-        & (table["initial_condition"] == initial_condition)
-    ]
-    if len(hit) != 1:
-        msg = (
-            f"The retaining wall fragility table carries {len(hit)} rows for "
-            f"({wall_class!r}, {size_class!r}, {initial_condition!r}); expected one."
-        )
-        raise ValueError(msg)
-    return hit.iloc[0]
-
-
 # --- the curve ----------------------------------------------------------------
-
-
-def lognormal_failure_probability(
-    im: npt.NDArray[np.floating],
-    theta: npt.NDArray[np.floating],
-    beta: npt.NDArray[np.floating],
-) -> npt.NDArray[np.floating]:
-    """Evaluate a lognormal fragility, ``Phi(ln(im / theta) / beta)``.
-
-    Args:
-        im: The demand, in the median's units. Zero or below gives 0.
-        theta: The median demand.
-        beta: The lognormal dispersion, positive.
-
-    Returns:
-        The probability of failure, the broadcast shape of the inputs; NaN
-        where the median is NaN.
-
-    Raises:
-        ValueError: If any dispersion is zero or below.
-    """
-    demand = np.asarray(im, dtype=float)
-    median = np.asarray(theta, dtype=float)
-    dispersion = np.asarray(beta, dtype=float)
-    if np.any(dispersion <= 0):
-        msg = "A lognormal dispersion must be positive."
-        raise ValueError(msg)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        z = np.log(demand / median) / dispersion
-    probability = norm.cdf(z)
-    return np.where(demand <= 0, 0.0, probability)
 
 
 def interpolated_slope_value(
@@ -622,14 +508,14 @@ def _check_frames(polygons: gpd.GeoDataFrame, walls: pd.DataFrame) -> None:
         ids = walls.loc[repeated, geometry.WALL_LINE_ID_COLUMN].unique().tolist()
         msg = f"A line drew more than one wall in this world: {ids[:5]}."
         raise ValueError(msg)
-    unknown_size = set(walls["size_class"].dropna()) - set(SIZE_CLASSES)
-    unknown_condition = set(walls["initial_condition"].dropna()) - set(
-        INITIAL_CONDITIONS
+    unknown_size = set(walls[SIZE_CLASS_COLUMN].dropna()) - set(SIZE_CLASSES)
+    unknown_type = set(walls[WALL_TYPE_COLUMN].dropna()) - set(
+        wall_type_fragility.WALL_TYPES
     )
-    if unknown_size or unknown_condition:
+    if unknown_size or unknown_type:
         msg = (
-            f"Unknown size class {sorted(unknown_size)} or initial condition "
-            f"{sorted(unknown_condition)} in the wall population."
+            f"Unknown size class {sorted(unknown_size)} or wall type "
+            f"{sorted(unknown_type)} in the wall population."
         )
         raise ValueError(msg)
 
@@ -639,33 +525,30 @@ def _wall_rows(
     wall_table: pd.DataFrame,
     has_wall: npt.NDArray[np.bool_],
 ) -> pd.DataFrame:
-    """Look up the wall curve of every polygon with a wall, on the polygons' index."""
+    """Look up the type curve of every polygon with a wall, on the polygons' index.
+
+    The PGA median is shifted by the wall's own position, not the polygon's.
+    """
     out = pd.DataFrame(
         {
-            "im": pd.Series(None, index=walls_on_polygons.index, dtype=object),
-            "theta": np.nan,
+            "theta_pga_g": np.nan,
             "beta": np.nan,
             "source": pd.Series(None, index=walls_on_polygons.index, dtype=object),
         },
         index=walls_on_polygons.index,
     )
     with_wall = walls_on_polygons[has_wall]
-    pairs = with_wall[["size_class", "initial_condition"]].drop_duplicates()
-    for size_class, condition in pairs.itertuples(index=False):
-        row = wall_curve(
-            wall_table,
-            wall_class=UNNAMED_WALL_CLASS,
-            size_class=size_class,
-            initial_condition=condition,
-        )
-        hit = (with_wall["size_class"] == size_class) & (
-            with_wall["initial_condition"] == condition
-        )
-        index = with_wall.index[hit]
-        out.loc[index, "im"] = row["im"]
-        out.loc[index, "theta"] = float(row["theta"])
-        out.loc[index, "beta"] = float(row["beta"])
-        out.loc[index, "source"] = row["source"]
+    if with_wall.empty:
+        return out
+    curves = wall_type_fragility.wall_type_curves(
+        with_wall[WALL_TYPE_COLUMN],
+        with_wall[SIZE_CLASS_COLUMN],
+        with_wall[_WALL_OWN_POSITION_COLUMN],
+        wall_table,
+    )
+    out.loc[curves.index, "theta_pga_g"] = curves["theta_pga_g"].to_numpy(dtype=float)
+    out.loc[curves.index, "beta"] = curves["beta"].to_numpy(dtype=float)
+    out.loc[curves.index, "source"] = curves["source"].to_numpy(dtype=object)
     return out
 
 
@@ -778,7 +661,7 @@ def assign_fragility(
     when any line on its edge drew one, whether or not that wall is insured:
     an uninsured wall still holds the slope, so it gives its polygon the wall
     state and curve with ``rw_id`` null (decision 36 of the build contract).
-    The polygon takes the curve, ``rw_id``, size and condition of the first
+    The polygon takes the curve, ``rw_id``, type and size of the first
     such line in edge order (longest shared edge first, :func:`drawn_edge_walls`),
     and the state of its own ``wall_position``, the position of the line
     sharing its longest edge, because step 7 fixed one wall geometry per
@@ -787,10 +670,12 @@ def assign_fragility(
     those walls the polygon's outcome. It then sets the wall state, picks the
     state's fixed
     geometry and depths off the polygon file, and computes the row columns of
-    contract section 6: the wall curve converted to PGV where the polygon has
-    a wall, the localised median from the continuous rating where it has none,
-    both divided by the amplification factor and multiplied by the rate
-    factor.
+    contract section 6: the wall type curve, its PGA median scaled by the
+    wall's own ``wall_position`` (fill or cut, which can differ from the
+    polygon's when the chosen line is not the longest-edge one) and converted
+    to PGV, where the polygon has a wall; the localised median from the
+    continuous rating where it has none; both divided by the amplification
+    factor and multiplied by the rate factor.
 
     Args:
         polygons: The polygons, carrying ``wall_line_ids`` beside
@@ -805,10 +690,12 @@ def assign_fragility(
         walls: Every wall exposure step 6 drew in this world, before the
             claim and coverage filters (``drawn_walls_path``, contract section
             3.7), carrying ``rw_id`` (null on a wall that is not insured),
-            ``wall_line_id``, ``size_class``, ``initial_condition`` and
-            ``is_flatland``. Flat-land walls are left out of the join
+            ``wall_line_id``, ``size_class``, ``wall_type``, ``wall_position``
+            and ``is_flatland``. Flat-land walls are left out of the join
             (:func:`sloping_walls`).
-        wall_table: The table :func:`load_retaining_wall_fragility` returns.
+        wall_table: The table
+            :func:`landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility`
+            returns.
         rate_setting: ``low``, ``medium`` or ``high``.
         site_class: The TS1170.5 site class at each ``rep_point``, on
             ``polygons.index``; NaN off the grid.
@@ -823,8 +710,8 @@ def assign_fragility(
     Raises:
         ValueError: If the polygons are in a geographic system or carry no
             ``wall_line_ids``, a line drew two walls, a wall's size or
-            condition is unknown, its curve is missing from the table, or its
-            position is not fill or cut.
+            type is unknown, its curve is missing from the table, or its
+            position (or the polygon's) is not fill or cut.
     """
     _check_frames(polygons, walls)
     factor = rate_factor(rate_setting)
@@ -839,10 +726,7 @@ def assign_fragility(
         {geometry.WALL_LINE_ID_COLUMN: np.where(has_wall, chosen, None)}
     ).merge(
         walls[list(_WALL_COLUMNS)].rename(
-            columns={
-                "size_class": SIZE_CLASS_COLUMN,
-                "initial_condition": CONDITION_COLUMN,
-            }
+            columns={geometry.WALL_POSITION_COLUMN: _WALL_OWN_POSITION_COLUMN}
         ),
         on=geometry.WALL_LINE_ID_COLUMN,
         how="left",
@@ -853,15 +737,14 @@ def assign_fragility(
 
     ratio = pgv_pga_ratio.reindex(polygons.index).to_numpy(dtype=float)
     rating = polygons["continuous_rating"].to_numpy(dtype=float)
-    is_pga = (curves["im"] == PGA_IM).to_numpy()
-    is_pgv = (curves["im"] == IM).to_numpy()
-    theta_published = curves["theta"].to_numpy(dtype=float)
-
-    theta_base = localised_theta_base_m_s(rating)
-    theta_base = np.where(is_pgv, theta_published, theta_base)
-    theta_base = np.where(is_pga, pga_to_pgv_theta(theta_published, ratio), theta_base)
-    theta_base_pga_g = np.where(is_pga, theta_published, np.nan)
-    ratio_used = np.where(is_pga, ratio, np.nan)
+    # Every wall curve is on PGA: theta_pga_g is NaN where there is no wall.
+    theta_base_pga_g = curves["theta_pga_g"].to_numpy(dtype=float)
+    theta_base = np.where(
+        has_wall,
+        pga_to_pgv_theta(theta_base_pga_g, ratio),
+        localised_theta_base_m_s(rating),
+    )
+    ratio_used = np.where(has_wall, ratio, np.nan)
     beta = np.where(
         has_wall,
         curves["beta"].to_numpy(dtype=float),
@@ -886,9 +769,8 @@ def assign_fragility(
             ),
             RW_ID_COLUMN: joined[RW_ID_COLUMN].to_numpy(),
             STATE_COLUMN: state,
-            WALL_CLASS_COLUMN: np.where(has_wall, UNNAMED_WALL_CLASS, None),
+            WALL_TYPE_COLUMN: joined[WALL_TYPE_COLUMN].to_numpy(),
             SIZE_CLASS_COLUMN: joined[SIZE_CLASS_COLUMN].to_numpy(),
-            CONDITION_COLUMN: joined[CONDITION_COLUMN].to_numpy(),
             "im": IM,
             "theta_base": theta_base,
             "theta_base_pga_g": theta_base_pga_g,

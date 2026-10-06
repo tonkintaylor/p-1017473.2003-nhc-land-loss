@@ -1,7 +1,0 @@
-wall_class,size_class,initial_condition,im,theta,beta,published_height_m,damage_state,source,basis
-unnamed,small,modern,pga_g,1.1126,0.654,3,extensive,koutsoupaki_2023,"Table A1 (Fs = 1.5, the dry designed wall), R.W.3, horizontal displacement Ux, DS3 = 10% of H; the 3 m wall is the lowest height published and the nearest to the 0.5-1.0 m class"
-unnamed,small,poor,pga_g,0.6729,0.6296,3,extensive,koutsoupaki_2023,"Table A5 (Fs = 1.1, the lowest initial factor of safety published, the water table 1.5 m up the 3 m wall), R.W.3, Ux DS3 = 10% of H; poor condition is read as the paper's lowest-Fs end member"
-unnamed,medium,modern,pga_g,1.1126,0.654,3,extensive,koutsoupaki_2023,"Table A1 (Fs = 1.5), R.W.3, Ux DS3 = 10% of H; the 3 m wall is the nearest published height to the 1.0-2.5 m class"
-unnamed,medium,poor,pga_g,0.6729,0.6296,3,extensive,koutsoupaki_2023,"Table A5 (Fs = 1.1), R.W.3, Ux DS3 = 10% of H; poor condition read as the lowest-Fs end member"
-unnamed,large,modern,pga_g,1.4271,0.6791,6,extensive,koutsoupaki_2023,"Table A1 (Fs = 1.5), R.W.6, Ux DS3 = 10% of H; the large class is 2.5 m and up with no upper bound, so the 6 m wall bounds it from above where the 3 m wall bounds the other two"
-unnamed,large,poor,pga_g,0.8160,0.6577,6,extensive,koutsoupaki_2023,"Table A5 (Fs = 1.1), R.W.6, Ux DS3 = 10% of H; poor condition read as the lowest-Fs end member"

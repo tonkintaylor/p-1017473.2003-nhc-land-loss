@@ -64,8 +64,10 @@ Every proposal is for the lead. Numbers that are ours say so.
 
 ### What the curves give
 
-The Koutsoupaki et al. (2023) cantilever curves [koutsoupaki_2023] now in
-`retaining-wall-fragility.csv` give, at 1.0, 1.3 and 1.7 g (ours):
+The Koutsoupaki et al. (2023) cantilever curves [koutsoupaki_2023] the model
+read from `retaining-wall-fragility.csv` until 2026-10-06 (DS3, by size and
+condition; since replaced by the DS2 wall type curves of
+`retaining-wall-type-fragility.csv`) give, at 1.0, 1.3 and 1.7 g (ours):
 
 | Class | Median (g) | P(replace) at 1.0 / 1.3 / 1.7 g |
 | --- | --- | --- |
@@ -143,7 +145,7 @@ Christchurch, with the comparison above, as a known conservatism.
 3. Seo, H., Lee, Y.-J., Park, D. & Kim, B. (2022). Seismic fragility assessment for cantilever retaining walls with various backfill slopes in South Korea. *Soil Dynamics and Earthquake Engineering*, 161, 107443. <https://www.sciencedirect.com/science/article/abs/pii/S0267726122002925>
 4. Seo, H., Kim, B. & Park, D. (2022). Seismic fragility of inverted T-type retaining walls. *20th International Conference on Soil Mechanics and Geotechnical Engineering*, Sydney, Paper 358. <https://www.issmge.org/uploads/publications/1/120/ICSMGE_2022-358.pdf>
 5. Cosentini, R.M. & Bozzoni, F. (2022). Fragility curves for rapid assessment of earthquake-induced damage to earth-retaining walls starting from optimal seismic intensity measures. *Soil Dynamics and Earthquake Engineering*, 152, 107017. <https://www.sciencedirect.com/science/article/abs/pii/S0267726121004395>
-6. Li, Q., Li, P., Cui, K., Ji, Y., Zhang, D. & Qing, Y. (2024). Seismic fragility curves for concrete gravity retaining wall. *Soil Dynamics and Earthquake Engineering*, 183, 108770. <https://www.sciencedirect.com/science/article/abs/pii/S0267726124003580>
+6. Li, Q., Li, P., Cui, K., Ji, Y., Zhang, D. & Qing, Y. (2024). Seismic fragility curves for concrete gravity retaining wall. *Soil Dynamics and Earthquake Engineering*, 183, 108806. <https://doi.org/10.1016/j.soildyn.2024.108806>
 7. Koutsoupaki, E.-I., Sotiriadis, D., Klimis, N. & Dokas, I. (2023). Seismic fragility analysis of retaining walls dependent on initial conditions. *Geosciences*, 14(1), 2. <https://doi.org/10.3390/geosciences14010002>
 8. Rahimi, M., Firoozfar, A. & Alielahi, H. (2024). Fragility curves for seismic vulnerability of back-to-back mechanically stabilized earth walls. *Geotechnical and Geological Engineering*. <https://link.springer.com/article/10.1007/s10706-024-02938-7>
 9. Pitilakis, K., Crowley, H. & Kaynia, A.M. (eds.) (2013). *SYNER-G Reference Report 4: Guidelines for deriving seismic fragility functions of elements at risk*. JRC Scientific and Policy Report EUR 25880 EN. <https://publications.jrc.ec.europa.eu/repository/bitstream/JRC80561/lbna25880enn.pdf>

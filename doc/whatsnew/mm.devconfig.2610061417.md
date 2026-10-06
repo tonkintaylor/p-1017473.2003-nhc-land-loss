@@ -1,0 +1,1 @@
+Claude Code now sees the repository skills in `.agents/skills/` through a local `.claude/skills` junction, which is ignored by git. AGENTS.md tells Claude Code to check for the junction at the start of each session and create it if it is missing.

@@ -168,8 +168,15 @@ def face_polygons(
     elements: pd.DataFrame,
     units: pd.DataFrame,
     ground_map: pd.DataFrame,
+    *,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> gpd.GeoDataFrame:
     """One row per polygon of one world's zones, as the fragility reads it.
+
+    Step 12 grows its elements on a DEM read wider than the extent, so a face
+    at the edge grows whole, but the shaking grids stop at the extent. A
+    polygon whose representative point lies outside ``bbox`` has no demand to
+    read and is left out, before the slope ids are minted.
 
     Args:
         zones: Step 12's zones of one world (or one scenario), one row per
@@ -180,13 +187,18 @@ def face_polygons(
             :data:`UNIT_COLUMNS`.
         ground_map: The step 4 ground map, carrying :data:`GROUND_COLUMNS`,
             in the row order the elements' ``majority_ground_row`` reads.
+        bbox: The extent the model runs over, (minx, miny, maxx, maxy) in the
+            zones' CRS; None keeps every polygon (the full extent, whose DEM
+            stops at the study area).
 
     Returns:
-        One row per polygon, sorted by location, with a ``slope_id`` minted
-        in that order, the step 12 ``polygon`` and ``element``,
-        ``wall_line_id`` (the element's wall unit, None where its pif is in
-        none), ``wall_line_ids`` (that unit, or empty), ``wall_position``
-        (``fill`` or ``cut`` from the unit's ``is_fill``), ``is_walled``, the
+        One row per polygon inside ``bbox``, sorted by location, with a
+        ``slope_id`` minted in that order, the step 12 ``polygon`` and ``element``,
+        ``wall_line_id`` (the element's wall unit: its pif's, or, for an
+        element built on a GNS-only unit's line, the ``wall_unit_id`` it
+        carries; None where it has none), ``wall_line_ids`` (that unit, or
+        empty), ``wall_position`` (``fill`` or ``cut`` from the unit's
+        ``is_fill``), ``is_walled``, the
         Kingsbury columns, ``scale_m``, ``area_m2``, ``slope_degrees``,
         ``material``, ``modification``, ``face_height_10m`` (the polygon's
         height), ``rep_point``, the ``evacuated``, ``inundated`` and
@@ -225,6 +237,10 @@ def face_polygons(
         if len(units)
         else np.full(len(polygons), None, dtype=object)
     )
+    if "wall_unit_id" in by_element.columns:
+        # An element on a GNS-only unit's line is that unit's.
+        line_unit = by_element["wall_unit_id"].to_numpy(dtype=object)
+        unit = np.where(pd.notna(line_unit), line_unit, unit)
     unit = np.array([None if pd.isna(u) else str(u) for u in unit], dtype=object)
     has_unit = unit != None  # noqa: E711
     fill = (
@@ -285,6 +301,16 @@ def face_polygons(
         (geometry.WALL_POSITION_COLUMN, position),
     ):
         frame[column] = pd.Series(values, index=frame.index, dtype=object)
+    if bbox is not None:
+        minx, miny, maxx, maxy = bbox
+        point = frame.geometry.representative_point()
+        inside = (
+            (point.x >= minx)
+            & (point.x <= maxx)
+            & (point.y >= miny)
+            & (point.y <= maxy)
+        )
+        frame = frame.loc[inside.to_numpy(dtype=bool)]
     frame = _score(frame)
     frame = sort_by_point(frame)
     frame.insert(

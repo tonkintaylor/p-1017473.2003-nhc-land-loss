@@ -30,16 +30,17 @@
   `pgv_path(realisation_id, extent=...)`, sampled at each wall's **midpoint**
   (`midpoints()`, `landloss.common.utils.terrain.sample_at_points`) and
   written as `pgv_m_s`.
-- **The curve is the published wall curve** for the wall's `size_class` and
-  `initial_condition`, under the one `unnamed` wall class, read from
-  `retaining-wall-fragility.csv` through
-  `landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility()`
-  and looked up by `wall_curve()`. `wall_failure_probability()` in
+- **The curve is the wall type curve** for the wall's `wall_type` and
+  `size_class`, read from `retaining-wall-type-fragility.csv` through
+  `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility()`
+  and looked up by `wall_type_curves()`, which scales the PGA median by the
+  wall's `wall_position`: 0.85 for a wall retaining fill, 1.15 for a cut, and
+  unchanged where the position is unknown. `wall_failure_probability()` in
   `landloss.vul.shaking.fragility` evaluates it as a lognormal CDF on PGV with
   no topographic amplification and no rate factor (`WALL_AMP_FACTOR` and
   `WALL_RATE_FACTOR`, both 1.0): a flat-land wall stands on no slope and the
   urban rate setting does not reach it.
-- **A curve published on PGA is converted to PGV at the wall's own PGV/PGA
+- **Every curve is on PGA and is converted to PGV at the wall's own PGV/PGA
   ratio** (`pga_to_pgv_theta()`): shaking step 3's PGV grid
   (`gen_pgv.output_path("pgv", ...)`) over the unscaled TS1170.5 PGA grid at
   `config.RETURN_PERIOD_YR`, built on the step 2 site class grid exactly as
@@ -50,10 +51,9 @@
   is built once per run. The site class at the midpoint
   (`sample_site_class()`, from `gen_site_class.site_class_path`) and the ratio
   are written on every row, as `site_class` (nullable integer, null off the
-  grid) and `pgv_pga_ratio_m_s_per_g`; a PGV-native curve records NaN for the
-  ratio and for `theta_base_pga_g`.
-- A wall with no PGV at its midpoint, or on a PGA-published curve with no
-  ratio there, carries a NaN `failure_probability` and draws no damage; the
+  grid) and `pgv_pga_ratio_m_s_per_g`, beside the position-scaled PGA median
+  as `theta_base_pga_g`.
+- A wall with no PGV at its midpoint, or no ratio there, carries a NaN `failure_probability` and draws no damage; the
   run prints how many.
 - The draw is seeded by `realisation_seed(BASE_SEED, realisation_id,
   "vulnerability", world_id=world_id)` — the vulnerability module's one
@@ -64,14 +64,14 @@
 - Output is `temp/vul/wall-damage-state-w<NNN>-r<NNN>[-pilot].geoparquet`
   (`wall_damage_state_path(world_id, realisation_id, extent=...)`), written
   with `GeoDataFrame.to_parquet()`. Columns, in order, are `realisation_id`,
-  `world_id`, `rw_id`, `claim_id`, `asset`, `size_class`, `initial_condition`,
-  `height_m`, `length_m`, `is_flatland` (always true), `pgv_m_s`,
-  `site_class`, `theta_base_pga_g`, `pgv_pga_ratio_m_s_per_g`, `theta`,
+  `world_id`, `rw_id`, `claim_id`, `asset`, `size_class`, `wall_type`,
+  `age_bin`, `wall_position`, `height_m`, `length_m`, `is_flatland` (always
+  true), `pgv_m_s`, `site_class`, `theta_base_pga_g`, `pgv_pga_ratio_m_s_per_g`, `theta`,
   `beta`, `fragility_source` (the table's `source`, a `doc/references.bib`
   key), `failure_probability`, `damage_state` and `geometry`.
 - The run prints, per world and earthquake, the state split, the PGV range,
   the walls off the grid or without a probability, the count of converted
-  curves and the ratio range, the median `theta` by size class and condition,
+  curves and the ratio range, the median `theta` by wall type and size class,
   and the properties carrying a wall to replace.
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/shaking/test_wall_damage_state_step.py`.

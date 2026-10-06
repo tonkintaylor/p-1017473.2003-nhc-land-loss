@@ -1,8 +1,9 @@
 """Tests for the urban failure fragility and landslide step 8.
 
 The library is checked on the contract's unit cases (section 7.7 of
-``.agents/plans/urban-slope-build-contract.md``), the two packaged tables are
-read and validated, step 12's zones are turned into the polygons step 8 reads
+``.agents/plans/urban-slope-build-contract.md``), the packaged anchor table is
+read and validated, the wall type curves are joined with the wall's own fill or
+cut shift, step 12's zones are turned into the polygons step 8 reads
 (``face_polygons``) and checked against the drawn walls, and the step's three
 scripts and the two urban validation scripts are run end to end on synthetic
 step 12 zones, elements and wall units, walls and 100 m grids written where
@@ -21,7 +22,12 @@ from shapely.geometry import box
 from landloss.common.utils.terrain import write_raster
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
-from landloss.hazard.landslide.urban import face_polygons, fragility, geometry
+from landloss.hazard.landslide.urban import (
+    face_polygons,
+    fragility,
+    geometry,
+    wall_type_fragility,
+)
 from scripts.landloss.exposure.rw.steps.s6_wall_population import gen_wall_population
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
     gen_terrain_derivatives,
@@ -51,10 +57,11 @@ ignore_affine_matmul = pytest.mark.filterwarnings(
     "ignore:Use `@` matmul:PendingDeprecationWarning"
 )
 
-# An arbitrary but realistic corner in NZTM, so the grids and the polygons sit
+# An arbitrary but realistic corner in NZTM, inside the wlg-pilot box (step 8
+# leaves out polygons outside the extent), so the grids and the polygons sit
 # where a Wellington run would put them.
-X0 = 1_748_000.0
-Y0 = 5_425_000.0
+X0 = 1_748_400.0
+Y0 = 5_424_000.0
 CELL_M = 100.0
 RETURN_PERIOD_YR = 2500
 WORLD = 0
@@ -77,27 +84,29 @@ def square(x, y, side):
     return box(X0 + x, Y0 + y, X0 + x + side, Y0 + y + side)
 
 
+# The synthetic wall types: MODERN takes the size's median, OLD 0.6 of it.
+MODERN = "block_rc_cantilever"
+OLD = "gravity_masonry"
+
+
 def wall_table():
-    """Six unnamed-class rows: the small and medium on PGA, the large PGV-native."""
+    """Every wall type and size, as ``load_wall_type_fragility`` returns them.
+
+    The medians are on PGA: 0.5, 0.8 and 1.0 g for the three sizes, times 0.6
+    for :data:`OLD`.
+    """
     rows = []
-    for size_class, theta, im in (
-        ("small", 0.5, fragility.PGA_IM),
-        ("medium", 0.8, fragility.PGA_IM),
-        ("large", 1.0, fragility.IM),
-    ):
-        for initial_condition, shift in (("modern", 1.0), ("poor", 0.6)):
+    for size_class, theta in (("small", 0.5), ("medium", 0.8), ("large", 1.0)):
+        for wall_type in wall_type_fragility.WALL_TYPES:
+            shift = 0.6 if wall_type == OLD else 1.0
             rows.append(
                 {
-                    "wall_class": fragility.UNNAMED_WALL_CLASS,
+                    "wall_type": wall_type,
                     "size_class": size_class,
-                    "initial_condition": initial_condition,
-                    "im": im,
+                    "im": fragility.PGA_IM,
                     "theta": theta * shift,
                     "beta": 0.5,
-                    "published_height_m": 3.0,
-                    "damage_state": "extensive",
-                    "source": f"test_{size_class}_{initial_condition}",
-                    "basis": "synthetic",
+                    "source": f"test_{size_class}_{wall_type}",
                 }
             )
     return pd.DataFrame(rows)
@@ -165,9 +174,15 @@ def polygons(
     return frame
 
 
-def wall_population(rw_ids, wall_line_ids, size_classes, conditions):
-    """Synthetic exposure step 6 walls, one per rw_id."""
+def wall_population(rw_ids, wall_line_ids, size_classes, wall_types, positions=None):
+    """Synthetic exposure step 6 walls, one per rw_id.
+
+    The walls' own positions are unknown (null) unless ``positions`` is given,
+    so their curves are the table's unshifted.
+    """
     count = len(rw_ids)
+    if positions is None:
+        positions = [None] * count
     return gpd.GeoDataFrame(
         {
             "rw_id": list(rw_ids),
@@ -175,10 +190,11 @@ def wall_population(rw_ids, wall_line_ids, size_classes, conditions):
             "wall_line_id": list(wall_line_ids),
             "world_id": WORLD,
             "size_class": list(size_classes),
-            "initial_condition": list(conditions),
+            "wall_type": list(wall_types),
+            "age_bin": "pre_1970",
             "height_m": 1.5,
             "length_m": 10.0,
-            "wall_position": "cut",
+            "wall_position": pd.Series(list(positions), dtype=object),
             "is_flatland": False,
             "source": "terrain_break",
             "material": "colluvium",
@@ -205,7 +221,7 @@ def two_walls():
         ["C1-RW01", "C2-RW01"],
         ["WL0000001", "WL0000002"],
         ["small", "large"],
-        ["modern", "poor"],
+        [MODERN, OLD],
     )
 
 
@@ -297,7 +313,8 @@ def unit_walls():
         ["C1-RW01", "C2-RW01"],
         ["WU0000001", "WU0000002"],
         ["small", "large"],
-        ["modern", "poor"],
+        [MODERN, OLD],
+        positions=[geometry.FILL, geometry.CUT],
     )
     walls["rw_id"] = walls["rw_id"].astype(object)
     walls["claim_id"] = walls["claim_id"].astype(object)
@@ -415,25 +432,7 @@ def test_polygon_theta_divides_by_amplification_and_multiplies_by_the_rate():
     np.testing.assert_allclose(theta, [1.5])
 
 
-# --- the two tables -------------------------------------------------------------------
-
-
-def test_the_packaged_wall_table_reads_and_carries_six_unnamed_rows():
-    table = fragility.load_retaining_wall_fragility()
-    assert list(table.columns) == list(fragility.WALL_TABLE_COLUMNS)
-    assert len(table) == 6
-    assert set(table["wall_class"]) == {fragility.UNNAMED_WALL_CLASS}
-    assert set(table["im"]) == {fragility.PGA_IM}
-    assert set(table["source"]) == {"koutsoupaki_2023"}
-    # Poor condition takes a lower median than modern for every size.
-    for size in ("small", "medium", "large"):
-        modern = fragility.wall_curve(
-            table, wall_class="unnamed", size_class=size, initial_condition="modern"
-        )
-        poor = fragility.wall_curve(
-            table, wall_class="unnamed", size_class=size, initial_condition="poor"
-        )
-        assert poor["theta"] < modern["theta"]
+# --- the anchor table -----------------------------------------------------------------
 
 
 def test_the_packaged_anchor_table_reads_with_fractions_in_range():
@@ -447,25 +446,6 @@ def test_the_packaged_anchor_table_reads_with_fractions_in_range():
     assert anchors["zone"].isna().sum() >= 1
 
 
-def test_a_wall_table_with_a_repeated_triple_or_a_bad_measure_is_refused(tmp_path):
-    table = wall_table()
-    doubled = pd.concat([table, table.iloc[[0]]])
-    path = tmp_path / "walls.csv"
-    doubled.to_csv(path, index=False)
-    with pytest.raises(ValueError, match="repeats"):
-        fragility.load_retaining_wall_fragility(path)
-    bad = table.copy()
-    bad.loc[0, "im"] = "sa_t1_g"
-    bad.to_csv(path, index=False)
-    with pytest.raises(ValueError, match="intensity measure"):
-        fragility.load_retaining_wall_fragility(path)
-    bad = table.copy()
-    bad.loc[0, "beta"] = 0.0
-    bad.to_csv(path, index=False)
-    with pytest.raises(ValueError, match="beta"):
-        fragility.load_retaining_wall_fragility(path)
-
-
 def test_an_anchor_table_with_a_fraction_out_of_range_is_refused(tmp_path):
     anchors = fragility.load_urban_fragility_anchors()
     bad = anchors.copy()
@@ -474,22 +454,6 @@ def test_an_anchor_table_with_a_fraction_out_of_range_is_refused(tmp_path):
     bad.to_csv(path, index=False)
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
         fragility.load_urban_fragility_anchors(path)
-
-
-def test_a_missing_or_doubled_curve_is_refused():
-    table = wall_table()
-    with pytest.raises(ValueError, match="0 rows"):
-        fragility.wall_curve(
-            table, wall_class="named", size_class="small", initial_condition="modern"
-        )
-    doubled = pd.concat([table, table.iloc[[0]]])
-    with pytest.raises(ValueError, match="2 rows"):
-        fragility.wall_curve(
-            doubled,
-            wall_class="unnamed",
-            size_class="small",
-            initial_condition="modern",
-        )
 
 
 # --- the PGV/PGA ratio ----------------------------------------------------------------
@@ -565,25 +529,25 @@ def test_a_polygon_with_a_wall_takes_the_wall_curve_and_one_without_the_localise
     assert no_wall["theta"] == pytest.approx(expected / 1.25)
     assert no_wall["beta"] == constants.LOCALISED_FRAGILITY_BETA
 
-    cut = by_id.loc["SP0000002"]  # the large poor wall, PGV-native
+    cut = by_id.loc["SP0000002"]  # the large old wall, position unknown
     assert cut["wall_state"] == "cut_wall"
     assert cut["rw_id"] == "C2-RW01"
     assert cut["fragility_basis"] == "wall"
-    assert cut["fragility_source"] == "test_large_poor"
-    assert cut["theta_base"] == pytest.approx(0.6)
-    assert pd.isna(cut["theta_base_pga_g"])
-    assert pd.isna(cut["pgv_pga_ratio_m_s_per_g"])
+    assert cut["fragility_source"] == "test_large_gravity_masonry"
+    assert cut["wall_type"] == OLD
+    assert cut["theta_base_pga_g"] == pytest.approx(0.6)
+    assert cut["pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
+    assert cut["theta_base"] == pytest.approx(0.72)
     assert cut["beta"] == 0.5
 
-    fill = by_id.loc["SP0000003"]  # the small modern wall, published on PGA
+    fill = by_id.loc["SP0000003"]  # the small modern wall, position unknown
     assert fill["wall_state"] == "fill_wall"
     assert fill["size_class"] == "small"
-    assert fill["initial_condition"] == "modern"
+    assert fill["wall_type"] == MODERN
     assert fill["theta_base_pga_g"] == pytest.approx(0.5)
     assert fill["pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
     assert fill["theta_base"] == pytest.approx(0.6)
     assert fill["theta"] == pytest.approx(0.6 / 1.25)
-    assert fill["wall_class"] == "unnamed"
 
     assert set(model["im"]) == {"pgv_m_s"}
     assert set(model["rate_setting"]) == {"medium"}
@@ -637,9 +601,62 @@ def test_a_line_that_drew_two_walls_or_an_unknown_size_is_refused():
         )
 
 
+def test_an_unknown_wall_type_or_a_type_with_no_curve_is_refused():
+    frame = three_polygons()
+    kwargs = {
+        "rate_setting": "medium",
+        "site_class": site_class_at(frame),
+        "pgv_pga_ratio": ratio_at(frame),
+    }
+    walls = two_walls()
+    walls.loc[0, "wall_type"] = "dry_stone"
+    with pytest.raises(ValueError, match="wall type"):
+        fragility.assign_fragility(frame, walls, wall_table(), **kwargs)
+    table = wall_table()
+    table = table[~((table["wall_type"] == OLD) & (table["size_class"] == "large"))]
+    with pytest.raises(ValueError, match="No wall type curve"):
+        fragility.assign_fragility(frame, two_walls(), table, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("position", "factor"),
+    [
+        (geometry.FILL, wall_type_fragility.FILL_CAPACITY_FACTOR),
+        (geometry.CUT, wall_type_fragility.CUT_CAPACITY_FACTOR),
+        (None, 1.0),
+    ],
+)
+def test_the_walls_own_position_scales_its_pgv_median(position, factor):
+    # The polygons keep their own positions (fill, then cut) for the wall
+    # state; each wall's own position alone shifts its curve.
+    frame = three_polygons()
+    walls = wall_population(
+        ["C1-RW01", "C2-RW01"],
+        ["WL0000001", "WL0000002"],
+        ["small", "small"],
+        [MODERN, MODERN],
+        positions=[position, position],
+    )
+    model = fragility.assign_fragility(
+        frame,
+        walls,
+        wall_table(),
+        rate_setting="medium",
+        site_class=site_class_at(frame),
+        pgv_pga_ratio=ratio_at(frame, 1.2),
+    )
+    by_line = model.set_index("wall_line_id", drop=False)
+    for line, state in (("WL0000001", "fill_wall"), ("WL0000002", "cut_wall")):
+        row = by_line.loc[line]
+        assert row["wall_state"] == state
+        assert row["theta_base_pga_g"] == pytest.approx(0.5 * factor)
+        assert row["theta_base"] == pytest.approx(0.5 * factor * 1.2)
+        assert row["beta"] == 0.5
+
+
 def test_a_wall_whose_line_is_not_a_polygon_edge_draws_nothing():
     frame = three_polygons()
-    walls = wall_population(["C9-RW01"], ["WL0000099"], ["medium"], ["modern"])
+    walls = wall_population(["C9-RW01"], ["WL0000099"], ["medium"], [MODERN])
     model = fragility.assign_fragility(
         frame,
         walls,
@@ -677,10 +694,9 @@ def test_an_uninsured_wall_gives_its_polygon_the_wall_curve_with_no_rw_id():
     assert pd.isna(uninsured["rw_id"])
     assert uninsured["wall_state"] == "fill_wall"
     assert uninsured["fragility_basis"] == fragility.WALL_BASIS
-    assert uninsured["fragility_source"] == "test_small_modern"
-    assert uninsured["wall_class"] == "unnamed"
+    assert uninsured["fragility_source"] == "test_small_block_rc_cantilever"
     assert uninsured["size_class"] == "small"
-    assert uninsured["initial_condition"] == "modern"
+    assert uninsured["wall_type"] == MODERN
     assert uninsured["theta_base"] == pytest.approx(0.6)
     assert by_line.loc["WL0000002", "rw_id"] == "C2-RW01"
     pd.testing.assert_frame_equal(
@@ -727,20 +743,20 @@ def test_a_wall_on_any_line_of_the_edge_gives_the_polygon_its_wall():
         "site_class": site_class_at(frame),
         "pgv_pga_ratio": ratio_at(frame),
     }
-    shorter = wall_population(["C3-RW01"], ["WL0000003"], ["large"], ["poor"])
+    shorter = wall_population(["C3-RW01"], ["WL0000003"], ["large"], [OLD])
     model = fragility.assign_fragility(frame, shorter, wall_table(), **kwargs)
     walled = model.set_index("slope_id").loc["SP0000002"]
     assert walled["wall_state"] == "fill_wall"
     assert walled["rw_id"] == "C3-RW01"
     assert walled["wall_line_id"] == "WL0000003"
     assert list(walled["wall_line_ids"]) == ["WL0000003"]
-    assert walled["fragility_source"] == "test_large_poor"
+    assert walled["fragility_source"] == "test_large_gravity_masonry"
 
     both = wall_population(
         ["C1-RW01", "C3-RW01"],
         ["WL0000001", "WL0000003"],
         ["small", "large"],
-        ["modern", "poor"],
+        [MODERN, OLD],
     )
     model = fragility.assign_fragility(frame, both, wall_table(), **kwargs)
     walled = model.set_index("slope_id").loc["SP0000002"]
@@ -784,7 +800,7 @@ def test_sloping_walls_drops_flat_land_walls_and_walls_with_no_line():
         ["C1-RW01", "C2-RW01", "C3-RW01"],
         ["WL0000001", "WL0000002", None],
         ["small", "small", "small"],
-        ["modern", "modern", "modern"],
+        [MODERN, MODERN, MODERN],
     )
     walls.loc[1, "is_flatland"] = True
     kept = fragility.sloping_walls(walls)
@@ -861,6 +877,39 @@ def test_face_polygons_take_their_wall_from_their_elements_unit():
     assert list(frame["wall_position"]) == ["fill", "cut", None]
     assert list(frame[face_polygons.IS_WALLED_COLUMN]) == [True, True, False]
     assert (frame[geometry.SCALE_COLUMN] == face_polygons.FACE_SCALE_M).all()
+
+
+def test_a_face_on_a_gns_only_units_line_takes_that_unit():
+    elements = step12_elements().assign(wall_unit_id=[None, None, "WU0000009"])
+    units = pd.concat(
+        [
+            step12_units(),
+            gpd.GeoDataFrame(
+                {"member_pif_ids": [[]], "is_fill": [False]},
+                geometry=[square(FACE_XS[2], 10, 20).boundary],
+                index=pd.Index(["WU0000009"], name="wall_unit_id"),
+                crs=constants.DEFAULT_CRS,
+            ),
+        ]
+    )
+    frame = face_polygons.face_polygons(
+        step12_zones(), elements, units, step12_ground_map()
+    )
+    assert list(frame["wall_line_id"]) == ["WU0000001", "WU0000002", "WU0000009"]
+    assert list(frame["wall_position"]) == ["fill", "cut", "cut"]
+
+
+def test_face_polygons_outside_the_extent_are_left_out_before_the_ids():
+    # The box ends at x = 150 m: the third face (x 210 to 230 m) is outside.
+    frame = face_polygons.face_polygons(
+        step12_zones(),
+        step12_elements(),
+        step12_units(),
+        step12_ground_map(),
+        bbox=(X0, Y0, X0 + 150.0, Y0 + 100.0),
+    )
+    assert list(frame["polygon"]) == [1, 2]
+    assert list(frame["slope_id"]) == ["SP0000001", "SP0000002"]
 
 
 def test_face_polygons_carry_the_worlds_zones_and_depths():
@@ -984,7 +1033,9 @@ def write_inputs(monkeypatch):
     step12_zones().to_parquet(
         gen_urban_slope_faces.zones_path(f"w{WORLD:03d}", extent=extent)
     )
-    step12_elements().to_parquet(gen_urban_slope_faces.elements_path(extent=extent))
+    step12_elements().assign(wall_unit_id=None).to_parquet(
+        gen_urban_slope_faces.wall_elements_path(extent=extent)
+    )
     step12_units().to_parquet(gen_urban_slope_wall_units.wall_units_path(extent=extent))
     step12_ground_map().to_parquet(gen_ground_map.ground_map_path(extent=extent))
     tpi_path = gen_terrain_derivatives.terrain_path(
@@ -1018,7 +1069,7 @@ def test_the_step_prints_the_flat_land_walls_it_skips(capsys):
         ["C1-RW01", "C2-RW01", "C9-RW01"],
         ["WL0000001", "WL0000002", "WL0000099"],
         ["small", "large", "small"],
-        ["modern", "poor", "modern"],
+        [MODERN, OLD, MODERN],
     )
     walls.loc[[0, 2], "is_flatland"] = True
     step.describe_flatland_walls(three_polygons(), walls)
@@ -1060,13 +1111,15 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
     by_id = written.set_index("slope_id")
     assert by_id.loc["SP0000001", "site_class"] == 1
     assert by_id.loc["SP0000001", "pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
+    # The packaged curve of the small modern wall, shifted for its unit's
+    # fill, then converted at the cell's ratio.
+    packaged = wall_type_fragility.load_wall_type_fragility().set_index(
+        list(wall_type_fragility.TABLE_KEY)
+    )
+    assert by_id.loc["SP0000001", "wall_type"] == MODERN
     assert by_id.loc["SP0000001", "theta_base"] == pytest.approx(
-        fragility.load_retaining_wall_fragility().pipe(
-            fragility.wall_curve,
-            wall_class="unnamed",
-            size_class="small",
-            initial_condition="modern",
-        )["theta"]
+        packaged.loc[(MODERN, "small"), "theta"]
+        * wall_type_fragility.FILL_CAPACITY_FACTOR
         * 1.2
     )
     assert by_id.loc["SP0000003", "site_class"] == 5

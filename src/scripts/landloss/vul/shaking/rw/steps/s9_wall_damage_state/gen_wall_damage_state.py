@@ -1,7 +1,7 @@
 """Decide which flat-land retaining walls the shaking wrote off.
 
 Reads one exposure world's wall population and one earthquake's PGV field,
-keeps the walls on flat land, evaluates each wall's published fragility curve at
+keeps the walls on flat land, evaluates each wall's type fragility curve at
 the PGV it saw, and draws a damage state per wall against that probability.
 
     uv run --frozen python src/scripts/landloss/vul/shaking/rw/steps/s9_wall_damage_state/gen_wall_damage_state.py
@@ -13,8 +13,8 @@ over the same extent.
 **Flat-land walls only.** A wall on sloping land stands on the edge of an urban
 failure polygon, and whether it fails is decided with that polygon by landslide
 step 9 (``s9_urban_slope_realisation``); drawing it here as well would fail it
-twice. A wall on NLM flat land has no polygon, so it is drawn here, on the
-published wall curve, and nowhere else.
+twice. A wall on NLM flat land has no polygon, so it is drawn here, on its
+wall type curve, and nowhere else.
 
 Two damage states only, **no damage** and **replace**. Repair is not modelled
 because very few damaged walls are repaired in practice, so the state is a coin
@@ -22,9 +22,10 @@ weighted by the fragility rather than a position on a scale. The fragility
 returns a **probability of failure at the ground motion the wall saw**, which is
 what a fragility curve is, and the state is a draw against it.
 
-The curve is the ``retaining-wall-fragility.csv`` row for the wall's size class
-and initial condition (one unnamed wall class until the classes are named). A
-row published on PGA is converted to PGV at the wall's own PGV/PGA ratio: step
+The curve is the ``retaining-wall-type-fragility.csv`` row for the wall's type
+and size class, its PGA median scaled by the wall's position (0.85 retaining
+fill, 1.15 retaining a cut, unchanged where unknown). It is converted from PGA
+to PGV at the wall's own PGV/PGA ratio: step
 3's PGV grid over the unscaled TS1170.5 PGA grid at ``RETURN_PERIOD_YR``, both
 on the step 2 site class grid, sampled at the wall's midpoint. The ratio does
 not depend on the realisation, because steps 4 and 5 scale PGA and PGV by one
@@ -49,7 +50,11 @@ from landloss.domain.loss_contract import (
     REALISATION_ID_COLUMN,
     RW_ID_COLUMN,
 )
+from landloss.exposure.rw.wall_type import AGE_BIN_COLUMN
 from landloss.hazard.landslide.urban import fragility as urban_fragility
+from landloss.hazard.landslide.urban.wall_type_fragility import (
+    load_wall_type_fragility,
+)
 from landloss.hazard.realisation import realisation_seed
 from landloss.hazard.shaking.site_class import demand_on_site_class_grid
 from landloss.io.area_of_interest import extent_suffix
@@ -57,7 +62,6 @@ from landloss.io.ts1170 import get_ts1170_pga
 from landloss.vul.shaking.fragility import (
     DAMAGE_STATE_COLUMN,
     FAILURE_PROBABILITY_COLUMN,
-    INITIAL_CONDITION_COLUMN,
     PGV_IM,
     PGV_PGA_RATIO_COLUMN,
     REPLACE,
@@ -65,6 +69,8 @@ from landloss.vul.shaking.fragility import (
     THETA_BASE_PGA_G_COLUMN,
     THETA_COLUMN,
     WALL_FRAGILITY_COLUMNS,
+    WALL_POSITION_COLUMN,
+    WALL_TYPE_COLUMN,
     draw_damage_states,
     wall_failure_probability,
 )
@@ -105,7 +111,9 @@ POPULATION_COLUMNS = [
     RW_ID_COLUMN,
     CLAIM_ID_COLUMN,
     SIZE_CLASS_COLUMN,
-    INITIAL_CONDITION_COLUMN,
+    WALL_TYPE_COLUMN,
+    AGE_BIN_COLUMN,
+    WALL_POSITION_COLUMN,
     "height_m",
     "length_m",
     IS_FLATLAND_COLUMN,
@@ -265,11 +273,11 @@ def describe_states(states):
         else "NaN"
     )
     print(
-        f"  {len(converted):,} walls on PGA-published curves, converted at a "
+        f"  {len(converted):,} walls on PGA curves, converted at a "
         f"PGV/PGA ratio of {ratio_range}"
     )
-    print("  median theta (m/s) by size class and condition:")
-    by_curve = states.groupby([SIZE_CLASS_COLUMN, INITIAL_CONDITION_COLUMN])
+    print("  median theta (m/s) by wall type and size class:")
+    by_curve = states.groupby([WALL_TYPE_COLUMN, SIZE_CLASS_COLUMN])
     print(by_curve[THETA_COLUMN].median().to_string())
 
     replaced = states[states[DAMAGE_STATE_COLUMN] == REPLACE]
@@ -290,7 +298,7 @@ def main(*, extent, world_ids, realisation_ids, return_period_yr):
         return_period_yr: The return period of the TS1170.5 demand the PGV/PGA
             ratio is taken at.
     """
-    table = urban_fragility.load_retaining_wall_fragility()
+    table = load_wall_type_fragility()
 
     # The ratio is realisation-free: step 3's PGV over the unscaled PGA, both on
     # the site class grid, so it is built once for every world and earthquake.

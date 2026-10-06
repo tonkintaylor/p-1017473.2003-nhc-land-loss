@@ -36,3 +36,9 @@ USE_CACHED_LAYERS = True
 # a road frontage rather than a boundary between neighbours. Read by
 # gen_wall_lines.py.
 ROAD_FRONTAGE_DISTANCE_M = 5.0
+
+# The extent exposure step 8 was run over, whose property ages
+# (gen_rwt_age.py) and per-suburb age table (table_rwt_age_by_suburb.py)
+# gen_wall_age.py reads. Step 8 is run over the full extent and a smaller
+# extent's walls are found in it by claim id, so this need not match EXTENT.
+AGE_EXTENT = "full"

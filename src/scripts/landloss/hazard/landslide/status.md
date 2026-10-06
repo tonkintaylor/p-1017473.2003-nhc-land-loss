@@ -377,6 +377,75 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   still the old placeholder, not the per-element one. These counts
   predate the review fixes of 2026-10-05 (spine, corner rule, GNS-only and
   stacked title property, NZMM weight); step 12 must be rerun.
+  - **Every wall on a siz has a polygon (the lead, 2026-10-06).** A pif needs
+    at least three pips (`BETA_MIN_PIF_PIPS`); every element a siz grows is
+    kept even where the element keep rule would drop it; the width behind
+    every polygon's crest is at least half its height and 1 m
+    (`BETA_MIN_EVACUATED_WIDTH_H`, `BETA_MIN_EVACUATED_WIDTH_M`), walled or
+    not; and a GNS-only piece joins a pif's unit by the 5 m merge only
+    within 45° of the pif's strike. Rerun over the pilot through step 9:
+    6,892 pifs (was 12,015), 4,953 sizs (8,223), 8,729 elements (9,204;
+    164 kept only by the siz rule), 5,002 wall units (7,333), 2,609
+    expected walls, evacuated 681,973 m² walled, 666,087 m² bare and
+    679,143 m² in world 0 (640,878, 612,654 and 632,018 m² before). The
+    floor sets every polygon's width on the pilot, so the walled and bare
+    widths are now the same. 185 of world 0's 1,570 insured sloping walls
+    have no polygon in step 9 (573 of 2,004 before): 175 GNS-only, 4 on
+    `small` pifs and 6 at the DEM margin step 8 leaves out.
+  - **Buildings, wall lines and boundaries (the lead, 2026-10-06).** Pifs
+    with most of their pips in a LINZ building outline are dropped (334 on
+    the pilot); each wall unit is one line of at most 3 bends and no
+    section under 3 m (`WALL_MAX_BENDS`, `WALL_MIN_SEGMENT_M`), whose length
+    is the exposure's; and units join across property boundaries, carrying
+    their length in every property they enter by 1 m, which each counts the
+    unit as a wall in the claim update. Pilot: 6,558 pifs, 4,676 sizs, 8,425
+    elements, 3,961 units (1,908 expected walls), 668,912 m² evacuated in
+    world 0, and 48 of 1,141 insured sloping walls with no polygon (42
+    GNS-only).
+  - **Long walls, GNS-only polygons, setting and tall faces (the lead,
+    2026-10-06).** Joined walls are cut where a fourth bend would be needed
+    to follow them within 2 m, then at property boundaries over 50 m; a
+    GNS-only unit gets an element and the minimum polygon on its line
+    (`add_line_elements`, in `gen_urban_slope_wall_zones.py`, which now also
+    builds the walled and bare bounds); the prior takes 2.0 on a road
+    frontage and 1.5 on a property boundary, and tapers from 5 m to 0.1 at
+    8 m of face. Pilot: 4,647 units, 2,639 expected walls (2,752 without the
+    taper), 99% of pif spine points within 2 m of a wall line, 15 of 1,668
+    insured walls with no polygon, 32% of walled units under 1.5 m.
+  - **Pif pieces and small pifs (the lead, 2026-10-06).** The siz table,
+    step 13 and the wall units use the 20 m pif pieces the growth uses
+    (`parent_pif_id` kept; each piece takes its whole pif's siz test), and
+    the units of `small` pifs get a line element as the GNS-only ones do.
+    Pilot: 10,379 pieces of 6,558 pifs, 6,713 units (417 with more than one
+    line, up to 5; the longest 161 m), 3,347 expected walls, 11 of 1,945
+    insured walls with no polygon (10 in the DEM margin, 1 GNS-only line
+    wholly on other elements), 24% of walled units under 1.5 m.
+  - **Pifs cut by the wall rules, near drop height (the lead,
+    2026-10-06).** The pifs are cut along their spines by the walls' bends
+    rule (one implementation, `bend_split`) with a 50 m cap in place of the
+    20 m split, and a wall's height is the 80th percentile of its pips' near
+    drops (the lowest cell within 3 m below), read in step 12, not step
+    13's walk to the foot. Pilot: 7,762 pieces, 5,540 units (241 with more
+    than one line), 3,462 expected walls, 9 units over 5 m (2,013 before),
+    23 of 1,963 insured walls with no polygon (22 in the DEM margin), 18% of
+    walled units under 1.5 m against 54%; elements over 50 m long rose from
+    16 to 55.
+  - **The rules on every output (the lead, 2026-10-06).** No pif under 3 m
+    (`BETA_MIN_PIF_LENGTH_M`); each pif piece's line is the stretch it was
+    cut on; every wall unit is one line of 3 to 50 m with at most 3 bends
+    (walls still over 50 m after the boundary cut are cut into equal
+    pieces), asserted in the library. Wall height the 70th percentile of the
+    near drops within 2 m (0.6 had given 72% under 1.5 m). Pilot: 6,163 pieces and 4,834 units, none
+    breaking a rule, none multi-line, longest 50 m; 3,272 expected walls;
+    73% of walled units under 1.5 m (70% pif, 97% GNS-only) against 54%;
+    23 of 1,830 insured walls with no polygon (22 in the DEM margin).
+  - **Turning cap and the 50 m cap order (the lead, 2026-10-06).** No pif
+    piece or wall turns more than 185° in all (`MAX_TOTAL_TURN_DEG`); a line
+    over 50 m is cut at its own bends, then (walls only) at property
+    boundaries, then evenly. Pilot: 6,220 pieces (387 cut at bends, 72
+    evenly), 4,848 units (540 cut at bends, 75 at boundaries, 61 evenly),
+    no rule broken, 3,272 expected walls, 21 of 1,775 insured walls with no
+    polygon, 72% of walled units under 1.5 m.
 - **Step 13, pif cut and fill (2026-10-05).**
   `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
@@ -457,16 +526,24 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 10. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
     phase 3), after the lead decides the review's proposals for the exponent,
     the cap, the urban share and the source fraction.
-11. Rerun step 12's faces, step 13, then step 12's wall units, zones and
-    checks over the pilot, for the new wall height and class prior, and
-    recheck the height shape against Anderson et al. [anderson_2015] (54%
-    under 1.5 m).
+11. Recheck the height shape against Anderson et al. [anderson_2015]: the
+    pilot rerun of 2026-10-06 (step 12's faces, step 13, wall units, zones
+    and checks, through steps 8 and 9) puts 31% of the walled units under
+    1.5 m, against 54%.
 12. Run `gen_all.py` over the pilot, so steps 8 and 9 run on step 12's
     zones, review their counts, then remove steps 6 and 7 (step 12 plan,
     phase 5).
-13. Add walls on the flat land, where no wall unit is today, and a rule for
-    a wall on a property boundary (one unit each side: count it on both, or
-    tie the two to one draw).
+13. Add walls on the flat land, where no wall unit is today. (A wall on a
+    property boundary is one unit counted on each property it enters,
+    2026-10-06; the loss side's use of it is a vul rw Next item.)
+14. **Evaluate the wall curves in PGA in step 9** (a potential future step,
+    the lead, 2026-10-06; step 9 plan, "Potential future improvements"): the
+    wall curves are published in PGA [koutsoupaki_2023] and step 8 converts
+    their medians to PGV with the TS1170.5 PGV/PGA ratio. That is exact
+    while shaking steps 4 and 5 scale PGA and PGV by one draw, but step 9
+    could sample the realised PGA field at the walled polygons and evaluate
+    the curves in PGA directly, removing the ratio and the site class from
+    the wall median.
 
 ## Validation
 

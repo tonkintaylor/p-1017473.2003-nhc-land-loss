@@ -117,9 +117,10 @@ built against.
 - [ ] Set the `low` and `high` entries of `URBAN_RATE_FACTORS` from the
       spread between the anchors read generously and conservatively (plan
       section 6); the committed 1.5 and 1/1.5 are placeholders.
-- [ ] Confirm the wall-curve reading with the project lead: DS3 (`extensive`,
-      Ux = 10% of H) as "replace", the 3 m and 6 m walls for the three size
-      classes, and Fs = 1.1 as the poor condition.
+- [x] Confirm the wall-curve reading with the project lead: superseded on
+      2026-10-06 by the wall type curves, which the lead confirmed on DS2
+      (`moderate`, Ux = 5% of H) as "replace", the 3 m and 6 m walls for the
+      three size classes (`.agents/plans/assigning-retaining-wall-types.md`).
 
 ## Literature review (2026-10-02)
 
@@ -147,9 +148,13 @@ for the lead:
 
 ## Phase 3 — The researched rules
 
-- [ ] Name the six wall classes and give the table a row per class, size and
-      condition; `wall_class` is `unnamed` until then and
-      `assign_fragility()` looks every wall up under that one class.
+- [x] Name the wall classes and give the table a row per class and size:
+      seven wall types in `retaining-wall-type-fragility.csv`, read through
+      `wall_type_fragility.wall_type_curves()` on the drawn wall's
+      `wall_type`, `size_class` and own `wall_position` (fill 0.85, cut
+      1.15). `wall_class` and `initial_condition` are gone from the model
+      file; `wall_type` replaces them, and `retaining-wall-fragility.csv` is
+      retired (2026-10-06).
 - [ ] Replace the amplification factor with the researched one (proposal
       for the lead, faces plan phase 3, reviewed 2026-10-02): the NZTA crest
       factors by face height and ridge or terrace setting, 1.0 to 1.4 for
@@ -158,8 +163,10 @@ for the lead:
       the crest (`F07`). The Monteith 1.2 to 1.4 at slope tops
       (`sr2019-051-F35`) sits inside the ridge range. The placeholder's
       steepness term, which gives every 60° wall 1.5, goes.
-- [ ] A dwelling-age source for the wall population, which would move the
-      share of poor walls and so the share of polygons on the lower curve.
+- [x] A dwelling-age source for the wall population: exposure step 6's
+      `gen_wall_age.py` (QV dwelling age, then title age) sets each wall's
+      age bin and so its type, which replaced the poor share (2026-10-06,
+      `.agents/plans/assigning-retaining-wall-types.md`).
 
 ## Potential future improvements
 

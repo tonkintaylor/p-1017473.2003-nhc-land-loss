@@ -149,6 +149,38 @@ EIL_PROBABILITY_SOURCE_PATH = "EILProb_Wellington/EILProb_PGA2g.tif"
 BETA_SCENARIO_MW = 8.1
 BETA_SITE_DISTANCE_KM = 25.0
 
+# The Vs30, in m/s, a 100 m shaking cell takes from its majority ground map
+# material (landslide step 4) where the Foster et al. (2019) model has no value
+# and no Foster-classed cell lies within 200 m: mostly reclaimed ground along
+# the harbour. Judgement, set by the lead on 2026-10-06 (fill at 200 m/s); the
+# lead confirmed the whole table on 2026-10-06 (every material, the five added
+# ones and rock at 750 m/s in Class II included). Replaced by mapped or
+# measured Vs30 where it exists. TS1170.5 Table 3.3
+# bounds are upper inclusive (VS30_UPPER_BOUNDS_M_S), so each value sits at the
+# top of the class noted. A material left out, or None, gives no Vs30.
+BETA_GROUND_MAP_DEFAULT_VS30_M_S: dict[str, float | None] = {
+    # Loose end-tipped or uncontrolled fill and reclamation: Class VI.
+    "fill_uncontrolled": 200.0,
+    "reclamation": 200.0,
+    # Compacted fill, stiffer than tipped fill: Class V.
+    "fill_engineered": 250.0,
+    # Hutt and Wellington valley floor alluvium, soft to firm: Class V.
+    "alluvium": 250.0,
+    # Slope debris over rock, firm to stiff: Class IV.
+    "colluvium": 300.0,
+    # Wind-blown silt mantling the hills, firm to stiff: Class IV.
+    "loess": 300.0,
+    # Greywacke with weathered cover; Class I's 3 m cover test cannot be checked
+    # here, so 750 m/s keeps it at Class II.
+    "rock": 750.0,
+    "rock_uw_mw": 750.0,
+    # Highly weathered or crushed greywacke, nearer a stiff soil: Class III.
+    "rock_hw_cw": 450.0,
+    "rock_crushed": 450.0,
+    # No material, no basis for a Vs30: the cell stays unclassed.
+    "unknown": None,
+}
+
 # The NZMM address land attributes extract for the four Wellington councils,
 # below the project's SourceMaterial folder on T:. Read by
 # landloss.io.nzmm_land_attributes.get_nzmm_land_attributes. Sensitive: it sits
@@ -374,6 +406,29 @@ BETA_FILL_WALL_FACTOR = 1.3
 # a bank rather than an earthwork, and walls are built to retain earthworks.
 # Replaced by T-50.
 BETA_NATURAL_WALL_FACTOR = 0.5
+# What a unit lying mostly (at least half its line) within
+# BETA_WALL_BOUNDARY_DISTANCE_M of a non-road property boundary multiplies its
+# prior by, and one mostly that near a road parcel's boundary (a road
+# frontage, which wins where both hold). Approved by the lead on 2026-10-06:
+# on the pilot, candidate pifs within 2 m of a property boundary carry a GNS
+# mapped wall 20% of the time against 8% off one, and 32% against 12% on a
+# road frontage, consistently within the height bands. Set below those raw
+# ratios because GNS maps the walls visible from above, and a wall on a
+# boundary or a frontage may be easier to see. Replaced by T-50.
+BETA_BOUNDARY_WALL_FACTOR = 1.5
+BETA_ROAD_FRONTAGE_WALL_FACTOR = 2.0
+# How near a property or road parcel boundary, in metres, a wall unit's line
+# lies to be on it, for the two factors above.
+BETA_WALL_BOUNDARY_DISTANCE_M = 2.0
+# The prior of a unit whose wall height (its 80th percentile pip drop) is over
+# BETA_TALL_FACE_TAPER_START_M metres falls linearly to
+# BETA_TALL_FACE_MIN_FACTOR of itself at BETA_TALL_FACE_TAPER_END_M and stays
+# there above (the lead, 2026-10-06). Judgement: a face over about 5 m is
+# rarely retained in full on a residential lot, and above about 8 m it is a
+# cut slope or a natural face, not a wall. Replaced by T-50.
+BETA_TALL_FACE_TAPER_START_M = 5.0
+BETA_TALL_FACE_TAPER_END_M = 8.0
+BETA_TALL_FACE_MIN_FACTOR = 0.1
 # The least probability of a wall unit with a GNS mapped wall on it. Not 1,
 # because the mapping is from imagery and a line can be a road batter or the
 # neighbour's wall. Replaced by T-50.

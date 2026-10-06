@@ -9,23 +9,18 @@ from shapely.geometry import LineString, MultiLineString, box
 from landloss.domain import constants
 from landloss.exposure.land.extent import build_claim_properties
 from landloss.exposure.rw import lines as wl
-from landloss.exposure.rw.beta_population import BETA_POOR_SHARE
+from landloss.exposure.rw import wall_probability
 from landloss.exposure.rw.population import REQUIRED_COLUMNS
 from landloss.exposure.rw.wall_probability import (
     BETA_FLATLAND_MAX_PROBABILITY,
     BETA_MAPPED_WALL_PROBABILITY,
-    BETA_POST_1990_POOR_SHARE,
-    BETA_PRE_1990_POOR_SHARE,
     BETA_ROCK_CUT_FACTOR,
     BETA_SOURCE_PROBABILITY,
-    BETA_UNCONSENTED_POOR_SHARE,
-    POOR_BASES,
     PROBABILITY_COLUMNS,
     WALL_BASES,
     claim_of_properties,
     gen_unit_probability_table,
     line_wall_probability,
-    poor_condition_probability,
     wall_probability_table,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
@@ -45,10 +40,9 @@ def lines_frame(
     flat=False,
     face_height_m=2.0,
     claim_id="C-1",
-    age=None,
 ):
     """A candidate wall lines frame with every contract column, n equal rows."""
-    ages = pd.array([pd.NA if age is None else age] * n, dtype="Int64")
+    ages = pd.array([pd.NA] * n, dtype="Int64")
     return gpd.GeoDataFrame(
         {
             "wall_line_id": [f"WL{i + 1:07d}" for i in range(n)],
@@ -178,51 +172,29 @@ def test_a_missing_column_is_refused():
         line_wall_probability(lines_frame().drop(columns=["is_rock_cut"]))
 
 
-# --- the condition probability -----------------------------------------------
+# --- the retired condition -------------------------------------------------
 
 
-def poor(height_m, age=None):
-    ages = pd.Series(pd.array([age], dtype="Int64"))
-    p, basis = poor_condition_probability(np.array([height_m]), ages)
-    return float(p[0]), str(basis[0])
-
-
-def test_a_tall_wall_with_no_age_takes_the_default():
-    assert poor(2.0) == (pytest.approx(BETA_POOR_SHARE), "default")
-
-
-def test_a_wall_under_the_consent_height_is_more_likely_poor():
-    p, basis = poor(constants.UNCONSENTED_WALL_HEIGHT_M - 0.1)
-    assert p == pytest.approx(BETA_UNCONSENTED_POOR_SHARE)
-    assert basis == "height"
-    assert BETA_UNCONSENTED_POOR_SHARE > BETA_POOR_SHARE
-
-
-def test_the_consent_height_itself_is_not_under_it():
-    assert poor(constants.UNCONSENTED_WALL_HEIGHT_M)[1] == "default"
-
-
-def test_a_dwelling_age_overrides_the_height_rule():
-    assert poor(0.8, age=1970) == (pytest.approx(BETA_PRE_1990_POOR_SHARE), "age")
-    assert poor(0.8, age=2000) == (pytest.approx(BETA_POST_1990_POOR_SHARE), "age")
-    assert poor(3.0, age=1990) == (pytest.approx(BETA_POST_1990_POOR_SHARE), "age")
-    assert poor(3.0, age=1980) == (pytest.approx(BETA_PRE_1990_POOR_SHARE), "age")
-
-
-def test_a_nan_height_takes_the_default():
-    assert poor(np.nan) == (pytest.approx(BETA_POOR_SHARE), "default")
+@pytest.mark.parametrize(
+    "name",
+    [
+        "poor_condition_probability",
+        "BETA_UNCONSENTED_POOR_SHARE",
+        "BETA_PRE_1990_POOR_SHARE",
+        "BETA_POST_1990_POOR_SHARE",
+        "BUILDING_ACT_DECADE",
+        "POOR_BASES",
+        "AGE_COLUMN",
+    ],
+)
+def test_the_condition_probability_is_retired(name):
+    # The wall type carries what the condition did, so none of it is left.
+    assert not hasattr(wall_probability, name)
 
 
 def test_the_bases_are_the_contract_vocabulary():
-    assert set(POOR_BASES) == {"default", "height", "age"}
     assert set(WALL_BASES) == {"mapped", "source_prior", "rock_cut", "flatland_cap"}
-
-
-def test_mismatched_condition_inputs_are_refused():
-    with pytest.raises(ValueError, match="must match"):
-        poor_condition_probability(
-            np.array([1.0, 2.0]), pd.Series(pd.array([pd.NA], dtype="Int64"))
-        )
+    assert PROBABILITY_COLUMNS == ("p_wall", "p_wall_basis")
 
 
 # --- the wall units -----------------------------------------------------------
@@ -294,11 +266,28 @@ def test_the_unit_table_carries_what_the_draw_reads():
     assert table["claim_id"].iloc[0] == "U1"
     assert table["size_class"].tolist() == ["small", "medium", "large"]
     assert table["wall_position"].tolist() == ["fill", "cut", "cut"]
-    assert table["p_poor_basis"].tolist() == ["height", "default", "default"]
     assert not table["is_flatland"].any()
     assert table["p_wall"].tolist() == pytest.approx([0.5, 0.5, 0.5])
-    assert table["dwelling_age_decade"].isna().all()
+    assert not {"p_poor", "p_poor_basis", "dwelling_age_decade"} & set(table.columns)
     assert table.crs == CRS
+
+
+def test_the_unit_table_carries_the_lengths_in_each_property():
+    units = units_frame(height_m=(2.0, 2.0), property_id=("P1", "P2"))
+    units["property_lengths_m"] = [
+        [{"property_id": "P1", "length_m": 8.0}],
+        [
+            {"property_id": "P2", "length_m": 6.0},
+            {"property_id": "P1", "length_m": 2.0},
+        ],
+    ]
+    units["n_properties"] = [1, 2]
+    table = gen_unit_probability_table(units, pd.Series(dtype=object))
+    assert table["n_properties"].tolist() == [1, 2]
+    assert table["property_lengths_m"].iloc[1][1] == {
+        "property_id": "P1",
+        "length_m": 2.0,
+    }
 
 
 def test_a_unit_with_no_height_is_small_not_large():
@@ -322,20 +311,19 @@ def test_the_table_carries_every_line_column_and_the_probability_columns():
     assert len(table) == 4
     assert table.crs == CRS
     assert table["p_wall"].between(0, 1).all()
-    assert table["p_poor_basis"].tolist() == ["default"] * 3 + ["height"]
     assert table["p_wall_basis"].iloc[3] == "mapped"
     assert table.geometry.geom_equals(lines.geometry).all()
 
 
-def test_the_table_reads_the_dwelling_age_where_held():
-    table = wall_probability_table(lines_frame(age=1960))
-    assert table["p_poor_basis"].iloc[0] == "age"
-    assert table["p_poor"].iloc[0] == pytest.approx(BETA_PRE_1990_POOR_SHARE)
+def test_the_line_table_carries_what_the_draw_reads():
+    table = wall_probability_table(lines_frame(n=2))
+    assert set(REQUIRED_COLUMNS) <= set(table.columns)
+    assert "p_poor" not in table.columns
 
 
-def test_the_table_treats_a_missing_age_column_as_unheld():
+def test_the_table_does_not_need_a_dwelling_age():
     table = wall_probability_table(lines_frame().drop(columns=["dwelling_age_decade"]))
-    assert table["p_poor_basis"].iloc[0] == "default"
+    assert table["p_wall_basis"].iloc[0] == "source_prior"
 
 
 def test_the_table_refuses_a_missing_input_column():
@@ -375,9 +363,8 @@ def test_gen_wall_probability_main_writes_one_row_per_unit(tmp_path, redirected_
     assert written["claim_id"].isna().tolist() == [False, False, True]
     assert written["claim_id"].dropna().tolist() == ["U1", "F1"]
     assert written["size_class"].tolist() == ["small", "medium", "small"]
-    assert written["p_poor_basis"].tolist() == ["height", "default", "default"]
     assert set(REQUIRED_COLUMNS) <= set(written.columns)
-    assert written["dwelling_age_decade"].isna().all()
+    assert not {"p_poor", "p_poor_basis"} & set(written.columns)
     assert written.crs == CRS
 
 

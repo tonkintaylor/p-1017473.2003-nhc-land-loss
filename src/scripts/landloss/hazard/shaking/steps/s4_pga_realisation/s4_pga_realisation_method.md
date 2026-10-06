@@ -24,9 +24,11 @@
   area, and 0.93 to 1.08 g on Class V. The run prints the range per class.
 - **Cells step 2 filled carry the PGA of the class they were given**: Foster's
   Vs30 has no value along parts of the harbour edge, and step 2 fills those
-  cells from the nearest classed cell within 200 m. Over the pilot every
-  retaining wall now reads a PGA. Cells further than 200 m from a classed
-  cell carry none.
+  cells from the nearest classed cell within 200 m, then the rest from a
+  default Vs30 for their ground map material. Over the pilot every retaining
+  wall and every urban slope polygon now reads a PGA; 8 cells on reclaimed
+  fill are Class VI, at 0.97 g. Only cells off the ground map (open sea)
+  carry none.
 - **A realisation is the field scaled by one lognormal draw**, from
   `landloss.hazard.shaking.pga.beta_pga_realisation`, against a 10% coefficient
   of variation. The multiplier has a mean of one, and **one multiplier covers
