@@ -1,7 +1,8 @@
 """Step 12: wall units on the pifs, their probability, and one draw per world.
 
-Joins the candidate pifs and the GNS-only pieces of each property into wall
-units, reads each pif's wall height and cut and fill class from landslide step
+Joins the candidate pifs and the GNS-only pieces into wall units across
+property boundaries, draws each unit as one line of few straight sections,
+records its length in every property it enters, reads each pif's wall height and cut and fill class from landslide step
 13, puts a prior on each, lifts the units GNS maps to the floor, updates
 every property's units on the walls its claim report lists (and, flagged
 unreliable, on NZMM), and draws each unit walled or not per exposure world
@@ -46,8 +47,9 @@ from landloss.hazard.landslide.wall_units import (
     gen_claim_holdout,
     gen_gns_floor,
     gen_gns_wall_features,
-    gen_pif_wall_heights,
     gen_property_wall_records,
+    gen_unit_boundary_flags,
+    gen_unit_properties,
     gen_wall_draws,
     gen_wall_members,
     gen_wall_prior,
@@ -71,7 +73,6 @@ from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slo
 )
 from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
     pif_cut_fill_path,
-    pif_cut_fill_pips_path,
 )
 
 # The siz table columns that only a run of the faces script with the spines
@@ -139,45 +140,32 @@ def read_gns_only(*, extent):
     return gns_only
 
 
-def read_cut_fill(*, extent, wall_height_quantile):
-    """Step 13's class and the wall height of every pif, refused if stale.
+def read_cut_fill(*, extent):
+    """Step 13's cut and fill class of every pif, refused if stale.
 
-    Args:
-        extent: The build extent.
-        wall_height_quantile: The quantile of the pips' face drops a pif's
-            wall height is.
+    The wall height is the siz table's ``near_drop_p80_m`` (2026-10-06), so
+    only the class is read from step 13.
 
     Returns:
-        One row per pif, indexed by ``pif_id``, with ``cut_fill_class``,
-        ``face_drop_m`` and ``wall_height_m``.
+        One row per pif, indexed by ``pif_id``, with ``cut_fill_class``.
 
     Raises:
-        FileNotFoundError: If step 13 has not written its tables.
-        ValueError: If either table is older than the siz table.
+        FileNotFoundError: If step 13 has not written its pif table.
+        ValueError: If it is older than the siz table.
     """
     sizs_written = siz_table_path(extent=extent).stat().st_mtime
     rerun = (
         "run landslide step 13 (steps/s13_pif_cut_fill/gen_pif_cut_fill.py) "
         "after gen_urban_slope_faces.py and before gen_urban_slope_wall_units.py"
     )
-    for path in (
-        pif_cut_fill_path(extent=extent),
-        pif_cut_fill_pips_path(extent=extent),
-    ):
-        if not path.exists():
-            msg = f"{path} not found: {rerun}"
-            raise FileNotFoundError(msg)
-        if path.stat().st_mtime < sizs_written:
-            msg = f"{path} is older than the siz table: {rerun}"
-            raise ValueError(msg)
-    pifs = pd.read_parquet(
-        pif_cut_fill_path(extent=extent), columns=["cut_fill_class", "face_drop_m"]
-    )
-    pips = pd.read_parquet(
-        pif_cut_fill_pips_path(extent=extent), columns=["pif_id", "z", "foot_z"]
-    )
-    heights = gen_pif_wall_heights(pips, quantile=wall_height_quantile)
-    return pifs.join(heights)
+    path = pif_cut_fill_path(extent=extent)
+    if not path.exists():
+        msg = f"{path} not found: {rerun}"
+        raise FileNotFoundError(msg)
+    if path.stat().st_mtime < sizs_written:
+        msg = f"{path} is older than the siz table: {rerun}"
+        raise ValueError(msg)
+    return pd.read_parquet(path, columns=["cut_fill_class"])
 
 
 def read_records(*, properties, bbox):
@@ -249,6 +237,25 @@ def describe_records(records, held_out, missing):
     )
 
 
+def describe_lines(units):
+    """Print how the units' lines were simplified and the properties they enter."""
+    original = units["length_original_m"].sum()
+    print(
+        f"Unit lines: {units['length_m'].sum():,.0f} m simplified from "
+        f"{original:,.0f} m of members; bends "
+        f"{units['n_bends'].value_counts().sort_index().to_dict()}"
+    )
+    counts = units["n_properties"].value_counts().sort_index().to_dict()
+    print(f"Units by the properties they enter by 1 m or more: {counts}")
+    long = units["length_m"] > 50.0
+    print(
+        f"Units over 50 m: {int(long.sum()):,}, longest "
+        f"{units['length_m'].max():,.0f} m; on a property boundary "
+        f"{int(units['on_property_boundary'].sum()):,}, on a road frontage "
+        f"{int(units['on_road_frontage'].sum()):,}"
+    )
+
+
 def main(
     *,
     extent,
@@ -261,7 +268,12 @@ def main(
     corner_gap_m,
     corner_max_deg,
     gns_only_merge_m,
-    wall_height_quantile,
+    gns_only_merge_max_angle_deg,
+    max_bends,
+    min_segment_m,
+    stray_tolerance_m,
+    max_length_m,
+    max_turn_deg,
     holdout_share,
     holdout_seed,
     use_nzmm,
@@ -281,15 +293,21 @@ def main(
         corner_gap_m: The largest gap at a corner, in metres.
         corner_max_deg: The largest turn at a corner, in degrees.
         gns_only_merge_m: A GNS-only piece this close to a pif joins it.
-        wall_height_quantile: A pif's wall height is this quantile of its
-            pips' face drops (step 13's pip table).
+        gns_only_merge_max_angle_deg: ... where its bearing is within this many
+            degrees of the pif's strike.
+        max_bends: The most bends a unit's line keeps.
+        min_segment_m: The shortest straight section of a unit's line.
+        stray_tolerance_m: How far a wall's line may stray from its members.
+        max_length_m: A longer wall is cut at its bends, then at property
+            boundaries, then into equal pieces.
+        max_turn_deg: The most a wall's line may turn in all.
         holdout_share: The share of claimed properties held out of the update.
         holdout_seed: The seed that picks them.
         use_nzmm: Whether ``p_wall`` takes the NZMM update.
         world_ids: The exposure worlds to draw.
     """
     sizs = read_sizs(extent=extent)
-    cut_fill = read_cut_fill(extent=extent, wall_height_quantile=wall_height_quantile)
+    cut_fill = read_cut_fill(extent=extent)
     gns_only = read_gns_only(extent=extent)
     bbox = dem_bbox(extent=extent)
     gns_only["step_height_m"] = step_height_m(
@@ -305,6 +323,9 @@ def main(
         morphology[morphology["Type"] == MAPPED_WALL_TYPE], snap_m=gns_feature_snap_m
     )
     members = gen_wall_members(sizs, gns_only, cut_fill)
+    properties = get_nz_property_boundaries(
+        bbox=bbox, crs=CRS, use_cache=use_cached_layers
+    )
     units = gen_wall_units(
         members,
         features,
@@ -315,17 +336,32 @@ def main(
         corner_gap_m=corner_gap_m,
         corner_max_deg=corner_max_deg,
         gns_only_merge_m=gns_only_merge_m,
+        gns_only_merge_max_angle_deg=gns_only_merge_max_angle_deg,
+        max_bends=max_bends,
+        min_segment_m=min_segment_m,
+        stray_tolerance_m=stray_tolerance_m,
+        max_length_m=max_length_m,
+        max_turn_deg=max_turn_deg,
+        properties=properties,
+    )
+    print(
+        "Stretches of joined wall no member is nearest, dropped: "
+        f"{units.attrs.get('dropped_wall_m', 0.0):,.0f} m; walls the 50 m cap "
+        f"cut, by stage: {units.attrs.get('cap_cuts', {})}"
     )
     print(
         f"{len(features):,} GNS mapped wall features; {len(members):,} members "
         f"joined into {len(units):,} wall units"
     )
+    units = (
+        units.drop(columns=["property_id", "in_exposure"])
+        .join(gen_unit_properties(units, properties))
+        .join(gen_unit_boundary_flags(units, properties))
+    )
+    describe_lines(units)
     prior = gen_wall_prior(units)
     floor = gen_gns_floor(units, prior)
 
-    properties = get_nz_property_boundaries(
-        bbox=bbox, crs=CRS, use_cache=use_cached_layers
-    )
     records = read_records(properties=properties, bbox=bbox)
     if records is None:
         records = no_records()
@@ -378,7 +414,12 @@ if __name__ == "__main__":
         corner_gap_m=config.WALL_CORNER_GAP_M,
         corner_max_deg=config.WALL_CORNER_MAX_ANGLE_DEG,
         gns_only_merge_m=config.GNS_ONLY_MERGE_M,
-        wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
+        gns_only_merge_max_angle_deg=config.GNS_ONLY_MERGE_MAX_ANGLE_DEG,
+        max_bends=config.WALL_MAX_BENDS,
+        min_segment_m=config.WALL_MIN_SEGMENT_M,
+        stray_tolerance_m=config.WALL_STRAY_TOLERANCE_M,
+        max_length_m=config.WALL_MAX_LENGTH_M,
+        max_turn_deg=config.MAX_TOTAL_TURN_DEG,
         holdout_share=config.CLAIM_HOLDOUT_SHARE,
         holdout_seed=config.CLAIM_HOLDOUT_SEED,
         use_nzmm=config.USE_NZMM_UPDATE,

@@ -54,7 +54,10 @@ The rules are the lead's (2026-10-06), built in
       `uncertain` and `unknown` at the prior from siz and height band alone.
 - [x] Each pif's wall height is the 80th percentile of its pips' drops to
       the foot of the face (`gen_pif_wall_heights`, step 12's
-      `WALL_HEIGHT_QUANTILE`), not its largest pip drop.
+      `WALL_HEIGHT_QUANTILE`), not its largest pip drop. Superseded
+      2026-10-06: the foot walk overstated the height on long batters, and
+      step 12 now reads each pip's near drop onto the siz table
+      (`near_drop_p80_m`); step 12 reads only the class from this step.
 - [ ] Report the drawn walls by class in the step 6 checks.
 
 ## Phase 4 — Improvements

@@ -56,6 +56,16 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 1. Run the step over the pilot after exposure step 6 and landslide steps 8, 1
    and 9.
+2. In the loss calculation, a wall that crosses property boundaries counts
+   as a wall on each property it enters by at least 1 m, with the length of
+   wall inside that property (2 m of wall in a property means that property
+   has a wall 2 m long), not once on its primary property at its whole
+   length (the lead, 2026-10-06). Exposure rw step 6's drawn walls and wall
+   population carry `property_lengths_m` (each property's id and length,
+   from landslide step 12's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
+   and `n_properties` for this; today each wall is one row on its primary
+   property with `length_m` its whole simplified line. The loss module is
+   not changed yet.
 
 ## Validation
 

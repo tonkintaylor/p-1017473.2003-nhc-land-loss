@@ -1,0 +1,1 @@
+Add a research figure, `fig_rw_type_fragility.py`, comparing the proposed retaining wall fragility by wall type (Koutsoupaki initial-condition rungs) with published gravity and RC cantilever curves and the Port Hills 2010-2011 failure shares by type, with a findings note beside it.

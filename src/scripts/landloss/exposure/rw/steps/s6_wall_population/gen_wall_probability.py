@@ -1,10 +1,10 @@
-"""Put the wall units' probability, a claim and a condition on each candidate wall.
+"""Put the wall units' probability and a claim on each candidate wall.
 
 Reads the wall units landslide step 12 wrote (``gen_urban_slope_wall_units.py``)
 and writes one row per unit in the shape the population draw reads: its
 ``p_wall`` as step 12 set it (prior, GNS floor and the claim report update),
-the claim it belongs to, and the probability that the wall is in poor
-condition, from the height. Each probability carries the rule that set it.
+with the rule that set it, and the claim it belongs to. The wall type is drawn
+per world by ``gen_wall_population.py``.
 
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s6_wall_population/gen_wall_probability.py
 
@@ -12,9 +12,7 @@ Run landslide step 12 first, ``gen_urban_slope_faces.py``, then step 13's
 ``gen_pif_cut_fill.py``, then ``gen_urban_slope_wall_units.py``
 (``gen_hazard.main`` runs them in that order). The LINZ
 property boundaries are read on the bbox of that step's DEM, so the cache is
-shared. No dwelling age parquet is held in this build, so
-``dwelling_age_decade`` stays null and every condition probability comes from
-the height or the default.
+shared.
 
 **Every number is judgement and none of it is evidence about Wellington.** The
 GNS mapping is one-sided: it covers Wellington City only and shows only the
@@ -37,7 +35,6 @@ import numpy as np
 from landloss.exposure.land.extent import build_claim_properties
 from landloss.exposure.rw.beta_population import SIZE_CLASSES
 from landloss.exposure.rw.wall_probability import (
-    POOR_BASES,
     claim_of_properties,
     gen_unit_probability_table,
 )
@@ -134,14 +131,10 @@ def describe_probabilities(table):
     print(_by(table, "size_class", SIZE_CLASSES, weights="p_wall").to_string())
     print("By wall position:")
     print(table["wall_position"].value_counts().to_string())
-    print("By the rule that set p_poor:")
-    poor = _by(table, "p_poor_basis", POOR_BASES)
-    poor["p_poor"] = table.groupby("p_poor_basis", observed=True)["p_poor"].mean()
-    print(poor.to_string())
 
 
 def main(*, extent, use_cached_layers):
-    """Put a claim and the condition on each wall unit and write them out.
+    """Put a claim on each wall unit and write them out.
 
     Args:
         extent: The extent to run over, a name from

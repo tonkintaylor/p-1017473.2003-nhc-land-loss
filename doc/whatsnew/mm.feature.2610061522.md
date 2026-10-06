@@ -1,0 +1,1 @@
+Move the retaining wall type fragility to the moderate damage state (Koutsoupaki DS2, 5% of H), since moderate damage usually leads to replacement in a claim; new timber pole walls take their curve times 1.3 and engineered modern walls times 1.5, and the figure's published comparators and Port Hills shares move to their moderate states too.

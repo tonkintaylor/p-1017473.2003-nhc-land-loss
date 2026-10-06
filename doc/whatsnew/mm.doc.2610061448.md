@@ -1,0 +1,1 @@
+Add the plan for assigning retaining wall types (`.agents/plans/assigning-retaining-wall-types.md`) and record it in the retaining wall exposure and shaking vulnerability status files; the dwelling age for the wall type is the QV rating roll's building age decade. The type fragility figure now draws de Silva et al. (2026) at a yield acceleration of 0.5 g and its DS2.

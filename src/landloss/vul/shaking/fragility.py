@@ -13,10 +13,11 @@ against. It stays a probability however well the hazard is resolved.
 
 Two fragilities live here.
 
-- **Retaining walls on flat land** take the published wall curve for their
-  size class and initial condition, read from ``retaining-wall-fragility.csv``
-  through :mod:`landloss.hazard.landslide.urban.fragility`, which owns the
-  table, the lognormal form and the conversion of a PGA-based median to PGV.
+- **Retaining walls on flat land** take the wall type curve for their type
+  and size class, its PGA median scaled by the wall's fill or cut position,
+  from :func:`landloss.hazard.landslide.urban.wall_type_fragility.wall_type_curves`
+  (``retaining-wall-type-fragility.csv``), converted to PGV by
+  :func:`landloss.hazard.landslide.urban.fragility.pga_to_pgv_theta`.
   :func:`wall_failure_probability` evaluates that curve at the PGV each wall
   saw, with no topographic amplification and no rate factor (contract section
   6 of ``.agents/plans/urban-slope-build-contract.md``). Walls on sloping land
@@ -35,6 +36,7 @@ import numpy as np
 import pandas as pd
 
 from landloss.hazard.landslide.urban import fragility as urban_fragility
+from landloss.hazard.landslide.urban import wall_type_fragility
 
 NO_DAMAGE = "no damage"
 REPLACE = "replace"
@@ -56,16 +58,16 @@ BETA_FAILURE_PROBABILITY = 0.7
 WALL_AMP_FACTOR = 1.0
 WALL_RATE_FACTOR = 1.0
 
-# The two values of the wall table's ``im`` column (contract section 8.1): the
-# intensity measure a published curve is in, defined once in the urban
-# fragility module. Every evaluated fragility is on PGV, so PGV_IM is also the
-# name of the PGV column the step writes.
+# The intensity measure the wall type curves are published on, and the one
+# every evaluated fragility is on, defined once in the urban fragility module.
+# PGV_IM is also the name of the PGV column the step writes.
 PGA_IM = urban_fragility.PGA_IM
 PGV_IM = urban_fragility.IM
 
-# The columns the wall population carries that index the curve.
+# The columns the wall population carries that pick and shift the curve.
 SIZE_CLASS_COLUMN = "size_class"
-INITIAL_CONDITION_COLUMN = "initial_condition"
+WALL_TYPE_COLUMN = "wall_type"
+WALL_POSITION_COLUMN = "wall_position"
 
 # The columns wall_failure_probability returns, in contract order
 # (section 3.11), repeated on the step 9 output.
@@ -110,28 +112,28 @@ def wall_failure_probability(
     *,
     pgv_pga_ratio: pd.Series,
 ) -> pd.DataFrame:
-    """Evaluate each wall's published curve at the PGV it saw.
+    """Evaluate each wall's type curve at the PGV it saw.
 
-    Per wall the curve is the table row for the unnamed wall class and the
-    wall's ``size_class`` and ``initial_condition``
-    (:func:`urban_fragility.wall_curve`). A row published on PGA is converted to
-    PGV with :func:`urban_fragility.pga_to_pgv_theta` at the wall's PGV/PGA
-    ratio, which is recorded; a PGV-native row records NaN for both the PGA
-    median and the ratio. The median is then :data:`WALL_AMP_FACTOR` and
-    :data:`WALL_RATE_FACTOR`, both 1.0, applied as contract section 6 states,
-    and the probability is the lognormal
+    Per wall the curve is the table row for its ``wall_type`` and
+    ``size_class``, the PGA median scaled by its ``wall_position`` (0.85 for
+    fill, 1.15 for cut, 1 where unknown;
+    :func:`wall_type_fragility.wall_type_curves`). The scaled PGA median is
+    recorded and converted to PGV with :func:`urban_fragility.pga_to_pgv_theta`
+    at the wall's PGV/PGA ratio, which is recorded too. The median is then
+    :data:`WALL_AMP_FACTOR` and :data:`WALL_RATE_FACTOR`, both 1.0, applied as
+    contract section 6 states, and the probability is the lognormal
     :func:`urban_fragility.lognormal_failure_probability` at ``pgv_m_s``.
 
-    A wall whose PGV or converted median is NaN (off the grid, or a PGA row
-    with no ratio) carries a NaN probability, which
-    :func:`draw_damage_states` leaves undamaged; the step reports the count.
+    A wall whose PGV or converted median is NaN (off the grid, or no ratio)
+    carries a NaN probability, which :func:`draw_damage_states` leaves
+    undamaged; the step reports the count.
 
     Args:
-        walls: One row per wall, carrying ``size_class`` and
-            ``initial_condition``.
+        walls: One row per wall, carrying ``wall_type``, ``size_class`` and
+            ``wall_position``.
         pgv_m_s: The PGV each wall saw, in m/s, in ``walls`` order.
-        table: The wall fragility table, as
-            :func:`urban_fragility.load_retaining_wall_fragility` returns it.
+        table: The wall type fragility table, as
+            :func:`wall_type_fragility.load_wall_type_fragility` returns it.
         pgv_pga_ratio: PGV (m/s) over PGA (g) at each wall, on ``walls.index``;
             NaN where none.
 
@@ -145,8 +147,9 @@ def wall_failure_probability(
     Raises:
         ValueError: If ``pgv_m_s`` is not one value per wall, or
             ``pgv_pga_ratio`` is not on ``walls.index``; and from
-            :func:`urban_fragility.wall_curve` if a wall's size class and
-            condition have no row.
+            :func:`wall_type_fragility.wall_type_curves` if a wall's type and
+            size class have no row or its position is neither fill, cut nor
+            null.
     """
     pgv = np.asarray(pgv_m_s, dtype=float)
     if pgv.shape != (len(walls),):
@@ -158,34 +161,16 @@ def wall_failure_probability(
     ratio = pgv_pga_ratio.to_numpy(dtype=float)
 
     count = len(walls)
-    published_im = np.empty(count, dtype=object)
-    published_theta = np.full(count, np.nan)
-    beta = np.full(count, np.nan)
-    source = np.empty(count, dtype=object)
-
-    keys = walls[[SIZE_CLASS_COLUMN, INITIAL_CONDITION_COLUMN]]
-    for (size_class, initial_condition), members in keys.groupby(
-        [SIZE_CLASS_COLUMN, INITIAL_CONDITION_COLUMN], sort=False
-    ).indices.items():
-        curve = urban_fragility.wall_curve(
-            table,
-            wall_class=urban_fragility.UNNAMED_WALL_CLASS,
-            size_class=size_class,
-            initial_condition=initial_condition,
-        )
-        published_im[members] = curve["im"]
-        published_theta[members] = float(curve["theta"])
-        beta[members] = float(curve["beta"])
-        source[members] = curve["source"]
-
-    is_pga = published_im == PGA_IM
-    theta_base_pga_g = np.where(is_pga, published_theta, np.nan)
-    ratio_used = np.where(is_pga, ratio, np.nan)
-    theta_base = published_theta.copy()
-    if is_pga.any():
-        theta_base[is_pga] = urban_fragility.pga_to_pgv_theta(
-            published_theta[is_pga], ratio[is_pga]
-        )
+    curves = wall_type_fragility.wall_type_curves(
+        walls[WALL_TYPE_COLUMN],
+        walls[SIZE_CLASS_COLUMN],
+        walls[WALL_POSITION_COLUMN],
+        table,
+    )
+    theta_base_pga_g = curves["theta_pga_g"].to_numpy(dtype=float)
+    beta = curves["beta"].to_numpy(dtype=float)
+    source = curves["source"].to_numpy(dtype=object)
+    theta_base = urban_fragility.pga_to_pgv_theta(theta_base_pga_g, ratio)
     theta = theta_base / WALL_AMP_FACTOR * WALL_RATE_FACTOR
 
     probability = np.full(count, np.nan)
@@ -198,7 +183,7 @@ def wall_failure_probability(
     return pd.DataFrame(
         {
             THETA_BASE_PGA_G_COLUMN: theta_base_pga_g,
-            PGV_PGA_RATIO_COLUMN: ratio_used,
+            PGV_PGA_RATIO_COLUMN: ratio,
             THETA_COLUMN: theta,
             BETA_COLUMN: beta,
             FRAGILITY_SOURCE_COLUMN: source,

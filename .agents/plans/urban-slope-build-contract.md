@@ -75,8 +75,10 @@ and `SP` live in the same block, so every minted prefix is in one place.
 Reused, not redefined:
 
 - `landloss.exposure.rw.beta_population.SMALL_MAX_HEIGHT_M` (1.0),
-  `MEDIUM_MAX_HEIGHT_M` (2.5), `SIZE_CLASSES`, `INITIAL_CONDITIONS`,
-  `BETA_POOR_SHARE`, `classify_wall_size()` and `describe_population()`.
+  `MEDIUM_MAX_HEIGHT_M` (2.5), `SIZE_CLASSES`, `classify_wall_size()` and
+  `describe_population()` (`INITIAL_CONDITIONS` and `BETA_POOR_SHARE` were
+  removed on 2026-10-06 with the condition axis,
+  `.agents/plans/assigning-retaining-wall-types.md`).
 - `landloss.exposure.coverage.RW_COVERAGE_BUFFER_M` (2.0) and
   `keep_walls_on_insured_land()`.
 - `landloss.domain.constants.BASE_SEED`, `DEFAULT_CRS`, `FLATLAND_NLM_VERSION`,
@@ -743,12 +745,19 @@ line with the probabilities from `landloss.exposure.rw.wall_probability`
 | --- | --- | --- |
 | `p_wall` | float64 | Probability the line is a wall |
 | `p_wall_basis` | str | `mapped`, `source_prior`, `rock_cut`, `flatland_cap`: the last rule that set it |
-| `p_poor` | float64 | Probability of poor condition given a wall |
-| `p_poor_basis` | str | `height`, `age`, `default` |
 
-**`gen_wall_population.py`**: reads the probabilities and the step 5 insured
-land. Per world: `rng = realisation_seed(EXPOSURE_BASE_SEED, world_id, "exposure")`;
-`landloss.exposure.rw.population.draw_wall_population(probabilities, rng)`;
+(`p_poor` and `p_poor_basis` were retired on 2026-10-06: a wall's type and age
+bin replace its condition, `.agents/plans/assigning-retaining-wall-types.md`.)
+
+**`gen_wall_population.py`**: reads the probabilities, the step 5 insured
+land, the property age shares of `gen_wall_age.py`
+(`gen_wall_age.wall_age_path(extent=...)`) and the `on_road_frontage` flag of
+the landslide step 12 wall units (`wall_units_path(extent=...)`). Per world:
+the wall types are drawn over every candidate on their own stream
+(`landloss.exposure.rw.wall_type.draw_wall_types`, seeded with
+`realisation_seed(EXPOSURE_BASE_SEED, world_id, WALL_TYPE_STREAM)`); then
+`rng = realisation_seed(EXPOSURE_BASE_SEED, world_id, "exposure")`;
+`landloss.exposure.rw.population.draw_wall_population(probabilities, rng, types=..., walled=...)`;
 drop lines with no `claim_id` (council and road-reserve walls are out of scope,
 I-05); `keep_walls_on_insured_land`; `sort_by_location`; mint `rw_id` with
 `mint_asset_ids(..., RW_ID_SUFFIX)`.
@@ -764,7 +773,8 @@ I-05); `keep_walls_on_insured_land`; `sort_by_location`; mint `rw_id` with
 | `wall_line_id` | str | The line that drew the wall |
 | `world_id` | int64 | |
 | `size_class` | str | From the line |
-| `initial_condition` | str | `modern` or `poor`, drawn |
+| `wall_type` | str | One of `WALL_TYPES`, drawn from the wall's age bin, height band and road frontage (2026-10-06, `.agents/plans/assigning-retaining-wall-types.md`; replaced `initial_condition`) |
+| `age_bin` | str | One of `AGE_BINS`, drawn from the property's age shares, after the rebuild shift |
 | `height_m` | float64 | `face_height_m` of the line |
 | `length_m` | float64 | |
 | `wall_position` | str | `fill` or `cut` |
@@ -797,7 +807,8 @@ As built (phases 2 to 4, accepted, G):
   no bounds file is held. `BOUNDS_COLUMNS = ("min_walls", "max_walls")` names
   the table it will read.
 - `p_wall` reads source, rock cut, flat land and mapped wall only, and `p_poor`
-  height and age only, as section 7.9 specifies; the plan §3.2 inputs not
+  height and age only (`p_poor` retired on 2026-10-06, see above), as section
+  7.9 specifies; the plan §3.2 inputs not
   built (slope, height, position and subdivision age into `p_wall`, wall type
   into `p_poor`) are open boxes in the step's plan.
 - `gen_exposure.main` runs the three scripts after the insured land and
@@ -848,7 +859,9 @@ the table the project lead reviews).
 `RETURN_PERIOD_YR = 2500`.
 
 Inputs: the polygons, the drawn walls for world `w` (`drawn_walls_path(w)`,
-section 3.7, decision 36), `retaining-wall-fragility.csv`, the step 2 site class grid
+section 3.7, decision 36), `retaining-wall-type-fragility.csv` (through
+`wall_type_fragility.load_wall_type_fragility()`; it replaced
+`retaining-wall-fragility.csv` on 2026-10-06), the step 2 site class grid
 (`s2_site_class.gen_site_class.read_site_class(pilot=...)`), step 3's PGV grid
 (`s3_pgv.gen_pgv.output_path("pgv", return_period_yr=RETURN_PERIOD_YR, pilot=...)`),
 the unscaled TS1170.5 PGA on the same grid, which the step builds as step 4
@@ -876,11 +889,11 @@ both Series in.
 | `wall_line_id` | str, nullable | |
 | `rw_id` | str, nullable | The insured wall drawn on the edge in world `w`; null when the line drew none, has none, or drew a wall that is not insured (decision 36) |
 | `wall_state` | str | `no_wall`, `fill_wall`, `cut_wall` |
-| `wall_class` | str, nullable | `unnamed` until the six classes are named |
-| `size_class`, `initial_condition` | str, nullable | From the drawn wall |
+| `wall_type` | str, nullable | From the drawn wall (2026-10-06; replaced `wall_class` and `initial_condition`) |
+| `size_class` | str, nullable | From the drawn wall |
 | `im` | str | `pgv_m_s` |
 | `theta_base` | float64 | Median before adjustment, m/s |
-| `theta_base_pga_g` | float64 | The published PGA median before conversion; NaN for localised or PGV-native curves |
+| `theta_base_pga_g` | float64 | The wall type's PGA median times the drawn wall's own fill (0.85) or cut (1.15) factor, before conversion; NaN for localised curves |
 | `site_class` | Int64 | TS1170.5 class at `rep_point`; null off the grid |
 | `pgv_pga_ratio_m_s_per_g` | float64 | The ratio used for the conversion; NaN where none |
 | `amp_factor` | float64 | |
@@ -907,7 +920,8 @@ As built (phases 2 to 4, accepted, H):
   `fragility_basis`, `median_theta_base_m_s`, `median_amp_factor` and
   `median_beta` beside the medians, so the three parts of each adjusted median
   can be reviewed side by side.
-- `retaining-wall-fragility.csv` holds six `unnamed` rows from
+- (Retired 2026-10-06, replaced by `retaining-wall-type-fragility.csv`.)
+  `retaining-wall-fragility.csv` holds six `unnamed` rows from
   [koutsoupaki_2023] (Fs = 1.5 modern, Fs = 1.1 poor; 3 m wall for small and
   medium, 6 m for large; DS3, `Ux = 10% H` after [prakash_1995], on PGA), and
   `urban-fragility-anchors.csv` is filled; the class-word fractions are
@@ -1171,10 +1185,11 @@ crossings' draws are unaffected; the draw order is population order.
   `temp/vul/wall-damage-state-w<NNN>-r<NNN>[-pilot].geoparquet`.
 
 Columns: `realisation_id`, `world_id`, `rw_id`, `claim_id`, `asset`
-(`retaining wall`), `size_class`, `initial_condition`, `height_m`, `length_m`,
+(`retaining wall`), `size_class`, `wall_type`, `age_bin`, `wall_position`
+(2026-10-06; replaced `initial_condition`), `height_m`, `length_m`,
 `is_flatland` (always true), `pgv_m_s`, `site_class` (Int64, null off the
-grid), `theta_base_pga_g` (float64, NaN for PGV-native rows),
-`pgv_pga_ratio_m_s_per_g` (float64, NaN where no conversion), `theta`, `beta`,
+grid), `theta_base_pga_g` (float64, the type's PGA median times the wall's
+fill or cut factor), `pgv_pga_ratio_m_s_per_g` (float64), `theta`, `beta`,
 `fragility_source`, `failure_probability`, `damage_state`, `geometry`.
 
 As built (phases 2 to 4, accepted, K1):
@@ -1197,8 +1212,8 @@ As built (phases 2 to 4, accepted, K1):
   stood in for the unbuilt urban fragility functions was deleted then too.
 - `WORLD_ID_COLUMN = "world_id"` is a literal in the step script;
   `loss_contract.py` is not changed, as this contract does not require it.
-- `wall_curve` is called once per distinct `(size_class, initial_condition)`
-  pair, with the same result.
+- (Retired 2026-10-06 with `wall_curve`.) `wall_curve` is called once per
+  distinct `(size_class, initial_condition)` pair, with the same result.
 - Not run over the pilot.
 
 ### 3.12 Vul landslide rw step 11 — `vul/landslide/rw/steps/s11_wall_landslide_damage/` (extended)
@@ -1437,7 +1452,7 @@ noted:
 | --- | --- |
 | `im` | Always `pgv_m_s` |
 | `theta_base` | The published or localised median in m/s before adjustment |
-| `theta_base_pga_g` | The published median in g when the curve was PGA-based, else NaN |
+| `theta_base_pga_g` | The wall type's median in g, times the wall's own fill or cut factor; NaN on a localised row |
 | `site_class` | The TS1170.5 site class at the representative point |
 | `pgv_pga_ratio_m_s_per_g` | PGV (m/s) / PGA (g) at the representative point (step 8) or line midpoint (vul step 9): step 3's PGV grid over the unscaled TS1170.5 PGA grid at `RETURN_PERIOD_YR`, both on the step 2 site class grid, sampled by `urban.fragility.pgv_pga_ratio_m_s_per_g` (section 7.7); realisation-free, because steps 4 and 5 scale PGA and PGV by one factor; NaN when no conversion was made |
 | `amp_factor` | Topographic amplification, 1.0 to `TOPOGRAPHIC_AMPLIFICATION_MAX` |
@@ -1816,13 +1831,11 @@ planar slope has area `length × height`; runout on a planar slope reaches
 ```python
 IM = "pgv_m_s"
 FRAGILITY_BASES = ("wall", "localised")
-UNNAMED_WALL_CLASS = "unnamed"
-RETAINING_WALL_FRAGILITY_PATH = ASSETS_DIR / "retaining-wall-fragility.csv"
+WALL_TYPE_COLUMN = "wall_type"              # 2026-10-06
 URBAN_FRAGILITY_ANCHORS_PATH = ASSETS_DIR / "urban-fragility-anchors.csv"
 LOCALISED_THETA_AT_ZERO_RATING_M_S = 3.0     # placeholder; set by the anchoring
 LOCALISED_THETA_AT_MAX_RATING_M_S = 0.6      # placeholder; set by the anchoring
 
-def load_retaining_wall_fragility(path: Path = RETAINING_WALL_FRAGILITY_PATH) -> pd.DataFrame
 def load_urban_fragility_anchors(path: Path = URBAN_FRAGILITY_ANCHORS_PATH) -> pd.DataFrame
 def lognormal_failure_probability(im: np.ndarray, theta: np.ndarray, beta: np.ndarray) -> np.ndarray
 def interpolated_slope_value(slope_degrees: np.ndarray) -> np.ndarray
@@ -1839,7 +1852,6 @@ def localised_theta_base_m_s(rating: np.ndarray) -> np.ndarray
 def rate_factor(setting: str) -> float
 def pgv_pga_ratio_m_s_per_g(pgv: xr.DataArray, pga: xr.DataArray, points: gpd.GeoSeries) -> pd.Series
 def pga_to_pgv_theta(theta_pga_g: np.ndarray, ratio_m_s_per_g: np.ndarray) -> np.ndarray
-def wall_curve(table: pd.DataFrame, *, wall_class: str, size_class: str, initial_condition: str) -> pd.Series
 def polygon_theta(theta_base: np.ndarray, amp_factor: np.ndarray, rate_factor: float) -> np.ndarray
 IS_FLATLAND_COLUMN = "is_flatland"         # decision 36: the drawn wall column sloping_walls reads
 
@@ -1882,7 +1894,18 @@ def assign_fragility(
   column, so a scalar per site class is undefined; the grids are the products
   steps 3 and 4 already use, and the ratio is the same whichever realisation
   factor scaled them.
-- `wall_curve` raises if the triple is missing or duplicated in the table.
+- Retired on 2026-10-06 (`.agents/plans/assigning-retaining-wall-types.md`):
+  `UNNAMED_WALL_CLASS`, `RETAINING_WALL_FRAGILITY_PATH`,
+  `load_retaining_wall_fragility` and `wall_curve`. The wall curves now come
+  from `landloss.hazard.landslide.urban.wall_type_fragility`:
+  `load_wall_type_fragility(path: Path = WALL_TYPE_FRAGILITY_PATH) -> pd.DataFrame`
+  reads `retaining-wall-type-fragility.csv`, and
+  `wall_type_curves(wall_type, size_class, wall_position, table) -> pd.DataFrame`
+  returns `theta_pga_g`, `beta` and `source` per wall, its median scaled by
+  the wall's own fill or cut position. `lognormal_failure_probability` and
+  `PGA_IM` live in `landloss.hazard.landslide.urban.lognormal` and are
+  re-exported here. `assign_fragility` keeps its signature; `wall_table` is
+  what `load_wall_type_fragility()` returns.
 - `sloping_walls(walls)` keeps the rows of the drawn walls with
   `IS_FLATLAND_COLUMN` false and a non-null `wall_line_id`: a flat-land wall
   is drawn by vul shaking rw step 9 only, and a null line would match every
@@ -2031,7 +2054,7 @@ BETA_FLATLAND_MAX_PROBABILITY = 0.1
 BETA_UNCONSENTED_POOR_SHARE = 0.7
 BETA_PRE_1990_POOR_SHARE = 0.7
 BETA_POST_1990_POOR_SHARE = 0.3
-PROBABILITY_COLUMNS = ("p_wall", "p_wall_basis", "p_poor", "p_poor_basis")
+PROBABILITY_COLUMNS = ("p_wall", "p_wall_basis", "p_poor", "p_poor_basis")   # p_poor pair retired 2026-10-06
 
 def line_wall_probability(lines: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]
 def poor_condition_probability(height_m: np.ndarray, dwelling_age_decade: pd.Series) -> tuple[np.ndarray, np.ndarray]
@@ -2046,6 +2069,10 @@ rule that changed it. The `beta`
 names stay until the count bounds (T-50) replace them.
 `poor_condition_probability`: `BETA_POOR_SHARE`; `BETA_UNCONSENTED_POOR_SHARE`
 where `height_m < UNCONSENTED_WALL_HEIGHT_M`; age overrides where held.
+(Retired on 2026-10-06, `.agents/plans/assigning-retaining-wall-types.md`:
+`poor_condition_probability`, the three `BETA_*_POOR_SHARE` constants,
+`BUILDING_ACT_DECADE`, `POOR_BASES` and `AGE_COLUMN` are removed, and
+`PROBABILITY_COLUMNS` is `("p_wall", "p_wall_basis")`.)
 `wall_probability_table` requires the section 3.5 columns and appends
 `PROBABILITY_COLUMNS`. Tests rewritten in `test_wall_probability.py`.
 
@@ -2071,8 +2098,24 @@ As built (phases 2 to 4, accepted, G):
 ### 7.10 `landloss.exposure.rw.population` (new)
 
 ```python
-def draw_wall_population(probabilities: gpd.GeoDataFrame, rng: np.random.Generator) -> gpd.GeoDataFrame
+TYPE_COLUMNS = ("wall_type", "age_bin")      # 2026-10-06
+
+def draw_wall_population(
+    probabilities: gpd.GeoDataFrame,
+    rng: np.random.Generator,
+    *,
+    types: pd.DataFrame,
+    walled: np.ndarray | None = None,
+) -> gpd.GeoDataFrame
 ```
+
+As of 2026-10-06 (`.agents/plans/assigning-retaining-wall-types.md`): `types`
+is indexed by `wall_line_id` and carries `TYPE_COLUMNS`; each drawn wall takes
+its `wall_type` and `age_bin` from it, and the function raises if a column is
+missing, a line repeats, or a drawn wall has no type. `walled`, where given,
+replaces the comparison with `p_wall`. The second uniform is still drawn, so
+which lines are walls is unchanged, but it no longer sets a condition; the
+paragraph below is the contract as first built.
 
 Two uniforms per line in line order: a wall exists where the first is below
 `p_wall`; it is `poor` where the second is below `p_poor`. Returns the lines
@@ -2173,6 +2216,10 @@ def wall_failure_probability(
 ) -> pd.DataFrame   # theta_base_pga_g, pgv_pga_ratio_m_s_per_g, theta, beta, fragility_source, failure_probability
 ```
 
+(As of 2026-10-06 `table` is what `load_wall_type_fragility()` returns, each
+wall's curve comes from `wall_type_curves(wall_type, size_class,
+wall_position, table)`, and every row is on PGA, so the ratio is recorded on
+every row; the `wall_curve` lookup below is retired.)
 Looks up `wall_curve(table, wall_class=UNNAMED_WALL_CLASS, size_class=..., initial_condition=...)`
 per wall, converts PGA rows with `pga_to_pgv_theta(theta_pga_g, pgv_pga_ratio)`
 (`pgv_pga_ratio` on `walls.index`, sampled by the step at the line midpoint
@@ -2259,6 +2306,12 @@ survey the tiles came from.
 
 ### 8.1 `retaining-wall-fragility.csv`
 
+Retired on 2026-10-06: the model reads `retaining-wall-type-fragility.csv`
+through `landloss.hazard.landslide.urban.wall_type_fragility` instead, one
+curve per `(wall_type, size_class)` shifted by the wall's fill or cut position
+(`.agents/plans/assigning-retaining-wall-types.md`). The section below is the
+contract as first built.
+
 One row per `(wall_class, size_class, initial_condition)`; the triple is
 unique. Until the six classes are named the file carries `wall_class =
 unnamed` and six rows.
@@ -2286,6 +2339,11 @@ FS = 1.5 family and the poor rows from the lower-FS family of
 README row:
 
 `| retaining-wall-fragility.csv | Lognormal fragility (median, dispersion) per retaining wall class, size and initial condition, with the published intensity measure and source | Maintained by hand from .agents/context/retaining-wall-fragility.md — see below | landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility |`
+
+(Retired on 2026-10-06 with the file and its reader: the README index now
+lists `retaining-wall-type-fragility.csv`, read by
+`landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility`,
+and keeps a short retired section for this file.)
 
 ### 8.2 `urban-fragility-anchors.csv`
 

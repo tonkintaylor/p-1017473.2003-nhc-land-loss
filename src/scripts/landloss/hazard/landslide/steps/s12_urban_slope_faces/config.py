@@ -65,17 +65,56 @@ WALL_JOIN_BEARING_TOL_DEG = 30.0
 WALL_CORNER_GAP_M = 3.0
 WALL_CORNER_MAX_ANGLE_DEG = 90.0
 
-# A GNS-only piece within this many metres of a candidate pif on the same
-# property joins its unit whatever its direction, so one wall is not counted
-# twice (about 17% of the mapped wall length is 2 to 5 m from a pip).
+# A GNS-only piece within GNS_ONLY_MERGE_M metres of a candidate pif on the
+# same property joins its unit, so one wall is not counted twice (about 17% of
+# the mapped wall length is 2 to 5 m from a pip), but only where it runs
+# roughly along the pif's face: its bearing within GNS_ONLY_MERGE_MAX_ANGLE_DEG
+# of the pif's strike (perpendicular to the fall at the pif's spine end nearest
+# it). The lead's quick fix (2026-10-06), after unit WU0001918 on the pilot
+# joined an east-west mapped wall to a north-south pif across it.
 GNS_ONLY_MERGE_M = 5.0
+GNS_ONLY_MERGE_MAX_ANGLE_DEG = 45.0
 
-# A pif's wall height is this quantile, over its pips, of the drop from each
-# pip to the foot of its face (landslide step 13's pip table). The pif's
-# largest pip drop (max_delta_h_m) overstated the retained height: on the pilot
-# 29% of walled units were under 1.5 m against 54% in Anderson et al. (2015).
-# The lead set the 80th percentile on 2026-10-06.
-WALL_HEIGHT_QUANTILE = 0.8
+# No saw-tooth walls (the lead, 2026-10-06): each wall unit's line, the line
+# exposure rw step 6 draws and the figures show, keeps at most WALL_MAX_BENDS
+# bends, and no straight section of it is shorter than WALL_MIN_SEGMENT_M
+# metres (a unit shorter than that is one straight line). Its length_m is the
+# simplified line's; length_original_m keeps the members' summed length.
+WALL_MAX_BENDS = 3
+WALL_MIN_SEGMENT_M = 3.0
+
+# Long joined walls and pifs (the lead, 2026-10-06; one rule for both,
+# landloss.hazard.landslide.bend_split): the joined members, or a pif's spine,
+# are walked end to end and a new piece starts wherever following them within
+# WALL_STRAY_TOLERANCE_M metres needs another bend than WALL_MAX_BENDS, or
+# bends turning more than MAX_TOTAL_TURN_DEG degrees in all (the lead set 185
+# on 2026-10-06, after a piece ran up, across and back down). 2 m is about the
+# 90th percentile (2.4 m) of how far a pif's spine lay from its unit's line
+# when the bends were not split.
+WALL_STRAY_TOLERANCE_M = 2.0
+MAX_TOTAL_TURN_DEG = 185.0
+# Every wall unit is one line of at most WALL_MAX_BENDS bends, from
+# WALL_MIN_SEGMENT_M to WALL_MAX_LENGTH_M metres long (the lead, 2026-10-06:
+# "if over 50 m, then split on bends; if no bends then split on boundaries,
+# then split on evenly divide"): a wall over WALL_MAX_LENGTH_M is cut at its
+# own bends, then (with no bend left) at the property boundaries it crosses,
+# then into equal pieces; the pifs take the same cap at MAX_PIF_SPAN_M with no
+# boundary stage. gen_wall_units refuses any unit that breaks a rule.
+WALL_MAX_LENGTH_M = 50.0
+
+# A pif's wall height is the WALL_HEIGHT_QUANTILE quantile, over its pips, of
+# each pip's near drop: the fall to the lowest DEM cell within
+# WALL_HEIGHT_REACH_M metres below the pip along its own fall direction (the
+# 1 m and 3 m offsets the pip test reads). The lead, 2026-10-06: landslide
+# step 13's walk to the foot of the face ran up to 15 m down long batters and
+# hillsides and overstated the height (the tall face taper then hit 2,013
+# pilot units), as the pif's largest pip drop (max_delta_h_m) did before it.
+# The lead set the 70th percentile within 2 m on 2026-10-06: the 80th within
+# 3 m put 18% of the pilot's walled units under 1.5 m and the 60th within 2 m
+# 72%, against 54% in Anderson et al. Read in gen_urban_slope_faces.py onto the
+# siz table (near_drop_p80_m, named for the first setting).
+WALL_HEIGHT_REACH_M = 2.0
+WALL_HEIGHT_QUANTILE = 0.7
 
 # GNS mapped wall segments within this many metres of each other are one
 # mapped wall feature.

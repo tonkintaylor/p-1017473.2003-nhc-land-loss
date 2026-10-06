@@ -1,25 +1,20 @@
-"""The probability that each candidate wall is a wall, and its condition.
+"""The probability that each candidate wall is a wall.
 
 A retaining wall inventory does not exist for the study area (**L-04**), so a
 candidate carries a probability, not a fact. The candidates are the wall units
 landslide step 12 builds on the potential instability faces
 (:mod:`landloss.hazard.landslide.wall_units`), which carry their own
-``p_wall``: :func:`gen_unit_probability_table` puts the condition on each unit
-and the claim it belongs to (:func:`claim_of_properties`), in the shape the
-population draw reads. The earlier candidate lines
-(:mod:`landloss.exposure.rw.lines`) and the two probabilities this module puts
-on each line are kept for the urban slope chain test:
+``p_wall``: :func:`gen_unit_probability_table` puts on each unit the claim it
+belongs to (:func:`claim_of_properties`), in the shape the population draw
+reads. The earlier candidate lines (:mod:`landloss.exposure.rw.lines`) and the
+``p_wall`` this module puts on each line are kept for the urban slope chain
+test: the probability that the line is a wall, from the source the line came
+from, lowered where the face is a cut in rock, capped on the flat land, and
+lifted where GNS Science mapped a wall along it. A wall's type, which carries
+what used to be its condition, is drawn per world in exposure step 6
+(:mod:`landloss.exposure.rw.wall_type`).
 
-- ``p_wall``: the probability that the line is a wall, from the source the line
-  came from, lowered where the face is a cut in rock, capped on the flat land,
-  and lifted where GNS Science mapped a wall along it;
-- ``p_poor``: the probability that the wall, if it exists, is in the poor
-  initial condition, from the dwelling age where held and otherwise from the
-  height, because a wall under
-  :data:`~landloss.domain.constants.UNCONSENTED_WALL_HEIGHT_M` is often built
-  without consent.
-
-Each probability carries a *basis*, the last rule that set it, so a map of
+The probability carries a *basis*, the last rule that set it, so a map of
 ``p_wall_basis`` shows where the mapping reaches and where the prior is all
 there is. :mod:`landloss.exposure.rw.population` draws a world from the table
 this module writes; keeping the two apart means the evidence is read once and
@@ -43,11 +38,7 @@ import pandas as pd
 from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from landloss.exposure.land.extent import SOURCE_ID_COLUMN
-from landloss.exposure.rw.beta_population import (
-    BETA_POOR_SHARE,
-    SIZE_CLASSES,
-    classify_wall_size,
-)
+from landloss.exposure.rw.beta_population import SIZE_CLASSES, classify_wall_size
 from landloss.exposure.rw.lines import CUT, FILL
 from landloss.exposure.rw.population import REQUIRED_COLUMNS, WALL_LINE_ID_COLUMN
 
@@ -83,34 +74,15 @@ BETA_ROCK_CUT_FACTOR = constants.BETA_ROCK_CUT_FACTOR
 # once it is held.
 BETA_FLATLAND_MAX_PROBABILITY = 0.1
 
-# The probability of poor condition for a wall under UNCONSENTED_WALL_HEIGHT_M,
-# which is often built without consent and to no standard. Set with the age
-# shares below once the building construction age source is held.
-BETA_UNCONSENTED_POOR_SHARE = 0.7
-
-# The probability of poor condition by the dwelling's construction decade,
-# either side of the 1991 Building Act: pre-1990 walls are often cast in situ
-# concrete gravity walls of the 1970s and 80s, post-1991 ones more often
-# anchored timber. Applied only where a dwelling age is held. Set from the
-# building construction age source (the District Valuation Roll building age)
-# once it is held.
-BETA_PRE_1990_POOR_SHARE = 0.7
-BETA_POST_1990_POOR_SHARE = 0.3
-BUILDING_ACT_DECADE = 1990
-
-# The basis strings: the last rule that set each probability.
+# The basis strings: the last rule that set the probability.
 WALL_BASES = ("source_prior", "rock_cut", "flatland_cap", "mapped")
 SOURCE_PRIOR, ROCK_CUT, FLATLAND_CAP, MAPPED = WALL_BASES
-POOR_BASES = ("default", "height", "age")
-DEFAULT, HEIGHT, AGE = POOR_BASES
 
-PROBABILITY_COLUMNS = ("p_wall", "p_wall_basis", "p_poor", "p_poor_basis")
+PROBABILITY_COLUMNS = ("p_wall", "p_wall_basis")
 
-# The line columns the two probabilities read. dwelling_age_decade is read
-# where present and treated as unheld where the column is absent.
+# The line columns the probability reads.
 WALL_INPUT_COLUMNS = ("source", "is_mapped_wall", "is_rock_cut", "is_flatland")
 HEIGHT_COLUMN = "face_height_m"
-AGE_COLUMN = "dwelling_age_decade"
 
 # The wall unit columns the unit table reads (landslide step 12).
 UNIT_COLUMNS = (
@@ -198,64 +170,12 @@ def line_wall_probability(lines: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     return probability, basis
 
 
-def poor_condition_probability(
-    height_m: np.ndarray, dwelling_age_decade: pd.Series
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return the probability that each wall is in poor condition, and why.
-
-    :data:`~landloss.exposure.rw.beta_population.BETA_POOR_SHARE` by default;
-    :data:`BETA_UNCONSENTED_POOR_SHARE` where the height is under
-    :data:`~landloss.domain.constants.UNCONSENTED_WALL_HEIGHT_M`; and where a
-    dwelling age is held it overrides both, :data:`BETA_PRE_1990_POOR_SHARE`
-    for a decade before :data:`BUILDING_ACT_DECADE` and
-    :data:`BETA_POST_1990_POOR_SHARE` from it on. A NaN height takes the
-    default.
-
-    Args:
-        height_m: The face height of each wall, in metres.
-        dwelling_age_decade: The construction decade of the dwelling on each
-            line's property, nullable; null where no age is held.
-
-    Returns:
-        The probability per wall, and the basis per wall, one of
-        :data:`POOR_BASES`, both aligned to ``height_m``.
-
-    Raises:
-        ValueError: If the two inputs differ in length.
-    """
-    heights = np.asarray(height_m, dtype=float)
-    if len(heights) != len(dwelling_age_decade):
-        msg = (
-            f"height_m and dwelling_age_decade must match: got {len(heights)} "
-            f"and {len(dwelling_age_decade)}"
-        )
-        raise ValueError(msg)
-
-    probability = np.full(len(heights), BETA_POOR_SHARE, dtype=float)
-    basis = np.full(len(heights), DEFAULT, dtype=object)
-
-    unconsented = heights < constants.UNCONSENTED_WALL_HEIGHT_M
-    probability[unconsented] = BETA_UNCONSENTED_POOR_SHARE
-    basis[unconsented] = HEIGHT
-
-    held = dwelling_age_decade.notna().to_numpy(dtype=bool)
-    decade = dwelling_age_decade.to_numpy(dtype=float, na_value=np.nan)
-    pre_act = held & (decade < BUILDING_ACT_DECADE)
-    probability[pre_act] = BETA_PRE_1990_POOR_SHARE
-    probability[held & ~pre_act] = BETA_POST_1990_POOR_SHARE
-    basis[held] = AGE
-
-    return probability, basis
-
-
 def wall_probability_table(lines: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Return the candidate lines with the two probabilities and their bases.
+    """Return the candidate lines with the wall probability and its basis.
 
     Args:
         lines: The candidate wall lines ``gen_wall_lines.py`` wrote, carrying
-            :data:`WALL_INPUT_COLUMNS` and ``face_height_m``;
-            ``dwelling_age_decade`` is read where present and treated as unheld
-            where absent.
+            :data:`WALL_INPUT_COLUMNS` and ``face_height_m``.
 
     Returns:
         A copy on the same rows and geometry carrying the inputs and
@@ -267,19 +187,8 @@ def wall_probability_table(lines: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     _require(lines, (*WALL_INPUT_COLUMNS, HEIGHT_COLUMN), "lines")
     table = lines.copy()
     p_wall, wall_basis = line_wall_probability(table)
-    if AGE_COLUMN in table.columns:
-        age = table[AGE_COLUMN]
-    else:
-        age = pd.Series(
-            pd.array([pd.NA] * len(table), dtype="Int64"), index=table.index
-        )
-    p_poor, poor_basis = poor_condition_probability(
-        table[HEIGHT_COLUMN].to_numpy(dtype=float), age
-    )
     table["p_wall"] = p_wall
     table["p_wall_basis"] = wall_basis
-    table["p_poor"] = p_poor
-    table["p_poor_basis"] = poor_basis
     return table
 
 
@@ -323,9 +232,8 @@ def gen_unit_probability_table(
     """Return the wall units in the shape the population draw reads.
 
     One row per wall unit from landslide step 12, carrying its ``p_wall`` as
-    it is and the condition probability from its height
-    (:func:`poor_condition_probability`; no dwelling age is held). A unit's id
-    is its ``wall_line_id``, so a drawn wall names the unit it came from.
+    it is. A unit's id is its ``wall_line_id``, so a drawn wall names the unit
+    it came from.
 
     Args:
         units: The wall unit table ``gen_urban_slope_wall_units.py`` writes,
@@ -335,8 +243,10 @@ def gen_unit_probability_table(
     Returns:
         One row per unit, in unit order, on a fresh index, carrying
         :data:`~landloss.exposure.rw.population.REQUIRED_COLUMNS`,
-        ``p_wall_basis``, ``p_poor_basis``, ``property_id``, a null
-        ``dwelling_age_decade`` and the unit's geometry.
+        ``p_wall_basis``, ``property_id`` (the unit's primary property, the
+        one its wall is drawn on), the unit's geometry and, where the units
+        carry them, ``property_lengths_m`` and ``n_properties`` (its length in
+        every property it enters by at least 1 m) and ``length_original_m``.
 
     Raises:
         ValueError: If a unit column is missing.
@@ -347,8 +257,6 @@ def gen_unit_probability_table(
     # walls with no pip near them show a step of only 0.4 to 0.5 m), so it is
     # small, not the "large" classify_wall_size gives a NaN.
     size_class = np.where(np.isnan(height), SIZE_CLASSES[0], classify_wall_size(height))
-    age = pd.Series(pd.array([pd.NA] * len(units), dtype="Int64"), index=units.index)
-    p_poor, poor_basis = poor_condition_probability(height, age)
     property_id = units["property_id"].astype("string")
     claim = property_id.map(claim_ids)
     table = gpd.GeoDataFrame(
@@ -360,8 +268,6 @@ def gen_unit_probability_table(
             .to_numpy(),
             "p_wall": units["p_wall"].to_numpy(dtype=float),
             "p_wall_basis": units["p_wall_basis"].to_numpy(dtype=object),
-            "p_poor": p_poor,
-            "p_poor_basis": poor_basis,
             "size_class": size_class,
             HEIGHT_COLUMN: height,
             "length_m": units["length_m"].to_numpy(dtype=float),
@@ -373,10 +279,12 @@ def gen_unit_probability_table(
             "is_flatland": np.zeros(len(units), dtype=bool),
             "source": units["unit_source"].to_numpy(dtype=object),
             "material": units["ground_material"].to_numpy(dtype=object),
-            AGE_COLUMN: age.to_numpy(),
         },
         geometry=units.geometry.to_numpy(),
         crs=units.crs,
     )
+    for column in ("property_lengths_m", "n_properties", "length_original_m"):
+        if column in units.columns:
+            table[column] = units[column].to_numpy()
     _require(table, REQUIRED_COLUMNS, "the unit table")
     return table

@@ -104,8 +104,50 @@ checks them against held-out claims.
 - [x] Run step 12 from an orchestrator: `gen_hazard.main` runs the faces,
       step 13, the wall units and the wall zones, and step 12's `WORLD_IDS` is
       read from exposure rw step 6's config.
-- [ ] A rule for a wall on a property boundary, which is one unit on each
-      side (count it on both, or tie the two units to one draw).
+- [x] Every wall on a siz has a polygon (the lead, 2026-10-06): a pif needs
+      at least `BETA_MIN_PIF_PIPS` (3) pips, so smaller clusters are neither
+      sizs nor wall candidates; every element a siz pif grows is kept even
+      where the keep rule (3 m long, 0.5 m high, the grow angle, a transect)
+      would drop it, with `kept_by_rule` False, its height raised to 0.5 m
+      and, with no transect, a run of 0; and every polygon's width behind its
+      crest is at least `BETA_MIN_EVACUATED_WIDTH_H` (0.5) of its height and
+      `BETA_MIN_EVACUATED_WIDTH_M` (1 m), walled or not.
+- [x] A GNS-only piece joins a pif's unit by the 5 m merge only where it runs
+      within `GNS_ONLY_MERGE_MAX_ANGLE_DEG` (45°) of the pif's strike
+      (2026-10-06).
+- [x] Pifs mostly inside a LINZ building outline are dropped before the siz
+      test (2026-10-06).
+- [x] No saw-tooth walls (2026-10-06): each unit is one line of at most
+      `WALL_MAX_BENDS` bends and no section under `WALL_MIN_SEGMENT_M`, and
+      `length_m` is its length.
+- [x] Long joined walls split by the bends rule, then at property
+      boundaries over 50 m; GNS-only units given an element and polygon on
+      their line; the boundary and road frontage factors and the tall face
+      taper on the prior (all 2026-10-06).
+- [x] The pif pieces are the pifs (2026-10-06): the siz table, step 13 and
+      the wall members use the 20 m pieces the growth uses, with
+      `parent_pif_id`; the units of `small` pifs get line elements, so every
+      wall has a polygon but where its line lies on other elements or its
+      polygon falls in the DEM margin.
+- [x] Pifs cut by the wall rules (one implementation,
+      `landloss.hazard.landslide.bend_split`) with a 50 m cap in place of the
+      20 m split, and the wall height from each pip's near drop (3 m) on the
+      siz table in place of step 13's walk to the foot (2026-10-06).
+- [x] The rules hold on every output (2026-10-06): no pif under 3 m
+      (`BETA_MIN_PIF_LENGTH_M`), each piece's line the stretch it was cut
+      on, each unit one line of 3 to 50 m with at most 3 bends (walls over
+      50 m after the boundary cut are cut into equal pieces,
+      `WALL_MAX_LENGTH_M`), asserted in `find_instability_zones` and
+      `gen_wall_units`; wall height the 70th percentile of the near drops
+      within 2 m (the lead, 2026-10-06).
+- [x] A 185° total turning cap on every pif piece and wall
+      (`MAX_TOTAL_TURN_DEG`), and the 50 m cap cut at the line's bends, then
+      (walls only) property boundaries, then evenly (2026-10-06).
+- [x] A wall on a property boundary (2026-10-06): units join across
+      properties, carry their length in every property they enter by 1 m
+      (`property_lengths_m`), count as a wall on each in the claim update
+      (keeping the highest), and are drawn once on their primary property.
+      The loss side's use of the lengths is a vul rw Next item.
 - [ ] Wall units on the flat land: every unit is a face of sloping ground.
 - [ ] A fragility per element, and the share of urban ground in a polygon that
       fails in a realisation, against the order of 1% the literature gives (the
@@ -136,7 +178,17 @@ checks them against held-out claims.
 
 ## Potential future improvements
 
-- Cut the siz table's pifs at the same 20 m span as the growth, so a long pif
-  is not one wall candidate.
-- Road frontage as wall evidence (the property boundary itself is built).
+- Walled units under 1.5 m are 73% against 54% in Anderson et al. at the
+  60th percentile within 2 m (18% at the 80th within 3 m): a setting
+  between the two would meet it.
+- 3,554 m of joined wall that no member was nearest is dropped rather than
+  joined, since a member is never split; cutting walls only between
+  members would keep it.
+
+- A `small` pif (a GNS mapped wall on a pif that is not a siz) is a wall
+  candidate but grows no element, so a wall drawn on it has no polygon; it
+  could seed one on the wall's own threshold.
+- The GNS-only merge reads the pif's strike at its nearer spine end, a quick
+  fix; joining a GNS-only piece end to end, like two pifs, would be the full
+  rule.
 - The age bin of the claim property as evidence (T-50).

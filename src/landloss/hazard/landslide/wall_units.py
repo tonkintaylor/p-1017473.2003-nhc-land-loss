@@ -6,10 +6,18 @@ wall with a gap is two pifs) and a GNS mapped wall too low for the grid is a
 module:
 
 1. **Units.** Joins the candidate pifs (classes ``siz`` and ``small``) and the
-   ``gns_only`` pieces of one property into wall units, end to end only: pieces
-   one GNS mapped wall reaches are one unit; a ``gns_only`` piece near a pif
-   joins it; elsewhere two pifs join where their facing ends are close, level
-   along the fall and facing the same way, or close enough to be a corner.
+   ``gns_only`` pieces into wall units, end to end only and across property
+   boundaries (the lead, 2026-10-06: one wall is one unit wherever the
+   boundaries run): pieces one GNS mapped wall reaches are one unit; a
+   ``gns_only`` piece near a pif and running roughly along its face joins it;
+   elsewhere two pifs join where their facing ends are close, level along the
+   fall and facing the same way, or close enough to be a corner. The joined
+   members are chained end to end and cut into walls that each follow the
+   chain within a tolerance with at most a few bends, and a wall over a set
+   length is cut again at the property boundaries it crosses
+   (:func:`gen_unit_lines`); each wall is a unit with the members nearest it,
+   and carries its length in every property it enters
+   (:func:`gen_unit_properties`).
 2. **Prior.** Puts a prior on each unit from whether it holds a siz, the height
    band of its wall height and the cut and fill class of landslide step 13:
    higher on fill and cut and fill, lower on a cut in rock and on natural
@@ -22,6 +30,9 @@ module:
 4. **Update.** The claim reports and NZMM count walls per property, not which
    candidate is the wall, so each property's units are updated on the count
    with the Poisson-binomial (:func:`gen_count_update`); no probability falls.
+   A unit is a wall on every property it enters by at least
+   :data:`BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`, so it takes part in each of
+   their updates and keeps the highest.
    NZMM, unreliable, takes only a share of its update
    (``BETA_NZMM_UPDATE_WEIGHT``).
 5. **Draw.** Draws each unit walled per exposure world, and turns the draw
@@ -37,12 +48,15 @@ and 5 m (``PIP_DROP_M`` and ``PIP_OFFSETS_M`` in
 :mod:`landloss.hazard.landslide.instability_zones`); such a wall is a
 candidate only where GNS maps it. No prior is lowered for it.
 
-**Height and class from landslide step 13.** Step 13 walks every pip to the
-foot of its face and classes every pif (``urban-slope-pif-cut-fill{suffix}``
-tables). A pif's height is a quantile over its pips of the drop from pip to
-foot (:func:`gen_pif_wall_heights`, the 80th percentile as run), not its
-largest pip drop ``max_delta_h_m``, which overstated the retained height
-(kept as a column for reference). Its ``cut_fill_class`` sets the prior's
+**Height from the siz table, class from landslide step 13.** A pif's
+wall height is the siz table's ``near_drop_p80_m`` (since 2026-10-06): a
+quantile over its pips of the drop to the lowest cell within 3 m below each
+pip along its fall
+(:func:`~landloss.hazard.landslide.instability_zones.gen_pif_near_drops`).
+Neither its largest pip drop ``max_delta_h_m`` nor step 13's walk to the
+foot of the face, which runs on down a long batter or hillside, is used:
+both overstated the retained height. Step 13 classes every pif
+(``urban-slope-pif-cut-fill{suffix}``), and its ``cut_fill_class`` sets the prior's
 fill, rock cut and natural factors; the ground map's material says only
 whether a cut is in rock. Fill on the ground map (its fill materials and its
 ``modification``) and the SLIDE fill bodies no longer set the prior: the
@@ -50,27 +64,50 @@ modification is ``fill`` on 88% of the pilot's candidate pifs, rock
 included, so it lifted nearly every unit.
 """
 
+from collections import Counter
+from itertools import pairwise
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
+from scipy.sparse.csgraph import connected_components, minimum_spanning_tree
 from scipy.spatial import cKDTree
+from scipy.spatial.distance import pdist, squareform
 
 from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.exposure.land.extent import stack_representatives
-from landloss.hazard.landslide import pif_cut_fill
+from landloss.hazard.landslide import bend_split, pif_cut_fill
+from landloss.hazard.landslide.bend_split import (
+    cut_path,
+    tree_paths,
+)
 from landloss.hazard.landslide.ground_map import ROCK_MATERIALS
 from landloss.hazard.landslide.slope_elements import height_band
-from landloss.hazard.landslide.wall_candidates import SIZ_CLASS, SMALL_CLASS
+from landloss.hazard.landslide.wall_candidates import (
+    SIZ_CLASS,
+    SMALL_CLASS,
+    _property_frame,
+)
 from landloss.hazard.realisation import realisation_seed
 
 # The two kinds of member a wall unit is made of.
 PIF_MEMBER, GNS_ONLY_MEMBER = "pif", "gns_only"
 UNIT_SOURCES = (PIF_MEMBER, GNS_ONLY_MEMBER)
+
+# Judgement (the lead, 2026-10-06): a wall unit counts as a wall on every
+# property it enters by at least this many metres of its line, with that
+# length; less is a line drawn a little over the boundary.
+BETA_MIN_WALL_LENGTH_IN_PROPERTY_M = 1.0
+
+# A unit's members are walked as points this far apart, at most, when they
+# are chained into one line; a long unit's points are spaced further so that
+# there are no more than _MAX_LINE_POINTS.
+_LINE_SPACING_M = 0.5
+_MAX_LINE_POINTS = 1500
 
 # The pif candidate classes that become members.
 CANDIDATE_CLASSES = (SIZ_CLASS, SMALL_CLASS)
@@ -81,12 +118,27 @@ P_WALL_BASES = (
     "rock_cut",
     "fill",
     "natural",
+    "property_boundary",
+    "road_frontage",
+    "tall_face",
     "gns_floor",
     "gns_only",
     "claims",
     "nzmm",
 )
-PRIOR, ROCK_CUT, FILL, NATURAL, GNS_FLOOR, GNS_ONLY, CLAIMS, NZMM = P_WALL_BASES
+(
+    PRIOR,
+    ROCK_CUT,
+    FILL,
+    NATURAL,
+    PROPERTY_BOUNDARY,
+    ROAD_FRONTAGE,
+    TALL_FACE,
+    GNS_FLOOR,
+    GNS_ONLY,
+    CLAIMS,
+    NZMM,
+) = P_WALL_BASES
 
 # The two updates written to the candidates missing table.
 UPDATES = ("claims", "claims_nzmm")
@@ -98,11 +150,8 @@ DRAW_STREAM = "wall_units"
 # platform and a benched face with fill at its crest.
 FILL_CLASSES = (pif_cut_fill.FILL, pif_cut_fill.CUT_AND_FILL)
 
-# The landslide step 13 columns a pif member reads, per pif (the class, and
-# the wall height from gen_pif_wall_heights), and the pip columns the height
-# is read from.
-CUT_FILL_COLUMNS = ("cut_fill_class", "wall_height_m")
-CUT_FILL_PIP_COLUMNS = ("pif_id", "z", "foot_z")
+# The landslide step 13 column a pif member reads, per pif: its class.
+CUT_FILL_COLUMNS = ("cut_fill_class",)
 
 # The siz table columns a pif member reads, and the GNS-only columns.
 PIF_COLUMNS = (
@@ -117,6 +166,7 @@ PIF_COLUMNS = (
     "end_a_fall_deg",
     "end_b_fall_deg",
     "max_delta_h_m",
+    "near_drop_p80_m",
     "building_m",
     "ground_group",
     "ground_material",
@@ -204,43 +254,6 @@ def gen_gns_wall_features(
     return features
 
 
-def gen_pif_wall_heights(pips: pd.DataFrame, *, quantile: float) -> pd.Series:
-    """The retained height of each pif: a quantile of its pips' face drops.
-
-    A pip's face drop is its elevation less that of the foot of its face, the
-    cell landslide step 13 walks it down to
-    (:func:`~landloss.hazard.landslide.pif_cut_fill.face_feet`). A pif's
-    ``max_delta_h_m`` is the largest drop of any pip pair, which overstates
-    the height a wall along it retains; a high quantile over the pips reads
-    the face as most of its length stands.
-
-    Args:
-        pips: Landslide step 13's pip table, one row per pip, with
-            :data:`CUT_FILL_PIP_COLUMNS`.
-        quantile: The quantile over each pif's pips, from 0 to 1 (linear
-            interpolation between pips).
-
-    Returns:
-        ``wall_height_m`` per pif, indexed by ``pif_id``.
-
-    Raises:
-        ValueError: If a column is missing or the quantile is outside [0, 1].
-    """
-    _require(pips, CUT_FILL_PIP_COLUMNS, "pips")
-    if not 0.0 <= quantile <= 1.0:
-        msg = f"quantile must be within [0, 1], got {quantile}"
-        raise ValueError(msg)
-    drop = pips["z"].to_numpy(dtype=float) - pips["foot_z"].to_numpy(dtype=float)
-    heights = (
-        pd.Series(drop)
-        .groupby(pips["pif_id"].to_numpy(dtype=np.int64))
-        .quantile(quantile)
-    )
-    heights.index.name = "pif_id"
-    heights.name = "wall_height_m"
-    return heights
-
-
 def gen_wall_members(
     sizs: gpd.GeoDataFrame, gns_only: gpd.GeoDataFrame, cut_fill: pd.DataFrame
 ) -> gpd.GeoDataFrame:
@@ -262,8 +275,7 @@ def gen_wall_members(
             across each piece.
         cut_fill: Landslide step 13 per pif, indexed by ``pif_id``, with
             :data:`CUT_FILL_COLUMNS`: ``cut_fill_class`` (one of
-            :data:`~landloss.hazard.landslide.pif_cut_fill.CLASSES`) and
-            ``wall_height_m`` (:func:`gen_pif_wall_heights`). Every candidate
+            :data:`~landloss.hazard.landslide.pif_cut_fill.CLASSES`). Every candidate
             pif must be in it.
 
     Returns:
@@ -274,7 +286,8 @@ def gen_wall_members(
         id, NA where none), ``length_m`` (the spine or the line),
         the end columns (a GNS-only piece's ends are its line's ends and its
         falls are NaN), ``max_delta_h_m`` (NaN for GNS-only), ``height_m``
-        (``wall_height_m``, or ``step_height_m`` for GNS-only),
+        (the siz table's ``near_drop_p80_m``, or ``step_height_m`` for
+        GNS-only),
         ``cut_fill_class`` (``unknown`` for GNS-only), ``building_m``,
         ``ground_group``, ``ground_material``, ``height_band`` (0 for
         GNS-only), ``in_slide_fill`` (False for GNS-only), ``gns_wall`` (True
@@ -317,7 +330,7 @@ def gen_wall_members(
                     "max_delta_h_m",
                 )
             },
-            "height_m": step13["wall_height_m"].to_numpy(dtype=float),
+            "height_m": pifs["near_drop_p80_m"].to_numpy(dtype=float),
             "cut_fill_class": step13["cut_fill_class"].astype(object).to_numpy(),
             "building_m": pifs["building_m"].to_numpy(dtype=float),
             "ground_group": pifs["ground_group"].astype(object).to_numpy(),
@@ -370,19 +383,18 @@ def gen_wall_members(
 
 
 def _within_groups(
-    groups: NDArray[np.int64], members: NDArray[np.int64], keys: NDArray[np.int64]
+    groups: NDArray[np.int64], members: NDArray[np.int64]
 ) -> NDArray[np.int64]:
-    """Edges joining the members that share a group and a property key."""
+    """Edges joining the members that share a group, whatever their property."""
     if len(members) == 0:
         return np.zeros((0, 2), dtype=np.int64)
-    frame = pd.DataFrame({"group": groups, "member": members, "key": keys[members]})
-    first = frame.groupby(["group", "key"])["member"].transform("min")
+    frame = pd.DataFrame({"group": groups, "member": members})
+    first = frame.groupby("group")["member"].transform("min")
     return np.column_stack([first.to_numpy(), members]).astype(np.int64)
 
 
 def _end_edges(
     members: gpd.GeoDataFrame,
-    keys: NDArray[np.int64],
     *,
     join_gap_m: float,
     max_offset_m: float,
@@ -390,7 +402,7 @@ def _end_edges(
     corner_gap_m: float,
     corner_max_deg: float,
 ) -> NDArray[np.int64]:
-    """Edges joining pif members end to end, on one property."""
+    """Edges joining pif members end to end, whatever their property."""
     pif = np.flatnonzero(members["member_type"].to_numpy() == PIF_MEMBER)
     n = len(pif)
     if n < 2:
@@ -410,7 +422,6 @@ def _end_edges(
     i, j = pairs[:, 0] // 2, pairs[:, 1] // 2
     keep = i != j
     pair = np.unique(np.sort(np.column_stack([i[keep], j[keep]]), axis=1), axis=0)
-    pair = pair[keys[pif[pair[:, 0]]] == keys[pif[pair[:, 1]]]]
     if len(pair) == 0:
         return np.zeros((0, 2), dtype=np.int64)
     a, b = pair[:, 0], pair[:, 1]
@@ -438,6 +449,37 @@ def _end_edges(
     return np.column_stack([pif[a[joined]], pif[b[joined]]]).astype(np.int64)
 
 
+def _strike_angle_deg(
+    lines: NDArray[np.object_], members: gpd.GeoDataFrame, pif_rows: NDArray[np.int64]
+) -> NDArray[np.float64]:
+    """The angle between each GNS-only line and the strike of a pif, in degrees.
+
+    The line's bearing is its start to its end; the pif's strike is
+    perpendicular to the fall at the end of its spine nearest the line
+    (``end_a_fall_deg`` or ``end_b_fall_deg``), so an L-shaped pif is read
+    along the leg the line is beside. Both are axes, so the angle is 0 to 90.
+    NaN where the pif's fall there is unknown.
+    """
+    rows = members.iloc[pif_rows]
+    start, end = shapely.get_point(lines, 0), shapely.get_point(lines, -1)
+    bearing = np.degrees(
+        np.arctan2(
+            shapely.get_x(end) - shapely.get_x(start),
+            shapely.get_y(end) - shapely.get_y(start),
+        )
+    )
+    end_a = shapely.points(rows[["end_a_x", "end_a_y"]].to_numpy(dtype=float))
+    end_b = shapely.points(rows[["end_b_x", "end_b_y"]].to_numpy(dtype=float))
+    nearer_a = shapely.distance(lines, end_a) <= shapely.distance(lines, end_b)
+    fall = np.where(
+        nearer_a,
+        rows["end_a_fall_deg"].to_numpy(dtype=float),
+        rows["end_b_fall_deg"].to_numpy(dtype=float),
+    )
+    off_fall = np.abs((bearing - fall + 90.0) % 180.0 - 90.0)
+    return 90.0 - off_fall
+
+
 def gen_wall_units(
     members: gpd.GeoDataFrame,
     gns_features: gpd.GeoDataFrame,
@@ -449,20 +491,31 @@ def gen_wall_units(
     corner_gap_m: float,
     corner_max_deg: float,
     gns_only_merge_m: float,
+    gns_only_merge_max_angle_deg: float,
+    max_bends: int,
+    min_segment_m: float,
+    stray_tolerance_m: float,
+    max_length_m: float,
+    max_turn_deg: float,
+    properties: gpd.GeoDataFrame | None = None,
 ) -> gpd.GeoDataFrame:
-    """Join the members of one property into wall units.
+    """Join the members into wall units, across property boundaries.
 
-    Members join only within one property; members with no property share one
-    "no property" key, so they join each other but nothing on a property.
-    Three rules join them, and a unit is everything joined directly or through
-    others:
+    No rule looks at the property (the lead, 2026-10-06): a wall on a boundary
+    is one unit, which carries its length in every property it enters
+    (:func:`gen_unit_properties`). Three rules join the members, and a unit
+    is everything joined directly or through others:
 
     - **GNS feature:** members whose footprint lies within ``gns_match_m`` of
       one GNS mapped wall feature are one unit; where GNS maps the wall it is
       the join.
     - **GNS-only merge:** a GNS-only piece within ``gns_only_merge_m`` of a
-      pif's footprint joins it, whatever their directions, so one wall is not
-      counted twice.
+      pif's footprint joins it, so one wall is not counted twice, where it
+      runs roughly along the pif's face: the angle between its bearing and
+      the pif's strike at the spine end nearest it is at most
+      ``gns_only_merge_max_angle_deg`` (a pif with no fall there joins
+      whatever the direction). A piece across the face (on the pilot, an
+      east-west mapped wall beside a north-south pif) is another wall.
     - **End to end, pifs only:** of the four pairs of ends of two pifs, the
       closest are the facing ends and their distance the gap. They join where
       the gap is within ``join_gap_m``, the ends are offset along their mean
@@ -482,6 +535,24 @@ def gen_wall_units(
         corner_max_deg: The largest turn at a corner, in degrees; a corner
             turns by more than ``bearing_tol_deg``.
         gns_only_merge_m: A GNS-only piece this close to a pif joins it.
+        gns_only_merge_max_angle_deg: The largest angle, in degrees, between
+            a merging GNS-only piece and the pif's strike.
+        max_bends: The most bends one wall's line has (:func:`gen_unit_lines`).
+        min_segment_m: The shortest straight section of a wall's line.
+        stray_tolerance_m: How far a wall's line may stray from the chained
+            members it follows.
+        max_length_m: The longest wall: a longer one is cut at its own bends,
+            then at the property boundaries it crosses, then into equal
+            pieces (the lead, 2026-10-06).
+        max_turn_deg: The most a wall's line may turn in all.
+        properties: LINZ property boundaries for the boundary cut; None cuts
+            none.
+
+    Raises:
+        ValueError: If a unit's line breaks a rule (more than ``max_bends``
+            bends, turning more than ``max_turn_deg``, shorter than
+            ``min_segment_m``, longer than ``max_length_m``, more than one
+            part); the rules hold by construction, so this is a bug.
 
     Returns:
         One row per unit, indexed by ``wall_unit_id`` (minted by location
@@ -489,20 +560,20 @@ def gen_wall_units(
         ``member_pif_ids`` and ``member_gns_only_ids`` (sorted lists),
         ``n_pifs``, ``n_gns_only``, ``unit_source`` (``pif`` where any member
         is a pif, else ``gns_only``), ``is_siz`` and ``gns_wall`` (any member),
-        ``property_id``, ``in_exposure`` (it has a property),
+        ``property_id`` (provisional: the longest member's with one; set by
+        :func:`gen_unit_properties`), ``in_exposure`` (it has a property),
         ``max_delta_h_m`` (the highest pif, for reference), ``height_m`` (the
         highest member's: a pif's ``wall_height_m``, a GNS-only piece's
-        ``step_height_m``), ``building_m`` (the nearest), ``length_m`` (the
-        sum), :data:`LONGEST_MEMBER_COLUMNS` from the longest member (ties to
-        the lowest member type and id), ``cut_fill_class`` (see
-        :func:`_unit_cut_fill_class`), ``x`` and ``y`` (a representative
-        point) and a MultiLineString of the member geometries.
+        ``step_height_m``), ``building_m`` (the nearest), ``length_m`` (of
+        the unit's simplified line), ``length_original_m`` (the members'
+        summed length), ``n_bends``, :data:`LONGEST_MEMBER_COLUMNS` from the
+        longest member (ties to the lowest member type and id),
+        ``cut_fill_class`` (see :func:`_unit_cut_fill_class`), ``x`` and ``y``
+        (a representative point) and the simplified LineString
+        (:func:`gen_unit_line`).
     """
     crs = members.crs
     n = len(members)
-    keys = pd.factorize(members["property_id"], use_na_sentinel=False)[0].astype(
-        np.int64
-    )
     footprints = gpd.GeoSeries(members["footprint"], crs=crs).to_numpy()
     edges = []
 
@@ -510,7 +581,7 @@ def gen_wall_units(
         near = shapely.STRtree(footprints).query(
             gns_features.geometry.to_numpy(), predicate="dwithin", distance=gns_match_m
         )
-        edges.append(_within_groups(near[0], near[1], keys))
+        edges.append(_within_groups(near[0], near[1]))
 
     is_pif = members["member_type"].to_numpy() == PIF_MEMBER
     gns_rows = np.flatnonzero(~is_pif)
@@ -520,12 +591,13 @@ def gen_wall_units(
             footprints[gns_rows], predicate="dwithin", distance=gns_only_merge_m
         )
         pairs = np.column_stack([gns_rows[near[0]], pif_rows[near[1]]])
-        edges.append(pairs[keys[pairs[:, 0]] == keys[pairs[:, 1]]].astype(np.int64))
+        angle = _strike_angle_deg(footprints[pairs[:, 0]], members, pairs[:, 1])
+        along = ~(angle > gns_only_merge_max_angle_deg)
+        edges.append(pairs[along].astype(np.int64))
 
     edges.append(
         _end_edges(
             members,
-            keys,
             join_gap_m=join_gap_m,
             max_offset_m=max_offset_m,
             bearing_tol_deg=bearing_tol_deg,
@@ -534,12 +606,406 @@ def gen_wall_units(
         )
     )
     frame = pd.DataFrame(members.drop(columns=["geometry", "footprint"]))
-    frame["unit"] = _components(n, edges) if n else np.zeros(0, dtype=np.int64)
-    return _unit_rows(frame, members.geometry.to_numpy(), crs=crs)
+    joined = _components(n, edges) if n else np.zeros(0, dtype=np.int64)
+    frame["unit"], lines, dropped_m = _split_into_walls(
+        joined,
+        members.geometry.to_numpy(),
+        footprints,
+        max_bends=max_bends,
+        min_segment_m=min_segment_m,
+        stray_tolerance_m=stray_tolerance_m,
+        max_length_m=max_length_m,
+        max_turn_deg=max_turn_deg,
+        boundaries=None if properties is None else _property_frame(properties),
+        counts=(counts := Counter()),
+    )
+    breaks = {
+        label: broken
+        for label, line in lines.items()
+        if (
+            broken := bend_split.rule_breaks(
+                line,
+                max_bends=max_bends,
+                min_length_m=min_segment_m,
+                max_length_m=max_length_m,
+                max_turn_deg=max_turn_deg,
+            )
+        )
+    }
+    if breaks:
+        msg = (
+            f"{len(breaks)} wall units break the line rules: {list(breaks.items())[:5]}"
+        )
+        raise ValueError(msg)
+    units = _unit_rows(frame, lines, crs=crs)
+    units.attrs["dropped_wall_m"] = dropped_m
+    units.attrs["cap_cuts"] = dict(counts)
+    return units
+
+
+def _split_into_walls(
+    joined: NDArray[np.int64],
+    geometries: NDArray[np.object_],
+    footprints: NDArray[np.object_],
+    **settings: object,
+) -> tuple[NDArray[np.int64], dict[int, shapely.LineString], float]:
+    """Cut each group of joined members into walls, and give each member one.
+
+    The walls of a group are :func:`gen_unit_lines` on its members. Each
+    member goes to the wall nearest most of its points (a pif's pips, a
+    GNS-only line walked every half metre), ties to the first wall, so a pif
+    straddling a cut goes to the wall holding most of its pips and every
+    member is in exactly one unit; each wall with a member is a unit. A wall
+    no member is nearest (a stretch a member only partly covers) joins the
+    unit of the member nearest most of its points where the two run on end to
+    end and the joined line still keeps every rule
+    (:func:`~landloss.hazard.landslide.bend_split.rule_breaks`); otherwise it
+    is dropped. A unit is never more than one line (the lead, 2026-10-06).
+
+    Returns:
+        ``(unit, lines, dropped_m)``: the unit of each member, numbered from
+        0, the line of each unit, and the length of the walls dropped.
+    """
+    rules = {
+        "max_bends": int(settings["max_bends"]),
+        "min_length_m": float(settings["min_segment_m"]),
+        "max_length_m": float(settings["max_length_m"]),
+        "max_turn_deg": float(settings["max_turn_deg"]),
+    }
+    unit = np.zeros(len(joined), dtype=np.int64)
+    lines: dict[int, shapely.LineString] = {}
+    dropped_m = 0.0
+    rows_of = pd.Series(np.arange(len(joined))).groupby(joined).indices
+    for group in sorted(rows_of):
+        rows = rows_of[group]
+        walls = gen_unit_lines(list(geometries[rows]), **settings)
+        if len(walls) == 1:
+            owner = np.zeros(len(rows), dtype=np.int64)
+        else:
+            owner = np.array(
+                [_nearest_wall(footprints[row], walls) for row in rows], dtype=np.int64
+            )
+        kept = {int(wall): walls[wall] for wall in np.unique(owner)}
+        for wall in sorted(set(range(len(walls))) - set(kept)):
+            member = _nearest_member(walls[wall], footprints[rows])
+            target = int(owner[member])
+            merged = shapely.line_merge(
+                shapely.MultiLineString([kept[target], walls[wall]])
+            )
+            if merged.geom_type == "LineString":
+                merged = shapely.simplify(merged, 1e-6, preserve_topology=False)
+            if not bend_split.rule_breaks(merged, **rules):
+                kept[target] = merged
+            else:
+                dropped_m += walls[wall].length
+        for wall, line in kept.items():
+            label = len(lines)
+            lines[label] = line
+            unit[rows[owner == wall]] = label
+    return unit, lines, dropped_m
+
+
+def _nearest_member(wall: shapely.LineString, footprints: NDArray[np.object_]) -> int:
+    """The member nearest most of a wall's points."""
+    points = shapely.points(shapely.get_coordinates(shapely.segmentize(wall, 1.0)))
+    distance = shapely.distance(points[:, None], footprints[None, :])
+    return int(np.bincount(distance.argmin(axis=1), minlength=len(footprints)).argmax())
+
+
+def _nearest_wall(footprint: object, walls: list[shapely.LineString]) -> int:
+    """The wall nearest most of a member's points."""
+    points = shapely.points(
+        shapely.get_coordinates(shapely.segmentize(footprint, _LINE_SPACING_M))
+    )
+    distance = shapely.distance(points[:, None], np.asarray(walls, dtype=object)[None])
+    return int(np.bincount(distance.argmin(axis=1), minlength=len(walls)).argmax())
+
+
+def _chains(lines: list[object], *, min_branch_m: float) -> list[NDArray[np.float64]]:
+    """The members of one group as paths of points, end to end.
+
+    The members are walked as points no more than :data:`_LINE_SPACING_M`
+    apart and joined by their minimum spanning tree. The first path is the
+    tree's longest (a double sweep), so its ends are the group's two far ends
+    and a gap between two members is crossed by the shortest jump. Where the
+    tree branches (a T in a mapped wall, a pif beside the main run), each
+    branch left off it is a path of its own from where it joins, the longest
+    first, as long as it is at least ``min_branch_m``; so no member is left
+    far from every path.
+    """
+    total = float(np.sum(shapely.length(np.asarray(lines, dtype=object))))
+    spacing = max(_LINE_SPACING_M, total / _MAX_LINE_POINTS)
+    xy = shapely.get_coordinates(
+        shapely.segmentize(np.asarray(lines, dtype=object), spacing)
+    )
+    xy = np.unique(xy, axis=0)
+    if len(xy) < 2:
+        return [np.repeat(xy, 2, axis=0)]
+    # The small offset keeps two coincident points joined: a zero is no edge.
+    tree = minimum_spanning_tree(squareform(pdist(xy)) + 1e-9)
+    return tree_paths(tree + tree.T, xy, min_branch_m=min_branch_m)
+
+
+def _boundary_positions(
+    line: shapely.LineString, boundaries: gpd.GeoDataFrame, min_segment_m: float
+) -> list[float]:
+    """Where a line crosses property boundaries, one stretch per property.
+
+    The line is cut at every crossing; consecutive stretches in the same
+    property (the one holding each stretch's midpoint) are one, so a wall
+    weaving along a boundary is not cut at every weave; and a stretch
+    shorter than ``min_segment_m`` joins the one before it (or after it, for
+    the first).
+
+    Returns:
+        The cuts, as distances along the line (none where it stays in one
+        property).
+    """
+    polygons = boundaries.geometry.to_numpy()
+    near = shapely.STRtree(polygons).query(line, predicate="intersects")
+    if len(near) < 2:
+        return []
+    crossings = shapely.intersection(
+        line, shapely.union_all(shapely.boundary(polygons[near]))
+    )
+    at = np.unique(
+        shapely.line_locate_point(
+            line, shapely.points(shapely.get_coordinates(crossings))
+        )
+    )
+    length = line.length
+    cuts = np.r_[0.0, at[(at > 1e-6) & (at < length - 1e-6)], length]
+    middle = shapely.line_interpolate_point(line, (cuts[:-1] + cuts[1:]) / 2.0)
+    ids = boundaries["property_id"].to_numpy()[near]
+    inside = shapely.contains(polygons[near][None, :], middle[:, None])
+    owner = [ids[row.argmax()] if row.any() else None for row in inside]
+    ranges: list[list[float]] = []
+    previous = object()
+    for (a, b), label in zip(pairwise(cuts), owner, strict=True):
+        if ranges and label == previous:
+            ranges[-1][1] = b
+        else:
+            ranges.append([a, b])
+        previous = label
+    while len(ranges) > 1:
+        sizes = [b - a for a, b in ranges]
+        i = int(np.argmin(sizes))
+        if sizes[i] >= min_segment_m:
+            break
+        j = i - 1 if i > 0 else 1
+        low, high = min(i, j), max(i, j)
+        ranges[low] = [ranges[low][0], ranges[high][1]]
+        del ranges[high]
+    return [float(a) for a, _ in ranges[1:]]
+
+
+def gen_unit_lines(
+    lines: list[object],
+    *,
+    max_bends: int,
+    min_segment_m: float,
+    stray_tolerance_m: float,
+    max_length_m: float = np.inf,
+    max_turn_deg: float = np.inf,
+    boundaries: gpd.GeoDataFrame | None = None,
+    counts: Counter | None = None,
+) -> list[shapely.LineString]:
+    """The walls one group of joined members makes, each a line within the rules.
+
+    The members (pif spines, GNS-only lines) are chained end to end into
+    paths, the longest first and then each branch off it (:func:`_chains`),
+    and each path is cut by the rule the pifs are cut by
+    (:func:`landloss.hazard.landslide.bend_split.cut_path`, the lead,
+    2026-10-06): a wall runs as far as Douglas-Peucker at
+    ``stray_tolerance_m`` follows the path with at most ``max_bends`` bends
+    turning no more than ``max_turn_deg`` in all; a wall whose ends are under
+    ``min_segment_m`` apart joins a neighbour; and a wall whose line is over
+    ``max_length_m`` is cut at its own bends, then (with no bend left) where
+    it crosses the boundaries of ``boundaries`` (LINZ properties, road
+    parcels included; :func:`_boundary_positions`), then into equal pieces.
+    Each wall's line is its stretch's
+    (:func:`~landloss.hazard.landslide.bend_split.canonical_line`), so every
+    wall keeps every rule.
+
+    Args:
+        lines: The group's member geometries.
+        max_bends: The most bends one wall's line has.
+        min_segment_m: The shortest straight section, and the least distance
+            between a wall's ends.
+        stray_tolerance_m: How far a wall's line may stray from the path.
+        max_length_m: The longest wall.
+        max_turn_deg: The most a wall's line may turn in all.
+        boundaries: The property polygons with ``property_id``; None skips the
+            boundary stage of the length cap.
+        counts: Counts the walls the length cap cut, by stage.
+
+    Returns:
+        The walls, in order along the paths.
+    """
+    walls: list[shapely.LineString] = []
+    paths = _chains(lines, min_branch_m=min_segment_m)
+    boundary_cuts = (
+        None
+        if boundaries is None
+        else (lambda line: _boundary_positions(line, boundaries, min_segment_m))
+    )
+    for k, path in enumerate(paths):
+        if k > 0 and np.hypot(*(path[-1] - path[0])) < min_segment_m:
+            continue
+        for start, end in cut_path(
+            path,
+            max_bends=max_bends,
+            tolerance_m=stray_tolerance_m,
+            min_segment_m=min_segment_m,
+            max_length_m=max_length_m,
+            max_turn_deg=max_turn_deg,
+            boundary_cuts=boundary_cuts,
+            counts=counts,
+        ):
+            walls.append(
+                shapely.LineString(
+                    bend_split.canonical_line(
+                        path[start : end + 1],
+                        tolerance_m=stray_tolerance_m,
+                        max_bends=max_bends,
+                        min_segment_m=min_segment_m,
+                        max_turn_deg=max_turn_deg,
+                    )
+                )
+            )
+    return walls
+
+
+def gen_unit_properties(
+    units: gpd.GeoDataFrame,
+    properties: gpd.GeoDataFrame,
+    *,
+    min_length_m: float = BETA_MIN_WALL_LENGTH_IN_PROPERTY_M,
+) -> pd.DataFrame:
+    """The properties each wall unit's line enters, and its primary one.
+
+    A unit is a wall on every property its line enters by at least
+    ``min_length_m`` (the lead, 2026-10-06), with the length inside it. The
+    primary property, for what is done once per unit (the claim, the exposure
+    draw), is the rule the pifs and GNS-only pieces use: the non-road
+    property holding the longest part, ties to the lowest id, NA where the
+    line is on no non-road property. Stacked unit titles count once, as
+    :func:`~landloss.exposure.land.extent.stack_representatives` picks.
+
+    Args:
+        units: From :func:`gen_wall_units`.
+        properties: LINZ property boundaries
+            (:func:`landloss.io.readers.get_nz_property_boundaries`), in the
+            CRS of ``units``.
+        min_length_m: The least length inside a property for it to count.
+
+    Returns:
+        A frame indexed like ``units`` with ``property_id`` (the primary),
+        ``in_exposure`` (it has one), ``property_lengths_m`` (a list of
+        ``{"property_id": str, "length_m": float}``, longest first, of the
+        non-road properties the line enters by at least ``min_length_m``, the
+        primary always included) and ``n_properties`` (its length).
+    """
+    frame = _property_frame(properties).reset_index(drop=True)
+    lines = gpd.GeoDataFrame(geometry=units.geometry.to_numpy(), crs=units.crs)
+    joined = gpd.sjoin(lines, frame[["geometry"]], how="inner")
+    rows = joined["index_right"].to_numpy()
+    overlap = pd.DataFrame(
+        {
+            "unit": joined.index.to_numpy(),
+            "property_id": frame["property_id"].to_numpy()[rows],
+            "is_road": frame["property_is_road"].to_numpy(dtype=bool)[rows],
+            "length_m": shapely.length(
+                shapely.intersection(
+                    joined.geometry.to_numpy(), frame.geometry.to_numpy()[rows]
+                )
+            ),
+        }
+    )
+    overlap = overlap[~overlap["is_road"] & (overlap["length_m"] > 0)]
+    overlap = overlap.sort_values(
+        ["unit", "length_m", "property_id"],
+        ascending=[True, False, True],
+        kind="mergesort",
+    ).reset_index(drop=True)
+    first = ~overlap["unit"].duplicated()
+    primary = overlap.loc[first].set_index("unit")["property_id"]
+    counted = overlap[first | (overlap["length_m"] >= min_length_m)]
+    lengths = {
+        unit: [
+            {"property_id": str(pid), "length_m": float(length)}
+            for pid, length in zip(group["property_id"], group["length_m"], strict=True)
+        ]
+        for unit, group in counted.groupby("unit", sort=False)
+    }
+    n = len(units)
+    property_id = primary.reindex(range(n)).astype("string").to_numpy()
+    lists = [lengths.get(i, []) for i in range(n)]
+    out = pd.DataFrame(
+        {
+            "property_id": pd.array(property_id, dtype="string"),
+            "n_properties": np.array([len(x) for x in lists], dtype=np.int64),
+        },
+        index=units.index,
+    )
+    out["in_exposure"] = out["property_id"].notna().to_numpy(dtype=bool)
+    out["property_lengths_m"] = pd.Series(lists, index=units.index, dtype=object)
+    return out[["property_id", "in_exposure", "property_lengths_m", "n_properties"]]
+
+
+def gen_unit_boundary_flags(
+    units: gpd.GeoDataFrame,
+    properties: gpd.GeoDataFrame,
+    *,
+    distance_m: float = constants.BETA_WALL_BOUNDARY_DISTANCE_M,
+) -> pd.DataFrame:
+    """Whether each unit lies mostly along a property boundary or a road.
+
+    A unit is on a property boundary where at least half its line lies within
+    ``distance_m`` of the boundary of a non-road property, and on a road
+    frontage where at least half lies within it of the boundary of a road
+    parcel (both can hold; the prior takes the road frontage).
+
+    Args:
+        units: The wall units with their lines.
+        properties: LINZ property boundaries, in the CRS of ``units``.
+        distance_m: How near the boundary the line must lie.
+
+    Returns:
+        A frame indexed like ``units`` with ``boundary_share`` and
+        ``road_frontage_share`` (the share of the line within ``distance_m``)
+        and ``on_property_boundary`` and ``on_road_frontage``.
+    """
+    frame = _property_frame(properties).reset_index(drop=True)
+    lines = units.geometry.to_numpy()
+    length = shapely.length(lines)
+    out = {}
+    for name, polygons in (
+        ("boundary_share", frame.geometry.to_numpy()[~frame["property_is_road"]]),
+        ("road_frontage_share", frame.geometry.to_numpy()[frame["property_is_road"]]),
+    ):
+        share = np.zeros(len(units))
+        if len(polygons) and len(lines):
+            edges = shapely.boundary(polygons)
+            line_of, edge_of = shapely.STRtree(edges).query(
+                lines, predicate="dwithin", distance=distance_m
+            )
+            for i in np.unique(line_of):
+                band = shapely.buffer(
+                    shapely.union_all(edges[edge_of[line_of == i]]), distance_m
+                )
+                share[i] = shapely.length(shapely.intersection(lines[i], band)) / max(
+                    length[i], 1e-9
+                )
+        out[name] = share
+    result = pd.DataFrame(out, index=units.index)
+    result["on_property_boundary"] = result["boundary_share"] >= 0.5
+    result["on_road_frontage"] = result["road_frontage_share"] >= 0.5
+    return result
 
 
 def _unit_rows(
-    frame: pd.DataFrame, geometries: NDArray[np.object_], *, crs: object
+    frame: pd.DataFrame, unit_lines: dict[int, shapely.LineString], *, crs: object
 ) -> gpd.GeoDataFrame:
     """Collapse the members, each carrying its ``unit``, to one row per unit."""
     is_pif = frame["member_type"] == PIF_MEMBER
@@ -564,7 +1030,18 @@ def _unit_rows(
     units["unit_source"] = np.where(units["n_pifs"] > 0, PIF_MEMBER, GNS_ONLY_MEMBER)
     units["is_siz"] = grouped["is_siz"].any()
     units["gns_wall"] = grouped["gns_wall"].any()
-    units["property_id"] = grouped["property_id"].first()
+    by_length = frame.sort_values(
+        ["unit", "length_m", "member_type", "member_id"],
+        ascending=[True, False, True, True],
+        kind="mergesort",
+    )
+    units["property_id"] = (
+        by_length.dropna(subset=["property_id"])
+        .drop_duplicates("unit")
+        .set_index("unit")["property_id"]
+        .reindex(units.index)
+        .astype("string")
+    )
     units["in_exposure"] = units["property_id"].notna()
     units["max_delta_h_m"] = grouped["max_delta_h_m"].max()
     units["height_m"] = grouped["height_m"].max()
@@ -583,13 +1060,14 @@ def _unit_rows(
         units["cut_fill_class"].notna(), pif_cut_fill.UNKNOWN
     )
 
-    unit = frame["unit"].to_numpy()
-    order = np.argsort(unit, kind="mergesort")
-    _, indices = np.unique(unit[order], return_inverse=True)
-    geometry = (
-        shapely.multilinestrings(geometries[order], indices=indices)
-        if len(unit)
-        else np.array([], dtype=object)
+    lines = [unit_lines[u] for u in units.index]
+    geometry = np.array(lines, dtype=object) if lines else np.array([], dtype=object)
+    # The members' summed length; a member's whole length counts in the unit
+    # it went to, so a split group's units share it out by member.
+    units["length_original_m"] = units["length_m"]
+    units["length_m"] = shapely.length(geometry) if lines else np.zeros(0)
+    units["n_bends"] = np.array(
+        [len(line.coords) - 2 for line in lines], dtype=np.int64
     )
     units = gpd.GeoDataFrame(units.reset_index(drop=True), geometry=geometry, crs=crs)
     points = units.geometry.representative_point()
@@ -631,6 +1109,24 @@ def _unit_cut_fill_class(pifs: pd.DataFrame) -> pd.Series:
     return chosen.set_index("unit")["cut_fill_class"].astype(object)
 
 
+def tall_face_factor(height_m: ArrayLike) -> NDArray[np.float64]:
+    """What a unit's prior keeps for the height of its face.
+
+    1 up to :data:`~landloss.domain.constants.BETA_TALL_FACE_TAPER_START_M`,
+    falling linearly to
+    :data:`~landloss.domain.constants.BETA_TALL_FACE_MIN_FACTOR` at
+    :data:`~landloss.domain.constants.BETA_TALL_FACE_TAPER_END_M` and that
+    above: a face too high to be retained in full is less often a wall. An
+    unknown height keeps 1.
+    """
+    height = np.nan_to_num(np.asarray(height_m, dtype=float), nan=0.0)
+    return np.interp(
+        height,
+        [constants.BETA_TALL_FACE_TAPER_START_M, constants.BETA_TALL_FACE_TAPER_END_M],
+        [1.0, constants.BETA_TALL_FACE_MIN_FACTOR],
+    )
+
+
 def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
     """The prior probability that each wall unit is a wall.
 
@@ -643,7 +1139,8 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
     NaN), so the wall height sets the band; the unit's ``height_band``, the
     hazard's band of its longest pif, is not read;
     then by the unit's landslide step 13 ``cut_fill_class``, one factor at
-    most since the classes exclude each other:
+    most since the classes exclude each other (and then by its setting,
+    below):
 
     - ``cut`` on a rock material, with a height over
       :data:`~landloss.domain.constants.BETA_ROCK_CUT_MIN_HEIGHT_M` (under it
@@ -654,10 +1151,20 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
       :data:`~landloss.domain.constants.BETA_FILL_WALL_FACTOR`;
     - ``natural`` times
       :data:`~landloss.domain.constants.BETA_NATURAL_WALL_FACTOR`;
-    - ``uncertain`` and ``unknown`` unchanged.
+    - ``uncertain`` and ``unknown`` unchanged;
 
-    The prior is clipped to [0, 1]. The basis is the rule that applied last.
-    A GNS-only unit has no prior: its probability is set by the floor.
+    then, where the units carry the flags of :func:`gen_unit_boundary_flags`,
+    times :data:`~landloss.domain.constants.BETA_ROAD_FRONTAGE_WALL_FACTOR`
+    on a road frontage, else
+    :data:`~landloss.domain.constants.BETA_BOUNDARY_WALL_FACTOR` on a
+    property boundary (the lead, 2026-10-06); and last by
+    :func:`tall_face_factor` of ``height_m``, which falls away once a face is
+    too high to be retained in full (the lead, 2026-10-06).
+
+    The prior is clipped to [0, 1]. The GNS floor and the claim update apply
+    on top (:func:`gen_gns_floor`), so a mapped wall stays at the floor. The
+    basis is the rule that applied last. A GNS-only unit has no prior: its
+    probability is set by the floor.
 
     Args:
         units: From :func:`gen_wall_units`, with ``unit_source``, ``is_siz``,
@@ -666,8 +1173,10 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
     Returns:
         A frame indexed like ``units`` with ``p_prior`` (NaN for a GNS-only
         unit), ``p_prior_basis``, ``prior_height_band`` (the band of
-        ``height_m``), ``is_rock_cut``, ``is_fill`` and ``is_natural``
-        (computed for every unit).
+        ``height_m``), ``is_rock_cut``, ``is_fill``, ``is_natural``,
+        ``is_property_boundary``, ``is_road_frontage`` (False where the flags
+        are not carried) and ``tall_face_factor`` (computed for every
+        unit).
     """
     _require(
         units,
@@ -713,6 +1222,25 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
     ):
         prior = np.where(applies, prior * factor, prior)
         basis[applies] = rule
+    road = (
+        units["on_road_frontage"].to_numpy(dtype=bool)
+        if "on_road_frontage" in units.columns
+        else np.zeros(len(units), dtype=bool)
+    )
+    boundary = (
+        units["on_property_boundary"].to_numpy(dtype=bool)
+        if "on_property_boundary" in units.columns
+        else np.zeros(len(units), dtype=bool)
+    ) & ~road
+    for applies, factor, rule in (
+        (road, constants.BETA_ROAD_FRONTAGE_WALL_FACTOR, ROAD_FRONTAGE),
+        (boundary, constants.BETA_BOUNDARY_WALL_FACTOR, PROPERTY_BOUNDARY),
+    ):
+        prior = np.where(applies, prior * factor, prior)
+        basis[applies] = rule
+    tall = tall_face_factor(units["height_m"].to_numpy(dtype=float))
+    prior = prior * tall
+    basis[tall < 1.0] = TALL_FACE
     prior = np.clip(prior, 0.0, 1.0)
 
     gns_only = units["unit_source"].to_numpy() == GNS_ONLY_MEMBER
@@ -726,6 +1254,9 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
             "is_rock_cut": rock,
             "is_fill": fill,
             "is_natural": natural,
+            "is_property_boundary": boundary,
+            "is_road_frontage": road,
+            "tall_face_factor": tall,
         },
         index=units.index,
     )
@@ -911,6 +1442,17 @@ def gen_wall_unit_probability(
     the full update on the NZMM count. ``p_wall`` is ``p_claims_nzmm`` where
     ``use_nzmm``, else ``p_claims``. A unit with no property is never updated.
 
+    A unit is a wall on every property in its ``property_lengths_m`` (where
+    the column is there; else its ``property_id`` alone), the properties its
+    line enters by at least :data:`BETA_MIN_WALL_LENGTH_IN_PROPERTY_M` (the
+    lead, 2026-10-06). Each property is updated on its own count over all the
+    units on it, each from its floor, and a unit on several properties keeps
+    the highest of its updates: each is conditioned on a record of that
+    property, and conditioning on "at least" never lowers a probability. A
+    property's ``n_units`` in ``missing`` counts every unit on it.
+    ``held_out``, ``claim_walls`` and ``nzmm_wall`` are the primary
+    property's.
+
     Args:
         units: From :func:`gen_wall_units`.
         p_floor: From :func:`gen_gns_floor`, indexed like ``units``.
@@ -935,7 +1477,6 @@ def gen_wall_unit_probability(
         ``listed_walls``, ``n_units`` and ``missing``.
     """
     property_id = units["property_id"].astype("string")
-    on_property = property_id.notna().to_numpy()
     ids = property_id.to_numpy(dtype=object, na_value=None)
     held = held_out.reindex(ids, fill_value=False).to_numpy(dtype=bool)
     claim = records["claim_walls"].reindex(ids).to_numpy(dtype=float, na_value=np.nan)
@@ -951,23 +1492,22 @@ def gen_wall_unit_probability(
     )
 
     missing = []
-    positions = (
-        pd.Series(np.flatnonzero(on_property))
-        .groupby(ids[on_property])
-        .agg(list)
-        .to_dict()
-    )
+    positions: dict[str, list[int]] = {}
+    for row, pids in enumerate(unit_property_ids(units)):
+        for pid in pids:
+            positions.setdefault(pid, []).append(row)
     for pid in sorted(set(positions) | set(n_claims_of.index) | set(n_nzmm_of.index)):
         rows = np.asarray(positions.get(pid, []), dtype=np.int64)
         n_claims = int(n_claims_of.get(pid, 0))
         n_both = max(n_claims, int(n_nzmm_of.get(pid, 0)))
         by_claims, short_claims = gen_count_update(p[rows], n_claims)
         full, short_both = gen_count_update(p[rows], n_both)
-        p_claims[rows] = by_claims
-        p_claims_nzmm[rows] = (
+        p_claims[rows] = np.maximum(p_claims[rows], by_claims)
+        p_claims_nzmm[rows] = np.maximum(
+            p_claims_nzmm[rows],
             by_claims + nzmm_weight * (full - by_claims)
             if n_both > n_claims
-            else by_claims
+            else by_claims,
         )
         for update, n, short in (
             (UPDATES[0], n_claims, short_claims),
@@ -976,12 +1516,11 @@ def gen_wall_unit_probability(
             if short:
                 missing.append((pid, update, n, len(rows), short))
 
-    n_claims_unit = n_claims_of.reindex(ids, fill_value=0).to_numpy(dtype=np.int64)
-    n_nzmm_unit = n_nzmm_of.reindex(ids, fill_value=0).to_numpy(dtype=np.int64)
     chosen = p_claims_nzmm if use_nzmm else p_claims
     basis = p_floor["p_floor_basis"].to_numpy(dtype=object).copy()
     raised = chosen > p
-    by_nzmm = use_nzmm & (n_nzmm_unit > n_claims_unit)
+    # NZMM set it where its update took the unit above the claims alone.
+    by_nzmm = use_nzmm & (p_claims_nzmm > p_claims)
     basis[raised & ~by_nzmm] = CLAIMS
     basis[raised & by_nzmm] = NZMM
 
@@ -1003,6 +1542,29 @@ def gen_wall_unit_probability(
         missing, columns=["property_id", "update", "listed_walls", "n_units", "missing"]
     )
     return probability, missing_frame
+
+
+def unit_property_ids(units: pd.DataFrame) -> list[list[str]]:
+    """The properties each unit is a wall on: its ``property_lengths_m``.
+
+    Where the frame has no ``property_lengths_m``, each unit is on its
+    ``property_id`` alone (none where NA); the primary property is always
+    included.
+    """
+    primary = units["property_id"].astype("string")
+    lengths = (
+        units["property_lengths_m"]
+        if "property_lengths_m" in units.columns
+        else pd.Series([[]] * len(units), index=units.index, dtype=object)
+    )
+    out = []
+    for pid, entries in zip(primary, lengths, strict=True):
+        ids = [] if pd.isna(pid) else [str(pid)]
+        for entry in [] if entries is None else entries:
+            if str(entry["property_id"]) not in ids:
+                ids.append(str(entry["property_id"]))
+        out.append(ids)
+    return out
 
 
 def _claim_counts(records: pd.DataFrame, held_out: pd.Series) -> pd.Series:
@@ -1065,6 +1627,8 @@ def gen_element_walls(
 
     Each element grew from one pif (``siz_id``); it is walled where that pif
     is a member of a walled unit, and not walled where the pif is in no unit.
+    An element built on a GNS-only unit's line carries that unit as
+    ``wall_unit_id`` and is walled where the unit is.
 
     Args:
         units: The wall units with ``member_pif_ids``.
@@ -1082,10 +1646,21 @@ def gen_element_walls(
     ).explode("pif")
     members = members.dropna(subset=["pif"])
     pif_walled = members.groupby(members["pif"].astype(np.int64))["walled"].any()
-    return (
+    by_pif = (
         elements["siz_id"]
         .map(pif_walled)
         .astype("boolean")
         .fillna(value=False)
         .astype(bool)
     )
+    if "wall_unit_id" not in elements.columns:
+        return by_pif
+    unit_walled = pd.Series(flags, index=units.index)
+    by_line = (
+        elements["wall_unit_id"]
+        .map(unit_walled)
+        .astype("boolean")
+        .fillna(value=False)
+        .astype(bool)
+    )
+    return by_pif | by_line

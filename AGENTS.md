@@ -8,6 +8,26 @@ These are essential skills.
 
 Use the `using-prek-pre-commit` skill when running pre-commit checks.
 
+### Claude Code: link the repository skills
+
+Claude Code reads project skills from `.claude/skills/`, not `.agents/skills/`,
+so the repository skills reach it through a directory junction from the first
+to the second. The junction is local to each machine and ignored by git.
+
+At the start of every session, before the first reply, Claude Code checks that
+`.claude/skills` exists and creates the junction if it does not:
+
+```powershell
+if (-not (Test-Path .claude\skills)) {
+    New-Item -ItemType Junction -Path .claude\skills -Target (Resolve-Path .agents\skills)
+}
+```
+
+If `.claude/skills` exists but is not a junction to `.agents/skills`, leave it
+alone and tell the user. Where the junction was only just created, the skills
+may not be listed until the next session, so read the relevant `SKILL.md`
+directly in the meantime.
+
 Extended thinking should only trigger for multi-step reasoning problems. When in doubt, respond directly without extended analysis.
 
 ## Replies to the user

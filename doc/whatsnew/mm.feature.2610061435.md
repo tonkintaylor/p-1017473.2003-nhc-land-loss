@@ -1,0 +1,1 @@
+Store the proposed retaining wall fragility by wall type as the PGA at which 15% and 50% of walls are replaced (`retaining-wall-type-fragility.csv`), loaded as a lognormal by `landloss.hazard.landslide.urban.wall_type_fragility`, with fill walls 15% weaker and cut walls 15% stronger; not yet read by the model.

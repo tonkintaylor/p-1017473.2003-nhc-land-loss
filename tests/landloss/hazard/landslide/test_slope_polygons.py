@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from landloss.hazard.landslide import slope_polygons
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     CREST,
@@ -42,6 +43,8 @@ from landloss.hazard.landslide.slope_elements import (
     find_slope_elements,
 )
 from landloss.hazard.landslide.slope_polygons import (
+    BETA_MIN_EVACUATED_WIDTH_H,
+    BETA_MIN_EVACUATED_WIDTH_M,
     BETA_REPOSE_ANGLE_DEG,
     BETA_SEGMENT_VOLUME_M3,
     DRY_DEBRIS_AVALANCHE,
@@ -60,6 +63,7 @@ from landloss.hazard.landslide.slope_polygons import (
     build_slope_polygons,
     conditional_failure_probability,
     element_depth_m,
+    min_evacuated_width_m,
     planar_depth_m,
     polygon_geometries,
     reach_ratio,
@@ -141,9 +145,52 @@ def retro(result: SlopePolygons) -> pd.DataFrame:
     return result.retrogression_links
 
 
+@pytest.fixture
+def type_rules_only(monkeypatch):
+    """Turn the minimum evacuated width off, so a toy case reads its type's rule.
+
+    The stage D1 toy cases were set against the type rules; the floor is
+    tested on its own and on case 1 with it on.
+    """
+    monkeypatch.setattr(slope_polygons, "BETA_MIN_EVACUATED_WIDTH_H", 0.0)
+    monkeypatch.setattr(slope_polygons, "BETA_MIN_EVACUATED_WIDTH_M", 0.0)
+
+
 # The rules ------------------------------------------------------------------
 
 
+def test_the_minimum_width_is_half_the_height_and_never_under_a_metre():
+    assert BETA_MIN_EVACUATED_WIDTH_H == 0.5
+    assert BETA_MIN_EVACUATED_WIDTH_M == 1.0
+    assert min_evacuated_width_m([0.5, 2.0, 3.0, 10.0, np.nan]) == pytest.approx(
+        [1.0, 1.0, 1.5, 5.0, 1.0]
+    )
+
+
+def test_the_minimum_width_sets_every_type_where_it_is_wider():
+    width, rule = width_behind_crest_m(
+        [FREE_FACE, BANK, BANK, BANK, FREE_FACE],
+        [2.0, 4.0, 3.0, 3.0, 10.0],
+        [63.0, 30.0, 30.0, 20.0, 60.0],
+        is_fill=[True, True, False, False, False],
+        phi_deg=[FILL_PHI_DEG, FILL_PHI_DEG, FILL_PHI_DEG, FILL_PHI_DEG, 28.0],
+    )
+    # A metre over the 2 m wall's 0.89 m wedge; half the height over the fill
+    # bank's 0.45 H and the T-44 bands; the wedge on 28 degree ground, 0.60 H,
+    # is wider than the floor and stands.
+    assert width[4] == pytest.approx(10.0 * math.tan(math.radians(31.0)))
+    assert width == pytest.approx([1.0, 2.0, 1.5, 1.5, 6.01], abs=1e-2)
+    # The rule is still the type's.
+    assert rule.tolist() == [
+        WALL_WEDGE,
+        FILL_BANK_WEDGE,
+        HEADSCARP_BAND,
+        HEADSCARP_BAND,
+        WALL_WEDGE,
+    ]
+
+
+@pytest.mark.usefixtures("type_rules_only")
 def test_widths_behind_the_crest_by_element_type():
     width, rule = width_behind_crest_m(
         [FREE_FACE, BANK, BANK, BANK],
@@ -308,6 +355,24 @@ def test_every_toy_case_is_tested():
 
 
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_case_1_wall_takes_the_minimum_width_behind_its_crest(noise):
+    terrain, found, result = run_case("01_wall", noise)
+    polygon = result.polygons.iloc[0]
+    height = found.elements["height_m"].iloc[0]
+    assert polygon["width_floored"]
+    assert polygon["width_behind_crest_m"] == pytest.approx(max(0.5 * height, 1.0))
+    # A metre behind the crest cell's centre is the next cell's centre, so the
+    # polygon takes a cell of level ground behind the wall's two.
+    rows = terrain.dem.shape[0]
+    assert set(x_of(middle(zone_cells(result, EVACUATED), rows))) == {
+        18.5,
+        19.5,
+        20.5,
+    }
+
+
+@pytest.mark.usefixtures("type_rules_only")
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
 def test_case_1_wall_polygon_is_the_level_ground_wedge(noise):
     terrain, found, result = run_case("01_wall", noise)
     assert len(result.polygons) == 1
@@ -366,6 +431,7 @@ def test_case_2_wall_takes_its_own_width_and_links_the_bank(noise):
     assert bool(element_link["makes_stack"].iloc[0])
 
 
+@pytest.mark.usefixtures("type_rules_only")
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
 def test_case_3_four_metre_cut_takes_the_bank_to_its_crest(noise):
     terrain, found, result = run_case("03_excavated_toe_4m", noise)
@@ -642,6 +708,7 @@ def test_case_15_undulating_hills_have_no_polygon(noise):
     assert result.polygons.empty
 
 
+@pytest.mark.usefixtures("type_rules_only")
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
 def test_case_12_weak_rock_banks_take_the_band_or_the_wedge(noise):
     _, _, low = run_case("12_weak_rock_bank_3m", noise)

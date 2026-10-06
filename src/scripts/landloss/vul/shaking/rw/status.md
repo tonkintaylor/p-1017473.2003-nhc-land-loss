@@ -4,7 +4,7 @@
 published wall curve on PGV, per exposure world and earthquake. Built and tested
 on synthetic inputs; not yet run on the pilot since the change.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-06
 
 ## Approach
 
@@ -16,11 +16,15 @@ on synthetic inputs; not yet run on the pilot since the change.
   hazard is resolved.
 - Carry **two damage states only, no damage and replace**. Very few damaged
   walls are repaired in practice, so a middle state would hold almost nothing.
-- Keep the **initial condition separate from the damage state**. Condition
-  describes the wall before the earthquake and is an input to the fragility; the
-  damage state is the outcome.
-- Index the curves on the wall classes the exposure module draws — size class
-  and initial condition — so the two modules share one vocabulary.
+- Keep the **wall type separate from the damage state**. The type describes
+  the wall before the earthquake and picks its fragility; the damage state is
+  the outcome.
+- Index the curves on the wall type and size class the exposure module draws,
+  so the two modules share one vocabulary, and read "replace" at the
+  moderate damage state, since moderate damage usually means replacement in
+  a claim; a fill wall's curve is 15% weaker
+  and a cut wall's 15% stronger (the lead, 2026-10-06;
+  `.agents/plans/assigning-retaining-wall-types.md`).
 - Draw **flat-land walls only**. A wall on sloping land fails with the urban
   failure polygon on whose edge it stands, drawn by landslide step 9; see
   `hazard/landslide/status.md`.
@@ -52,9 +56,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   draws a state per wall on the vulnerability stream with the world appended,
   to `temp/vul/wall-damage-state-wNNN-rNNN[-pilot].geoparquet` with the curve,
   the site class and the PGV/PGA ratio recorded on every row.
-- The fragility is the published wall curve for the wall's size class and
-  initial condition in `retaining-wall-fragility.csv` (Koutsoupaki et al.
-  2023, one `unnamed` class), a PGA curve converted at the ratio of shaking
+- The fragility is the wall type curve for the wall's type and size class
+  in `retaining-wall-type-fragility.csv` (Koutsoupaki et al. 2023, moderate
+  damage state), scaled by its fill or cut position, a PGA curve converted at
+  the ratio of shaking
   step 3's PGV to the TS1170.5 PGA at the midpoint
   (`landloss.vul.shaking.fragility.wall_failure_probability`). The flat 70%,
   `BETA_FAILURE_PROBABILITY`, now serves the culverts and bridges only.
@@ -71,6 +76,19 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    to discriminate on.
 3. Decide whether walls on the same property fail independently. They are drawn
    that way, and two walls on one slope are not independent.
+4. In the loss calculation, a wall that crosses property boundaries counts
+   as a wall on each property it enters by at least 1 m, with the length of
+   wall inside that property (2 m of wall in a property means that property
+   has a wall 2 m long), not once on its primary property at its whole
+   length (the lead, 2026-10-06). Exposure rw step 6's drawn walls and wall
+   population carry `property_lengths_m` (each property's id and length,
+   from landslide step 12's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
+   and `n_properties` for this; today each wall is one row on its primary
+   property with `length_m` its whole simplified line. The loss module is
+   not changed yet.
+5. Read each wall's curve from its type, size class and fill or cut
+   position (`wall_type_failure_probability`), once exposure draws the type
+   (wall types plan, phase 3).
 
 ## Validation
 
@@ -98,12 +116,11 @@ Canterbury walls of Anderson et al. (2015) [anderson_2015]. The detail is in
 
 ## Open decisions
 
-- **The wall classes the curves are defined for are still unnamed.** The
-  review proposes Anderson's six types (above).
-  Before that review: This is the
-  same open decision the retaining wall exposure module carries, and it blocks
-  indexing the fragility by wall type; until then every wall takes the one
-  `unnamed` class's curve for its size and condition.
+- **The wall types are set, the draw is not.** Seven types, each with its own
+  curve, stored as the PGA at which 15% and 50% of walls are replaced
+  (`landloss.hazard.landslide.urban.wall_type_fragility`; the lead,
+  2026-10-06). Until exposure draws a type for each wall, every wall takes the
+  one `unnamed` class's curve for its size and condition.
 - ~~**Whether the Canterbury land damage rates already include retaining wall
   damage** (**T-27**).~~ Settled for walls: the project lead ruled on
   2026-10-02 that a wall replaced by shaking on flat land and the liquefaction

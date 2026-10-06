@@ -43,6 +43,14 @@
     most of the element; an element off the ground map, or on a piece with
     no geology, takes `BETA_OFF_MAP_GROUND` (natural weathered rock, no prior
     failure, 4 m to groundwater; 15% of the pilot's elements);
+  - a polygon whose representative point lies outside the extent's box
+    (`get_area_of_interest(extent)`) is left out before the ids are minted:
+    step 12 grows its elements on a DEM read about 200 m wider than the
+    extent, so a face at the edge grows whole, but the site class, PGA and
+    PGV grids stop at the extent, so a polygon in that margin has no demand
+    (1,406 of world 0's 9,258 pilot polygons on 6 October 2026, which had
+    left 1,212 polygons with no failure probability). The full extent keeps
+    every polygon, as its DEM stops at the study area;
   - `scale_m` is 1, the grid cell, for every polygon, and the `slope_id` is
     minted per world by location, as each world's zones are built anew;
   - `with_amplification()` reads step 3's 100 m topographic position
@@ -63,8 +71,8 @@
   exposure step 6's `gen_wall_population.drawn_walls_path()` (every wall the
   world drew, before the claim and coverage filters, with `rw_id` null on
   the uninsured ones; the run prints how many are insured), the wall curves from
-  the packaged `retaining-wall-fragility.csv` through
-  `landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility()`,
+  the packaged `retaining-wall-type-fragility.csv` through
+  `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility()`,
   the site class grid from shaking step 2's `read_site_class()`, step 3's PGV
   grid from `gen_pgv.output_path("pgv", ...)` at `RETURN_PERIOD_YR`, and the
   unscaled TS1170.5 PGA on the same grid built as shaking step 4 builds it
@@ -76,8 +84,8 @@
   wall unit drew a sloping-land wall in the world (`drawn_edge_walls()`,
   joined to the drawn walls on `wall_line_id`, at most one wall per unit) is
   in the `fill_wall` or `cut_wall` state of its unit's `wall_position`;
-  every other polygon is `no_wall`. The polygon takes the `rw_id`, size class
-  and condition of its unit's wall, written as the model's `wall_line_id`,
+  every other polygon is `no_wall`. The polygon takes the `rw_id`, wall type
+  and size class of its unit's wall, written as the model's `wall_line_id`,
   and the unit is written to the model's `wall_line_ids` (empty on a
   `no_wall` row), so step 9 gives the wall the outcome of every polygon on
   it. The same functions still read step 7's polygons, whose edge can carry
@@ -101,13 +109,20 @@
   two depths are the polygon's own, already the world's
   (`fragility._pick_state()` takes a single column where the polygons carry
   one, and the state's column of step 7's polygons otherwise).
-- A polygon with a wall takes the wall curve of the wall's `size_class` and
-  `initial_condition` under the one `unnamed` class (`wall_curve()`): the
-  published median and dispersion of [koutsoupaki_2023] as the asset README
-  records them. A median published on PGA is converted to PGV by
+- A polygon with a wall takes the curve of the wall's `wall_type` and
+  `size_class` (`wall_type_fragility.wall_type_curves()`): the median and
+  dispersion through the stored 15% and 50% PGA of
+  `retaining-wall-type-fragility.csv`, read from [koutsoupaki_2023] as the
+  asset README records them. The PGA median is scaled by the wall's own
+  `wall_position`, 0.85 for a wall retaining fill and 1.15 for a cut
+  (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`); the wall's position is
+  read from the drawn wall, not the polygon's, which sets the wall state and
+  can come from another edge line. The scaled median is converted to PGV by
   `pga_to_pgv_theta()` with the PGV/PGA ratio at the polygon's representative
-  point, and the published median and the ratio are written to
-  `theta_base_pga_g` and `pgv_pga_ratio_m_s_per_g`.
+  point, and the scaled PGA median and the ratio are written to
+  `theta_base_pga_g` and `pgv_pga_ratio_m_s_per_g`. A drawn wall whose type
+  is not in `WALL_TYPES`, or whose type and size have no curve, stops the
+  run.
 - The ratio is `pgv_pga_ratio_m_s_per_g()`: step 3's PGV grid over the
   unscaled TS1170.5 PGA grid, cell by cell on the site class grid, read at the
   cell each representative point falls in; NaN off the grid. It is

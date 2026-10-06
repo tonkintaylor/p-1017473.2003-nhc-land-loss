@@ -16,7 +16,9 @@ committed. Nothing here is large enough to belong in a cache.
 | `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke, its soil mantle and fill by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, and from GNS SLIDE reports SR2019/40 and SR2019/51, 1 October 2026 — see below | `landloss.hazard.landslide.ground_map.strength_from_material` |
 | `wellington-greywacke-depth-to-rock.csv` | Observed depths to weathered greywacke rock, and thicknesses of the colluvium and residual soil mantle, at Wellington-region T+T sites | As above | Not yet read; for landslide model 7 |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
-| `retaining-wall-fragility.csv` | Lognormal fragility (median, dispersion) per retaining wall class, size and initial condition, with the published intensity measure and source | Maintained by hand from `.agents/context/retaining-wall-fragility.md` — see below | `landloss.hazard.landslide.urban.fragility.load_retaining_wall_fragility` |
+| `retaining-wall-type-fragility.csv` | Fragility per retaining wall type and size class, on the moderate damage state, stored as the PGA at which 15% and 50% of walls are replaced; confirmed by the lead; read by `assign_fragility` (landslide step 8) and `wall_failure_probability` (vul shaking step 9) | Converted from Koutsoupaki et al. (2023) Tables A1 to A5, 6 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility` |
+| `beta-retaining-wall-type-shares.csv` | The share of each retaining wall type by age bin and height band, which each wall's type is drawn from; judgement placeholders | Set by the project lead, 6 October 2026, for Nick Peters to revise — see below | `landloss.exposure.rw.wall_type.load_beta_wall_type_shares` |
+| `beta-retaining-wall-frontage-multipliers.csv` | The multiplier each retaining wall type's share takes where the wall stands on a road frontage; judgement placeholders | As above | `landloss.exposure.rw.wall_type.load_beta_frontage_multipliers` |
 | `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a fraction of polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
 | `landslide-slope-thresholds.csv` | The steepest overall angle each ground group stands unsupported at, in two height bands (under 3.5 m, 3.5 m and over): the far-pair test of the seed instability zones | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_slope_thresholds` |
 | `landslide-seed-thresholds.csv` | Per ground group, the near-pair step that makes a seed instability zone (`adjacent_step_m`), and the old free-face step and bank slope | Maintained by hand — see below | `landloss.hazard.landslide.slope_elements.load_seed_thresholds` |
@@ -269,56 +271,78 @@ not the row order's.
 In the depth table, `horizon` says what the depth is measured to (Scala
 refusal, base of colluvium, top of CW–HW rock), because the reports differ.
 
-## `retaining-wall-fragility.csv`
+## `retaining-wall-fragility.csv` (retired)
 
-One row per `(wall_class, size_class, initial_condition)`, the triple unique.
-`im` says whether `theta`, the published median, is in `pga_g` or `pgv_m_s`;
-`beta` is the published dispersion; `published_height_m` the wall height the
-curve was derived for; `damage_state` the published state read as "replace";
-`source` a `doc/references.bib` key; and `basis` which published curve the row
-took and how the condition shifted it.
+Retired on 6 October 2026, when the model moved to the wall type curves of
+`retaining-wall-type-fragility.csv` (`.agents/plans/assigning-retaining-wall-types.md`).
+It held one curve per `(wall_class, size_class, initial_condition)`, every
+`wall_class` `unnamed`, read out of Koutsoupaki et al. (2023)
+[koutsoupaki_2023] on DS3, *extensive* (`Ux = 10% of H`), with `modern` the
+Fs = 1.5 family and `poor` the Fs = 1.1 family; the file is in the git history.
+Two of its readings carry over to the type table:
 
-The six rows are read out of Koutsoupaki, Sotiriadis, Klimis and Dokas (2023)
-[koutsoupaki_2023], source 6 of `.agents/context/retaining-wall-fragility.md`:
-cantilever walls 3, 6 and 9 m high on cohesionless backfill, dimensioned to a
-static factor of safety of 1.5 dry, with the water table raised behind the wall
-to give Fs = 1.4, 1.3, 1.2 and 1.1, analysed by 2D non-linear time history and
-fitted as lognormals on free-field PGA. Its Tables A1 to A5 (one per Fs) carry
-the parameters; the paper is kept as
-`context/lit/landslide/koutsoupaki_2023/koutsoupaki-2023-retaining-wall-fragility-initial-conditions.html`.
-`wall_class` is `unnamed` on every row until the six classes are
-named, so the triple is in practice `(size_class, initial_condition)`.
-
-The reading, all recorded per row in `basis`:
-
-- **Damage state read as "replace"**: the paper's DS3, *extensive*, on the
-  horizontal displacement of the wall base, `Ux = 10% of H`, the failure
-  criterion of Prakash et al. (1995) [prakash_1995] the paper adopts. The vertical backfill
-  settlement index (`Uy`, 0.40 m) and the envelope `Ux + Uy` give lower
-  medians (1.448 and 1.187 g against 1.113 g for the 3 m wall at Fs = 1.5 in
-  the one case where they do not); they describe the serviceability of a road
-  behind the wall rather than the wall, and are not taken.
-- **Intensity measure**: the paper's PGA rows (`im = pga_g`), not its PGV rows.
-  The paper found PGA the most efficient of its measures, and its PGV medians
-  carry the PGV/PGA ratio of its eight Greek rock-site records (about 50 to
-  80 cm/s per g), which is not Wellington's. The conversion to PGV is made at
-  each polygon with the study's own ratio from the shaking grids
+- **Intensity measure**: the paper's PGA rows, not its PGV rows. The paper
+  found PGA the most efficient of its measures, and its PGV medians carry the
+  PGV/PGA ratio of its eight Greek rock-site records (about 50 to 80 cm/s per
+  g), which is not Wellington's. The conversion to PGV is made at each wall
+  with the study's own ratio from the shaking grids
   (`landloss.hazard.landslide.urban.fragility.pgv_pga_ratio_m_s_per_g`) and
   recorded on the model file.
-- **Condition**: `modern` is the Fs = 1.5 family (dry, as designed); `poor` is
-  the Fs = 1.1 family, the lowest the paper runs. The paper's variable is the
-  water table behind the wall, not deterioration, so poor condition is read as
-  its end member; the ratio of the two medians (0.60 for the 3 m wall) is the
-  shape of the shift plan section 4.1 asks for.
-- **Size**: `small` (0.5 to 1.0 m) and `medium` (1.0 to 2.5 m) take the 3 m
-  wall, the lowest height published and the nearest to both; `large` (2.5 m and
-  up, unbounded above) takes the 6 m wall, which bounds that class from above
-  where the 3 m wall bounds the other two. A 10% of H criterion makes a taller
-  wall more tolerant in absolute displacement, which is why the two differ.
-  Extrapolating below 3 m would be guesswork and is not done.
+- **Size**: `small` and `medium` take the 3 m wall, the lowest height
+  published and the nearest to both; `large` takes the 6 m wall, which bounds
+  that class from above where the 3 m wall bounds the other two.
 
-These choices are the project lead's to confirm; the table of medians step 8
-writes (`table_urban_slope_model.py`) is where they show.
+## `retaining-wall-type-fragility.csv`
+
+Confirmed by the project lead (6 October 2026), and read by
+`landloss.hazard.landslide.urban.fragility.assign_fragility` (landslide step 8) and
+`landloss.vul.shaking.fragility.wall_failure_probability` (vul shaking step 9). One row per
+`(wall_type, size_class)`, every pair present. Each curve is stored as two
+points on it: `p15` and `p50`, the free-field PGA (`im = pga_g`) at which 15%
+and 50% of walls are replaced. The loader turns them back into a lognormal,
+`theta = p50` and `beta = ln(p50 / p15) / 1.036`. `published_height_m` and
+`published_fs` name the Koutsoupaki et al. (2023) [koutsoupaki_2023] curve each
+row was read from (Tables A1 to A5, the 3 m wall for small and medium and the
+6 m wall for large), and `basis` gives the published median and dispersion and
+why the wall type takes that rung. The damage state is DS2, *moderate*,
+`Ux = 5% of H`, not the DS3 the condition table reads: moderate damage usually
+leads to full replacement in a claim (the lead, 6 October 2026).
+`type_factor` scales both percentiles of a type's rung: 1.3 for new timber
+pole and 1.5 for engineered modern, 1 otherwise; the stored percentiles
+already include it. The rungs are
+judgement, ordered by the Port Hills failure shares by type [anderson_2015]
+[stone_2015]; `src/scripts/landloss/vul/research/fig_rw_type_fragility.md`
+sets them beside the other published curves.
+
+A wall retaining fill takes both percentiles times 0.85 and a wall retaining a
+cut times 1.15 (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`, the lead,
+6 October 2026); the table holds the curve before that shift.
+
+## `beta-retaining-wall-type-shares.csv`
+
+Judgement placeholders set by the project lead (6 October 2026) for Nick
+Peters to revise, then to check against the type mix in the claim reports
+(T-50); the `beta` name says they are not yet evidence. One row per
+`(age_bin, height_band)`, every pair present, and one column per wall type in
+`WALL_TYPES` (`landloss.hazard.landslide.urban.wall_type_fragility`); each row
+sums to 1. `age_bin` is one of the four bins of `landloss.exposure.rw.age`
+(`src/landloss/exposure/rw/assets/choice-of-rwt-bin-ages.md`). `height_band`
+is `under_1_5_m`, `1_5_to_2_5_m` or `over_2_5_m`: 1.5 m is the consent
+threshold, which is what changes the type, so the bands differ from the size
+classes on purpose. The fractions follow the finding that wall type tracked the
+era a wall was built in [anderson_2015] and the lead's meeting with Nick
+Peters; `.agents/plans/assigning-retaining-wall-types.md` (section 2) holds
+the table they were copied from.
+
+## `beta-retaining-wall-frontage-multipliers.csv`
+
+Judgement placeholders set by the project lead (6 October 2026) for Nick
+Peters to revise. One row per wall type, every type present. Where a wall
+stands on a road frontage, its row of `beta-retaining-wall-type-shares.csv`
+is multiplied by `road_frontage_multiplier` and renormalised: gravity masonry
+and block or RC cantilever ×1.5, crib ×0.5, landscaper timber ×0.3, the rest
+×1. Retaining walls on a road boundary hold up driveways, garages and footpath
+cuts, so they are more often the heavier types.
 
 ## `urban-fragility-anchors.csv`
 

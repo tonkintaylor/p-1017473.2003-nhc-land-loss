@@ -7,14 +7,23 @@ A **pip** (potential instability point) is a cell higher than the cell 1, 3 and
 Along a diagonal a cell is 1.41 m away, so the drop needed is scaled by 1.41.
 
 A **pif** (potential instability face) joins the pips within :data:`PIF_JOIN_M`
-of each other. It is tested over every pair of its *points*, which are its pips
-and the cells each pip falls to (so a vertical wall, whose pips all sit at the
-same height, still has a crest and a foot to measure between). Pairs under
+of each other, and holds at least :data:`BETA_MIN_PIF_PIPS` of them; a smaller
+cluster is not a pif (its pips stay pips, with no pif), nor is a cluster most
+of whose pips lie in a building outline (:func:`exclude_pifs`): a roof's
+edge or a building's wall is not ground. It is tested over
+every pair of its *points*, which are its pips and the cells each pip falls
+to (so a vertical wall, whose pips all sit at the same height, still has a
+crest and a foot to measure between). Pairs under
 :data:`NEAR_PAIR_M` apart must step by the ground group's ``adjacent_step_m``
 (``landslide-seed-thresholds.csv``); pairs further apart, up to
 :data:`MAX_PAIR_M`, must be as steep as the group's slope threshold for the
 pair's height (``landslide-slope-thresholds.csv``). A pif that passes is a
-**siz** (seed instability zone). Ground mapped as fill is soil, not rock
+**siz** (seed instability zone). The test is made on the whole pif; the pif is then cut
+into pieces no longer than :data:`MAX_PIF_SPAN_M` (:func:`split_pifs`), and
+each piece is a pif of its own from there on (the lead, 2026-10-06), its
+siz flag and threshold the whole pif's (:func:`piece_table`,
+``parent_pif_id``), so an element's siz, a siz table row and a wall
+candidate are one piece. Ground mapped as fill is soil, not rock
 (:func:`landloss.hazard.landslide.slope_elements.rasterise_ground_map`).
 
 The sizs seed the watershed growth of
@@ -28,6 +37,7 @@ of one wall can be joined end to end.
 """
 
 import math
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -37,20 +47,26 @@ import numpy as np
 import pandas as pd
 import shapely
 from numpy.typing import ArrayLike, NDArray
+from rasterio import features
 from rasterio.transform import Affine
 from scipy import ndimage
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
+from landloss.domain.constants import MIN_WALL_HEIGHT_M
+from landloss.hazard.landslide import bend_split
+from landloss.hazard.landslide.bend_split import cut_path
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     BETA_FREE_FACE_GROW_TOL_DEG,
     FREE_FACE,
     GROUND_GROUPS,
+    HB1995_CUT_HEIGHT_M,
     HEIGHT_BANDS_M,
     OUTSIDE,
     SEED_THRESHOLDS_PATH,
+    STACK_DOMINANT_HEIGHT_M,
     STEP_ANGLE_DEG,
     SlopeElements,
     _absorb_rounded_edges,
@@ -71,6 +87,16 @@ PIP_DROP_M = 0.7
 PIP_OFFSETS_M = (1.0, 3.0, 5.0)
 # Pips within this distance, in metres, are one pif.
 PIF_JOIN_M = 2.0
+# Judgement (the lead, 2026-10-06): a pif whose spine (the longest shortest
+# path through its pips) is shorter than this, in metres, is not a pif either:
+# no siz table row and no wall is under 3 m, the shortest element kept and the
+# walls' shortest section.
+BETA_MIN_PIF_LENGTH_M = 3.0
+# Judgement (the lead, 2026-10-06): a cluster of fewer pips than this is not a
+# pif, so neither a siz nor a wall candidate. Three pips span about 3 m, the
+# shortest element kept (BETA_MIN_ELEMENT_LENGTH_M); on the pilot a third of
+# the siz pifs (median one pip) grew no element and their walls had no polygon.
+BETA_MIN_PIF_PIPS = 3
 # Pairs of points closer than this, in metres, are tested on the step between
 # them; pairs further apart are tested on their angle.
 NEAR_PAIR_M = 3.0
@@ -78,14 +104,19 @@ NEAR_PAIR_M = 3.0
 # degrees runs about 26 m, and the pair count grows with the square of a pif's
 # size (1.4 billion unbounded on the pilot, about 156 million at 30 m).
 MAX_PAIR_M = 30.0
-# Judgement (2026-10-04, after the lead found whole hillsides growing as one
-# element): a pif spanning more than this, in metres, is cut into pieces before
-# growth (:func:`split_pifs`); each piece seeds its own element.
-MAX_PIF_SPAN_M = 20.0
+# Judgement: no pif piece is longer than this along its spine, in metres; each
+# piece is a siz table row and seeds its own element. A cap since 2026-10-04,
+# after the lead found whole hillsides growing as one element; 20 m until the
+# lead's 2026-10-06 decision to cut the pifs by the wall rules (a new piece
+# where following the spine needs a fourth bend, no piece under 3 m) and keep
+# a hard cap of 50 m (:func:`split_pifs`).
+MAX_PIF_SPAN_M = 50.0
 # Points of a pif compared against the rest at a time, to bound memory.
 _CHUNK = 4000
 
 SIZ_PASS = "siz_pass"
+# What an element built on a GNS-only wall unit's line was grown in.
+WALL_LINE = "wall_line"
 
 # The eight directions as (row, column) steps, cardinals first so that a tie
 # in the drop goes to a cardinal, and each one's bearing in degrees.
@@ -194,17 +225,25 @@ def find_pips(dem: ArrayLike, cell_size_m: float) -> Pips:
 
 
 def cluster_pifs(
-    mask: NDArray[np.bool_], cell_size_m: float
+    mask: NDArray[np.bool_],
+    cell_size_m: float,
+    *,
+    min_pips: int = BETA_MIN_PIF_PIPS,
 ) -> tuple[NDArray[np.int32], int]:
     """Join the pips within :data:`PIF_JOIN_M` of each other into pifs.
+
+    A cluster of fewer than ``min_pips`` pips is not a pif: its pips are left
+    at 0, and the pifs that are kept are numbered from 1 with no gaps, in the
+    order of their first pip in row order.
 
     Args:
         mask: True on a pip.
         cell_size_m: The cell size.
+        min_pips: The fewest pips a pif holds.
 
     Returns:
         ``(labels, n_pifs)``: a grid numbering the pifs from 1 on their pips,
-        0 elsewhere.
+        0 elsewhere (and on the pips of clusters too small to be pifs).
     """
     rows, cols = np.nonzero(mask)
     labels = np.zeros(mask.shape, dtype=np.int32)
@@ -216,64 +255,328 @@ def cluster_pifs(
         (np.ones(len(pairs), dtype=np.int8), (pairs[:, 0], pairs[:, 1])),
         shape=(rows.size, rows.size),
     )
-    n_pifs, component = connected_components(graph, directed=False)
-    labels[rows, cols] = component + 1
-    return labels, int(n_pifs)
+    _, component = connected_components(graph, directed=False)
+    size = np.bincount(component)
+    big = size >= min_pips
+    number = np.zeros(size.size, dtype=np.int32)
+    # connected_components numbers the clusters by their first pip in row
+    # order, so the kept ones stay in that order.
+    number[big] = np.arange(1, int(big.sum()) + 1, dtype=np.int32)
+    labels[rows, cols] = number[component]
+    return labels, int(big.sum())
+
+
+def exclude_pifs(
+    labels: NDArray[np.int32], mask: ArrayLike
+) -> tuple[NDArray[np.int32], int, int]:
+    """Drop the pifs most of whose pips lie on masked cells, and renumber.
+
+    The step passes the LINZ building outlines as the mask (the lead,
+    2026-10-06): the edge of a roof, or a building's wall against the ground
+    beside it, makes pips as a retaining wall does, but it is neither a slope
+    nor a wall candidate. A pif is dropped where more than half its pips are
+    masked; the kept pifs are numbered from 1 with no gaps, in their order.
+
+    Args:
+        labels: The pifs on their pips' cells, from :func:`cluster_pifs`.
+        mask: True on the cells to exclude, on the grid of ``labels``.
+
+    Returns:
+        ``(labels, n_kept, n_dropped)``.
+
+    Raises:
+        ValueError: If the mask is not on the grid of ``labels``.
+    """
+    excluded = np.asarray(mask, dtype=bool)
+    if excluded.shape != labels.shape:
+        msg = f"The exclusion mask is {excluded.shape}, the pif grid {labels.shape}."
+        raise ValueError(msg)
+    n_pifs = int(labels.max(initial=0))
+    rows, cols = np.nonzero(labels)
+    pif = labels[rows, cols]
+    total = np.bincount(pif, minlength=n_pifs + 1)
+    inside = np.bincount(pif, weights=excluded[rows, cols], minlength=n_pifs + 1)
+    drop = 2.0 * inside > total
+    drop[0] = False
+    keep = (total > 0) & ~drop
+    keep[0] = False
+    number = np.zeros(n_pifs + 1, dtype=np.int32)
+    number[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
+    out = np.zeros_like(labels)
+    out[rows, cols] = number[pif]
+    return out, int(keep.sum()), int(drop.sum())
+
+
+# The columns of the siz test a piece takes from its whole pif: the test is
+# made on the whole pif (its pairs span the pieces), and every piece of a siz
+# seeds growth at the whole pif's threshold.
+SIZ_TEST_COLUMNS = ("threshold_angle_deg", "near_step_pass", "far_angle_pass", "is_siz")
+
+
+def piece_table(
+    pieces: pd.DataFrame, parent: NDArray[np.int64], whole: pd.DataFrame
+) -> pd.DataFrame:
+    """The siz table of the pif pieces, the siz test taken from the whole pif.
+
+    Args:
+        pieces: :func:`assess_pifs` on the pieces of :func:`split_pifs`.
+        parent: The whole pif of each piece, from :func:`split_pifs`.
+        whole: :func:`assess_pifs` on the whole pifs.
+
+    Returns:
+        ``pieces`` with ``parent_pif_id`` first and :data:`SIZ_TEST_COLUMNS`
+        the whole pif's; the piece's own geometry, ground group, heights and
+        pair angles stay its own.
+    """
+    table = pieces.copy()
+    parents = parent[table.index.to_numpy()]
+    for column in SIZ_TEST_COLUMNS:
+        table[column] = whole[column].reindex(parents).to_numpy()
+    table.insert(0, "parent_pif_id", parents.astype(np.int64))
+    return table
+
+
+def _pif_paths(
+    xy: NDArray[np.float64], *, cell_size_m: float, min_branch_m: float
+) -> list[NDArray[np.float64]]:
+    """A pif's pips as paths: its spine, then each branch that sticks out.
+
+    The spine is the longest shortest path through the pips
+    (:func:`_longest_geodesic_path`, on the whole graph, since a spanning
+    tree's longest path folds back across a face several cells thick). Pips
+    further from every path so far than twice the pif's mean thickness (its
+    pips' area over its spine's length), and never under ``min_branch_m``,
+    are a branch (a spur off a crest, the leg of a T): each group of them
+    joined within :data:`PIF_JOIN_M` adds its own longest path, until no pip
+    is that far out. The rest of a thick face is left to the nearest path.
+    """
+    path, length = _longest_geodesic_path(xy)
+    paths = [xy[path]]
+    thickness = len(xy) * cell_size_m**2 / max(length, cell_size_m)
+    reach = max(min_branch_m, 2.0 * thickness)
+    points = shapely.points(xy)
+    while True:
+        lines = shapely.MultiLineString([p for p in paths if len(p) > 1])
+        far = np.flatnonzero(shapely.distance(points, lines) > reach)
+        if far.size < 2:
+            break
+        sub = xy[far]
+        pairs = cKDTree(sub).query_pairs(PIF_JOIN_M + 1e-9, output_type="ndarray")
+        graph = coo_matrix(
+            (np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(len(sub),) * 2
+        )
+        n_parts, part = connected_components(graph, directed=False)
+        added = False
+        for k in range(n_parts):
+            group = sub[part == k]
+            if len(group) > 1:
+                branch, _ = _longest_geodesic_path(group)
+                paths.append(group[branch])
+                added = True
+        if not added:
+            break
+    return paths
 
 
 def split_pifs(
-    labels: NDArray[np.int32], cell_size_m: float, *, max_span_m: float
-) -> tuple[NDArray[np.int32], NDArray[np.int64]]:
-    """Cut every pif longer than ``max_span_m`` into pieces no longer than it.
+    labels: NDArray[np.int32],
+    cell_size_m: float,
+    *,
+    max_span_m: float,
+    max_bends: int | None = None,
+    stray_tolerance_m: float = 0.0,
+    min_segment_m: float = 0.0,
+    max_turn_deg: float = math.inf,
+    counts: Counter | None = None,
+) -> tuple[NDArray[np.int32], NDArray[np.int64], list[NDArray[np.float64] | None]]:
+    """Cut every pif along its spine into pieces, by the wall rules.
 
     A pif is chained from pips 2 m apart, so a whole hillside's crest, or a
     network of gully heads, can be one pif; grown as one seed it becomes one
-    element thousands of square metres across. Each long pif is cut in two at
-    the middle of its span along its principal axis, and each half again, until
-    no piece spans more than ``max_span_m``. The pieces seed their own growth,
-    so the watershed meets them along the ground between (the crests and
-    channels the cost follows) rather than along a line this function draws.
+    element thousands of square metres across. Each pif's paths (its spine,
+    the longest shortest path through its pips, then each branch that sticks
+    out, :func:`_pif_paths`) are cut by the rule the walls are cut by
+    (:func:`landloss.hazard.landslide.bend_split.cut_path`, the lead,
+    2026-10-06): a new piece wherever following the path within
+    ``stray_tolerance_m`` would need more than ``max_bends`` bends, no piece
+    whose ends are under ``min_segment_m`` apart, and none longer than
+    ``max_span_m`` along the path. A piece's line is the stretch of path it
+    was cut on (:func:`landloss.hazard.landslide.bend_split.canonical_line`),
+    so it keeps every rule by construction; its pips are the pif's pips
+    nearest that stretch (ties to the first). A branch whose ends are under
+    ``min_segment_m`` apart is no path of its own, and a piece whose line is
+    still under ``min_segment_m`` (a pif folded on itself too tightly to cut)
+    is dropped with its pips. Property boundaries play no part. The pieces
+    seed their own growth, so the watershed meets them along the ground
+    between rather than along a line this function draws.
 
     Args:
         labels: The pifs on their pips' cells, from 1; 0 elsewhere.
         cell_size_m: The cell size.
-        max_span_m: The longest a piece may span, in metres, along its
-            principal axis.
+        max_span_m: The longest a piece may run along its path, in metres.
+        max_bends: The most bends a piece may need; None cuts by length only.
+        stray_tolerance_m: How far a piece's line may stray from its path.
+        min_segment_m: The least distance between a piece's ends, and the
+            shortest section of its line.
+        max_turn_deg: The most a piece's line may turn in all.
+        counts: Counts the pieces the length cap cut, by stage (``bends`` or
+            ``even``; pifs take no boundary stage).
 
     Returns:
-        ``(pieces, parent)``: the pieces on their pips' cells, numbered from 1,
-        and the pif each piece came from, indexed by piece (entry 0 is 0).
+        ``(pieces, parent, lines)``: the pieces on their pips' cells, numbered
+        from 1; the pif each piece came from, indexed by piece (entry 0 is
+        0); and each piece's line as (row, column) points in metres, indexed
+        by piece (entry 0 None).
     """
     rows, cols = np.nonzero(labels)
     pif = labels[rows, cols]
     if rows.size == 0:
-        return labels.copy(), np.zeros(1, dtype=np.int64)
+        return labels.copy(), np.zeros(1, dtype=np.int64), [None]
+    bends = max_bends if max_bends is not None else 10**6
     xy = np.column_stack([rows, cols]).astype(float) * cell_size_m
     order = np.argsort(pif, kind="stable")
     starts = np.flatnonzero(np.r_[True, np.diff(pif[order]) != 0])
-    groups = np.split(order, starts[1:])
     piece = np.zeros(rows.size, dtype=np.int64)
     parent = [0]
-    for members in groups:
-        stack = [members]
-        while stack:
-            part = stack.pop()
-            points = xy[part]
-            span = 0.0
-            if part.size > 1:
-                centred = points - points.mean(axis=0)
-                axis = np.linalg.svd(centred, full_matrices=False)[2][0]
-                along = centred @ axis
-                span = float(along.max() - along.min())
-            if span <= max_span_m:
-                parent.append(int(pif[part[0]]))
-                piece[part] = len(parent) - 1
+    lines: list[NDArray[np.float64] | None] = [None]
+    for members in np.split(order, starts[1:]):
+        points = xy[members]
+        paths = (
+            _pif_paths(points, cell_size_m=cell_size_m, min_branch_m=min_segment_m)
+            if members.size > 2
+            else [points]
+        )
+        stretches = [
+            path[a : b + 1]
+            for k, path in enumerate(paths)
+            if k == 0 or np.hypot(*(path[-1] - path[0])) >= min_segment_m
+            for a, b in cut_path(
+                path,
+                max_bends=max_bends,
+                tolerance_m=stray_tolerance_m,
+                min_segment_m=min_segment_m,
+                max_length_m=max_span_m,
+                max_turn_deg=max_turn_deg,
+                counts=counts,
+            )
+            if b > a
+        ]
+        piece_lines = [
+            bend_split.canonical_line(
+                stretch,
+                tolerance_m=stray_tolerance_m,
+                max_bends=bends,
+                min_segment_m=min_segment_m,
+                max_turn_deg=max_turn_deg if max_bends is not None else math.inf,
+            )
+            for stretch in stretches
+        ]
+        if len(stretches) > 1:
+            distance = shapely.distance(
+                shapely.points(points)[:, None],
+                np.array([shapely.LineString(t) for t in stretches], dtype=object)[
+                    None, :
+                ],
+            )
+            owner = distance.argmin(axis=1)
+        else:
+            owner = np.zeros(members.size, dtype=np.int64)
+        for k, line in enumerate(piece_lines):
+            mine = members[owner == k]
+            if mine.size == 0:
                 continue
-            low = along < (along.max() + along.min()) / 2
-            stack.extend((part[low], part[~low]))
+            if shapely.LineString(line).length < min_segment_m - 1e-6:
+                continue
+            parent.append(int(pif[members[0]]))
+            lines.append(line)
+            piece[mine] = len(parent) - 1
     pieces = np.zeros_like(labels)
     pieces[rows, cols] = piece
-    return pieces, np.array(parent, dtype=np.int64)
+    return pieces, np.array(parent, dtype=np.int64), lines
+
+
+def drop_short_pifs(
+    labels: NDArray[np.int32], cell_size_m: float, *, min_length_m: float
+) -> tuple[NDArray[np.int32], int]:
+    """Drop the pifs whose spine is shorter than ``min_length_m``, and renumber.
+
+    The spine is the longest shortest path through the pif's pips
+    (:func:`_longest_geodesic_path`). A shorter face is not a pif (the lead,
+    2026-10-06, :data:`BETA_MIN_PIF_LENGTH_M`), as a cluster of fewer than
+    :data:`BETA_MIN_PIF_PIPS` pips is not: its pips stay pips.
+
+    Returns:
+        ``(labels, n_dropped)``, the kept pifs numbered from 1 in their order.
+    """
+    rows, cols = np.nonzero(labels)
+    if rows.size == 0:
+        return labels.copy(), 0
+    pif = labels[rows, cols]
+    xy = np.column_stack([rows, cols]).astype(float) * cell_size_m
+    order = np.argsort(pif, kind="stable")
+    starts = np.flatnonzero(np.r_[True, np.diff(pif[order]) != 0])
+    n_pifs = int(labels.max())
+    keep = np.zeros(n_pifs + 1, dtype=bool)
+    for members in np.split(order, starts[1:]):
+        length = _longest_geodesic_path(xy[members])[1] if members.size > 1 else 0.0
+        keep[pif[members[0]]] = length >= min_length_m - 1e-9
+    number = np.zeros(n_pifs + 1, dtype=np.int32)
+    number[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
+    out = np.zeros_like(labels)
+    out[rows, cols] = number[pif]
+    present = np.zeros(n_pifs + 1, dtype=bool)
+    present[np.unique(pif)] = True
+    return out, int((present & ~keep).sum())
+
+
+def gen_pif_near_drops(
+    dem: ArrayLike,
+    pips: Pips,
+    pif_labels: NDArray[np.int32],
+    cell_size_m: float,
+    *,
+    reach_m: float,
+    quantile: float,
+) -> pd.Series:
+    """Each pif's wall height: a quantile of its pips' near drops.
+
+    A pip's near drop is the fall from the pip to the lowest DEM cell within
+    ``reach_m`` of it along its own fall direction (the cells 1 to 3 m below
+    the pip that the pip test reads; the lead, 2026-10-06). It replaces the
+    walk to the foot of the face (landslide step 13), which runs on down a
+    long batter or hillside and overstated the retained height. A cell off
+    the grid or with no DEM is skipped; a pip with none in reach has no
+    drop.
+
+    Args:
+        dem: Ground elevation in metres, NaN for nodata.
+        pips: From :func:`find_pips`.
+        pif_labels: The pifs on their pips' cells.
+        cell_size_m: The cell size.
+        reach_m: How far below the pip, along its fall, the drop is read.
+        quantile: The quantile over a pif's pips (0.8 as run).
+
+    Returns:
+        The height per pif, indexed by ``pif_id``, NaN where no pip has a drop.
+    """
+    z = np.asarray(dem, dtype=float)
+    height, width = z.shape
+    rows, cols = np.nonzero(pips.mask & (pif_labels > 0))
+    fall = pips.direction[rows, cols]
+    lowest = np.full(rows.size, np.inf)
+    max_k = max(1, int(reach_m // cell_size_m) + 1)
+    for k in range(1, max_k + 1):
+        reach = k * cell_size_m * np.hypot(_STEPS[fall, 0], _STEPS[fall, 1])
+        r2 = rows + k * _STEPS[fall, 0]
+        c2 = cols + k * _STEPS[fall, 1]
+        ok = (reach <= reach_m + 1e-9) & (r2 >= 0) & (r2 < height)
+        ok &= (c2 >= 0) & (c2 < width)
+        below = np.full(rows.size, np.nan)
+        below[ok] = z[r2[ok], c2[ok]]
+        lowest = np.fmin(lowest, np.where(np.isfinite(below), below, np.inf))
+    drop = np.where(np.isfinite(lowest), z[rows, cols] - lowest, np.nan)
+    frame = pd.DataFrame({"pif_id": pif_labels[rows, cols], "drop": drop})
+    return frame.groupby("pif_id")["drop"].quantile(quantile).rename("near_drop_p80_m")
 
 
 def _pair_stats(
@@ -367,7 +670,7 @@ def assess_pifs(
     if n_pifs == 0:
         return pd.DataFrame(columns=columns).rename_axis("pif_id")
     height, width = z.shape
-    rows, cols = np.nonzero(pips.mask)
+    rows, cols = np.nonzero(pips.mask & (pif_labels > 0))
     owner = pif_labels[rows, cols].astype(np.int64)
     fall = pips.direction[rows, cols]
 
@@ -441,14 +744,28 @@ class InstabilityZones:
             :func:`landloss.hazard.landslide.slope_polygons.build_slope_polygons`
             takes.
         pips: The pips.
-        pif_labels: The pifs on their pips' cells.
-        sizs: The siz table, one row per pif (see :func:`assess_pifs`).
+        pif_labels: The pifs on their pips' cells: the pieces of
+            :func:`split_pifs`, each a pif of its own since 2026-10-06.
+        sizs: The siz table, one row per pif piece (see :func:`piece_table`),
+            with ``parent_pif_id``.
+        n_pifs_excluded: The pifs dropped on the ``exclude`` mask of
+            :func:`find_instability_zones` (building outlines).
+        n_pifs_short: The pifs dropped for a spine under
+            :data:`BETA_MIN_PIF_LENGTH_M`.
+        pif_lines: Each pif piece's line, in map coordinates, indexed by
+            ``pif_id``: the stretch of path :func:`split_pifs` cut it on.
+        cap_cuts: The pieces the 50 m cap cut, by stage (``bends``,
+            ``even``).
     """
 
     found: SlopeElements
     pips: Pips
     pif_labels: NDArray[np.int32]
     sizs: pd.DataFrame
+    n_pifs_excluded: int = 0
+    n_pifs_short: int = 0
+    pif_lines: pd.Series | None = None
+    cap_cuts: dict[str, int] | None = None
 
 
 def find_instability_zones(
@@ -458,17 +775,26 @@ def find_instability_zones(
     *,
     categories: Mapping[str, ArrayLike] | None = None,
     core: ArrayLike | None = None,
+    exclude: ArrayLike | None = None,
+    max_bends: int | None = None,
+    stray_tolerance_m: float = 0.0,
+    min_segment_m: float = 0.0,
+    max_turn_deg: float = math.inf,
 ) -> InstabilityZones:
     """Find the pips, pifs and sizs on a DEM and grow the sizs into elements.
 
     Each siz's pips seed the watershed growth of the old free-face pass, into
     cells steeper than the siz's own threshold angle less
     :data:`~landloss.hazard.landslide.slope_elements.BETA_FREE_FACE_GROW_TOL_DEG`
-    (so material enters only here), and the grown regions go through the junk
-    filters of :func:`landloss.hazard.landslide.slope_elements.find_slope_elements`
-    (under 0.5 m high, under 3 m long, gentler overall than 18.4 degrees, no
-    transect). The siz decision is made on the pif; a grown element is not
-    re-tested.
+    (so material enters only here). Every grown region is kept as an element
+    (the lead, 2026-10-06: every siz is a wall candidate, and a wall must have
+    a polygon), including one the junk filters of
+    :func:`landloss.hazard.landslide.slope_elements.find_slope_elements` would
+    drop (under 0.5 m high, under 3 m long, gentler overall than 18.4 degrees,
+    no transect); such an element has ``kept_by_rule`` False, a height of at
+    least 0.5 m and, with no transect, a run of 0
+    (:func:`landloss.hazard.landslide.slope_elements._measure_regardless`).
+    The siz decision is made on the pif; a grown element is not re-tested.
 
     Args:
         dem: Ground elevation in metres on a north-up grid of square cells,
@@ -478,6 +804,16 @@ def find_instability_zones(
         transform: The grid's affine transform.
         categories: Integer grids to take the majority of over each element.
         core: A tile's core, as in ``find_slope_elements``.
+        exclude: True on cells no pif may stand on (the step passes the LINZ
+            building outlines): a pif most of whose pips are on them is
+            dropped before the siz test (:func:`exclude_pifs`), so it is no
+            siz, element or wall candidate. Its pips stay pips.
+        max_bends: The bends rule :func:`split_pifs` cuts the pifs by (the
+            step passes the walls' ``WALL_MAX_BENDS``); None cuts them only
+            at :data:`MAX_PIF_SPAN_M`.
+        stray_tolerance_m: How far a piece's line may stray from the spine.
+        min_segment_m: The shortest piece.
+        max_turn_deg: The most a piece's line may turn in all.
 
     Returns:
         The elements, pips, pifs and the siz table.
@@ -501,22 +837,77 @@ def find_instability_zones(
 
     pips = find_pips(elevation, cell_size_m)
     pif_labels, _ = cluster_pifs(pips.mask, cell_size_m)
-    sizs = assess_pifs(elevation, pips, pif_labels, groups, transform)
+    n_excluded = 0
+    if exclude is not None:
+        pif_labels, _, n_excluded = exclude_pifs(pif_labels, exclude)
+    pif_labels, n_short = drop_short_pifs(
+        pif_labels, cell_size_m, min_length_m=BETA_MIN_PIF_LENGTH_M
+    )
+    whole = assess_pifs(elevation, pips, pif_labels, groups, transform)
+    # The pifs are the pieces from here on: the siz table, the elements' siz_id
+    # and the wall candidates all name a piece (the lead, 2026-10-06).
+    pif_labels, parent, piece_xy = split_pifs(
+        pif_labels,
+        cell_size_m,
+        max_span_m=MAX_PIF_SPAN_M,
+        max_bends=max_bends,
+        stray_tolerance_m=stray_tolerance_m,
+        min_segment_m=min_segment_m,
+        max_turn_deg=max_turn_deg,
+        counts=(cap_cuts := Counter()),
+    )
+    sizs = piece_table(
+        assess_pifs(elevation, pips, pif_labels, groups, transform), parent, whole
+    )
+    pif_lines = pd.Series(
+        [
+            shapely.LineString(
+                np.column_stack(
+                    [
+                        transform.c + (xy[:, 1] / cell_size_m + 0.5) * transform.a,
+                        transform.f + (xy[:, 0] / cell_size_m + 0.5) * transform.e,
+                    ]
+                )
+            )
+            for xy in piece_xy[1:]
+        ],
+        index=pd.RangeIndex(1, len(piece_xy), name="pif_id"),
+        dtype=object,
+    ).reindex(sizs.index)
+    breaks = {
+        pif: broken
+        for pif, line in pif_lines.items()
+        if (
+            broken := bend_split.rule_breaks(
+                line,
+                max_bends=max_bends if max_bends is not None else 10**6,
+                min_length_m=min_segment_m,
+                max_length_m=MAX_PIF_SPAN_M,
+                max_turn_deg=max_turn_deg if max_bends is not None else math.inf,
+            )
+        )
+    }
+    if breaks:
+        msg = (
+            f"{len(breaks)} pif pieces break the line rules: {list(breaks.items())[:5]}"
+        )
+        raise ValueError(msg)
 
     band = height_band(np.nan_to_num(layers.step_height_m, nan=0.0))
     threshold = step_angle_deg(groups, band)
     exceedance = layers.slope_coarse_deg - threshold
-    pieces, parent = split_pifs(pif_labels, cell_size_m, max_span_m=MAX_PIF_SPAN_M)
-    is_siz_piece = sizs["is_siz"].astype(bool).reindex(parent, fill_value=False)
+    is_siz_piece = (
+        sizs["is_siz"].astype(bool).reindex(np.arange(parent.size), fill_value=False)
+    )
     siz_pieces = np.flatnonzero(is_siz_piece.to_numpy())
     n_seeds = int(siz_pieces.size)
     lookup = np.zeros(parent.size, dtype=np.int32)
     lookup[siz_pieces] = np.arange(1, n_seeds + 1, dtype=np.int32)
-    seeds = lookup[pieces]
+    seeds = lookup[pif_labels]
     if n_seeds:
         limit = np.zeros(n_seeds + 1)
         limit[1:] = (
-            sizs.loc[parent[siz_pieces], "threshold_angle_deg"].to_numpy()
+            sizs.loc[siz_pieces, "threshold_angle_deg"].to_numpy()
             - BETA_FREE_FACE_GROW_TOL_DEG
         )
         grown = _grow_by_limit(
@@ -551,6 +942,7 @@ def find_instability_zones(
         np.full(n_labels + 1, FREE_FACE),
         core_grid,
         categories,
+        keep_all=True,
     )
     elements = found.elements.copy()
     seeded = elements["seed_row"].to_numpy() >= 0
@@ -572,7 +964,144 @@ def find_instability_zones(
         pips=pips,
         pif_labels=pif_labels,
         sizs=sizs,
+        n_pifs_excluded=n_excluded,
+        n_pifs_short=n_short,
+        pif_lines=pif_lines,
+        cap_cuts=dict(cap_cuts),
     )
+
+
+def add_line_elements(
+    found: SlopeElements,
+    lines: gpd.GeoSeries,
+    height_m: pd.Series,
+    *,
+    dem: ArrayLike,
+    ground_group: ArrayLike,
+    transform: Affine,
+    categories: Mapping[str, ArrayLike] | None = None,
+) -> SlopeElements:
+    """Add an element on each wall line that no siz grew one for.
+
+    A GNS-only wall unit has no pif, and a ``small`` pif (a GNS mapped wall on
+    a pif that is not a siz) seeds no growth, so no element is under either
+    and its wall would have no polygon. The lead (2026-10-06): every wall gets
+    one, so each such unit gets the minimum polygon along its line: its line
+    is burnt onto the grid (every cell it touches that no element holds and
+    the DEM covers) as an element of its own, and the polygon builder treats
+    it as any other: its crest cells are the ones whose uphill neighbour is
+    off it, so the DEM decides which side is up, and the width behind the
+    crest is the floor, ``max(0.5 H, 1 m)``
+    (:func:`landloss.hazard.landslide.slope_polygons.min_evacuated_width_m`).
+
+    Its height is the unit's step height (``height_m``), never under
+    :data:`~landloss.domain.constants.MIN_WALL_HEIGHT_M` (the smallest
+    element's; a GNS-only piece's step is often 0.4 to 0.5 m or unread), with
+    a run of 0 (a step), so its overall angle is 90 degrees. Walled, its depth
+    is the wall's planar slip, ``0.5 H w`` per metre; bare, it is a bank, and
+    takes the fill thickness or the cover depth of the polygon builder.
+
+    The elements are measured again on the new grid
+    (:func:`landloss.hazard.landslide.slope_elements._assemble_elements`, so
+    the stack links, catchments and edge roles see the new ones), and the
+    existing elements keep their labels and every column they had.
+
+    Args:
+        found: The elements from :func:`find_instability_zones`.
+        lines: The wall lines, indexed by ``wall_unit_id``, in the grid's CRS.
+        height_m: The step height of each line, indexed like ``lines``.
+        dem: The DEM the elements were found on.
+        ground_group: The ground group grid they were found with.
+        transform: The grid's affine transform.
+        categories: As in :func:`find_instability_zones`.
+
+    Returns:
+        The elements with one more per line that kept a cell, numbered after
+        the existing ones, ``grown_in`` :data:`WALL_LINE`, ``siz_id`` 0 and
+        ``wall_unit_id`` (None on the existing elements).
+    """
+    elevation = np.asarray(dem, dtype=float)
+    groups = np.asarray(ground_group, dtype=np.int8)
+    old = found.elements
+    n_old = len(old)
+    labels = found.labels.copy()
+    burnt = np.zeros(labels.shape, dtype=np.int32)
+    if len(lines):
+        burnt = features.rasterize(
+            [
+                (geometry, n_old + 1 + k)
+                for k, geometry in enumerate(lines.to_numpy())
+                if geometry is not None and not geometry.is_empty
+            ],
+            out_shape=labels.shape,
+            transform=transform,
+            fill=0,
+            all_touched=True,
+            dtype="int32",
+        )
+    free = (labels == OUTSIDE) & np.isfinite(elevation)
+    burnt = np.where(free, burnt, 0)
+    kept = np.unique(burnt[burnt > 0]) - n_old - 1
+    if kept.size == 0:
+        return replace(found, elements=old.assign(wall_unit_id=None))
+    number = np.zeros(n_old + len(lines) + 1, dtype=np.int32)
+    number[kept + n_old + 1] = np.arange(n_old + 1, n_old + 1 + kept.size)
+    labels = np.where(burnt > 0, number[burnt], labels).astype(np.int32)
+    n_labels = n_old + kept.size
+
+    seed_grid = np.where(burnt > 0, labels, OUTSIDE).astype(np.int32)
+    seeded = old["seed_row"].to_numpy() >= 0
+    seed_grid[
+        old["seed_row"].to_numpy()[seeded], old["seed_col"].to_numpy()[seeded]
+    ] = old.index.to_numpy()[seeded]
+    grown_in = np.r_[
+        [""], old["grown_in"].to_numpy(dtype=object), [WALL_LINE] * kept.size
+    ]
+    result = _assemble_elements(
+        elevation,
+        groups,
+        transform,
+        found.layers,
+        labels,
+        seed_grid,
+        np.zeros(labels.shape),
+        grown_in,
+        np.full(n_labels + 1, FREE_FACE),
+        np.ones(labels.shape, dtype=bool),
+        categories,
+        keep_all=True,
+    )
+    elements = result.elements.copy()
+    new = elements.index > n_old
+    for column in old.columns:
+        if column not in elements.columns:
+            elements[column] = pd.Series(np.nan, index=elements.index, dtype=object)
+        elements.loc[~new, column] = old[column].to_numpy()
+    height = np.fmax(
+        height_m.reindex(lines.index).to_numpy(dtype=float)[kept], MIN_WALL_HEIGHT_M
+    )
+    band = height_band(height)
+    threshold = np.asarray(
+        step_angle_deg(
+            elements.loc[new, "ground_group"].map(GROUND_GROUPS.index), band
+        ),
+        dtype=float,
+    )
+    elements.loc[new, "height_m"] = height
+    elements.loc[new, "height_max_m"] = height
+    elements.loc[new, "run_m"] = 0.0
+    elements.loc[new, "overall_angle_deg"] = 90.0
+    elements.loc[new, "height_band"] = band
+    elements.loc[new, "threshold_angle_deg"] = threshold
+    elements.loc[new, "angle_excess_deg"] = 90.0 - threshold
+    elements.loc[new, "stack_dominant_cut"] = height > STACK_DOMINANT_HEIGHT_M
+    elements.loc[new, "hb1995_cut"] = height > HB1995_CUT_HEIGHT_M
+    elements.loc[new, "siz_id"] = 0
+    elements["siz_id"] = elements["siz_id"].astype(np.int64)
+    wall_unit = np.full(len(elements), None, dtype=object)
+    wall_unit[new] = lines.index.to_numpy(dtype=object)[kept]
+    elements["wall_unit_id"] = wall_unit
+    return replace(result, elements=elements)
 
 
 def with_walls(found: SlopeElements, walled: bool | pd.Series) -> SlopeElements:  # noqa: FBT001
@@ -616,7 +1145,7 @@ def gen_siz_table(
         pip's fall direction as an index into :data:`DIRECTIONS` (int8), in the
         same order as the MultiPoint's points.
     """
-    rows, cols = np.nonzero(result.pips.mask)
+    rows, cols = np.nonzero(result.pips.mask & (result.pif_labels > 0))
     points = pd.DataFrame(
         {
             "x": transform.c + (cols + 0.5) * transform.a,
@@ -707,7 +1236,11 @@ def _mean_fall_deg(sin: NDArray[np.float64], cos: NDArray[np.float64]) -> float:
 
 
 def gen_pif_spines(
-    sizs: gpd.GeoDataFrame, *, cell_size_m: float, end_window_m: float
+    sizs: gpd.GeoDataFrame,
+    *,
+    cell_size_m: float,
+    end_window_m: float,
+    lines: pd.Series | None = None,
 ) -> pd.DataFrame:
     """The spine of every pif and the fall direction at each of its ends.
 
@@ -725,6 +1258,10 @@ def gen_pif_spines(
             centres and ``pip_direction``.
         cell_size_m: The cell size; a one-pip pif's spine is one cell long,
             across its fall.
+        lines: Each pif's line, indexed like ``sizs``
+            (:attr:`InstabilityZones.pif_lines`): where given, the spine is
+            that line, the stretch of path the piece was cut on, not a path
+            found again through its pips.
         end_window_m: The fall direction at an end is the mean over the pips
             within this many metres of it.
 
@@ -760,7 +1297,11 @@ def gen_pif_spines(
         if k == 0:
             continue
         pts, s, c = xy[lo:hi], sin[lo:hi], cos[lo:hi]
-        if k == 1:
+        given = None if lines is None else lines.get(sizs.index[i])
+        if given is not None and not shapely.is_empty(given):
+            line = np.asarray(given.coords)
+            length = float(given.length)
+        elif k == 1:
             # One cell long, across the fall: the fall is (sin, cos), so
             # (cos, -sin) runs along the face.
             across = np.array([c[0], -s[0]]) * 0.5 * cell_size_m
@@ -774,9 +1315,12 @@ def gen_pif_spines(
             line = line[::-1]
         falls = []
         for end in (line[0], line[-1]):
-            near = np.hypot(*(pts - end).T) <= end_window_m
+            gap = np.hypot(*(pts - end).T)
+            near = gap <= end_window_m
             if k == 1:
                 near[:] = True
+            if not near.any():
+                near = gap == gap.min()
             falls.append(_mean_fall_deg(s[near], c[near]))
         spines[i] = shapely.LineString(line)
         values[i] = [

@@ -4,8 +4,9 @@
 
 The address spine, the terrain, accessibility and amenity attributes and the land value
 per address, the insured land extent and the dwellings on each claim, then the
-retaining wall population in three steps -- the candidate wall lines, a
-probability on each, and one draw per exposure world -- and the crossing
+retaining wall population in four steps -- the candidate wall lines, a
+probability on each, the age shares of each property, and one draw per
+exposure world -- and the crossing
 population per realisation. The extent, worlds and realisations come from
 ``config.py`` beside this; anything else a step reads, such as whether to reuse
 a cached download, comes from that step's own ``config.py``.
@@ -17,7 +18,10 @@ population read the wall units and their draws from landslide step 12, which
 ``gen_hazard.main`` runs (faces, then step 13's pif cut and fill, then the wall
 units); without it, run ``gen_urban_slope_faces.py``,
 ``gen_pif_cut_fill.py`` and ``gen_urban_slope_wall_units.py`` by hand first, or
-the wall probability stops and says so.
+the wall probability stops and says so. The property age shares read the QV
+rating roll from the T: drive and exposure step 8's property ages, which no
+orchestrator runs: run ``gen_rwt_age.py`` and ``table_rwt_age_by_suburb.py``
+by hand first, or the age step stops and says so.
 """
 
 from scripts.landloss.exposure import config
@@ -46,6 +50,7 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     config as wall_config,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_age,
     gen_wall_lines,
     gen_wall_population,
     gen_wall_probability,
@@ -151,6 +156,12 @@ def main(*, extent, realisation_ids, world_ids):
                 "rw s6, wall probability",
                 lambda: gen_wall_probability.main(
                     extent=extent, use_cached_layers=wall_config.USE_CACHED_LAYERS
+                ),
+            ),
+            (
+                "rw s6, wall age",
+                lambda: gen_wall_age.main(
+                    extent=extent, age_extent=wall_config.AGE_EXTENT
                 ),
             ),
             (

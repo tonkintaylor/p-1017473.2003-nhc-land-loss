@@ -4,8 +4,8 @@ Everything that changes between one run of this step and the next, in one short
 file. The scripts beside it take these as arguments and hold no defaults of
 their own.
 
-The fragility is **not** here. It belongs to the wall curve table
-``retaining-wall-fragility.csv`` and :mod:`landloss.vul.shaking.fragility`,
+The fragility is **not** here. It belongs to the wall type curve table
+``retaining-wall-type-fragility.csv`` and :mod:`landloss.vul.shaking.fragility`,
 and is a property of the wall and the shaking rather than a setting of the run.
 """
 

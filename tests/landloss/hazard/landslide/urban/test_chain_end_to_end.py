@@ -17,8 +17,9 @@ The world is built here by hand, so every outcome can be worked out on paper:
 The stages run in the order the step scripts run them, and each hand-over goes
 through the file the step's own path function names, with every step's
 ``WORK_DIR`` pointed at ``tmp_path``: exposure rw step 6's wall probability on
-its library function and its ``main`` (draw from step 12's draw, claim and
-coverage filters, ``rw_id``, the drawn walls), landslide step 8 on its
+its library function and its ``main`` (draw from step 12's draw, the wall
+type draw from a hand-built property age file, claim and coverage filters,
+``rw_id``, the drawn walls), landslide step 8 on its
 script's ``read_step12_inputs``, ``read_polygons``, ``build_model`` and
 ``add_world_id`` (the zones of the world as polygons, checked against the drawn
 walls), landslide step 9's ``main`` (draw, supersession, absorption, combined
@@ -33,9 +34,10 @@ and checked against the columns step 8 and the wall probability read.
 The draws are forced so the assertions are deterministic whatever the seed:
 every wall unit is walled in the world and every unit is made a wall
 (``p_wall`` set to 1 after the probability table is built), the wall medians
-are far below the PGV for small and medium walls and far above it for large
-ones, and the PGV is far above every localised median, so every polygon fails
-and the large flat-land wall stands. The wall units are all on sloping ground
+of every type are far below the PGV for small and medium walls and far above
+it for large ones, whatever type and fill or cut shift a wall draws, and the
+PGV is far above every localised median, so every polygon fails and the large
+flat-land wall stands. The wall units are all on sloping ground
 as step 12 builds them; the flat one is flagged ``is_flatland`` by hand so the
 flat-land path of vul shaking rw step 9 stays covered.
 """
@@ -66,13 +68,22 @@ from landloss.exposure.land.extent import (
     LAND_RATE_INCL_GST_COLUMN,
 )
 from landloss.exposure.rw import population, wall_probability
+from landloss.exposure.rw.age import AGE_BINS
+from landloss.exposure.rw.beta_population import SIZE_CLASSES
+from landloss.exposure.rw.wall_age import AGE_BASIS_COLUMN, AGE_SHARE_COLUMNS
+from landloss.exposure.rw.wall_type import AGE_BIN_COLUMN, ROAD_FRONTAGE_COLUMN
 from landloss.hazard.landslide import susceptibility
 from landloss.hazard.landslide.land_class import (
     EVACUATED,
     INUNDATED,
     LAND_CLASS_COLUMN,
 )
-from landloss.hazard.landslide.urban import face_polygons, fragility, geometry
+from landloss.hazard.landslide.urban import (
+    face_polygons,
+    fragility,
+    geometry,
+    wall_type_fragility,
+)
 from landloss.hazard.landslide.urban import realisation as urban
 from landloss.hazard.realisation import realisation_seed
 from landloss.vul import loss_input
@@ -82,6 +93,7 @@ from scripts.landloss.exposure.land.steps.s5_insured_land_extent import (
     gen_insured_land,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_age,
     gen_wall_population,
     gen_wall_probability,
 )
@@ -125,8 +137,8 @@ pytestmark = pytest.mark.filterwarnings(
 
 # An arbitrary but realistic corner in NZTM; every coordinate below is metres
 # east and north of it.
-X0 = 1_748_000.0
-Y0 = 5_425_000.0
+X0 = 1_748_400.0
+Y0 = 5_424_000.0
 
 # The rasters cover x from -30 to 120 m and y from -50 to 60 m.
 GRID_X_MIN = -30.0
@@ -154,7 +166,7 @@ PGV_M_S = 100.0
 RATIO_M_S_PER_G = 1.2
 SITE_CLASS = 3
 # The wall table medians, in g on PGA: one that fails at any PGV, one that
-# never does.
+# never does, whatever the fill or cut shift.
 ALWAYS_FAILS_G = 1e-5
 NEVER_FAILS_G = 1e4
 WALL_BETA = 0.6
@@ -311,6 +323,7 @@ def make_units():
             "height_m": [WALL_UNIT_HEIGHTS_M[k] for k in labels],
             "length_m": [g.length for g in geometries],
             "ground_material": "colluvium",
+            ROAD_FRONTAGE_COLUMN: False,
         },
         geometry=geometries,
         index=pd.Index([v[0] for v in values], name="wall_unit_id"),
@@ -336,29 +349,44 @@ def make_insured_land():
 
 
 def make_wall_table(path):
-    """A wall fragility table in the packaged CSV's form, medians forced."""
+    """A wall type table in the packaged CSV's form, medians forced by size."""
     rows = []
-    for size_class in ("small", "medium", "large"):
-        theta = NEVER_FAILS_G if size_class == "large" else ALWAYS_FAILS_G
-        for condition in ("modern", "poor"):
+    for wall_type in wall_type_fragility.WALL_TYPES:
+        for size_class in SIZE_CLASSES:
+            theta = NEVER_FAILS_G if size_class == "large" else ALWAYS_FAILS_G
+            p15, p50 = wall_type_fragility.lognormal_to_percentiles(theta, WALL_BETA)
             rows.append(
                 {
-                    "wall_class": fragility.UNNAMED_WALL_CLASS,
+                    "wall_type": wall_type,
                     "size_class": size_class,
-                    "initial_condition": condition,
                     "im": fragility.PGA_IM,
-                    "theta": theta,
-                    "beta": WALL_BETA,
+                    "p15": float(p15),
+                    "p50": float(p50),
                     "published_height_m": 3.0,
-                    "damage_state": "extensive",
+                    "published_fs": 1.5,
+                    "type_factor": 1.0,
+                    "damage_state": "moderate",
                     "source": f"synthetic_{size_class}",
                     "basis": "forced for the chain test",
                 }
             )
-    pd.DataFrame(rows, columns=list(fragility.WALL_TABLE_COLUMNS)).to_csv(
+    pd.DataFrame(rows, columns=list(wall_type_fragility.TABLE_COLUMNS)).to_csv(
         path, index=False
     )
-    return fragility.load_retaining_wall_fragility(path)
+    return wall_type_fragility.load_wall_type_fragility(path)
+
+
+def make_wall_ages():
+    """Exposure rw step 6's property age shares: every property pre-1970 by QV."""
+    properties = sorted(CLAIM_OF_PROPERTY)
+    ages = pd.DataFrame(
+        0.0,
+        index=pd.Index(properties, name="property_id"),
+        columns=list(AGE_SHARE_COLUMNS),
+    )
+    ages[AGE_SHARE_COLUMNS[0]] = 1.0
+    ages[AGE_BASIS_COLUMN] = "qv"
+    return ages
 
 
 def make_large_rows():
@@ -399,6 +427,7 @@ WORK_DIRS = (
     (gen_site_class, "shaking"),
     (gen_pgv_realisations, "shaking"),
     (gen_wall_probability, "exposure"),
+    (gen_wall_age, "exposure"),
     (gen_wall_population, "exposure"),
     (gen_insured_land, "exposure"),
     (gen_wall_damage_state, "vul"),
@@ -505,7 +534,7 @@ def run_chain(root):
     write_raster(constant_grid(0.0, SHAKING_CELL_M), tpi_path)
     pgv_rp = constant_grid(RATIO_M_S_PER_G, SHAKING_CELL_M)
     pga = constant_grid(1.0, SHAKING_CELL_M)
-    wall_table = make_wall_table(root / "retaining-wall-fragility.csv")
+    wall_table = make_wall_table(root / "retaining-wall-type-fragility.csv")
 
     insured = write(
         make_insured_land(), gen_insured_land.insured_land_path(extent=extent)
@@ -520,8 +549,8 @@ def run_chain(root):
     # Landslide step 12: the elements, the ground map, the wall units, the
     # world's draw (every unit walled) and the world's zones.
     write(make_ground_map(), gen_ground_map.ground_map_path(extent=extent))
-    elements = make_elements()
-    path = gen_urban_slope_faces.elements_path(extent=extent)
+    elements = make_elements().assign(wall_unit_id=None)
+    path = gen_urban_slope_faces.wall_elements_path(extent=extent)
     path.parent.mkdir(parents=True, exist_ok=True)
     elements.to_parquet(path)
     units = make_units()
@@ -554,6 +583,7 @@ def run_chain(root):
     forced["p_wall"] = 1.0
     forced["is_flatland"] = forced["wall_line_id"] == unit_ids["flat"]
     write(forced, gen_wall_probability.wall_probability_path(extent=extent))
+    write(make_wall_ages(), gen_wall_age.wall_age_path(extent=extent))
     gen_wall_population.main(extent=extent, world_ids=[WORLD])
     walls = gpd.read_parquet(
         gen_wall_population.wall_population_path(WORLD, extent=extent)
@@ -682,6 +712,18 @@ def test_the_hand_built_inputs_carry_the_columns_their_steps_write(chain):
     assert chain["units"].index.name == "wall_unit_id"
 
 
+def test_every_drawn_wall_carries_a_type_and_an_age_bin(chain):
+    # Every property is pre-1970, so a wall's bin is that or, rebuilt, the next.
+    for name in ("walls", "drawn"):
+        frame = chain[name]
+        assert set(population.POPULATION_COLUMNS) <= set(frame.columns)
+        assert "initial_condition" not in frame.columns
+        assert set(frame[fragility.WALL_TYPE_COLUMN]) <= set(
+            wall_type_fragility.WALL_TYPES
+        )
+        assert set(frame[AGE_BIN_COLUMN]) <= set(AGE_BINS[:2])
+
+
 # --- every output names its world and earthquake ------------------------------------
 
 # frame: (the file name it was written to, whether it carries realisation_id)
@@ -764,8 +806,9 @@ READS = {
         (
             RW_ID_COLUMN,
             geometry.WALL_LINE_ID_COLUMN,
-            "size_class",
-            "initial_condition",
+            fragility.SIZE_CLASS_COLUMN,
+            fragility.WALL_TYPE_COLUMN,
+            geometry.WALL_POSITION_COLUMN,
             fragility.IS_FLATLAND_COLUMN,
         ),
     ),
@@ -810,7 +853,9 @@ READS = {
         (
             RW_ID_COLUMN,
             shaking_fragility.SIZE_CLASS_COLUMN,
-            shaking_fragility.INITIAL_CONDITION_COLUMN,
+            shaking_fragility.WALL_TYPE_COLUMN,
+            AGE_BIN_COLUMN,
+            shaking_fragility.WALL_POSITION_COLUMN,
             "is_flatland",
             "geometry",
         ),
@@ -966,8 +1011,13 @@ def test_the_uninsured_walls_polygon_takes_the_wall_fragility_and_writes_no_loss
     assert row[urban.WALL_STATE_COLUMN] == geometry.FILL_WALL
     assert row["fragility_basis"] == fragility.WALL_BASIS
     assert row["fragility_source"] == "synthetic_medium"
+    # The crest wall retains fill, so its own position shifts its median.
+    assert drawn.loc[crest, geometry.WALL_POSITION_COLUMN] == geometry.FILL
     assert row["theta"] == pytest.approx(
-        ALWAYS_FAILS_G * RATIO_M_S_PER_G / row["amp_factor"]
+        ALWAYS_FAILS_G
+        * wall_type_fragility.FILL_CAPACITY_FACTOR
+        * RATIO_M_S_PER_G
+        / row["amp_factor"]
     )
 
     assert crest not in set(chain["walls"][urban.WALL_LINE_ID_COLUMN])

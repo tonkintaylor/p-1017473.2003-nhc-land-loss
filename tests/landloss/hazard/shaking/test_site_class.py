@@ -1,15 +1,25 @@
 """Tests for assigning the TS1170.5 site class from Vs30 and selecting by it."""
 
+import geopandas as gpd
 import numpy as np
 import pytest
 import rioxarray  # noqa: F401 -- registers the .rio accessor
 import xarray as xr
+from shapely.geometry import box
 
 from landloss.hazard.shaking.site_class import (
+    SOURCE_FOSTER,
+    SOURCE_GROUND_MAP,
+    SOURCE_NEAREST_CELL,
+    SOURCE_NONE,
     demand_on_site_class_grid,
+    fill_site_class_from_ground_map,
     fill_site_class_gaps,
+    majority_material_per_cell,
     select_by_site_class,
+    site_class_source,
     ts1170_site_class_from_vs30,
+    vs30_from_material,
 )
 
 
@@ -170,3 +180,101 @@ def test_a_diagonal_neighbour_is_further_than_an_orthogonal_one() -> None:
     assert filled.values[1, 1] == 2.0
     # (1, 0) is 100 m from (0, 0), Class IV.
     assert filled.values[1, 0] == 4.0
+
+
+def ground(*pieces):
+    """A ground map of (material, (minx, miny, maxx, maxy)) pieces."""
+    return gpd.GeoDataFrame(
+        {"material": [material for material, _ in pieces]},
+        geometry=[box(*bounds) for _, bounds in pieces],
+        crs="EPSG:2193",
+    )
+
+
+def test_the_material_covering_most_of_a_cell_wins() -> None:
+    """Cell centres at x = 0, 100 and 200; each cell spans 50 m either side."""
+    site_class = square_grid([[np.nan, np.nan, np.nan]])
+    ground_map = ground(
+        ("fill_uncontrolled", (-50, -50, 20, 50)),
+        ("rock", (20, -50, 150, 50)),
+        ("alluvium", (150, -50, 160, 50)),
+    )
+
+    result = majority_material_per_cell(
+        ground_map, site_class, np.array([[True, True, True]])
+    )
+
+    # Cell 0 is 70% fill and 30% rock; cell 1 is all rock; cell 2 is 10%
+    # alluvium and otherwise sea.
+    assert result.tolist() == [["fill_uncontrolled", "rock", "alluvium"]]
+
+
+def test_unknown_ground_is_left_out_of_the_count() -> None:
+    """A cell mostly unknown takes the material it does have; all unknown, none."""
+    site_class = square_grid([[np.nan, np.nan]])
+    ground_map = ground(
+        ("unknown", (-50, -50, 40, 50)),
+        ("loess", (40, -50, 50, 50)),
+        ("unknown", (50, -50, 150, 50)),
+    )
+
+    result = majority_material_per_cell(
+        ground_map, site_class, np.array([[True, True]])
+    )
+
+    assert result.tolist() == [["loess", None]]
+
+
+def test_only_the_chosen_cells_are_looked_at() -> None:
+    """A cell not asked about comes back None even with ground under it."""
+    site_class = square_grid([[np.nan, np.nan]])
+    ground_map = ground(("rock", (-50, -50, 150, 50)))
+
+    result = majority_material_per_cell(
+        ground_map, site_class, np.array([[False, True]])
+    )
+
+    assert result.tolist() == [[None, "rock"]]
+
+
+def test_a_material_without_a_default_gives_no_vs30() -> None:
+    """None, unknown and an unlisted material all give NaN."""
+    materials = np.array([["fill_uncontrolled", None, "unknown", "basalt"]])
+
+    vs30 = vs30_from_material(materials, {"fill_uncontrolled": 200.0, "unknown": None})
+
+    np.testing.assert_array_equal(vs30, [[200.0, np.nan, np.nan, np.nan]])
+
+
+def test_the_lead_s_fill_value_lands_in_class_vi() -> None:
+    """200 m/s is the inclusive top of Class VI."""
+    materials = np.array(["fill_uncontrolled"], dtype=object)
+
+    assert ts1170_site_class_from_vs30(vs30_from_material(materials))[0] == 6
+
+
+def test_only_unclassed_cells_are_filled_from_the_ground_map() -> None:
+    """A classed cell keeps its class; an unclassed one over sea stays NaN."""
+    site_class = square_grid([[2.0, np.nan, np.nan]]).rio.write_crs("EPSG:2193")
+    ground_map = ground(("fill_uncontrolled", (-50, -50, 150, 50)))
+
+    filled, was_filled, materials = fill_site_class_from_ground_map(
+        site_class, ground_map, defaults={"fill_uncontrolled": 200.0}
+    )
+
+    np.testing.assert_array_equal(filled.values, [[2.0, 6.0, np.nan]])
+    np.testing.assert_array_equal(was_filled.values, [[False, True, False]])
+    assert materials.tolist() == [[None, "fill_uncontrolled", None]]
+
+
+def test_each_cell_is_coded_by_where_its_class_came_from() -> None:
+    """Foster, the nearest-cell fill, the ground map, or nothing."""
+    vs30 = np.array([[400.0, np.nan, np.nan, np.nan]])
+    nearest = np.array([[False, True, False, False]])
+    from_ground = np.array([[False, False, True, False]])
+
+    source = site_class_source(vs30, nearest, from_ground)
+
+    assert source.tolist() == [
+        [SOURCE_FOSTER, SOURCE_NEAREST_CELL, SOURCE_GROUND_MAP, SOURCE_NONE]
+    ]

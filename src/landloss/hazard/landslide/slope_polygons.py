@@ -22,7 +22,11 @@ run only over elements and polygons. The rules, each where the plan sets it:
      friction angle, 0.45 H on the fill's 42 degrees [monteith_2020];
    - a fill bank: :data:`BETA_FILL_BANK_WIDTH_H` of its height;
    - a cut or natural bank: the T-44 headscarp band, half a metre or a metre
-     on ground over 30 degrees (:mod:`landloss.hazard.landslide.urban.geometry`).
+     on ground over 30 degrees (:mod:`landloss.hazard.landslide.urban.geometry`);
+   - never less, for any element, walled or not, than
+     :data:`BETA_MIN_EVACUATED_WIDTH_H` of its height nor
+     :data:`BETA_MIN_EVACUATED_WIDTH_M` (the lead, 2026-10-06), along the
+     whole length of its crest.
 
 2. **Stacks.** A free-face carrying the stack-dominant flag (steeper than
    50 degrees and higher than 3 m [brabhaharan_2018; hancox_2015], a fixed
@@ -149,6 +153,15 @@ BETA_DEFAULT_RETAINED_PHI_DEG = FILL_PHI_DEG
 # as a Coulomb wedge [monteith_2020; brown_larkin_2005; lyndsell_2019].
 BETA_FILL_BANK_WIDTH_H = 0.45
 
+# Judgement (the lead, 2026-10-06): the evacuated width behind any element's
+# crest, walled or not, is never under this share of its height nor under
+# this many metres, whatever its type's rule gives. It governs the wall's
+# wedge on fill (0.45 H at 42 degrees), the fill bank (0.45 H) and the T-44
+# headscarp band (0.5 or 1 m) wherever half the height is wider, and gives
+# every polygon at least one cell behind a crest on a 1 m grid.
+BETA_MIN_EVACUATED_WIDTH_H = 0.5
+BETA_MIN_EVACUATED_WIDTH_M = 1.0
+
 # Judgement, a proposal for the lead: the angle of repose the imminent band
 # runs to, from the toe, for every material. Checked against the Cook Strait
 # cliff GNS judged near its natural angle of repose, 30 to 35 degrees, under
@@ -225,7 +238,9 @@ class SlopePolygons:
         polygons: One row per polygon, indexed from 1 by ``polygon``: the
             element it is a segment of (``element``, ``segment``), the
             element's ``element_type`` and ``ground_group``, ``is_fill``,
-            ``style``, ``width_rule``, ``width_behind_crest_m`` (the rule's),
+            ``style``, ``width_rule``, ``width_behind_crest_m`` (the rule's,
+            or the floor of :func:`min_evacuated_width_m` where wider),
+            ``width_floored`` (the floor set it),
             ``width_realised_m`` (the median over its rays of how far behind
             the crest cell's centre the furthest cell it kept lies),
             ``is_stack`` (a stack-dominant free-face whose rays climb),
@@ -290,6 +305,16 @@ def headscarp_band_width_m(angle_deg: ArrayLike) -> NDArray[np.float64]:
     )
 
 
+def min_evacuated_width_m(height_m: ArrayLike) -> NDArray[np.float64]:
+    """The least evacuated width behind any element's crest, in metres.
+
+    :data:`BETA_MIN_EVACUATED_WIDTH_H` of the height, never under
+    :data:`BETA_MIN_EVACUATED_WIDTH_M` (an unknown height takes the latter).
+    """
+    heights = np.nan_to_num(np.asarray(height_m, dtype=float), nan=0.0)
+    return np.maximum(BETA_MIN_EVACUATED_WIDTH_H * heights, BETA_MIN_EVACUATED_WIDTH_M)
+
+
 def width_behind_crest_m(
     element_type: ArrayLike,
     height_m: ArrayLike,
@@ -309,9 +334,10 @@ def width_behind_crest_m(
             free-face's wedge.
 
     Returns:
-        ``(width_m, rule)``: the horizontal width behind the crest and the
-        rule that set it (:data:`WALL_WEDGE`, :data:`FILL_BANK_WEDGE` or
-        :data:`HEADSCARP_BAND`).
+        ``(width_m, rule)``: the horizontal width behind the crest, never
+        under :func:`min_evacuated_width_m`, and the element type's rule
+        (:data:`WALL_WEDGE`, :data:`FILL_BANK_WEDGE` or
+        :data:`HEADSCARP_BAND`), whether or not the floor set the width.
     """
     types = np.asarray(element_type)
     heights = np.asarray(height_m, dtype=float)
@@ -326,7 +352,10 @@ def width_behind_crest_m(
     rule = np.where(
         free_face, WALL_WEDGE, np.where(fill, FILL_BANK_WEDGE, HEADSCARP_BAND)
     )
-    return width.astype(float), rule
+    floor = min_evacuated_width_m(heights)
+    with np.errstate(invalid="ignore"):
+        floored = ~(width >= floor)
+    return np.where(floored, floor, width).astype(float), rule
 
 
 def element_depth_m(
@@ -1088,6 +1117,7 @@ def _empty(
         "style",
         "width_rule",
         "width_behind_crest_m",
+        "width_floored",
         "width_realised_m",
         "is_stack",
         "top_element",
@@ -1501,6 +1531,9 @@ def build_slope_polygons(
     polygons["style"] = np.where(fill[base - 1], FILL_FLOW_SLIDE, DRY_DEBRIS_AVALANCHE)
     polygons["width_rule"] = rule[base - 1]
     polygons["width_behind_crest_m"] = width[base - 1]
+    polygons["width_floored"] = np.isclose(
+        width[base - 1], min_evacuated_width_m(height[base - 1])
+    )
     polygons["width_realised_m"] = _realised_width(kept, ray_polygon, polygons.index)
     polygons["is_stack"] = climbs[base - 1]
     tops = pd.DataFrame(

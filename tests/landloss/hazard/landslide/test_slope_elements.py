@@ -47,6 +47,7 @@ from landloss.hazard.landslide.slope_elements import (
     WEAK_ROCK,
     WEAK_ROCK_CODE,
     SlopeElements,
+    _measure_regardless,
     bank_seed_slope_deg,
     find_slope_elements,
     ground_group_codes,
@@ -875,6 +876,40 @@ def test_ground_gentler_than_the_grow_angle_is_not_an_element():
     _, found = run_case("06_gullies_at_ridge", 0.0)
     assert (found.elements["overall_angle_deg"] >= BETA_GROW_ANGLE_DEG).all()
     assert len(found.elements) == 2
+    assert found.elements["kept_by_rule"].all()
+
+
+def test_a_region_kept_regardless_of_the_rule_is_measured_for_its_polygon():
+    band = height_band([2.0])[0]
+    measured = pd.DataFrame(
+        {
+            "height_m": [2.0, 0.3, 1.2],
+            "height_max_m": [2.5, 0.3, 1.2],
+            "run_m": [1.0, 0.2, np.nan],
+            "n_transects": [4, 2, 0],
+            "overall_angle_deg": [math.degrees(math.atan2(2.0, 1.0)), 56.3, np.nan],
+            "ground_group_code": [SOIL_LIKE_CODE] * 3,
+            "height_band": [band, 0, 1],
+            "threshold_angle_deg": [
+                step_angle_deg(SOIL_LIKE_CODE, band)[()],
+                np.nan,
+                35.0,
+            ],
+            "is_free_face": [True, False, False],
+        }
+    )
+    out = _measure_regardless(measured)
+    # A region that passed the rule is unchanged.
+    pd.testing.assert_series_equal(out.iloc[0], measured.iloc[0], check_dtype=False)
+    # Under the smallest height: raised to it, and its band and test follow.
+    assert out.loc[1, "height_m"] == MIN_WALL_HEIGHT_M
+    assert out.loc[1, "height_max_m"] == MIN_WALL_HEIGHT_M
+    assert out.loc[1, "height_band"] == 1
+    assert out.loc[1, "is_free_face"]
+    # No transect: read as a step, run 0 and vertical.
+    assert out.loc[2, "run_m"] == 0.0
+    assert out.loc[2, "overall_angle_deg"] == 90.0
+    assert out.loc[2, "height_m"] == 1.2
 
 
 # Mixed ground ---------------------------------------------------------------

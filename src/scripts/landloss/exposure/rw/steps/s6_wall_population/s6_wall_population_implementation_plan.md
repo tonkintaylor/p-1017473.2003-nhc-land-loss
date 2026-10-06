@@ -4,8 +4,11 @@
 the wall units of landslide step 12, with their probability, claim update and
 draw per world, read into the probability table and the population (ran over
 the pilot on 2026-10-05). The numbers are judgement until the claim report
-extraction (**T-50**) lands; phase 2d reads it. Phases 1, 1b and 1c, the per-property interim model, are
-superseded and their code is deleted.
+extraction (**T-50**) lands; phase 2d reads it. Phase 3, a wall type per wall
+from its age, height and road frontage in place of the modern and poor
+condition, is built (2026-10-06) and not yet run on real data. Phases 1, 1b
+and 1c, the per-property interim model, are superseded and their code is
+deleted.
 
 ## Phase 1 — A population of the right shape (superseded)
 
@@ -13,9 +16,9 @@ Drew at most one wall per insured property against a slope-driven prevalence,
 sized it from the slope, placed it as a line along the contour at the
 property's own point, and seeded it on the hazard realisation. Every piece is
 replaced by phase 2: the lines come from geometry, the height from the DEM,
-the draw from a world seed. The size classes and initial conditions it
-defined (`classify_wall_size`, `describe_population`,
-`landloss.exposure.rw.beta_population`) are the one part kept.
+the draw from a world seed. The size classes it defined (`classify_wall_size`,
+`describe_population`, `landloss.exposure.rw.beta_population`) are the one
+part kept; its initial conditions were retired for the wall type (phase 3).
 
 ## Phase 1b — Coverage filter and wall id for the loss contract (complete)
 
@@ -138,10 +141,10 @@ Each line takes a probability from what the lines step read onto it
       from rock on the line.
 - [x] Capped on the NLM flat land (`BETA_FLATLAND_MAX_PROBABILITY` where
       `is_flatland`).
-- [x] A probability of poor condition per line (`poor_condition_probability`):
-      the default `BETA_POOR_SHARE`, `BETA_UNCONSENTED_POOR_SHARE` under
-      `UNCONSENTED_WALL_HEIGHT_M`, and the dwelling age where held, with the
-      rule recorded in `p_poor_basis`.
+- Retired 2026-10-06: the probability of poor condition per line
+  (`poor_condition_probability`, `p_poor`, `p_poor_basis` and their `BETA_`
+  shares). The wall type (phase 3) carries what it did, and keeping both
+  would count age twice.
 - Dropped: the count bounds hook, a scaling of the probabilities inside each
   claim between a minimum and maximum count. Its maximum lowered
   probabilities and its scaling ignored the priors' shape; it was removed on
@@ -165,26 +168,28 @@ Each line takes a probability from what the lines step read onto it
       phase 2e makes this the face height test on the rock factor.
 - [ ] Mark lines on new subdivisions as very likely to have walls, from the
       subdivision or dwelling age once held.
-- [ ] Wall type where known (anchored timber, gravity concrete, crib) moving
-      `p_poor`; no type is known on a line.
+- [x] Wall type (gravity masonry, crib, timber pole, block and RC,
+      landscaper timber, engineered): drawn per wall per world (phase 3).
 - [ ] Give a property several lines of independent height and construction. A
       property with several walls is not all small or all large. Partly there:
-      each line carries its own face height; the condition draw is independent
+      each line carries its own face height; the type draw is independent
       per line rather than shared across a property.
 
 ### Phase 2c — A draw per exposure world (`gen_wall_population.py`, complete)
 
 - [x] Draw each line independently in the world (`draw_wall_population`):
-      two uniforms per line in line order, one for existence against `p_wall`
-      and one for condition against `p_poor`, so a line's draw does not depend
-      on lines after it.
+      two uniforms per line in line order, the first for existence against
+      `p_wall`, so a line's draw does not depend on lines after it. The
+      second drew the retired condition and is still drawn, so the existence
+      stream is unchanged; the type is drawn on its own stream (phase 3).
 - [x] Key the draw on `EXPOSURE_BASE_SEED` and the world id of its own,
       separate from the hazard seed and realisation id, so a few wall
       populations pair with many hazard realisations (decided 2026-10-01).
       `config.WORLD_IDS` replaces `REALISATION_IDS`; the file is
       `wall-population-wNNN[-pilot].geoparquet`.
 - [x] Write the drawn lines in the shape the contract reads: `rw_id`,
-      `claim_id`, `wall_line_id`, `world_id`, size class, condition, height,
+      `claim_id`, `wall_line_id`, `world_id`, size class, wall type, age bin,
+      height,
       length, position, flat land, source, material and the line geometry.
       Claimless lines are dropped (**I-05**), the coverage filter is kept and
       `rw_id` minted after both.
@@ -194,11 +199,12 @@ Each line takes a probability from what the lines step read onto it
       `wall_line_id` and null for a wall the filters dropped
       (`attach_rw_ids`), so landslide step 8 models the slope with uninsured
       walls in place (decision 36 of the build contract).
-- [x] Run the three scripts from `gen_exposure.py` after the insured land step,
-      over `exposure/config.py`'s `WORLD_IDS`.
+- [x] Run the scripts from `gen_exposure.py` after the insured land step,
+      over `exposure/config.py`'s `WORLD_IDS`; `gen_wall_age.py` runs before
+      the population.
 - [ ] Run over the pilot box and record the lines drawn, the claim and
       coverage counts, the drawn walls without an `rw_id` and the population
-      by size class and condition in the method file; then over the four
+      by size class and wall type in the method file; then over the four
       territorial authorities.
 - [x] Re-point the vul rw steps 9 and 11 at the world-keyed population: both
       `gen_wall_damage_state.py` and `gen_wall_landslide_damage.py` now read
@@ -260,9 +266,9 @@ here, per property:
       claim reports to a per-property count (30% held out). No five-round
       allocation, as the update is exact and has no order effect.
 - [x] `gen_wall_probability.py` reads the wall units in place of the lines,
-      ties each to its claim, and puts the condition on it;
-      `gen_wall_population.py` takes which units are walls from step 12's
-      draw for the world and draws only the condition.
+      and ties each to its claim; `gen_wall_population.py` takes which units
+      are walls from step 12's draw for the world and draws each wall's type
+      (phase 3).
 - [~] Cross-validation on the held-out claims, GNS and the strata: the
       tables are written by landslide step 12
       (`table_urban_slope_wall_checks.py`); no calibration until **T-50**.
@@ -304,36 +310,45 @@ review of `temp/gns_review/` adds:
 - [ ] **No faces off LiDAR.** Where step 3's source mask says the contour
       model, report the claims with no candidate for that reason rather than
       as claims with no wall [de_vilder_2024; nzgs_2025_recognition].
-- [ ] **Age into condition and the fill class**, from step 8: suburb earthworks
+- [ ] **Age into wall type and the fill class**, from step 8: suburb earthworks
       followed the 1950s machinery [lyndsell_2019], earthfill standards came in
       the mid-1970s [monteith_2020], pre-1960 cuts and non-engineered fills are
       a warning sign [nzgs_2025_recognition]. Anderson et al. tie wall type to
       era in Christchurch, stone masonry the oldest and worst performing, crib,
       gabion, block and timber pole more modern [anderson_2015]
       (`anderson2015-F07`, `F11`), the evidence for reading age as type.
+      Age into type is built (phase 3); age into the fill class is not.
 - [ ] Keep every weight `BETA_`: the literature gives the direction of each
       piece of evidence, not its size, and no published source gives wall
       prevalence in Wellington (`sr2019-040-F32`, `sr2019-051-F33`: walls are
       "a typical Wellington construction method", no counts). **T-50** stays
       the only calibration.
 
-## Phase 3 — Initial condition from age
+## Phase 3 — Wall type from age, height and road frontage (built 2026-10-06)
 
-- [ ] Read the building construction age parquet, built outside this build and
-      keyed to the address spine, onto the lines as `dwelling_age_decade`.
-      Sources, in order: NHC's own property attributes if it holds construction
-      decade; the District Valuation Roll building age code licensed from QV or
-      CoreLogic, since LINZ publishes it openly for five councils only, none in
-      the study area; failing both, an SA2 proxy from Stats NZ building consents
-      since 1990 adjusted to the regional decade split. Summarised in
-      `../../status.md`.
-- [x] Set `p_poor` from it where held (`poor_condition_probability`,
-      `BETA_PRE_1990_POOR_SHARE` and `BETA_POST_1990_POOR_SHARE` either side of
-      `BUILDING_ACT_DECADE`): pre-1990 walls (cast in situ concrete gravity
-      walls from the 1970s and 80s) are more likely to be poor and replaced,
-      and post-1991 Building Act walls, more often timber anchored, tend to be
-      larger. The rule is coded and tested; no age is held, so it never fires.
-- [ ] Set the two age shares from the extraction rather than judgement.
+The plan is `.agents/plans/assigning-retaining-wall-types.md`.
+
+- [x] The age shares of each property (`gen_wall_age.py`,
+      `landloss.exposure.rw.wall_age`): the QV rating roll's dwelling decade,
+      exposure step 8's own title or plan date where the dwelling age is
+      missing or the lot is `BETA_LOT_OLDER_GAP_YEARS` older, then the suburb
+      and the extent shares.
+- [x] The type fractions by age bin and height band and the road frontage
+      multipliers, packaged as `beta-` CSVs in `landloss/io/assets`
+      (`landloss.exposure.rw.wall_type`).
+- [x] Draw each candidate's age bin, the rebuild shift
+      (`BETA_WALL_REBUILT_SHARE`) and its type per world on the
+      `WALL_TYPE_STREAM` stream (`draw_wall_types`), over every candidate so
+      it does not change with the existence draw, and write `wall_type` and
+      `age_bin` on the population and the drawn walls in place of
+      `initial_condition`.
+- [x] Retire `p_poor`, `p_poor_basis`, `poor_condition_probability`,
+      `INITIAL_CONDITIONS` and the `BETA_` poor shares.
+- [ ] Run `gen_wall_age.py` (it reads the QV roll from T:) and the population
+      over the pilot, and record the type mix per age bin here and in the
+      method file.
+- [ ] Nick Peters reviews the type fractions; compare the drawn mix per age
+      bin with the claim reports (**T-50**).
 
 ## Phase 4 — Costing reads the line
 
@@ -341,17 +356,16 @@ review of `temp/gns_review/` adds:
       `length_m` is the line's length and no longer comes from the area of the
       section.
 - [ ] Confirm with the loss team that size class affects costing while initial
-      condition only affects the probability of failure, and that the pricing
+      type only affects the probability of failure, and that the pricing
       heights stand against the new size ranges (**I-14**).
 
 ## Potential future improvements
 
-- Name the six wall classes and attach a published fragility curve to each cell
-  of the class, size and condition grid. The classes are still unnamed, which is
-  the open decision in `../../status.md`.
+- Read the type from evidence where a wall's type is known (a claim report or
+  a site visit) rather than drawing it.
 - Use houses across gullies, which likely sit on thicker colluvium or fill with
   wetter soils, as a predictor. Not obviously usable, so it is not in phase 2.
 - Exclude non-residential properties such as the zoo near Yabby Creek Road with a
   land-use layer rather than by hand, so they draw no lines.
-- Share one condition draw across the lines of a property, where the walls were
-  built together; each line draws its own condition today.
+- Share one type draw across the lines of a property per height band, where
+  the walls were built together; each line draws its own type today.

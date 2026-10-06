@@ -2,12 +2,13 @@
 
     uv run --frozen python src/scripts/landloss/hazard/gen_hazard.py
 
-:func:`main` runs everything that reads no exposure: shaking (site class, PGV,
-then the PGA and PGV realisations), liquefaction (free faces, land damage
-probabilities, then states), then the landslide ground work -- the multiscale
-slope and terrain derivatives, the ground map, the slope units, the urban slope
-candidates, step 12's urban slope faces, step 13's pif cut and fill (which
-the wall units read), and step 12's wall units (drawn per exposure world) and
+:func:`main` runs everything that reads no exposure: first the landslide
+multiscale slope, terrain derivatives and ground map (shaking step 2 reads the
+ground map's materials for the cells the Foster Vs30 model leaves unclassed),
+then shaking (site class, PGV, then the PGA and PGV realisations), liquefaction
+(free faces, land damage probabilities, then states), then the rest of the
+landslide ground work -- the slope units, the urban slope candidates, step
+12's urban slope faces, step 13's pif cut and fill (which the wall units read), and step 12's wall units (drawn per exposure world) and
 per-world zones -- and last the large-model landslide realisations,
 which read only hazard outputs. Exposure rw step 6 reads step 12's wall units,
 so they are built in this pass. The extent, realisations and worlds come from ``config.py``
@@ -133,6 +134,34 @@ def main(*, extent, realisation_ids, world_ids):
         "hazard",
         [
             (
+                "landslide s3, multiscale slope and aspect",
+                lambda: gen_multiscale_slope.main(
+                    extent=extent,
+                    resolutions_m=slope_config.RESOLUTIONS_M,
+                    use_cached_dem=slope_config.USE_CACHED_DEM,
+                ),
+            ),
+            (
+                "landslide s3, terrain derivatives",
+                lambda: gen_terrain_derivatives.main(
+                    extent=extent,
+                    use_cached_dsm=slope_config.USE_CACHED_DSM,
+                    face_height_windows_m=slope_config.FACE_HEIGHT_WINDOWS_M,
+                    residual_base_resolutions_m=slope_config.RESIDUAL_BASE_RESOLUTIONS_M,
+                    topographic_position_windows_m=slope_config.TOPOGRAPHIC_POSITION_WINDOWS_M,
+                    curvature_resolution_m=slope_config.CURVATURE_RESOLUTION_M,
+                ),
+            ),
+            (
+                "landslide s4, ground map",
+                lambda: gen_ground_map.main(
+                    extent=extent,
+                    use_cached_layers=ground_map_config.USE_CACHED_LAYERS,
+                    default_gw_depth_m=ground_map_config.DEFAULT_GROUNDWATER_DEPTH_M,
+                    residual_modification_threshold_m=ground_map_config.RESIDUAL_MODIFICATION_THRESHOLD_M,
+                ),
+            ),
+            (
                 "shaking s2, site class",
                 lambda: gen_site_class.main(extent=extent),
             ),
@@ -170,34 +199,6 @@ def main(*, extent, realisation_ids, world_ids):
                 lambda: gen_liq_ld_states.main(**ids),
             ),
             (
-                "landslide s3, multiscale slope and aspect",
-                lambda: gen_multiscale_slope.main(
-                    extent=extent,
-                    resolutions_m=slope_config.RESOLUTIONS_M,
-                    use_cached_dem=slope_config.USE_CACHED_DEM,
-                ),
-            ),
-            (
-                "landslide s3, terrain derivatives",
-                lambda: gen_terrain_derivatives.main(
-                    extent=extent,
-                    use_cached_dsm=slope_config.USE_CACHED_DSM,
-                    face_height_windows_m=slope_config.FACE_HEIGHT_WINDOWS_M,
-                    residual_base_resolutions_m=slope_config.RESIDUAL_BASE_RESOLUTIONS_M,
-                    topographic_position_windows_m=slope_config.TOPOGRAPHIC_POSITION_WINDOWS_M,
-                    curvature_resolution_m=slope_config.CURVATURE_RESOLUTION_M,
-                ),
-            ),
-            (
-                "landslide s4, ground map",
-                lambda: gen_ground_map.main(
-                    extent=extent,
-                    use_cached_layers=ground_map_config.USE_CACHED_LAYERS,
-                    default_gw_depth_m=ground_map_config.DEFAULT_GROUNDWATER_DEPTH_M,
-                    residual_modification_threshold_m=ground_map_config.RESIDUAL_MODIFICATION_THRESHOLD_M,
-                ),
-            ),
-            (
                 "landslide s5, slope units",
                 lambda: gen_slope_units.main(
                     extent=extent,
@@ -228,6 +229,12 @@ def main(*, extent, realisation_ids, world_ids):
                     search_m=faces_config.SEARCH_M,
                     gns_only_min_length_m=faces_config.GNS_ONLY_MIN_LENGTH_M,
                     end_window_m=faces_config.PIF_END_WINDOW_M,
+                    max_bends=faces_config.WALL_MAX_BENDS,
+                    stray_tolerance_m=faces_config.WALL_STRAY_TOLERANCE_M,
+                    min_segment_m=faces_config.WALL_MIN_SEGMENT_M,
+                    max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
+                    wall_height_reach_m=faces_config.WALL_HEIGHT_REACH_M,
+                    wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
                 ),
             ),
             (
@@ -250,7 +257,12 @@ def main(*, extent, realisation_ids, world_ids):
                     corner_gap_m=faces_config.WALL_CORNER_GAP_M,
                     corner_max_deg=faces_config.WALL_CORNER_MAX_ANGLE_DEG,
                     gns_only_merge_m=faces_config.GNS_ONLY_MERGE_M,
-                    wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
+                    gns_only_merge_max_angle_deg=faces_config.GNS_ONLY_MERGE_MAX_ANGLE_DEG,
+                    max_bends=faces_config.WALL_MAX_BENDS,
+                    min_segment_m=faces_config.WALL_MIN_SEGMENT_M,
+                    stray_tolerance_m=faces_config.WALL_STRAY_TOLERANCE_M,
+                    max_length_m=faces_config.WALL_MAX_LENGTH_M,
+                    max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
                     holdout_share=faces_config.CLAIM_HOLDOUT_SHARE,
                     holdout_seed=faces_config.CLAIM_HOLDOUT_SEED,
                     use_nzmm=faces_config.USE_NZMM_UPDATE,
