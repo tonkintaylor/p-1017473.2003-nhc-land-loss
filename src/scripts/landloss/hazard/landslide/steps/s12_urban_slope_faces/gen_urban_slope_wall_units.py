@@ -46,7 +46,6 @@ from landloss.hazard.landslide.wall_units import (
     UNIT_SOURCES,
     gen_claim_holdout,
     gen_gns_floor,
-    gen_gns_wall_features,
     gen_property_wall_records,
     gen_unit_boundary_flags,
     gen_unit_properties,
@@ -57,7 +56,7 @@ from landloss.hazard.landslide.wall_units import (
     gen_wall_units,
 )
 from landloss.io.area_of_interest import extent_suffix
-from landloss.io.readers import get_gns_slide_morphology, get_nz_property_boundaries
+from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.rw.validations.config import PROPERTIES_PATH
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     dem_path,
@@ -65,7 +64,6 @@ from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_
 from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import config
 from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
     CRS,
-    MAPPED_WALL_TYPE,
     WORK_DIR,
     dem_bbox,
     gns_only_path,
@@ -260,18 +258,8 @@ def main(
     *,
     extent,
     use_cached_layers,
-    gns_wall_match_m,
-    gns_feature_snap_m,
-    join_gap_m,
-    max_offset_m,
-    bearing_tol_deg,
-    corner_gap_m,
-    corner_max_deg,
-    gns_only_merge_m,
-    gns_only_merge_max_angle_deg,
     max_bends,
     min_segment_m,
-    stray_tolerance_m,
     max_length_m,
     max_turn_deg,
     holdout_share,
@@ -283,24 +271,11 @@ def main(
 
     Args:
         extent: The build extent (``landloss.io.area_of_interest.EXTENTS``).
-        use_cached_layers: Whether to reuse the cached LINZ and GNS layers.
-        gns_wall_match_m: A member within this many metres of a GNS mapped
-            wall feature is on it.
-        gns_feature_snap_m: Mapped wall segments this close are one feature.
-        join_gap_m: The largest gap between two pifs' facing ends, in metres.
-        max_offset_m: The largest offset of the ends along their fall.
-        bearing_tol_deg: The largest difference in the facing ends' falls.
-        corner_gap_m: The largest gap at a corner, in metres.
-        corner_max_deg: The largest turn at a corner, in degrees.
-        gns_only_merge_m: A GNS-only piece this close to a pif joins it.
-        gns_only_merge_max_angle_deg: ... where its bearing is within this many
-            degrees of the pif's strike.
-        max_bends: The most bends a unit's line keeps.
-        min_segment_m: The shortest straight section of a unit's line.
-        stray_tolerance_m: How far a wall's line may stray from its members.
-        max_length_m: A longer wall is cut at its bends, then at property
-            boundaries, then into equal pieces.
-        max_turn_deg: The most a wall's line may turn in all.
+        use_cached_layers: Whether to reuse the cached LINZ layers.
+        max_bends: The most bends a unit's line may have.
+        min_segment_m: The shortest a unit's line may be.
+        max_length_m: The longest a unit's line may be.
+        max_turn_deg: The most a unit's line may turn in all.
         holdout_share: The share of claimed properties held out of the update.
         holdout_seed: The seed that picks them.
         use_nzmm: Whether ``p_wall`` takes the NZMM update.
@@ -316,43 +291,26 @@ def main(
     no_step = int(gns_only["step_height_m"].isna().sum())
     print(f"GNS-only pieces with no step height read off the DEM: {no_step:,}")
 
-    morphology = get_gns_slide_morphology(
-        bbox=bbox, crs=CRS, use_cache=use_cached_layers
-    )
-    features = gen_gns_wall_features(
-        morphology[morphology["Type"] == MAPPED_WALL_TYPE], snap_m=gns_feature_snap_m
-    )
     members = gen_wall_members(sizs, gns_only, cut_fill)
     properties = get_nz_property_boundaries(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     units = gen_wall_units(
         members,
-        features,
-        gns_match_m=gns_wall_match_m,
-        join_gap_m=join_gap_m,
-        max_offset_m=max_offset_m,
-        bearing_tol_deg=bearing_tol_deg,
-        corner_gap_m=corner_gap_m,
-        corner_max_deg=corner_max_deg,
-        gns_only_merge_m=gns_only_merge_m,
-        gns_only_merge_max_angle_deg=gns_only_merge_max_angle_deg,
         max_bends=max_bends,
         min_segment_m=min_segment_m,
-        stray_tolerance_m=stray_tolerance_m,
         max_length_m=max_length_m,
         max_turn_deg=max_turn_deg,
-        properties=properties,
     )
-    print(
-        "Stretches of joined wall no member is nearest, dropped: "
-        f"{units.attrs.get('dropped_wall_m', 0.0):,.0f} m; walls the 50 m cap "
-        f"cut, by stage: {units.attrs.get('cap_cuts', {})}"
-    )
-    print(
-        f"{len(features):,} GNS mapped wall features; {len(members):,} members "
-        f"joined into {len(units):,} wall units"
-    )
+    by_class = units.groupby(
+        np.where(
+            units["unit_source"] == "gns_only",
+            "gns_only",
+            np.where(units["is_siz"], "siz", "low_height"),
+        )
+    )["length_m"].agg(["size", "sum"])
+    print(f"{len(units):,} wall candidates, each its own unit:")
+    print(by_class.round(0).to_string())
     units = (
         units.drop(columns=["property_id", "in_exposure"])
         .join(gen_unit_properties(units, properties))
@@ -406,18 +364,8 @@ if __name__ == "__main__":
     main(
         extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
-        gns_wall_match_m=config.GNS_WALL_MATCH_M,
-        gns_feature_snap_m=config.GNS_FEATURE_SNAP_M,
-        join_gap_m=config.WALL_JOIN_GAP_M,
-        max_offset_m=config.WALL_JOIN_MAX_OFFSET_M,
-        bearing_tol_deg=config.WALL_JOIN_BEARING_TOL_DEG,
-        corner_gap_m=config.WALL_CORNER_GAP_M,
-        corner_max_deg=config.WALL_CORNER_MAX_ANGLE_DEG,
-        gns_only_merge_m=config.GNS_ONLY_MERGE_M,
-        gns_only_merge_max_angle_deg=config.GNS_ONLY_MERGE_MAX_ANGLE_DEG,
         max_bends=config.WALL_MAX_BENDS,
         min_segment_m=config.WALL_MIN_SEGMENT_M,
-        stray_tolerance_m=config.WALL_STRAY_TOLERANCE_M,
         max_length_m=config.WALL_MAX_LENGTH_M,
         max_turn_deg=config.MAX_TOTAL_TURN_DEG,
         holdout_share=config.CLAIM_HOLDOUT_SHARE,

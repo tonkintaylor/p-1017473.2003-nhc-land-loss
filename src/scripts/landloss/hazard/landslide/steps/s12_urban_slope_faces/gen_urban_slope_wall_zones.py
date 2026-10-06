@@ -1,7 +1,7 @@
 """Step 12: the evacuated, imminent and inundated zones of the wall draws.
 
 First every wall unit none of whose pifs grew an element (the GNS-only
-units and the units of ``small`` pifs) gets an element along its line
+units and the units of ``low_height`` pifs) gets an element along its line
 (:func:`landloss.hazard.landslide.instability_zones.add_line_elements`), so
 its wall has the minimum polygon too; the elements with these added are
 written to ``urban-slope-wall-elements.parquet``, which landslide step 8
@@ -57,10 +57,10 @@ def units_without_element(units, elements):
     """The wall units none of whose pifs grew an element.
 
     Every wall gets a polygon (the lead, 2026-10-06): these units, the
-    GNS-only units and the units of ``small`` pifs (a GNS mapped wall on a
+    GNS-only units and the units of ``low_height`` pifs (a GNS mapped wall on a
     pif that is not a siz, which seeds no growth), get an element along their
     line (:func:`landloss.hazard.landslide.instability_zones.add_line_elements`).
-    A small pif's unit takes a line element rather than growth from its pips:
+    A low-height pif's unit takes a line element rather than growth from its pips:
     its pif failed the siz test, so growth at the siz threshold would keep
     only its own pips and measure a face the test called not steep enough,
     while the line takes the unit's own wall height and the same width floor

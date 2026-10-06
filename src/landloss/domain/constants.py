@@ -379,10 +379,11 @@ UNCONSENTED_WALL_HEIGHT_M = 1.5
 # because a siz is a face steep and high enough to need retaining. Replaced by
 # T-50.
 BETA_SIZ_WALL_PRIOR = 0.5
-# The prior of a unit of small pifs only (a GNS mapped wall with no siz under
-# it). A small pif always carries a GNS wall, so the GNS floor sets its value
-# and this only shows in p_prior. Replaced by T-50.
-BETA_SMALL_WALL_PRIOR = 0.3
+# The prior of a low-height wall candidate (class low_height, named small
+# until 2026-10-07): a pif piece that is not a siz but has a GNS mapped wall
+# within 2 m. It always carries a GNS wall, so the GNS floor sets its value and
+# this only shows in p_prior. Replaced by T-50.
+BETA_LOW_HEIGHT_WALL_PRIOR = 0.3
 # What the prior keeps by the height band of the unit (0 under 0.5 m, 1 from
 # 0.5 m, 2 from 3.5 m): faces of 3.5 m and over are more often unretained
 # banks or cuttings. A band not listed keeps 1. Replaced by T-50.

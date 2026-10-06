@@ -983,15 +983,14 @@ def add_line_elements(
 ) -> SlopeElements:
     """Add an element on each wall line that no siz grew one for.
 
-    A GNS-only wall unit has no pif, and a ``small`` pif (a GNS mapped wall on
-    a pif that is not a siz) seeds no growth, so no element is under either
-    and its wall would have no polygon. The lead (2026-10-06): every wall gets
-    one, so each such unit gets the minimum polygon along its line: its line
-    is burnt onto the grid (every cell it touches that no element holds and
-    the DEM covers) as an element of its own, and the polygon builder treats
-    it as any other: its crest cells are the ones whose uphill neighbour is
-    off it, so the DEM decides which side is up, and the width behind the
-    crest is the floor, ``max(0.5 H, 1 m)``
+    A GNS-only wall unit has no pif, and a ``low_height`` pif piece (a GNS mapped wall
+    on a pif that is not a siz) seeds no growth, so no element is under either and its
+    wall would have no polygon. The lead (2026-10-06): every wall gets one, so each such
+    unit gets the minimum polygon along its line: its line is burnt onto the grid (every
+    cell it touches that no element holds and the DEM covers) as an element of its own,
+    and the polygon builder treats it as any other: its crest cells are the ones whose
+    uphill neighbour is off it, so the DEM decides which side is up, and the width
+    behind the crest is the floor, ``max(0.5 H, 1 m)``
     (:func:`landloss.hazard.landslide.slope_polygons.min_evacuated_width_m`).
 
     Its height is the unit's step height (``height_m``), never under

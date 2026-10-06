@@ -1,26 +1,33 @@
 """Evidence for retaining wall candidates, read onto the pifs.
 
-A pif (a group of potential instability points) is a retaining wall candidate
-when it is a siz, or when a GNS mapped wall lies on it: the 1 m grid cannot
-resolve a wall under about half a metre, so a mapped wall with no step under it
-stays a candidate, classed ``small``. A GNS mapped wall with no pip near it at
-all becomes a candidate of its own, classed ``gns_only``, so no mapped wall is
-lost. Every candidate is tied to the property it lies on. This module attaches
+A pif piece (a group of potential instability points) is a retaining wall
+candidate when it is a siz, or when a GNS mapped wall lies within 2 m of its
+pips: the 1 m grid cannot resolve a wall under about half a metre, so a mapped
+wall with no step under it stays a candidate, classed ``low_height`` (a
+low-height wall; ``small`` until 2026-10-07). A stretch of GNS mapped wall
+more than 2 m from every pip becomes candidates of its own, classed
+``gns_only``, cut by the shared line rules
+(:mod:`landloss.hazard.landslide.bend_split`), so no mapped wall is lost. A
+mapped wall within 2 m of a pif piece is no candidate of its own; it sets that
+piece's ``gns_wall`` flag. Every candidate is independent (the lead,
+2026-10-07). Every candidate is tied to the property it lies on. This module attaches
 what is known about each candidate and does not put a probability on it; every
 weight for that is judgement until the claim report extraction (T-50).
 """
+
+from itertools import pairwise
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
-from shapely.ops import substring
 
 from landloss.exposure.land.extent import stack_representatives
+from landloss.hazard.landslide import bend_split
 from landloss.hazard.landslide.slope_elements import height_band
 
 SIZ_CLASS = "siz"
-SMALL_CLASS = "small"
+LOW_HEIGHT_CLASS = "low_height"
 GNS_ONLY_CLASS = "gns_only"
 NOT_CANDIDATE = "none"
 
@@ -114,7 +121,7 @@ def wall_candidate_evidence(
         ``in_slide_fill``, ``ground_material``, ``ground_modification``,
         ``building_m``, ``height_band`` (of its largest delta_h),
         ``is_wall_candidate`` and ``candidate_class`` (``siz`` for a siz,
-        ``small`` for a mapped wall with no siz, else ``none``).
+        ``low_height`` for a mapped wall with no siz, else ``none``).
     """
     pifs = sizs[["geometry"]]
     evidence = pd.DataFrame(index=sizs.index)
@@ -135,7 +142,9 @@ def wall_candidate_evidence(
     is_siz = sizs["is_siz"].astype(bool)
     evidence["is_wall_candidate"] = is_siz | evidence["gns_wall"]
     evidence["candidate_class"] = np.where(
-        is_siz, SIZ_CLASS, np.where(evidence["gns_wall"], SMALL_CLASS, NOT_CANDIDATE)
+        is_siz,
+        SIZ_CLASS,
+        np.where(evidence["gns_wall"], LOW_HEIGHT_CLASS, NOT_CANDIDATE),
     )
     return evidence
 
@@ -242,11 +251,115 @@ def property_of_pifs(
     return result
 
 
-def _split_line(line: shapely.LineString, max_length_m: float) -> list:
-    """Cut a line into equal pieces none longer than the maximum."""
-    n = int(np.ceil(line.length / max_length_m))
-    step = line.length / n
-    return [substring(line, i * step, (i + 1) * step) for i in range(n)]
+def boundary_positions(
+    line: shapely.LineString, boundaries: gpd.GeoDataFrame, min_segment_m: float
+) -> list[float]:
+    """Where a line crosses property boundaries, one stretch per property.
+
+    The line is cut at every crossing; consecutive stretches in the same
+    property (the one holding each stretch's midpoint) are one, so a wall
+    weaving along a boundary is not cut at every weave; and a stretch
+    shorter than ``min_segment_m`` joins the one before it (or after it, for
+    the first). The boundary stage of the 50 m cap
+    (:func:`landloss.hazard.landslide.bend_split.cap_ranges`).
+
+    Args:
+        line: The line.
+        boundaries: Property polygons with ``property_id``
+            (:func:`_property_frame`).
+        min_segment_m: The shortest stretch.
+
+    Returns:
+        The cuts, as distances along the line (none where it stays in one
+        property).
+    """
+    polygons = boundaries.geometry.to_numpy()
+    near = shapely.STRtree(polygons).query(line, predicate="intersects")
+    if len(near) < 2:
+        return []
+    crossings = shapely.intersection(
+        line, shapely.union_all(shapely.boundary(polygons[near]))
+    )
+    at = np.unique(
+        shapely.line_locate_point(
+            line, shapely.points(shapely.get_coordinates(crossings))
+        )
+    )
+    length = line.length
+    cuts = np.r_[0.0, at[(at > 1e-6) & (at < length - 1e-6)], length]
+    middle = shapely.line_interpolate_point(line, (cuts[:-1] + cuts[1:]) / 2.0)
+    ids = boundaries["property_id"].to_numpy()[near]
+    inside = shapely.contains(polygons[near][None, :], middle[:, None])
+    owner = [ids[row.argmax()] if row.any() else None for row in inside]
+    ranges: list[list[float]] = []
+    previous = object()
+    for (a, b), label in zip(pairwise(cuts), owner, strict=True):
+        if ranges and label == previous:
+            ranges[-1][1] = b
+        else:
+            ranges.append([a, b])
+        previous = label
+    while len(ranges) > 1:
+        sizes = [b - a for a, b in ranges]
+        i = int(np.argmin(sizes))
+        if sizes[i] >= min_segment_m:
+            break
+        j = i - 1 if i > 0 else 1
+        low, high = min(i, j), max(i, j)
+        ranges[low] = [ranges[low][0], ranges[high][1]]
+        del ranges[high]
+    return [float(a) for a, _ in ranges[1:]]
+
+
+def split_by_rules(
+    line: shapely.LineString,
+    *,
+    boundaries: gpd.GeoDataFrame | None,
+    max_bends: int,
+    stray_tolerance_m: float,
+    min_segment_m: float,
+    max_length_m: float,
+    max_turn_deg: float,
+) -> list[shapely.LineString]:
+    """Cut a line into pieces that each keep the shared line rules.
+
+    The line, walked as points every half metre, is cut by
+    :func:`landloss.hazard.landslide.bend_split.cut_path` (at most
+    ``max_bends`` bends within ``stray_tolerance_m``, turning at most
+    ``max_turn_deg``, ends at least ``min_segment_m`` apart, and a piece over
+    ``max_length_m`` cut at its bends, then at the property boundaries it
+    crosses, then evenly), and each piece is its line
+    (:func:`~landloss.hazard.landslide.bend_split.canonical_line`). A piece
+    whose line is still under ``min_segment_m`` (a stretch folded tightly on
+    itself) is left out.
+    """
+    xy = shapely.get_coordinates(shapely.segmentize(line, 0.5))
+    if len(xy) < 2:
+        return []
+    pieces = []
+    for start, end in bend_split.cut_path(
+        xy,
+        max_bends=max_bends,
+        tolerance_m=stray_tolerance_m,
+        min_segment_m=min_segment_m,
+        max_length_m=max_length_m,
+        max_turn_deg=max_turn_deg,
+        boundary_cuts=None
+        if boundaries is None
+        else (lambda shape: boundary_positions(shape, boundaries, min_segment_m)),
+    ):
+        piece = shapely.LineString(
+            bend_split.canonical_line(
+                xy[start : end + 1],
+                tolerance_m=stray_tolerance_m,
+                max_bends=max_bends,
+                min_segment_m=min_segment_m,
+                max_turn_deg=max_turn_deg,
+            )
+        )
+        if piece.length >= min_segment_m - 1e-6:
+            pieces.append(piece)
+    return pieces
 
 
 def gen_gns_only_candidates(
@@ -260,14 +373,18 @@ def gen_gns_only_candidates(
     min_length_m: float,
     max_length_m: float,
     search_m: float,
+    max_bends: int,
+    stray_tolerance_m: float,
+    max_turn_deg: float,
 ) -> gpd.GeoDataFrame:
-    """Make a candidate of every stretch of GNS mapped wall that no pif covers.
+    """Make candidates of every stretch of GNS mapped wall that no pif covers.
 
     A mapped wall too low for the 1 m grid to resolve, or lost to smoothing in
-    the DEM, has no pip near it, so it is on no pif. Each stretch of mapped wall
-    further than ``wall_match_m`` from every pip becomes a candidate of its own,
-    classed ``gns_only``, cut into pieces no longer than ``max_length_m`` so a
-    candidate is the size of a pif.
+    the DEM, has no pip near it, so it is on no pif. Each stretch of mapped
+    wall further than ``wall_match_m`` from every pip, and at least
+    ``min_length_m`` long, is cut by the shared line rules
+    (:func:`split_by_rules`, the lead, 2026-10-07; an equal 20 m cut before)
+    and each piece is an independent candidate, classed ``gns_only``.
 
     Args:
         sizs: The siz table with each pif's pips as geometry.
@@ -276,9 +393,13 @@ def gen_gns_only_candidates(
         ground_map: The ground map (``material`` and ``modification``).
         buildings: Building outlines.
         wall_match_m: A wall within this many metres of a pip is on its pif.
-        min_length_m: Stretches shorter than this are dropped.
-        max_length_m: Stretches longer than this are cut into equal pieces.
+        min_length_m: Stretches shorter than this are dropped, and the
+            shortest a piece may be.
+        max_length_m: The longest a piece may be.
         search_m: The building distance is NaN beyond this.
+        max_bends: The most bends a piece may have.
+        stray_tolerance_m: How far a piece's line may stray from the wall.
+        max_turn_deg: The most a piece's line may turn in all.
 
     Returns:
         Line candidates, indexed by ``gns_only_id`` (from 0), with
@@ -290,6 +411,7 @@ def gen_gns_only_candidates(
     """
     pips = shapely.get_parts(sizs.geometry.to_numpy())
     tree = shapely.STRtree(pips)
+    boundaries = _property_frame(properties).reset_index(drop=True)
     pieces = []
     for line in shapely.get_parts(walls.geometry.to_numpy()):
         near = tree.query(line, predicate="dwithin", distance=wall_match_m)
@@ -302,7 +424,15 @@ def gen_gns_only_candidates(
             for stretch in shapely.get_parts(line)
             if isinstance(stretch, shapely.LineString)
             for part in (
-                _split_line(stretch, max_length_m)
+                split_by_rules(
+                    stretch,
+                    boundaries=boundaries,
+                    max_bends=max_bends,
+                    stray_tolerance_m=stray_tolerance_m,
+                    min_segment_m=min_length_m,
+                    max_length_m=max_length_m,
+                    max_turn_deg=max_turn_deg,
+                )
                 if stretch.length >= min_length_m
                 else []
             )

@@ -101,7 +101,7 @@
   modification at the pif's centre, the distance to the nearest building (all
   distances recorded to `SEARCH_M`), and the pif's height band. A pif is a wall
   candidate if it is a siz (class `siz`) or a GNS mapped wall lies within
-  `GNS_WALL_MATCH_M` of it (class `small`). No probability is put on a
+  `GNS_WALL_MATCH_M` of it (class `low_height`). No probability is put on a
   candidate.
 - Each pif is tied to a property by `wall_candidates.property_of_pifs`: the LINZ
   NZ Property Boundaries polygon (`get_nz_property_boundaries`) holding most of
@@ -110,11 +110,17 @@
   fraction of the pif's pips in that property) and `n_properties` (how many
   properties its pips touch). `describe_properties()` prints how many pifs
   are on road parcels or straddle properties.
-- Every stretch of GNS mapped wall with no pip within `GNS_WALL_MATCH_M` is made
-  a candidate of its own, class `gns_only`, by
+- Every stretch of GNS mapped wall with no pip within `GNS_WALL_MATCH_M` is
+  cut into candidates of its own, class `gns_only`, by
   `wall_candidates.gen_gns_only_candidates`: stretches under
-  `GNS_ONLY_MIN_LENGTH_M` are dropped and longer ones are cut into equal pieces
-  no longer than `MAX_PIF_SPAN_M`. Each carries its length, midpoint, property
+  `GNS_ONLY_MIN_LENGTH_M` are dropped and longer ones are cut by the shared
+  line rules (`wall_candidates.split_by_rules`, `bend_split`; the lead,
+  2026-10-07, in place of an equal 20 m cut): at most `WALL_MAX_BENDS` bends
+  within `WALL_STRAY_TOLERANCE_M`, turning at most `MAX_TOTAL_TURN_DEG`, 3 to
+  `WALL_MAX_LENGTH_M` (50 m) long, a piece over 50 m cut at its bends, then
+  at property boundaries, then evenly. A mapped wall within
+  `GNS_WALL_MATCH_M` of a pif piece is no candidate of its own: it sets that
+  piece's `gns_wall` flag. Each carries its length, midpoint, property
   (the one holding most of its length), ground map material and modification,
   and nearest building. They are written as lines to
   `urban-slope-gns-wall-candidates.parquet` (`gns_only_path()`).
@@ -122,7 +128,7 @@
   columns) is written to `urban-slope-sizs.parquet` by `gen_urban_slope_faces.py`,
   and the grown elements as polygons to `urban-slope-elements.parquet`. All are
   under `temp/hazard/landslide/`, with `extent_suffix(extent)` on the name.
-- For joining pieces of one wall end to end, the siz table also carries
+- For the wall units (and, until 2026-10-07, for joining pieces end to end), the siz table also carries
   `pip_direction` (each pip's fall direction, an index into `DIRECTIONS`, in
   the order of the MultiPoint's points) and, from
   `instability_zones.gen_pif_spines`, the pif's `spine` (the longest shortest
@@ -154,7 +160,7 @@
   sets the width of every polygon on the pilot, walled or bare: the retained
   ground takes the fill's 42° everywhere, so the wall's wedge (0.45 H) never
   reaches half the height. The pifs are 4,953 `siz` candidates and 106
-  `small` ones (a GNS wall with no siz); 1,833 are not candidates. Every pif
+  `low_height` ones (a GNS wall with no siz); 1,833 are not candidates. Every pif
   is in a property polygon; 510 are on road parcels and 2,357 straddle two
   or more properties. 1,000 GNS-only candidates (10,106 m of the 30,676 m of
   mapped wall, 3 to 20 m long) are made. Before the three-pip rule
@@ -174,61 +180,18 @@
   wall placement (`.agents/plans/placing-retaining-walls-on-pifs.md`), in
   `landloss.hazard.landslide.wall_units`, run by
   `gen_urban_slope_wall_units.py`:
-  - **Units.** The candidate pifs (`siz` and `small`) and the GNS-only pieces
-    are joined into wall units across property boundaries (the lead,
-    2026-10-06: no join rule reads the property, so one GNS mapped wall
-    feature is one unit however many lots it crosses, and pifs and GNS-only
-    pieces join whatever their property; before, every join needed one
-    `rateable_property_id`): members within
-    `GNS_WALL_MATCH_M` of one GNS mapped wall feature (segments within
-    `GNS_FEATURE_SNAP_M` of each other, `gen_gns_wall_features`) join; a
-    GNS-only piece within `GNS_ONLY_MERGE_M` of a pif joins it where its
-    bearing is within `GNS_ONLY_MERGE_MAX_ANGLE_DEG` (45°) of the pif's strike
-    at the spine end nearest it (2026-10-06: before, it joined whatever its
-    direction, and on the pilot unit `WU0001918` joined an east-west mapped
-    wall to a north-south pif across it); and two pifs
-    join end to end where their facing ends are within `WALL_JOIN_GAP_M`,
-    offset along the fall by no more than `WALL_JOIN_MAX_OFFSET_M` and with end
-    falls within `WALL_JOIN_BEARING_TOL_DEG`, or at a corner within
-    `WALL_CORNER_GAP_M` whose falls turn by more than
-    `WALL_JOIN_BEARING_TOL_DEG` and no more than `WALL_CORNER_MAX_ANGLE_DEG`
-    (`gen_wall_units`; two faces falling the same way are never a corner, so
-    terraces stacked down a slope stay apart however close their ends). A
-    unit takes the highest member's height, the nearest building and the
-    ground of its longest member.
-  - **Walls and lines** (the lead, 2026-10-06; the bends rule first, then
-    the boundaries; `wall_units.gen_unit_lines`). The joined members are
-    chained end to end: points every 0.5 m, their minimum spanning tree, its
-    longest path, then each branch left off it (a T in a mapped wall) as a
-    path of its own from where it joins, if at least 3 m. Each path is
-    walked from one end, and a wall runs as far as Douglas-Peucker at
-    `WALL_STRAY_TOLERANCE_M` (2 m, about the 90th percentile of the old
-    spine-to-line distance) follows it with at most `WALL_MAX_BENDS` (3)
-    bends turning no more than `MAX_TOTAL_TURN_DEG` (185°) in all; the next
-    wall starts there. Each wall's line is that simplification with every
-    straight section under `WALL_MIN_SEGMENT_M` (3 m) merged into its
-    neighbours, a wall whose ends are under 3 m apart joins a neighbour, and
-    a wall whose ends are still under 3 m apart is a straight line. A wall
-    whose line is over `WALL_MAX_LENGTH_M` (50 m) is then cut in the lead's
-    order (2026-10-06, "if over 50 m, then split on bends; if no bends then
-    split on boundaries, then split on evenly divide"): at its own bends
-    (the fewest cuts that bring every part under 50 m, the most even of
-    those; where no set does, the single most even cut, and again); a part
-    with no bend left where it crosses property boundaries (road parcels
-    included; consecutive stretches in one property kept together, pieces
-    under 3 m merged into a neighbour); and what is still over 50 m into
-    equal pieces. Each wall is its own unit, holding the members nearest
-    most of their points (a pif straddling a cut goes to the wall with most
-    of its pips; every member is in exactly one unit). A member is never
-    split, so a wall no member is nearest joins the unit of the member
-    nearest most of its points where the two run on end to end and the
-    joined line keeps every rule; otherwise it is dropped. Every unit is one
-    LineString, 3 to 50 m, at most 3 bends turning at most 185° (the lead,
-    2026-10-06): `gen_wall_units` refuses any unit that breaks a rule. A wall line whose ends fold back under 3 m
-    apart (a small loop of members) is the straight line between its two
-    points furthest apart. `length_m` is the lines' length (what exposure rw step 6
-    draws), `length_original_m` the members' summed length, `n_bends` the
-    most bends of any of its lines.
+  - **Units** (the lead's model, 2026-10-07). Every candidate is its own
+    wall unit, with one line, one probability and one draw: each `siz` pif
+    piece, each `low_height` pif piece (a pif piece that is not a siz with a
+    GNS mapped wall within 2 m) and each `gns_only` piece. Nothing is joined
+    (`wall_units.gen_wall_units`). A unit's line is its member's: a pif
+    piece's line, the stretch of spine it was cut on, or a GNS-only piece's
+    line, both cut by `bend_split`, so every unit is one LineString of 3 to
+    50 m with at most 3 bends turning at most 185°; `gen_wall_units` refuses
+    any that is not. `length_m` is the line's length (what exposure rw step 6
+    draws), `n_bends` its bends. Until 2026-10-07 candidates were joined into
+    units (by GNS mapped wall feature, end to end, and a GNS-only piece within
+    5 m of a pif) and the joined lines cut again; the lead replaced that.
   - **Properties.** `wall_units.gen_unit_properties` intersects each unit's
     line with the LINZ properties (stacked titles once): `property_lengths_m`
     lists every non-road property it enters by at least
@@ -257,7 +220,7 @@
     the longest, the tied class most of its pifs hold, then the lowest pif id.
     A GNS-only unit is `unknown`.
   - **Probability.** `gen_wall_prior` sets the prior from the `BETA_` weights
-    in `landloss.domain.constants`: siz or small, the height band of the
+    in `landloss.domain.constants`: siz or low-height, the height band of the
     unit's `height_m` (`prior_height_band`; the siz table's `height_band`,
     from `max_delta_h_m`, is left for the hazard), then one factor by the
     unit's class. `fill` and `cut_and_fill` take
@@ -313,10 +276,10 @@
     records on each property with the hold-out
     (`urban-slope-wall-property-records.parquet`). The last two are per
     property and stay under `temp/`.
-- `gen_urban_slope_wall_zones.py` first gives every unit none of whose pifs
+- `gen_urban_slope_wall_zones.py` first gives every unit with no grown element
   grew an element (the GNS-only units and, since 2026-10-06, the units of
-  `small` pifs, a GNS mapped wall on a pif that is not a siz:
-  `units_without_element`) an element along its line. A small pif's unit
+  `low_height` pifs, a GNS mapped wall on a pif that is not a siz:
+  `units_without_element`) an element along its line. A low-height pif's unit
   takes a line element rather than growth from its pips: its pif failed the
   siz test, so growth at the siz threshold would keep little but its own
   pips and measure a face the test called not steep enough, while the line
@@ -371,7 +334,7 @@
   `suppressed`.
 - Over the `wlg-pilot` extent (rerun 2026-10-06 with the three-pip pif, the
   kept siz elements, the minimum width and the GNS-only merge angle): the
-  4,953 `siz` and 106 `small` pifs and 1,000 GNS-only pieces (5 with no step
+  4,953 `siz` and 106 `low_height` pifs and 1,000 GNS-only pieces (5 with no step
   read) make 6,059 members on 998 mapped wall features, joined into 5,002
   units: 4,577 with a pif (4,407 on a property) and 425 GNS-only (332 on a
   property). Expected walls 1,818 from the prior, 2,580 after the floor,
@@ -384,7 +347,7 @@
   Canterbury [anderson_2015]. Through exposure rw step 6 and landslide steps
   8 and 9, 185 of world 0's 1,570 insured sloping walls have no polygon
   (`slope_id` null), against 573 of 2,004 before: 175 on GNS-only units, 4
-  on `small` pifs and 6 on siz pifs whose polygons lie in step 12's DEM
+  on `low_height` pifs and 6 on siz pifs whose polygons lie in step 12's DEM
   margin outside the shaking grids, which step 8 leaves out.
   Rerun again on 2026-10-06 with the building outlines, the unit lines and
   the units across properties: 334 pifs dropped with most of their pips in
@@ -399,7 +362,7 @@
   leave 6 walls missing on 6 properties, NZMM 133 on 105. In world 0, 49.0%
   of the units are walled and the evacuated area is 668,912 m²; 1,940 walls
   are drawn and 1,141 insured, 48 of which have no polygon in step 9 (42
-  GNS-only, 2 `small`, 4 at the DEM margin). 23% of the walled units are
+  GNS-only, 2 `low_height`, 4 at the DEM margin). 23% of the walled units are
   under 1.5 m. The pif spines lie within 0.7 m of their unit's line at the
   median and 2.4 m at the 90th percentile, but 174 of the 460 units over
   50 m stray more than 5 m (up to 100 m): three bends cannot follow a long
@@ -424,13 +387,13 @@
   Evacuated 681,983 m² walled, 666,134 m² bare and 678,132 m² in world 0
   (8,892 polygons). World 0 draws 2,657 walls, 1,668 insured, 15 with no
   polygon in step 9 (5 GNS-only units with no element or at the margin, 6
-  `small`, 4 at the DEM margin). Walled units by height: 854 under 1.5 m,
+  `low_height`, 4 at the DEM margin). Walled units by height: 854 under 1.5 m,
   892 to 2.5 m, 732 to 5 m, 147 to 8 m and 27 over (437, 614, 583, 174 and
   132 before the taper and the new units); 32% under 1.5 m against 54% in
   Anderson et al.
   Rerun a fourth time on 2026-10-06 with the pif pieces and the small
   pifs' line elements: 6,558 whole pifs make 10,379 pieces (8 under three
-  pips), 8,425 siz pieces (each with its element), 123 `small` and 1,831
+  pips), 8,425 siz pieces (each with its element), 123 `low_height` and 1,831
   not candidates; step 13 classes all 10,379. 9,553 members make 6,713
   units (4,647 before): 3,784 straight, 1,638 with one bend, 741 with two
   and 550 with three; 6,296 one line and 417 several (up to 5 lines; 493,
@@ -443,7 +406,7 @@
   road frontage; 2,013 with a face over 5 m (each piece now has its own
   height, so more do; 1,020 over 8 m). Expected walls 3,347 (3,318 after
   the floor); the claims leave 5 walls missing on 5 properties, NZMM 79 on
-  58. 421 units had no element (354 GNS-only, 67 of `small` pifs) and 419
+  58. 421 units had no element (354 GNS-only, 67 of `low_height` pifs) and 419
   were given one. Evacuated 684,120 m² walled, 668,306 m² bare, 674,476 m²
   in world 0 (8,968 polygons). World 0 draws 3,347 walls, 1,945 insured,
   11 with no polygon in step 9: 10 whose polygons lie in step 12's DEM
@@ -457,7 +420,7 @@
   99th 52.2 m and the longest 83 m (a piece's own spine can pass 50 m where
   its pips spread off the path it was cut on); 1,419 under 3 m (short pifs
   of three or more pips). 5,865 siz pieces, each with its element; 110
-  `small`. Elements: 6,267 with the line elements (8,844 before), 1,100
+  `low_height`. Elements: 6,267 with the line elements (8,844 before), 1,100
   over 30 m and 55 over 50 m along the contour (55 and 16 before), the
   largest 1,370 m² (322 m²). 6,827 members make 5,540 units: 3,297
   straight, 1,133 with one bend, 647 with two, 463 with three; 5,299 one
@@ -470,7 +433,7 @@
   two, 647 on three or more (13 at most). Heights: 9 units over 5 m and 1
   over 8 m (2,013 and 1,020 before), so the tall face taper touches 9.
   Expected walls 3,462 (3,442 after the floor). 405 units had no element
-  (339 GNS-only, 66 `small`), 402 given one. Evacuated 664,360 m² walled,
+  (339 GNS-only, 66 `low_height`), 402 given one. Evacuated 664,360 m² walled,
   657,483 m² bare and 662,315 m² in world 0 (6,510 polygons). World 0
   draws 3,461 walls, 1,963 insured, 23 with no polygon in step 9: 22 whose
   polygon's representative point lies in step 12's DEM margin outside the
@@ -481,7 +444,7 @@
   Rerun a sixth time on 2026-10-06 with the 3 m pif minimum, the lines
   kept by construction and the near drop at 0.6 within 2 m: 334 pifs on
   buildings and 1,403 with a spine under 3 m dropped, leaving 5,106 whole
-  pifs in 6,163 pieces (4,829 siz, 93 `small`), each piece line 3.2 m at
+  pifs in 6,163 pieces (4,829 siz, 93 `low_height`), each piece line 3.2 m at
   the 10th percentile, 9.2 m median, 48.2 m at most; 4,829 elements (1,115
   over 30 m, 50 over 50 m) and 472 line elements. 5,767 members make 4,834
   units, every one a single line: 2,806 straight, 1,229 with one bend, 563
@@ -502,7 +465,7 @@
   Anderson et al.
   Rerun a seventh time on 2026-10-06 with the 185° turning cap and the
   50 m cap cut at bends, then boundaries, then evenly: 6,220 pif pieces
-  (4,884 siz, 91 `small`; before the turning cap 53 pieces turned more than
+  (4,884 siz, 91 `low_height`; before the turning cap 53 pieces turned more than
   185°), the cap cutting 387 at their bends and 72 evenly; 4,884 elements
   (1,130 over 30 m, 66 over 50 m) and 433 line elements. 5,820 members
   make 4,848 units (124 turned more than 185° before): 3,059 straight,
@@ -514,6 +477,15 @@
   no polygon; evacuated 656,971 m² walled, 649,210 m² bare, 654,842 m² in
   world 0 (5,511 polygons). Walled units under 1.5 m: 72% (70% of the pif
   units, 97% of the GNS-only).
+  Rerun on 2026-10-07 with independent candidates: 6,220 pif pieces (4,884
+  siz, 91 `low_height`), 857 GNS-only pieces (10,454 m of the 30,676 m of
+  mapped wall), 5,832 units, one member and one line each, none breaking a
+  rule (4,168 straight, 1,133 with one bend, 413 with two, 118 with three);
+  943 of the 948 units with no grown element given a line element; 3,997
+  expected walls; world 0 draws 3,991 walls, 2,130 insured, 24 with no
+  polygon (21 in the DEM margin, 3 GNS-only lines lying on other elements);
+  664,919 m² evacuated walled, 657,131 m² bare, 663,401 m² in world 0;
+  63% of walled units under 1.5 m, 55% without the GNS-only units.
 - Over the `wlg-pilot` extent (2026-10-05, before the spine, corner, GNS-only
   property, stacked title and NZMM weight fixes later that day; rerun the
   faces, wall units, zones and checks scripts to refresh): the 8,420

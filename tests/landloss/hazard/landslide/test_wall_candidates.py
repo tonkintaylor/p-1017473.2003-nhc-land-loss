@@ -5,11 +5,14 @@ import pandas as pd
 import pytest
 import shapely
 
+from landloss.hazard.landslide import bend_split
 from landloss.hazard.landslide.wall_candidates import (
     GNS_ONLY_CLASS,
+    LOW_HEIGHT_CLASS,
     NOT_CANDIDATE,
     SIZ_CLASS,
-    SMALL_CLASS,
+    _property_frame,
+    boundary_positions,
     gen_gns_only_candidates,
     property_of_pifs,
     wall_candidate_evidence,
@@ -55,11 +58,11 @@ def _evidence(pifs, **overrides):
     return wall_candidate_evidence(pifs, wall_match_m=2.0, search_m=50.0, **layers)
 
 
-def test_a_siz_is_a_candidate_and_a_mapped_wall_makes_a_small_one(pifs):
+def test_a_siz_is_a_candidate_and_a_mapped_wall_makes_a_low_height_one(pifs):
     evidence = _evidence(pifs)
     assert evidence["candidate_class"].tolist() == [
         SIZ_CLASS,
-        SMALL_CLASS,
+        LOW_HEIGHT_CLASS,
         NOT_CANDIDATE,
     ]
     assert evidence["is_wall_candidate"].tolist() == [True, True, False]
@@ -159,6 +162,9 @@ def test_a_mapped_wall_with_no_pip_near_it_becomes_a_gns_only_candidate(properti
         min_length_m=3.5,
         max_length_m=20.0,
         search_m=50.0,
+        max_bends=3,
+        stray_tolerance_m=2.0,
+        max_turn_deg=185.0,
     )
     assert len(candidates) == 2
     assert (candidates["candidate_class"] == GNS_ONLY_CLASS).all()
@@ -179,6 +185,9 @@ def _gns_only(sizs, walls, properties):
         min_length_m=3.5,
         max_length_m=20.0,
         search_m=50.0,
+        max_bends=3,
+        stray_tolerance_m=2.0,
+        max_turn_deg=185.0,
     )
 
 
@@ -208,3 +217,50 @@ def test_a_pif_only_on_road_has_no_rateable_property(properties):
     assert result.loc[2, "rateable_share"] == pytest.approx(1.0)
     assert pd.isna(result.loc[3, "rateable_property_id"])
     assert result.loc[3, "rateable_share"] == 0.0
+
+
+def test_a_gns_only_stretch_is_cut_by_the_line_rules(properties):
+    # A stretch 2 m off no pip, zig-zagging in 10 m square steps: the turning
+    # cap allows two right angles a piece, and every piece keeps the rules.
+    sizs = _pif_table([[(100, 0), (101, 0)]])
+    xy = [(300.0, 0.0)]
+    for k in range(6):
+        x, y = xy[-1]
+        xy.append((x + 10.0, y) if k % 2 == 0 else (x, y + 10.0))
+    walls = _layer([shapely.LineString(xy)])
+    candidates = gen_gns_only_candidates(
+        sizs,
+        walls=walls,
+        properties=properties,
+        ground_map=_layer([], material=[], modification=[]),
+        buildings=_layer([]),
+        wall_match_m=2.0,
+        min_length_m=3.0,
+        max_length_m=50.0,
+        search_m=50.0,
+        max_bends=3,
+        stray_tolerance_m=2.0,
+        max_turn_deg=185.0,
+    )
+    assert len(candidates) == 2
+    for line in candidates.geometry:
+        assert not bend_split.rule_breaks(
+            line, max_bends=3, min_length_m=3.0, max_length_m=50.0, max_turn_deg=185.0
+        )
+    assert candidates["length_m"].sum() == pytest.approx(60.0, abs=3.0)
+
+
+def test_boundary_positions_cut_once_per_property():
+    lots = _property_frame(
+        _layer(
+            [shapely.box(x, -5, x + 20, 5) for x in (0, 20, 40)],
+            source_id=[1, 2, 3],
+            source=["NZ Primary Parcels"] * 3,
+            valuation_reference=["a", "b", "c"],
+            title_type=["Freehold"] * 3,
+        )
+    )
+    line = shapely.LineString([(1, 0), (59, 0)])
+    assert boundary_positions(line, lots, 3.0) == pytest.approx([19.0, 39.0])
+    # A stretch under 3 m joins its neighbour.
+    assert boundary_positions(shapely.LineString([(1, 0), (21, 0)]), lots, 3.0) == []

@@ -1,22 +1,19 @@
-"""Wall units on the pifs: which faces are one wall, and how likely it is there.
+"""Wall units on the pifs: one per wall candidate, and how likely it is there.
 
-A retaining wall can be several pifs (a long wall is cut at the pif span, and a
-wall with a gap is two pifs) and a GNS mapped wall too low for the grid is a
-``gns_only`` piece with no pif, so the model counts walls, not pifs. This
-module:
+The lead's model (2026-10-07): every wall candidate is independent, one unit,
+one line, one probability, one draw. This module:
 
-1. **Units.** Joins the candidate pifs (classes ``siz`` and ``small``) and the
-   ``gns_only`` pieces into wall units, end to end only and across property
-   boundaries (the lead, 2026-10-06: one wall is one unit wherever the
-   boundaries run): pieces one GNS mapped wall reaches are one unit; a
-   ``gns_only`` piece near a pif and running roughly along its face joins it;
-   elsewhere two pifs join where their facing ends are close, level along the
-   fall and facing the same way, or close enough to be a corner. The joined
-   members are chained end to end and cut into walls that each follow the
-   chain within a tolerance with at most a few bends, and a wall over a set
-   length is cut again at the property boundaries it crosses
-   (:func:`gen_unit_lines`); each wall is a unit with the members nearest it,
-   and carries its length in every property it enters
+1. **Units.** Makes one unit of each candidate (:func:`gen_wall_units`):
+   every siz pif piece (class ``siz``), every pif piece that is not a siz but
+   has a GNS mapped wall within 2 m of its pips (class ``low_height``, a
+   low-height wall), and every ``gns_only`` piece, a stretch of GNS mapped
+   wall more than 2 m from every pip. A GNS mapped wall within 2 m of a pif
+   piece is no candidate of its own: it sets that piece's ``gns_wall`` flag.
+   Nothing is joined. A pif piece's line is the stretch of its spine it was
+   cut on, and a GNS-only piece's line its stretch of mapped wall, both cut by
+   the shared rules (:mod:`landloss.hazard.landslide.bend_split`), so each
+   unit is one line of 3 to 50 m with at most 3 bends turning at most 185
+   degrees; each unit carries its length in every property it enters
    (:func:`gen_unit_properties`).
 2. **Prior.** Puts a prior on each unit from whether it holds a siz, the height
    band of its wall height and the cut and fill class of landslide step 13:
@@ -64,32 +61,21 @@ modification is ``fill`` on 88% of the pilot's candidate pifs, rock
 included, so it lifted nearly every unit.
 """
 
-from collections import Counter
-from itertools import pairwise
-
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 from numpy.typing import ArrayLike, NDArray
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components, minimum_spanning_tree
-from scipy.spatial import cKDTree
-from scipy.spatial.distance import pdist, squareform
 
 from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.exposure.land.extent import stack_representatives
 from landloss.hazard.landslide import bend_split, pif_cut_fill
-from landloss.hazard.landslide.bend_split import (
-    cut_path,
-    tree_paths,
-)
 from landloss.hazard.landslide.ground_map import ROCK_MATERIALS
 from landloss.hazard.landslide.slope_elements import height_band
 from landloss.hazard.landslide.wall_candidates import (
+    LOW_HEIGHT_CLASS,
     SIZ_CLASS,
-    SMALL_CLASS,
     _property_frame,
 )
 from landloss.hazard.realisation import realisation_seed
@@ -110,7 +96,7 @@ _LINE_SPACING_M = 0.5
 _MAX_LINE_POINTS = 1500
 
 # The pif candidate classes that become members.
-CANDIDATE_CLASSES = (SIZ_CLASS, SMALL_CLASS)
+CANDIDATE_CLASSES = (SIZ_CLASS, LOW_HEIGHT_CLASS)
 
 # The basis strings: the last rule that set a unit's probability.
 P_WALL_BASES = (
@@ -206,52 +192,6 @@ def _require(frame: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:
     if missing:
         msg = f"{name} is missing {missing}"
         raise ValueError(msg)
-
-
-def _components(n: int, edges: list[NDArray[np.int64]]) -> NDArray[np.int64]:
-    """The connected component of each of ``n`` nodes joined by the edge pairs."""
-    pairs = (
-        np.concatenate(edges) if edges else np.zeros((0, 2), dtype=np.int64)
-    ).reshape(-1, 2)
-    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
-    return connected_components(graph, directed=False)[1].astype(np.int64)
-
-
-def gen_gns_wall_features(
-    walls: gpd.GeoDataFrame, *, snap_m: float
-) -> gpd.GeoDataFrame:
-    """Group the GNS mapped wall segments into features, one per mapped wall.
-
-    The GNS morphology layer draws one wall as several segments; segments
-    within ``snap_m`` of each other, directly or through others, are one
-    feature.
-
-    Args:
-        walls: GNS mapped retaining walls (lines or multilines).
-        snap_m: Segments this close, in metres, are one feature.
-
-    Returns:
-        One row per feature, indexed by ``gns_feature_id`` from 0 in the order
-        of each feature's first input row, with a MultiLineString geometry in
-        the CRS of ``walls``.
-    """
-    parts, rows = shapely.get_parts(walls.geometry.to_numpy(), return_index=True)
-    if len(parts) == 0:
-        empty = gpd.GeoDataFrame(geometry=[], crs=walls.crs)
-        empty.index.name = "gns_feature_id"
-        return empty
-    near = shapely.STRtree(parts).query(parts, predicate="dwithin", distance=snap_m)
-    feature = _components(len(parts), [near.T.astype(np.int64)])
-    first_row = pd.Series(rows).groupby(feature).min()
-    order = first_row.sort_values(kind="mergesort").index.to_numpy()
-    renumber = np.empty(len(order), dtype=np.int64)
-    renumber[order] = np.arange(len(order))
-    feature = renumber[feature]
-    sort = np.argsort(feature, kind="mergesort")
-    geometry = shapely.multilinestrings(parts[sort], indices=feature[sort])
-    features = gpd.GeoDataFrame(geometry=geometry, crs=walls.crs)
-    features.index.name = "gns_feature_id"
-    return features
 
 
 def gen_wall_members(
@@ -382,243 +322,53 @@ def gen_wall_members(
     return gpd.GeoDataFrame(members, geometry="geometry", crs=crs)
 
 
-def _within_groups(
-    groups: NDArray[np.int64], members: NDArray[np.int64]
-) -> NDArray[np.int64]:
-    """Edges joining the members that share a group, whatever their property."""
-    if len(members) == 0:
-        return np.zeros((0, 2), dtype=np.int64)
-    frame = pd.DataFrame({"group": groups, "member": members})
-    first = frame.groupby("group")["member"].transform("min")
-    return np.column_stack([first.to_numpy(), members]).astype(np.int64)
-
-
-def _end_edges(
-    members: gpd.GeoDataFrame,
-    *,
-    join_gap_m: float,
-    max_offset_m: float,
-    bearing_tol_deg: float,
-    corner_gap_m: float,
-    corner_max_deg: float,
-) -> NDArray[np.int64]:
-    """Edges joining pif members end to end, whatever their property."""
-    pif = np.flatnonzero(members["member_type"].to_numpy() == PIF_MEMBER)
-    n = len(pif)
-    if n < 2:
-        return np.zeros((0, 2), dtype=np.int64)
-    rows = members.iloc[pif]
-    ends = np.stack(
-        [
-            rows[["end_a_x", "end_a_y"]].to_numpy(dtype=float),
-            rows[["end_b_x", "end_b_y"]].to_numpy(dtype=float),
-        ],
-        axis=1,
-    )
-    falls = rows[["end_a_fall_deg", "end_b_fall_deg"]].to_numpy(dtype=float)
-    pairs = cKDTree(ends.reshape(-1, 2)).query_pairs(
-        max(join_gap_m, corner_gap_m), output_type="ndarray"
-    )
-    i, j = pairs[:, 0] // 2, pairs[:, 1] // 2
-    keep = i != j
-    pair = np.unique(np.sort(np.column_stack([i[keep], j[keep]]), axis=1), axis=0)
-    if len(pair) == 0:
-        return np.zeros((0, 2), dtype=np.int64)
-    a, b = pair[:, 0], pair[:, 1]
-
-    # The facing ends are the closest of the four pairs of ends.
-    delta = ends[b][:, None, :, :] - ends[a][:, :, None, :]
-    gaps = np.hypot(delta[..., 0], delta[..., 1]).reshape(len(pair), 4)
-    best = np.argmin(gaps, axis=1)
-    end_a, end_b = best // 2, best % 2
-    gap = gaps[np.arange(len(pair)), best]
-    dx, dy = delta[np.arange(len(pair)), end_a, end_b].T
-    fall_a = falls[a, end_a]
-    fall_b = falls[b, end_b]
-
-    turn = np.abs((fall_a - fall_b + 180.0) % 360.0 - 180.0)
-    rad_a, rad_b = np.radians(fall_a), np.radians(fall_b)
-    mean = np.arctan2(np.sin(rad_a) + np.sin(rad_b), np.cos(rad_a) + np.cos(rad_b))
-    offset = np.abs(dx * np.sin(mean) + dy * np.cos(mean))
-    # A corner is where the falls turn: two faces falling the same way within
-    # the corner gap are the straight case, which the offset limit keeps apart
-    # when they are stacked down a slope.
-    joined = (
-        (gap <= join_gap_m) & (offset <= max_offset_m) & (turn <= bearing_tol_deg)
-    ) | ((gap <= corner_gap_m) & (turn > bearing_tol_deg) & (turn <= corner_max_deg))
-    return np.column_stack([pif[a[joined]], pif[b[joined]]]).astype(np.int64)
-
-
-def _strike_angle_deg(
-    lines: NDArray[np.object_], members: gpd.GeoDataFrame, pif_rows: NDArray[np.int64]
-) -> NDArray[np.float64]:
-    """The angle between each GNS-only line and the strike of a pif, in degrees.
-
-    The line's bearing is its start to its end; the pif's strike is
-    perpendicular to the fall at the end of its spine nearest the line
-    (``end_a_fall_deg`` or ``end_b_fall_deg``), so an L-shaped pif is read
-    along the leg the line is beside. Both are axes, so the angle is 0 to 90.
-    NaN where the pif's fall there is unknown.
-    """
-    rows = members.iloc[pif_rows]
-    start, end = shapely.get_point(lines, 0), shapely.get_point(lines, -1)
-    bearing = np.degrees(
-        np.arctan2(
-            shapely.get_x(end) - shapely.get_x(start),
-            shapely.get_y(end) - shapely.get_y(start),
-        )
-    )
-    end_a = shapely.points(rows[["end_a_x", "end_a_y"]].to_numpy(dtype=float))
-    end_b = shapely.points(rows[["end_b_x", "end_b_y"]].to_numpy(dtype=float))
-    nearer_a = shapely.distance(lines, end_a) <= shapely.distance(lines, end_b)
-    fall = np.where(
-        nearer_a,
-        rows["end_a_fall_deg"].to_numpy(dtype=float),
-        rows["end_b_fall_deg"].to_numpy(dtype=float),
-    )
-    off_fall = np.abs((bearing - fall + 90.0) % 180.0 - 90.0)
-    return 90.0 - off_fall
-
-
 def gen_wall_units(
     members: gpd.GeoDataFrame,
-    gns_features: gpd.GeoDataFrame,
     *,
-    gns_match_m: float,
-    join_gap_m: float,
-    max_offset_m: float,
-    bearing_tol_deg: float,
-    corner_gap_m: float,
-    corner_max_deg: float,
-    gns_only_merge_m: float,
-    gns_only_merge_max_angle_deg: float,
     max_bends: int,
     min_segment_m: float,
-    stray_tolerance_m: float,
     max_length_m: float,
     max_turn_deg: float,
-    properties: gpd.GeoDataFrame | None = None,
 ) -> gpd.GeoDataFrame:
-    """Join the members into wall units, across property boundaries.
+    """Make one wall unit of each candidate, on its own.
 
-    No rule looks at the property (the lead, 2026-10-06): a wall on a boundary
-    is one unit, which carries its length in every property it enters
-    (:func:`gen_unit_properties`). Three rules join the members, and a unit
-    is everything joined directly or through others:
-
-    - **GNS feature:** members whose footprint lies within ``gns_match_m`` of
-      one GNS mapped wall feature are one unit; where GNS maps the wall it is
-      the join.
-    - **GNS-only merge:** a GNS-only piece within ``gns_only_merge_m`` of a
-      pif's footprint joins it, so one wall is not counted twice, where it
-      runs roughly along the pif's face: the angle between its bearing and
-      the pif's strike at the spine end nearest it is at most
-      ``gns_only_merge_max_angle_deg`` (a pif with no fall there joins
-      whatever the direction). A piece across the face (on the pilot, an
-      east-west mapped wall beside a north-south pif) is another wall.
-    - **End to end, pifs only:** of the four pairs of ends of two pifs, the
-      closest are the facing ends and their distance the gap. They join where
-      the gap is within ``join_gap_m``, the ends are offset along their mean
-      fall by no more than ``max_offset_m`` (so faces stacked down a slope do
-      not join) and their falls differ by no more than ``bearing_tol_deg``; or
-      at a corner, where the gap is within ``corner_gap_m`` and the falls turn
-      by more than ``bearing_tol_deg`` and no more than ``corner_max_deg``.
+    The lead's model (2026-10-07): each candidate (a ``siz`` or ``low_height``
+    pif piece, or a ``gns_only`` piece) is independent, one unit with one
+    line, one probability and one draw; nothing is joined. A unit's line is
+    its member's: a pif piece's line (the stretch of spine it was cut on,
+    :func:`~landloss.hazard.landslide.instability_zones.split_pifs`) or a
+    GNS-only piece's line
+    (:func:`~landloss.hazard.landslide.wall_candidates.gen_gns_only_candidates`),
+    both cut by :mod:`landloss.hazard.landslide.bend_split`.
 
     Args:
         members: From :func:`gen_wall_members`.
-        gns_features: From :func:`gen_gns_wall_features`.
-        gns_match_m: A member within this many metres of a feature is on it.
-        join_gap_m: The largest gap between facing ends, in metres.
-        max_offset_m: The largest offset of the ends along the fall, in metres.
-        bearing_tol_deg: The largest difference in the facing ends' falls.
-        corner_gap_m: The largest gap at a corner, in metres.
-        corner_max_deg: The largest turn at a corner, in degrees; a corner
-            turns by more than ``bearing_tol_deg``.
-        gns_only_merge_m: A GNS-only piece this close to a pif joins it.
-        gns_only_merge_max_angle_deg: The largest angle, in degrees, between
-            a merging GNS-only piece and the pif's strike.
-        max_bends: The most bends one wall's line has (:func:`gen_unit_lines`).
-        min_segment_m: The shortest straight section of a wall's line.
-        stray_tolerance_m: How far a wall's line may stray from the chained
-            members it follows.
-        max_length_m: The longest wall: a longer one is cut at its own bends,
-            then at the property boundaries it crosses, then into equal
-            pieces (the lead, 2026-10-06).
-        max_turn_deg: The most a wall's line may turn in all.
-        properties: LINZ property boundaries for the boundary cut; None cuts
-            none.
+        max_bends: The most bends a unit's line may have.
+        min_segment_m: The shortest a unit's line may be.
+        max_length_m: The longest a unit's line may be.
+        max_turn_deg: The most a unit's line may turn in all.
+
+    Returns:
+        One row per unit, indexed by ``wall_unit_id`` (minted by location
+        behind :data:`~landloss.domain.constants.WALL_UNIT_ID_PREFIX`), with
+        ``member_pif_ids`` and ``member_gns_only_ids`` (one id between
+        them), ``n_pifs``, ``n_gns_only``, ``unit_source`` (``pif`` or
+        ``gns_only``), ``is_siz``, ``gns_wall``, ``property_id`` (provisional:
+        the member's; set by :func:`gen_unit_properties`), ``in_exposure``,
+        ``max_delta_h_m`` (for reference), ``height_m`` (a pif's
+        ``near_drop_p80_m``, a GNS-only piece's ``step_height_m``),
+        ``building_m``, ``length_m`` (of the line), ``length_original_m`` (the
+        member's), ``n_bends``, :data:`LONGEST_MEMBER_COLUMNS`,
+        ``cut_fill_class``, ``x`` and ``y`` (a representative point) and the
+        line.
 
     Raises:
         ValueError: If a unit's line breaks a rule (more than ``max_bends``
             bends, turning more than ``max_turn_deg``, shorter than
             ``min_segment_m``, longer than ``max_length_m``, more than one
-            part); the rules hold by construction, so this is a bug.
-
-    Returns:
-        One row per unit, indexed by ``wall_unit_id`` (minted by location
-        behind :data:`~landloss.domain.constants.WALL_UNIT_ID_PREFIX`), with
-        ``member_pif_ids`` and ``member_gns_only_ids`` (sorted lists),
-        ``n_pifs``, ``n_gns_only``, ``unit_source`` (``pif`` where any member
-        is a pif, else ``gns_only``), ``is_siz`` and ``gns_wall`` (any member),
-        ``property_id`` (provisional: the longest member's with one; set by
-        :func:`gen_unit_properties`), ``in_exposure`` (it has a property),
-        ``max_delta_h_m`` (the highest pif, for reference), ``height_m`` (the
-        highest member's: a pif's ``wall_height_m``, a GNS-only piece's
-        ``step_height_m``), ``building_m`` (the nearest), ``length_m`` (of
-        the unit's simplified line), ``length_original_m`` (the members'
-        summed length), ``n_bends``, :data:`LONGEST_MEMBER_COLUMNS` from the
-        longest member (ties to the lowest member type and id),
-        ``cut_fill_class`` (see :func:`_unit_cut_fill_class`), ``x`` and ``y``
-        (a representative point) and the simplified LineString
-        (:func:`gen_unit_line`).
+            part); the candidates keep them by construction, so this is a bug.
     """
-    crs = members.crs
-    n = len(members)
-    footprints = gpd.GeoSeries(members["footprint"], crs=crs).to_numpy()
-    edges = []
-
-    if n and len(gns_features):
-        near = shapely.STRtree(footprints).query(
-            gns_features.geometry.to_numpy(), predicate="dwithin", distance=gns_match_m
-        )
-        edges.append(_within_groups(near[0], near[1]))
-
-    is_pif = members["member_type"].to_numpy() == PIF_MEMBER
-    gns_rows = np.flatnonzero(~is_pif)
-    pif_rows = np.flatnonzero(is_pif)
-    if len(gns_rows) and len(pif_rows):
-        near = shapely.STRtree(footprints[pif_rows]).query(
-            footprints[gns_rows], predicate="dwithin", distance=gns_only_merge_m
-        )
-        pairs = np.column_stack([gns_rows[near[0]], pif_rows[near[1]]])
-        angle = _strike_angle_deg(footprints[pairs[:, 0]], members, pairs[:, 1])
-        along = ~(angle > gns_only_merge_max_angle_deg)
-        edges.append(pairs[along].astype(np.int64))
-
-    edges.append(
-        _end_edges(
-            members,
-            join_gap_m=join_gap_m,
-            max_offset_m=max_offset_m,
-            bearing_tol_deg=bearing_tol_deg,
-            corner_gap_m=corner_gap_m,
-            corner_max_deg=corner_max_deg,
-        )
-    )
-    frame = pd.DataFrame(members.drop(columns=["geometry", "footprint"]))
-    joined = _components(n, edges) if n else np.zeros(0, dtype=np.int64)
-    frame["unit"], lines, dropped_m = _split_into_walls(
-        joined,
-        members.geometry.to_numpy(),
-        footprints,
-        max_bends=max_bends,
-        min_segment_m=min_segment_m,
-        stray_tolerance_m=stray_tolerance_m,
-        max_length_m=max_length_m,
-        max_turn_deg=max_turn_deg,
-        boundaries=None if properties is None else _property_frame(properties),
-        counts=(counts := Counter()),
-    )
+    lines = dict(enumerate(members.geometry.to_numpy()))
     breaks = {
         label: broken
         for label, line in lines.items()
@@ -633,247 +383,12 @@ def gen_wall_units(
         )
     }
     if breaks:
-        msg = (
-            f"{len(breaks)} wall units break the line rules: {list(breaks.items())[:5]}"
-        )
+        first = list(breaks.items())[:5]
+        msg = f"{len(breaks)} wall candidates break the line rules: {first}"
         raise ValueError(msg)
-    units = _unit_rows(frame, lines, crs=crs)
-    units.attrs["dropped_wall_m"] = dropped_m
-    units.attrs["cap_cuts"] = dict(counts)
-    return units
-
-
-def _split_into_walls(
-    joined: NDArray[np.int64],
-    geometries: NDArray[np.object_],
-    footprints: NDArray[np.object_],
-    **settings: object,
-) -> tuple[NDArray[np.int64], dict[int, shapely.LineString], float]:
-    """Cut each group of joined members into walls, and give each member one.
-
-    The walls of a group are :func:`gen_unit_lines` on its members. Each
-    member goes to the wall nearest most of its points (a pif's pips, a
-    GNS-only line walked every half metre), ties to the first wall, so a pif
-    straddling a cut goes to the wall holding most of its pips and every
-    member is in exactly one unit; each wall with a member is a unit. A wall
-    no member is nearest (a stretch a member only partly covers) joins the
-    unit of the member nearest most of its points where the two run on end to
-    end and the joined line still keeps every rule
-    (:func:`~landloss.hazard.landslide.bend_split.rule_breaks`); otherwise it
-    is dropped. A unit is never more than one line (the lead, 2026-10-06).
-
-    Returns:
-        ``(unit, lines, dropped_m)``: the unit of each member, numbered from
-        0, the line of each unit, and the length of the walls dropped.
-    """
-    rules = {
-        "max_bends": int(settings["max_bends"]),
-        "min_length_m": float(settings["min_segment_m"]),
-        "max_length_m": float(settings["max_length_m"]),
-        "max_turn_deg": float(settings["max_turn_deg"]),
-    }
-    unit = np.zeros(len(joined), dtype=np.int64)
-    lines: dict[int, shapely.LineString] = {}
-    dropped_m = 0.0
-    rows_of = pd.Series(np.arange(len(joined))).groupby(joined).indices
-    for group in sorted(rows_of):
-        rows = rows_of[group]
-        walls = gen_unit_lines(list(geometries[rows]), **settings)
-        if len(walls) == 1:
-            owner = np.zeros(len(rows), dtype=np.int64)
-        else:
-            owner = np.array(
-                [_nearest_wall(footprints[row], walls) for row in rows], dtype=np.int64
-            )
-        kept = {int(wall): walls[wall] for wall in np.unique(owner)}
-        for wall in sorted(set(range(len(walls))) - set(kept)):
-            member = _nearest_member(walls[wall], footprints[rows])
-            target = int(owner[member])
-            merged = shapely.line_merge(
-                shapely.MultiLineString([kept[target], walls[wall]])
-            )
-            if merged.geom_type == "LineString":
-                merged = shapely.simplify(merged, 1e-6, preserve_topology=False)
-            if not bend_split.rule_breaks(merged, **rules):
-                kept[target] = merged
-            else:
-                dropped_m += walls[wall].length
-        for wall, line in kept.items():
-            label = len(lines)
-            lines[label] = line
-            unit[rows[owner == wall]] = label
-    return unit, lines, dropped_m
-
-
-def _nearest_member(wall: shapely.LineString, footprints: NDArray[np.object_]) -> int:
-    """The member nearest most of a wall's points."""
-    points = shapely.points(shapely.get_coordinates(shapely.segmentize(wall, 1.0)))
-    distance = shapely.distance(points[:, None], footprints[None, :])
-    return int(np.bincount(distance.argmin(axis=1), minlength=len(footprints)).argmax())
-
-
-def _nearest_wall(footprint: object, walls: list[shapely.LineString]) -> int:
-    """The wall nearest most of a member's points."""
-    points = shapely.points(
-        shapely.get_coordinates(shapely.segmentize(footprint, _LINE_SPACING_M))
-    )
-    distance = shapely.distance(points[:, None], np.asarray(walls, dtype=object)[None])
-    return int(np.bincount(distance.argmin(axis=1), minlength=len(walls)).argmax())
-
-
-def _chains(lines: list[object], *, min_branch_m: float) -> list[NDArray[np.float64]]:
-    """The members of one group as paths of points, end to end.
-
-    The members are walked as points no more than :data:`_LINE_SPACING_M`
-    apart and joined by their minimum spanning tree. The first path is the
-    tree's longest (a double sweep), so its ends are the group's two far ends
-    and a gap between two members is crossed by the shortest jump. Where the
-    tree branches (a T in a mapped wall, a pif beside the main run), each
-    branch left off it is a path of its own from where it joins, the longest
-    first, as long as it is at least ``min_branch_m``; so no member is left
-    far from every path.
-    """
-    total = float(np.sum(shapely.length(np.asarray(lines, dtype=object))))
-    spacing = max(_LINE_SPACING_M, total / _MAX_LINE_POINTS)
-    xy = shapely.get_coordinates(
-        shapely.segmentize(np.asarray(lines, dtype=object), spacing)
-    )
-    xy = np.unique(xy, axis=0)
-    if len(xy) < 2:
-        return [np.repeat(xy, 2, axis=0)]
-    # The small offset keeps two coincident points joined: a zero is no edge.
-    tree = minimum_spanning_tree(squareform(pdist(xy)) + 1e-9)
-    return tree_paths(tree + tree.T, xy, min_branch_m=min_branch_m)
-
-
-def _boundary_positions(
-    line: shapely.LineString, boundaries: gpd.GeoDataFrame, min_segment_m: float
-) -> list[float]:
-    """Where a line crosses property boundaries, one stretch per property.
-
-    The line is cut at every crossing; consecutive stretches in the same
-    property (the one holding each stretch's midpoint) are one, so a wall
-    weaving along a boundary is not cut at every weave; and a stretch
-    shorter than ``min_segment_m`` joins the one before it (or after it, for
-    the first).
-
-    Returns:
-        The cuts, as distances along the line (none where it stays in one
-        property).
-    """
-    polygons = boundaries.geometry.to_numpy()
-    near = shapely.STRtree(polygons).query(line, predicate="intersects")
-    if len(near) < 2:
-        return []
-    crossings = shapely.intersection(
-        line, shapely.union_all(shapely.boundary(polygons[near]))
-    )
-    at = np.unique(
-        shapely.line_locate_point(
-            line, shapely.points(shapely.get_coordinates(crossings))
-        )
-    )
-    length = line.length
-    cuts = np.r_[0.0, at[(at > 1e-6) & (at < length - 1e-6)], length]
-    middle = shapely.line_interpolate_point(line, (cuts[:-1] + cuts[1:]) / 2.0)
-    ids = boundaries["property_id"].to_numpy()[near]
-    inside = shapely.contains(polygons[near][None, :], middle[:, None])
-    owner = [ids[row.argmax()] if row.any() else None for row in inside]
-    ranges: list[list[float]] = []
-    previous = object()
-    for (a, b), label in zip(pairwise(cuts), owner, strict=True):
-        if ranges and label == previous:
-            ranges[-1][1] = b
-        else:
-            ranges.append([a, b])
-        previous = label
-    while len(ranges) > 1:
-        sizes = [b - a for a, b in ranges]
-        i = int(np.argmin(sizes))
-        if sizes[i] >= min_segment_m:
-            break
-        j = i - 1 if i > 0 else 1
-        low, high = min(i, j), max(i, j)
-        ranges[low] = [ranges[low][0], ranges[high][1]]
-        del ranges[high]
-    return [float(a) for a, _ in ranges[1:]]
-
-
-def gen_unit_lines(
-    lines: list[object],
-    *,
-    max_bends: int,
-    min_segment_m: float,
-    stray_tolerance_m: float,
-    max_length_m: float = np.inf,
-    max_turn_deg: float = np.inf,
-    boundaries: gpd.GeoDataFrame | None = None,
-    counts: Counter | None = None,
-) -> list[shapely.LineString]:
-    """The walls one group of joined members makes, each a line within the rules.
-
-    The members (pif spines, GNS-only lines) are chained end to end into
-    paths, the longest first and then each branch off it (:func:`_chains`),
-    and each path is cut by the rule the pifs are cut by
-    (:func:`landloss.hazard.landslide.bend_split.cut_path`, the lead,
-    2026-10-06): a wall runs as far as Douglas-Peucker at
-    ``stray_tolerance_m`` follows the path with at most ``max_bends`` bends
-    turning no more than ``max_turn_deg`` in all; a wall whose ends are under
-    ``min_segment_m`` apart joins a neighbour; and a wall whose line is over
-    ``max_length_m`` is cut at its own bends, then (with no bend left) where
-    it crosses the boundaries of ``boundaries`` (LINZ properties, road
-    parcels included; :func:`_boundary_positions`), then into equal pieces.
-    Each wall's line is its stretch's
-    (:func:`~landloss.hazard.landslide.bend_split.canonical_line`), so every
-    wall keeps every rule.
-
-    Args:
-        lines: The group's member geometries.
-        max_bends: The most bends one wall's line has.
-        min_segment_m: The shortest straight section, and the least distance
-            between a wall's ends.
-        stray_tolerance_m: How far a wall's line may stray from the path.
-        max_length_m: The longest wall.
-        max_turn_deg: The most a wall's line may turn in all.
-        boundaries: The property polygons with ``property_id``; None skips the
-            boundary stage of the length cap.
-        counts: Counts the walls the length cap cut, by stage.
-
-    Returns:
-        The walls, in order along the paths.
-    """
-    walls: list[shapely.LineString] = []
-    paths = _chains(lines, min_branch_m=min_segment_m)
-    boundary_cuts = (
-        None
-        if boundaries is None
-        else (lambda line: _boundary_positions(line, boundaries, min_segment_m))
-    )
-    for k, path in enumerate(paths):
-        if k > 0 and np.hypot(*(path[-1] - path[0])) < min_segment_m:
-            continue
-        for start, end in cut_path(
-            path,
-            max_bends=max_bends,
-            tolerance_m=stray_tolerance_m,
-            min_segment_m=min_segment_m,
-            max_length_m=max_length_m,
-            max_turn_deg=max_turn_deg,
-            boundary_cuts=boundary_cuts,
-            counts=counts,
-        ):
-            walls.append(
-                shapely.LineString(
-                    bend_split.canonical_line(
-                        path[start : end + 1],
-                        tolerance_m=stray_tolerance_m,
-                        max_bends=max_bends,
-                        min_segment_m=min_segment_m,
-                        max_turn_deg=max_turn_deg,
-                    )
-                )
-            )
-    return walls
+    frame = pd.DataFrame(members.drop(columns=["geometry", "footprint"]))
+    frame["unit"] = np.arange(len(frame), dtype=np.int64)
+    return _unit_rows(frame, lines, crs=members.crs)
 
 
 def gen_unit_properties(
@@ -1132,7 +647,7 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
 
     Applied in this order: :data:`~landloss.domain.constants.BETA_SIZ_WALL_PRIOR`
     for a unit holding a siz, else
-    :data:`~landloss.domain.constants.BETA_SMALL_WALL_PRIOR`; times the factor
+    :data:`~landloss.domain.constants.BETA_LOW_HEIGHT_WALL_PRIOR`; times the factor
     (:data:`~landloss.domain.constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR`)
     of the height band of the unit's ``height_m``
     (:func:`~landloss.hazard.landslide.slope_elements.height_band`, 0 for
@@ -1204,7 +719,7 @@ def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
     prior = np.where(
         units["is_siz"].to_numpy(dtype=bool),
         constants.BETA_SIZ_WALL_PRIOR,
-        constants.BETA_SMALL_WALL_PRIOR,
+        constants.BETA_LOW_HEIGHT_WALL_PRIOR,
     )
     prior_band = height_band(units["height_m"].to_numpy(dtype=float))
     prior = prior * np.array(
