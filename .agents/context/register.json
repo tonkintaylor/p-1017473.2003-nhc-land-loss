@@ -418,11 +418,11 @@
     },
     {
       "ID": "T-53",
-      "Task": "Fix the CI pipeline, which fails when it pulls a package from Bitbucket.",
+      "Task": "Fix the CI pipeline, which fails when it pulls a package from Bitbucket. Fixed 2026-10-07: a read-only Bitbucket access key for ttpy-gis (public half added by Keith), with its private half as the BITBUCKET_SSH_KEY repo secret the workflows already read; Tests, Static Checks and Copilot Setup Steps all pass.",
       "Owner": "Perrie Gilbert",
       "Phase": "2",
       "Source": "Call with Perrie Gilbert 2026-09-25",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-54",
