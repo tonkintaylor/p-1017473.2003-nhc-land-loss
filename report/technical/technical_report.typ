@@ -25,6 +25,10 @@
 #outline(depth: 2)
 #pagebreak()
 
+= Exposure
+
+#include "sections/exposure_insured_land.typ"
+
 = Hazard
 
 #include "sections/hazard_liquefaction.typ"

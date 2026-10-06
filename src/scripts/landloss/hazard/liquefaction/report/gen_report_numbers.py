@@ -87,7 +87,7 @@ HECTARE_M2 = 10_000
 
 def git_commit():
     """Return the short hash of the commit the numbers were written from."""
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
         capture_output=True,
         text=True,
@@ -147,13 +147,20 @@ def study_area():
         in_zone = (zone == code) & carried
         by_zone[name] = {
             "cells": int(in_zone.sum()),
-            "mean_p_major_before": float(before[in_zone].mean()) if in_zone.any() else None,
-            "mean_p_major_after": float(after[in_zone].mean()) if in_zone.any() else None,
+            "mean_p_major_before": float(before[in_zone].mean())
+            if in_zone.any()
+            else None,
+            "mean_p_major_after": float(after[in_zone].mean())
+            if in_zone.any()
+            else None,
         }
 
     faces = faces.assign(length_km=faces.length / 1000)
     free_faces = {
-        str(kind): {"features": len(group), "km": round(float(group["length_km"].sum()), 1)}
+        str(kind): {
+            "features": len(group),
+            "km": round(float(group["length_km"].sum()), 1),
+        }
         for kind, group in faces.groupby("wtype")
     }
     states = beta_expand_ld_probabilities(moderate, corrected)
@@ -161,9 +168,7 @@ def study_area():
     return {
         "grid_resolution_m": resolution,
         "cells_with_probability": int(carried.sum()),
-        "area_with_probability_km2": round(
-            int(carried.sum()) * resolution**2 / 1e6, 1
-        ),
+        "area_with_probability_km2": round(int(carried.sum()) * resolution**2 / 1e6, 1),
         "mean_p_moderate_or_worse": mean(moderate),
         "mean_p_major_or_worse_before": mean(major),
         "mean_p_major_or_worse_after": mean(corrected),
@@ -210,7 +215,7 @@ def main(*, draw_extent, realisation_id):
     """Compute the numbers and write the YAML."""
     numbers = {
         "meta": {
-            "written": dt.date.today().isoformat(),
+            "written": dt.datetime.now().astimezone().date().isoformat(),
             "commit": git_commit(),
             "nlm_release": str(constants.CORE_NLM_VERSION.value),
         },

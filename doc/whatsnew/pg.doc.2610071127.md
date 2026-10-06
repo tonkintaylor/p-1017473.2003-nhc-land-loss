@@ -1,0 +1,1 @@
+The technical report gains its insured land section (T-70): the insured extent and the land value per square metre, their inputs and licences, method, results, validation, limitations and work under way. Its numbers are read from YAML written by `exposure/land/report/gen_report_numbers.py`: the land value over the study area and the insured land over the pilot.

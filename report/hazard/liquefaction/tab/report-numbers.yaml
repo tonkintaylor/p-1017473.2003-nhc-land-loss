@@ -1,6 +1,6 @@
 meta:
   written: '2026-10-07'
-  commit: ffc0cd9
+  commit: 84bcf75
   nlm_release: v2026p0rc6
 settings:
   return_period_years: 2500

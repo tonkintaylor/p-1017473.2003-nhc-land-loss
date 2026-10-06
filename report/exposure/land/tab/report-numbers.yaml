@@ -1,0 +1,99 @@
+meta:
+  written: '2026-10-07'
+  commit: 84bcf75
+settings:
+  buffer_m: 8.0
+  insured_access_m: 60.0
+  max_driveway_m: 300.0
+  driveway_width_m: 3.0
+  max_dwelling_footprint_m2: 500.0
+  min_crossing_area_m2: 5.0
+  min_crossing_share: 0.1
+  gst_rate: 0.15
+  valuation_date: '2025-09-01'
+  factors:
+    landform_factor_hill: 1.0
+    landform_factor_flat: 1.72
+    landform_factor_elevated_flat: 2.06
+    elevated_flat_min_topographic_position_m: 3.0
+    topographic_position_window_m: 500.0
+    rate_clip_min_multiple: 0.25
+    rate_clip_max_multiple: 4.0
+    sea_view_premium: 1.0
+    coast_premium: 0.25
+    coast_decay_length_m: 250.0
+    winter_sun_premium: 0.3
+    rail_station_premium: 0.1
+    rail_station_decay_length_m: 400.0
+    accessibility_elasticity: 0.5
+land_value:
+  extent: full
+  addresses: 192383
+  landform_share:
+    flat: 0.529168377663307
+    hill: 0.4350436369117853
+    elevated_flat: 0.035787985424907603
+  by_ta:
+    Lower Hutt City:
+      addresses: 48255
+      valuation_date: '2025-08-01'
+      published_mean_nzd: 415000.0
+      indexed_mean_nzd: 413713.5
+      modelled_mean_nzd: 413713.50000000006
+      median_rate_nzd_per_m2:
+        elevated_flat: 819.7075325236915
+        flat: 719.1844433064963
+        hill: 355.38390256433803
+    Porirua City:
+      addresses: 22559
+      valuation_date: '2025-09-01'
+      published_mean_nzd: 420000.0
+      indexed_mean_nzd: 420000.0
+      modelled_mean_nzd: 419999.99999999994
+      median_rate_nzd_per_m2:
+        elevated_flat: 766.523250981608
+        flat: 628.9375810710187
+        hill: 368.8404455668892
+    Upper Hutt City:
+      addresses: 19535
+      valuation_date: '2025-06-01'
+      published_mean_nzd: 438000.0
+      indexed_mean_nzd: 433882.8
+      modelled_mean_nzd: 433882.80000000005
+      median_rate_nzd_per_m2:
+        elevated_flat: 656.9055518899323
+        flat: 576.6783892060403
+        hill: 220.00530735780254
+    Wellington City:
+      addresses: 102034
+      valuation_date: '2024-09-01'
+      published_mean_nzd: 621000.0
+      indexed_mean_nzd: 598023.0
+      modelled_mean_nzd: 598022.9999999999
+      median_rate_nzd_per_m2:
+        elevated_flat: 1976.2933442794342
+        flat: 2157.692155777953
+        hill: 1116.5238794056118
+  suburb_ranking:
+    suburbs_ranked: 136
+    expectations_met: 4
+    expectations_considered: 7
+    out_of_place:
+    - Oriental Bay
+    - Days Bay
+    - Eastbourne
+insured_land:
+  extent: wlg-pilot
+  claims: 4295
+  dwellings_covered: 7926
+  addresses: 8591
+  area_ha: 170.83159150019776
+  median_area_m2: 319.8604738217863
+  p90_area_m2: 555.3169945849252
+  median_share_of_property: 0.9330732590651035
+  driveways: 4295
+  median_driveway_m: 11.914890768354846
+  share_cut_at_insured_access: 0.008614668218859138
+figures:
+  insured_land: report/exposure/land/insured-land/fig/insured-land-pilot.png
+  land_value: report/exposure/land/land-value/fig/land-value-rate-pilot.png

@@ -221,7 +221,7 @@ in this study has yet tested it in Wellington.
 
 #from-register("Limitations", ("L-16", "L-52", "L-53", "L-54"))
 
-=== Under way
+=== Future improvements
 
 #from-register("Tasks", ("T-88", "T-72", "T-48"))
 #from-register("Questions", ("Q-19",))
