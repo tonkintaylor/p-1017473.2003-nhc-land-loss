@@ -43,8 +43,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rioxarray
+import shapely
 
-from landloss.common.utils import terrain
+from landloss.common.utils import terrain, tiles
 from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.hazard.landslide.urban.delineation import (
@@ -198,9 +199,20 @@ def read_zonal(path, polygons, *, statistic):
 
 
 def delineate_at_scales(
-    domain, *, scales_m, extent, min_patch_cells, max_patch_length_m
+    domain,
+    *,
+    scales_m,
+    extent,
+    min_patch_cells,
+    max_patch_length_m,
+    max_untiled_cells,
+    tile_core_m,
+    tile_margin_m,
 ):
     """Delineate the candidates at each scale and stack them.
+
+    A scale whose grid holds more than ``max_untiled_cells`` is delineated
+    tile by tile (:func:`delineate_tiled`); the rest are delineated whole.
 
     Args:
         domain: The urban domain, from `urban_domain`.
@@ -209,6 +221,9 @@ def delineate_at_scales(
             ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         min_patch_cells: The smallest patch kept unmerged, in cells.
         max_patch_length_m: The longest contour length kept uncut, in metres.
+        max_untiled_cells: The largest grid delineated whole, in cells.
+        tile_core_m: The side of a tile's core, in metres.
+        tile_margin_m: The width read around each core, in metres.
 
     Returns:
         The candidates of every scale in one frame, with the columns
@@ -217,18 +232,69 @@ def delineate_at_scales(
     frames = []
     for scale_m in scales_m:
         print(f"\nDelineating at {scale_m} m ...", flush=True)
-        slope = read_raster(slope_path(scale_m, extent=extent))
-        aspect = read_raster(aspect_path(scale_m, extent=extent))
-        candidates = delineate_candidates(
-            slope,
-            aspect,
-            domain,
-            scale_m=scale_m,
-            min_patch_cells=min_patch_cells,
-            max_length_m=max_patch_length_m,
-        )
+        slope_file = slope_path(scale_m, extent=extent)
+        aspect_file = aspect_path(scale_m, extent=extent)
+        settings = {
+            "scale_m": scale_m,
+            "min_patch_cells": min_patch_cells,
+            "max_length_m": max_patch_length_m,
+        }
+        if tiles.raster_cells(slope_file) > max_untiled_cells:
+            candidates = delineate_tiled(
+                slope_file,
+                aspect_file,
+                domain,
+                core_m=tile_core_m,
+                margin_m=tile_margin_m,
+                **settings,
+            )
+        else:
+            candidates = delineate_candidates(
+                read_raster(slope_file), read_raster(aspect_file), domain, **settings
+            )
         print(f"  {len(candidates):,} candidates")
         frames.append(candidates)
+    return pd.concat(frames, ignore_index=True)
+
+
+def delineate_tiled(slope_file, aspect_file, domain, *, core_m, margin_m, **settings):
+    """Delineate one scale tile by tile, keeping each candidate once.
+
+    Each tile reads its core and a margin of ``margin_m`` and is delineated
+    against the whole domain; a candidate is kept by the tile whose core holds
+    its representative point (`landloss.common.utils.tiles.owned_by`). Every
+    step of the delineation reads only the cells near a patch, so a candidate
+    smaller than the margin comes out as it would from the whole grid.
+
+    Args:
+        slope_file: The slope raster at this scale.
+        aspect_file: The aspect raster on the same grid.
+        domain: The urban domain.
+        core_m: The side of a tile's core, in metres.
+        margin_m: The width read around each core, in metres.
+        **settings: Passed to `delineate_candidates`.
+
+    Returns:
+        The candidates of the scale, on a fresh index.
+    """
+    grid = tiles.tile_grid(slope_file, core_m=core_m, margin_m=margin_m)
+    print(
+        f"  {len(grid)} tiles of {core_m:,.0f} m with a {margin_m:,.0f} m margin",
+        flush=True,
+    )
+    shapely.prepare(domain)
+    frames = []
+    for tile in grid:
+        core = shapely.box(*tile.core_bounds)
+        if not domain.intersects(core):
+            continue
+        made = delineate_candidates(
+            tiles.read_window(slope_file, tile.outer),
+            tiles.read_window(aspect_file, tile.outer),
+            domain,
+            **settings,
+        )
+        frames.append(made.loc[tiles.owned_by(made, tile.core_bounds)])
     return pd.concat(frames, ignore_index=True)
 
 
@@ -414,6 +480,9 @@ def main(
     building_distance_m,
     min_patch_cells,
     max_patch_length_m,
+    max_untiled_cells,
+    tile_core_m,
+    tile_margin_m,
 ):
     """Delineate the candidates at every scale, attribute them and write them.
 
@@ -425,6 +494,9 @@ def main(
         building_distance_m: How far from a building the domain reaches.
         min_patch_cells: The smallest patch kept unmerged, in cells.
         max_patch_length_m: The longest contour length kept uncut, in metres.
+        max_untiled_cells: The largest grid delineated whole, in cells.
+        tile_core_m: The side of a tile's core, in metres.
+        tile_margin_m: The width read around each core, in metres.
     """
     bbox, extent_name = resolve_extent(extent=extent)
     minx, miny, maxx, maxy = bbox
@@ -458,6 +530,9 @@ def main(
         extent=extent,
         min_patch_cells=min_patch_cells,
         max_patch_length_m=max_patch_length_m,
+        max_untiled_cells=max_untiled_cells,
+        tile_core_m=tile_core_m,
+        tile_margin_m=tile_margin_m,
     )
 
     print("\nReading the terrain onto the candidates ...", flush=True)
@@ -498,4 +573,7 @@ if __name__ == "__main__":
         building_distance_m=config.BUILDING_DISTANCE_M,
         min_patch_cells=config.MIN_PATCH_CELLS,
         max_patch_length_m=config.MAX_PATCH_LENGTH_M,
+        max_untiled_cells=config.MAX_UNTILED_CELLS,
+        tile_core_m=config.TILE_CORE_M,
+        tile_margin_m=config.TILE_MARGIN_M,
     )

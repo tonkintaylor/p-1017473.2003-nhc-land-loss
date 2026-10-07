@@ -4,8 +4,9 @@
 # First collated 2026-10-07 from the code, configs and pilot outputs (not only
 # the status and method prose, several of which lag the code; the assumptions
 # marked `check` say where). The retaining wall page covers wall placement,
-# p_wall and the wall damage flags; this page points at its RW-A ids rather
-# than repeating them.
+# p_wall and the wall damage flags in full; this page repeats only the tables
+# that set the urban hazard (the points, the type shares and the type curves)
+# and points at its RW-A ids for the rest.
 #
 # `outputs` and `inputs` name keys of layer_files in gen_reviewer_landslide.py.
 # `layers` names the map layers drawn for the step (the first `visible` count
@@ -28,8 +29,11 @@ realisation:
 2. **Urban failures** on the faces of house lots, road cuts and fills. Sharp
    drops in the 1 m LiDAR DEM (*pips*) are joined into faces (*pifs*), tested
    against a slope table (*sizs*) and grown into *elements*. Each element gets
-   evacuated, imminent and inundated zones. Each zone polygon gets a fragility
-   on PGV: a retaining wall curve where a wall is drawn, and a Kingsbury rating
+   evacuated, imminent and inundated zones. Whether a face carries a wall is a
+   probability from a points score, a GNS floor and claim counts, drawn per
+   exposure world, and a drawn wall's type comes from its age, height and road
+   frontage (step 7). Each zone polygon gets a fragility on PGV: the retaining
+   wall curve for the wall's type where a wall is drawn, and a Kingsbury rating
    curve where none is.
 3. **One draw per earthquake.** Step 9 draws every urban polygon, lets a large
    failure supersede the urban polygons it overlaps and a larger urban failure
@@ -56,7 +60,7 @@ edges = [
     ["terrain", "coverage"], ["ground", "coverage"], ["shaking", "coverage"],
     ["coverage", "large"], ["units", "large"], ["terrain", "large"],
     ["dem", "faces"], ["ground", "faces"],
-    ["faces", "zones"], ["walls", "zones"],
+    ["faces", "walls"], ["faces", "zones"], ["walls", "zones"],
     ["zones", "fragility"], ["walls", "fragility"], ["ground", "fragility"], ["shaking", "fragility"],
     ["fragility", "realisation"], ["large", "realisation"], ["shaking", "realisation"],
     ["realisation", "land"],
@@ -83,9 +87,10 @@ module = "input"
 
 [[flow.nodes]]
 id = "walls"
-label = "Drawn walls (RW reviewer)"
-kind = "data"
+label = "7 Wall presence and type"
+kind = "step"
 module = "exposure"
+step = "walls"
 
 [[flow.nodes]]
 id = "terrain"
@@ -131,28 +136,28 @@ step = "faces"
 
 [[flow.nodes]]
 id = "zones"
-label = "7 Urban zones"
+label = "8 Urban zones"
 kind = "step"
 module = "hazard"
 step = "zones"
 
 [[flow.nodes]]
 id = "fragility"
-label = "8 Urban fragility"
+label = "9 Urban fragility"
 kind = "step"
 module = "hazard"
 step = "fragility"
 
 [[flow.nodes]]
 id = "realisation"
-label = "9 Combined realisation"
+label = "10 Combined realisation"
 kind = "step"
 module = "hazard"
 step = "realisation"
 
 [[flow.nodes]]
 id = "land"
-label = "10 Land damage"
+label = "11 Land damage"
 kind = "step"
 module = "vul"
 step = "land"
@@ -432,8 +437,62 @@ date from 2026-10-04 and count an earlier set of pifs.
 """
 
 [[steps]]
-id = "zones"
+id = "walls"
 number = 7
+title = "Walls: is there one, and what type"
+module = "hazard / landslide + exposure / rw"
+folder = "src/scripts/landloss/hazard/landslide/steps/s12_urban_slope_faces + src/scripts/landloss/exposure/rw/steps/s6_wall_population"
+scripts = ["gen_urban_slope_wall_units.py", "gen_wall_population.py"]
+inputs = ["sizs", "pif_cut_fill"]
+outputs = ["wall_units", "wall_draws", "drawn_walls"]
+layers = ["units", "pifs"]
+visible = 1
+charts = [
+    "wall_tiles", "wall_points_table", "points_to_prior", "wall_points_hist",
+    "wall_points_scored", "wall_type_shares", "frontage_multipliers", "drawn_type_by_age",
+]
+tables = []
+checked = "2026-10-07"
+narrative = """
+Whether a face carries a wall, and what kind, decides which fragility curve its
+polygons take in step 9 and how much ground they evacuate in step 8. The
+retaining wall page covers this chain in full (with maps and a per-unit trace);
+the two tables that drive it are repeated here because they set the urban
+hazard.
+
+The map colours each unit by its final `p_wall`; its popup lists the points it
+scored (`wall_points_explain`).
+
+**Is there a wall?** Each wall candidate (a siz piece, a low-height wall or a
+GNS-mapped wall with no pips) is one **wall unit** with one probability and one
+draw per exposure world (RW-A07, RW-A15). The probability is built in three
+stages (LS-A61):
+
+1. **Points prior.** The unit scores the points of the bin it falls in for each
+   attribute in the points table below. Points add on the odds: every
+   {BETA_WALL_POINTS_PER_DOUBLING} points doubles them, from p =
+   {BETA_WALL_BASE_P} at zero for a siz piece and {BETA_LOW_HEIGHT_WALL_PRIOR}
+   for a low-height wall, so no total reaches 0 or 1 (RW-A08).
+2. **GNS floor.** A unit with a GNS-mapped wall within 2 m is lifted to at least
+   {BETA_GNS_WALL_UNIT_FLOOR}; a GNS-only candidate takes
+   {BETA_GNS_ONLY_WALL_PROBABILITY} (RW-A10).
+3. **Claim update.** Where a claim report counts a property's walls, its units
+   are updated on the count with a Poisson-binomial, which only raises (RW-A11).
+
+The base, floor and GNS-only values are interim (the lead, 2026-10-07): the
+base is solved so the expected walls are 60% of the old factor prior's total.
+
+**What type?** Each drawn wall draws an age bin from its property's age shares,
+moves one bin later with probability {BETA_WALL_REBUILT_SHARE} (rebuilt since the
+house), then draws its type from the shares table row for that age bin and its
+height band (under 1.5 m, 1.5 to 2.5 m, over 2.5 m). On a road frontage the row
+is multiplied by the frontage multipliers and renormalised (LS-A62, RW-A17). The
+type then picks the fragility curve in step 9.
+"""
+
+[[steps]]
+id = "zones"
+number = 8
 title = "Urban zones: evacuated, imminent, inundated"
 module = "hazard / landslide"
 folder = "src/scripts/landloss/hazard/landslide/steps/s12_urban_slope_faces"
@@ -442,31 +501,47 @@ inputs = ["elements", "wall_units", "wall_draws"]
 outputs = ["zones_world", "zones_walled", "zones_bare"]
 layers = ["zones_world", "zones_walled", "zones_bare", "elements", "forced"]
 visible = 1
-charts = ["zone_areas"]
+charts = ["zone_areas", "zone_rules"]
 tables = ["report/hazard/landslide/urban-slope-faces/tab/polygon-sizes.csv"]
 checked = "2026-10-07"
 narrative = """
-Each element becomes one or more polygons, each with three zones:
+Every element becomes one or more failure **polygons**. A polygon has three
+kinds of ground, all drawn before anything is decided about failure. Step 9
+then decides, per earthquake, which polygons fail. Ground that does not fail
+stays in these layers but never reaches vul.
 
-- **evacuated**: the face plus at least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest
-  (LS-A37, RW-A20), cut into segments of about {BETA_SEGMENT_VOLUME_M3} m³ along the contour
-  (LS-A39). Its depth is set by the face type (LS-A38);
-- **imminent**: to a {BETA_REPOSE_ANGLE_DEG}° repose line from the toe (LS-A43);
-- **inundated**: the de Vilder et al. (2022) dry reach angle from the crest,
-  held to {BETA_MAX_RUNOUT_H} H and to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, never less than a {BETA_MIN_RUNOUT_M} m strip, and spread
-  back over its own scar if the deposit would be too deep (LS-A41, LS-A42).
+- **Evacuated land** is the ground that leaves: the element's own face, crest to
+  toe, plus a strip behind the crest.
+- **Inundated land** is the ground below the toe that the debris covers.
+- **Imminent land** is a band behind the evacuated ground that has not moved
+  but is left unsafe. It is written but not yet counted downstream (T-45).
 
-Zones are built for each exposure world's drawn walls, and for the every-wall
-and no-wall bounds. A wall changes the width only where the floor does not set
-it, and on the pilot the floor sets every width.
+What a wall changes is set by `with_walls`. An element under a drawn wall unit
+is built as a **free face**, and one with no wall as a **bank**. The zone
+layers are built three times: for this world's draw (`zones_world`), for every
+unit walled (`zones_walled`) and for none (`zones_bare`).
 
-Pilot (2026-10-07): evacuated 663,401 m² in world 0 (664,919 m² walled, 657,131
-m² bare); longest runout 20 m; 5 forced polygons.
+| | Walled face (a wall drawn in this world) | Unwalled face (no wall) |
+|---|---|---|
+| **Treated as** | `free_face` | `bank` |
+| **Evacuated: the face type's own width rule** (used only where wider than the minimum below) | The wall's active wedge, H·tan(45° − φ′/2). φ′ is {BETA_DEFAULT_RETAINED_PHI_DEG}° for every wall, because step 12 passes no retained ground, so the width is 0.45 H (`wall_wedge`). | On ground-map fill, the fill bank wedge, {BETA_FILL_BANK_WIDTH_H} H (`fill_bank_wedge`). Elsewhere, the T-44 headscarp band: {BETA_HEADSCARP_BAND_M} m, or {BETA_HEADSCARP_BAND_STEEP_M} m on slopes of {HEADSCARP_STEEP_SLOPE_DEG}° or more (`headscarp_band`). |
+| **Evacuated: the minimum width, and the width actually used** | At least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest (LS-A37). 0.45 H is always below 0.5 H, so **a walled face is always exactly max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m)**. | The same minimum. A fill bank's {BETA_FILL_BANK_WIDTH_H} H and a band of at most {BETA_HEADSCARP_BAND_STEEP_M} m are also always at or below it, so **an unwalled face is the same width as a walled one**. |
+| **Evacuated: what else it takes** | A face steeper than {STACK_DOMINANT_ANGLE_DEG}° and taller than {STACK_DOMINANT_HEIGHT_M} m takes the whole stack of faces above it (LS-A40). | No stack: only its own width. |
+| **Evacuated: segments** | Cut along the contour every {BETA_SEGMENT_VOLUME_M3} m³ of volume, never shorter than H (LS-A39). | The same. |
+| **Evacuated: depth (sets the volume)** | A straight slip plane from the toe to the back of the width: a mean of 0.5 H·w / (run + w), so **shallow** (LS-A38). | Fill bank: the ground map's fill thickness, else the volume–area relation. Other bank: {COLLUVIUM_DEPTH_M} m of cover. So **deeper**, and 10 to 20 times the volume (LS-A60). |
+| **Inundated: how far** | Hunter and Fell's (2003) travel angle from the crest: on the ground below the toe where it is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper, otherwise on the face's angle. The run past the toe is the median of its rays, held to {BETA_MAX_RUNOUT_H} H and to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, never under {BETA_MIN_RUNOUT_M} m, and swept along the whole toe (LS-A41). | The same rule; onto flatter ground it reads the bank's angle, not the wall's. |
+| **Inundated: spreading back** | If the strip would be deeper than min({BETA_MAX_DEPOSIT_DEPTH_H} H, {BETA_MAX_DEPOSIT_DEPTH_SOURCE} × the evacuated depth), the debris spreads back over the polygon's own evacuated ground, lowest cells first (LS-A42). | The same, against the deeper source depth. |
+| **Imminent: how far** | From the back of the evacuated ground to where a line from the toe at {BETA_REPOSE_ANGLE_DEG}° meets the ground. At least the T-45 band, at most H / tan {BETA_REPOSE_ANGLE_DEG}°. One median width per polygon, swept along the crest (LS-A43). | The same rule. |
+| **When it fails (step 8 and 9)** | On the wall's Koutsoupaki curve for its type and size. Every polygon on one wall shares one draw, so if any fails they all fail (LS-A45, LS-A50). | On the Kingsbury rating curve (LS-A32). Each polygon is drawn on its own (LS-A51). |
+
+The table under the map gives the pilot's medians for each rule from the zone
+files. A forced polygon (RW-A22) takes the floor band behind its
+wall line, with no element under it.
 """
 
 [[steps]]
 id = "fragility"
-number = 8
+number = 9
 title = "Urban fragility: one curve per polygon"
 module = "hazard / landslide"
 folder = "src/scripts/landloss/hazard/landslide/steps/s8_urban_slope_fragility"
@@ -475,7 +550,9 @@ inputs = ["zones_world", "drawn_walls", "ground_map", "pgv_realisation", "tpi_10
 outputs = ["urban_model"]
 layers = ["urban_model_theta", "zones_world"]
 visible = 1
-charts = ["localised_curves", "theta_by_wall_state"]
+charts = [
+    "fragility_curves", "wall_type_fragility", "localised_curves", "theta_by_wall_state",
+]
 tables = [
     "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-fit.csv",
     "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-zone-shares.csv",
@@ -486,9 +563,13 @@ narrative = """
 Each polygon gets a lognormal fragility on PGV, a median θ and a dispersion β:
 
 - **Walled polygon** (its unit drew a sloping wall in this world, insured or
-  not; LS-A44): the Koutsoupaki curve for the wall's type and size, ×0.85 for
-  fill or ×1.15 for cut, converted from PGA to PGV at the site's ratio (LS-A45,
-  LS-A46; RW-A23).
+  not; LS-A44): the Koutsoupaki (2023) curve for the wall's type and height
+  class, under or over {HEIGHT_CLASS_SPLIT_M} m (the curves and table below). Its
+  median is multiplied by {FILL_CAPACITY_FACTOR} for fill or
+  {CUT_CAPACITY_FACTOR} for cut, then converted from PGA to PGV at the site's
+  ratio (LS-A45, LS-A46; RW-A23, RW-A33). New timber pole and engineered modern
+  are the block/RC curve ×1.3 and ×1.5; for gravity masonry, old timber pole,
+  block/RC and landscaper timber the taller wall takes the weaker curve.
 - **Unwalled polygon**: a median that falls log-linearly with the Kingsbury
   (1995) rating, from {LOCALISED_THETA_AT_ZERO_RATING_M_S} m/s at rating 0 to {LOCALISED_THETA_AT_MAX_RATING_M_S} m/s at 150, β {LOCALISED_FRAGILITY_BETA} (LS-A32).
 
@@ -506,7 +587,7 @@ realised PGV of about 1.37 m/s.
 
 [[steps]]
 id = "realisation"
-number = 9
+number = 10
 title = "One draw: urban failures, supersession and absorption"
 module = "hazard / landslide"
 folder = "src/scripts/landloss/hazard/landslide/steps/s9_urban_slope_realisation"
@@ -537,7 +618,7 @@ rows, so supersession is not exercised. No figure has been rendered.
 
 [[steps]]
 id = "land"
-number = 10
+number = 11
 title = "Land damage"
 module = "vul / landslide land"
 folder = "src/scripts/landloss/vul/landslide/land/steps/s3_landslide_land_damage"

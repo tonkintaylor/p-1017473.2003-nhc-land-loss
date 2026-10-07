@@ -20,18 +20,21 @@ see-through. A categorical map is ``{value: (colour, label)}`` and is ordered as
 the legend should read, which is not always the sort order of the values.
 """
 
-# The two kinds of ground a landslide leaves behind, as
-# ``src/scripts/landloss/hazard/landslide/steps/s1_landslide_realisation/``
-# writes them into the ``land_class`` column. Red for the ground that goes,
-# orange for the ground it lands on: they have to be told apart at a glance,
-# because the whole reason the model keeps them separate is that NHC settles
-# loss of support and runout differently.
+# The three kinds of ground a landslide leaves behind, as
+# ``landloss.hazard.landslide.land_class`` names them in the ``land_class``
+# column. Red for the ground that goes, orange for the ground it lands on:
+# they have to be told apart at a glance, because the whole reason the model
+# keeps them separate is that NHC settles loss of support and runout
+# differently. Yellow for imminent land, the band behind the scarp that has not
+# moved but is left unsafe, which the urban failures (step 9) also write.
 EVACUATED_LAND = "evacuated land"
 INUNDATED_LAND = "inundated land"
+IMMINENT_LAND = "imminent land"
 
 LAND_CLASS_COLOURS: dict[str, tuple[str, str]] = {
     EVACUATED_LAND: ("#a50026", "Evacuated land (source)"),
     INUNDATED_LAND: ("#f46d43", "Inundated land (runout)"),
+    IMMINENT_LAND: ("#fee08b", "Imminent land (unsafe, not moved)"),
 }
 
 # The six land damage states, keyed by the state codes in

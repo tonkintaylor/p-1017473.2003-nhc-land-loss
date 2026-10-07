@@ -323,9 +323,11 @@ inputs = ["sizs", "pif_cut_fill", "property_records"]
 outputs = ["wall_units", "wall_draws"]
 layers = ["units", "pifs", "gns_only"]
 visible = 1
-charts = ["p_wall_basis", "p_wall_hist", "expected_walls"]
+charts = [
+    "wall_points_table", "points_to_prior", "wall_points_hist", "wall_points_scored",
+    "p_wall_basis", "p_wall_hist", "expected_walls",
+]
 tables = [
-    "src/landloss/io/assets/wall-probability-points.csv",
     "report/hazard/landslide/urban-slope-faces/tab/wall-pilot-counts.csv",
     "report/hazard/landslide/urban-slope-faces/tab/wall-gns-recall.csv",
     "report/hazard/landslide/urban-slope-faces/tab/wall-claims-holdout.csv",
@@ -337,12 +339,16 @@ Every candidate becomes one **wall unit**: one line, one probability, one draw,
 independent of every other unit (RW-A07). Its probability is built in three
 stages, and the units file keeps all three:
 
-1. **Prior, `p_prior`.** Points from the points table (below) for verticality,
-   height, length, distance to a building, road frontage or boundary, cut/fill
-   class, a rock or soil cut, the property's wall age and NHC's land attributes
-   flag. Every {BETA_WALL_POINTS_PER_DOUBLING} points doubles the odds, from
-   {BETA_WALL_BASE_P} at zero (RW-A08, RW-A13). A gns_only unit takes
-   {BETA_GNS_ONLY_WALL_PROBABILITY} instead.
+1. **Prior, `p_prior`.** Each unit scores the points of the bin it falls in for
+   ten attributes: verticality, height, length, distance to a building, road
+   frontage or property boundary, cut/fill class, a cut in rock deeper than
+   2 m, a cut in soil, the property's wall age shares (share-weighted) and NHC's
+   land attributes flag. The points add on the odds: every
+   {BETA_WALL_POINTS_PER_DOUBLING} points doubles them, from p =
+   {BETA_WALL_BASE_P} at zero for a siz piece and {BETA_LOW_HEIGHT_WALL_PRIOR}
+   for a low-height wall, so no total reaches 0 or 1 (RW-A08, RW-A13). A
+   gns_only unit is scored too, but takes {BETA_GNS_ONLY_WALL_PROBABILITY}.
+   The full table and the points-to-prior scale are below.
 2. **GNS floor, `p_floor`.** A unit with a GNS-mapped wall on it is lifted to at
    least {BETA_GNS_WALL_UNIT_FLOOR} (RW-A10).
 3. **Claim update, `p_claims` = `p_wall`.** Where a claim report counts the
@@ -350,9 +356,12 @@ stages, and the units file keeps all three:
    The update only ever raises (RW-A11, RW-A12).
 
 `p_wall_basis` names the stage that set the final value. **Click a unit** to see
-its three stages as a waterfall. The units file keeps each stage's result but not
-the points behind `p_prior`, so the side panel lists the unit's flags rather
-than a points breakdown.
+its three stages as a waterfall and the bins that scored its points
+(`wall_points_explain`).
+
+Base {BETA_WALL_BASE_P}, floor {BETA_GNS_WALL_UNIT_FLOOR} and gns_only
+{BETA_GNS_ONLY_WALL_PROBABILITY} are interim (the lead, 2026-10-07): the base is
+solved so the expected walls come to 60% of the old factor prior's total.
 
 Wall height is the siz table's near-drop quantile (RW-A09, marked *check*).
 """
@@ -368,9 +377,11 @@ inputs = ["wall_units", "wall_draws", "wall_age", "insured_land"]
 outputs = ["wall_probability", "drawn_walls", "wall_population"]
 layers = ["walls", "units", "insured_land"]
 visible = 3
-charts = ["population_tiles", "size_class", "wall_type", "age_bin", "wall_position"]
+charts = [
+    "wall_type_shares", "frontage_multipliers", "drawn_type_by_age",
+    "population_tiles", "size_class", "wall_type", "age_bin", "wall_position",
+]
 tables = [
-    "src/landloss/io/assets/beta-retaining-wall-type-shares.csv",
     "report/exposure/rw/rw-datasets/tab/rw-dataset-wall-counts.csv",
     "report/exposure/rw/rw-datasets/tab/rw-dataset-agreement-gns-nhc.csv",
 ]
@@ -385,6 +396,20 @@ Each drawn wall then gets:
 - an **age bin** from its property's dwelling (RW-A16);
 - a **wall type** from the age, height band and road frontage (RW-A17);
 - a **size class** from its height (RW-A18).
+
+The type is drawn in three moves, on its own random stream per world:
+
+1. Draw an age bin from the property's age shares.
+2. With probability {BETA_WALL_REBUILT_SHARE}, move it one bin later (the wall
+   was rebuilt since the house; 2005 on stays).
+3. Draw the type from the row of the **type shares** table (below) for that
+   age bin and the wall's height band (under 1.5 m, 1.5 to 2.5 m, over 2.5 m).
+   On a road frontage the row is first multiplied by the **frontage
+   multipliers** and renormalised.
+
+The shares and multipliers are placeholders for Nick Peters to revise (RW-A17).
+Note the type height bands (1.5 m, 2.5 m) differ from the fragility table's
+height class (2 m).
 
 Only drawn walls with a claim, whose line comes within 2 m of insured land, form
 the **insured population** that vul and loss see (RW-A19). Each gets an
@@ -437,20 +462,26 @@ inputs = ["zones_world", "drawn_walls"]
 outputs = ["urban_model", "realisation", "wall_outcome"]
 layers = ["slides", "walls", "zones_world"]
 visible = 2
-charts = ["fragility_curves", "outcomes"]
+charts = ["fragility_curves", "wall_type_fragility", "outcomes"]
 tables = [
-    "src/landloss/io/assets/retaining-wall-type-fragility.csv",
     "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-walls.csv",
 ]
 checked = "2026-10-07"
 narrative = """
 Landslide step 8 gives each zone polygon a **wall state** (`fill_wall`,
-`cut_wall` or `no_wall`) from its unit's drawn wall, and a walled polygon a wall
-curve from the Koutsoupaki (2023) table, converted to PGV (RW-A23). There are
-two damage states, none and replace (RW-A24).
+`cut_wall` or `no_wall`) from its unit's drawn wall. A walled polygon takes the
+Koutsoupaki (2023) curve for the wall's **type and height class** (below; RW-A23,
+RW-A33): fourteen curves, seven types by under or over
+{HEIGHT_CLASS_SPLIT_M} m. The median is multiplied by
+{FILL_CAPACITY_FACTOR} for a fill wall or {CUT_CAPACITY_FACTOR} for a cut wall,
+then converted from PGA to PGV at the site's ratio. There are two damage
+states, none and replace (RW-A24).
 
-Every wall still takes one curve for now; the seven type curves are not yet
-read (RW-A26).
+Two choices in the table are the lead's (2026-10-06 and 07): new timber pole
+and engineered modern walls are the block/RC curve times 1.3 and 1.5
+(`type_factor`), and for gravity masonry, old timber pole, block/RC and
+landscaper timber the height effect is **switched**, so a taller wall of those
+types takes the weaker curve.
 
 Landslide step 9 draws one uniform per wall, and **if any polygon on the wall
 fails, the wall fails** (RW-A25). Each insured wall's outcome is one of:

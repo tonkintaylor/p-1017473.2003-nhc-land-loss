@@ -524,13 +524,17 @@ def _graduated_renderer(layer: dict[str, Any], geometry: str, **symbol: Any) -> 
 
     cmap = colormaps[layer.get("cmap", "viridis")]
     count = len(edges) - 1
+    # Whole numbers suit money and areas, but a field under 10 (a probability, a
+    # median in m/s) would read "0 - 1, 1 - 1", so it keeps two decimals.
+    decimals = layer.get("label_decimals", 2 if max(abs(e) for e in edges) < 10 else 0)
     ranges, symbols = [], []
     for idx in range(count):
         low, high = edges[idx], edges[idx + 1]
         colour = to_hex(cmap(idx / max(count - 1, 1)))
+        label = f"{low:,.{decimals}f} - {high:,.{decimals}f}"
         ranges.append(
             f'<range lower="{low:.6f}" upper="{high:.6f}" symbol="{idx}" '
-            f'label={quoteattr(f"{low:,.0f} - {high:,.0f}")} render="true"/>'
+            f'label={quoteattr(label)} render="true"/>'
         )
         symbols.append(_symbol_xml(str(idx), geometry, color=colour, **symbol))
 
@@ -995,7 +999,7 @@ def _prepare_layer(
         # A graduated layer pointing at a file this machine cannot open has no
         # range to work from, so the spec has to supply one. Equal intervals,
         # since there are no values to take quantiles of.
-        if graded and layer.get("min") is not None:
+        if graded and not layer.get("breaks") and layer.get("min") is not None:
             import numpy as np
 
             layer["breaks"] = np.linspace(
@@ -1011,7 +1015,9 @@ def _prepare_layer(
     layer.setdefault("crs", meta["authid"])
     if layer["kind"] == "vector" and meta.get("geometry"):
         layer.setdefault("geometry", meta["geometry"])
-    if graded:
+    # A spec may fix the breaks itself, so a probability reads on the same bands
+    # in every layer and every build rather than on this file's quantiles.
+    if graded and not layer.get("breaks"):
         layer["breaks"] = graduated_breaks(
             _field_values(readable, graded),
             int(layer.get("bins", 8)),

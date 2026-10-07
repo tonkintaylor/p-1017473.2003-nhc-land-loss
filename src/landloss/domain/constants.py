@@ -377,13 +377,14 @@ UNCONSENTED_WALL_HEIGHT_M = 1.5
 # and the total sets the prior on the log-odds scale. Every value is judgement
 # with no fit behind it, replaced by the claim report extraction (T-50).
 #
-# The probability at 0 points. INTERIM (the lead, 2026-10-07: "bring it down by
-# 40% for now, adjust GNS walls and the points-based system"): solved so the
-# pilot's total expected walls after the GNS floor and the claim update are 60%
-# of the 3,997 the multiplied factors gave (about 2,400), with the two GNS
-# values below at 0.80 and 0.70 (the lead's correction, 2026-10-07). Solved on
-# the pilot run of 2026-10-07: 2,398 expected walls (2,657 at a base of 0.30).
-BETA_WALL_BASE_P = 0.225
+# The probability at 0 points. INTERIM: first solved (the lead, 2026-10-07,
+# "bring it down by 40%") to 60% of the 3,997 expected walls the multiplied
+# factors gave, at 0.225 for 2,398 walls; then, after the review came back
+# (the lead, 2026-10-07: "increase the number of walls by about 40% and
+# increase the GNS wall with a pif to be 95%"), re-solved on the pilot to 1.4
+# x 2,398 = 3,357 expected walls after the GNS floor (0.95) and the claim
+# update.
+BETA_WALL_BASE_P = 0.458
 # Points that double the odds that a candidate is a wall.
 BETA_WALL_POINTS_PER_DOUBLING = 20.0
 # The probability at 0 points of a low-height wall candidate (class low_height,
@@ -396,9 +397,9 @@ BETA_LOW_HEIGHT_WALL_PRIOR = 0.3
 BETA_WALL_BOUNDARY_DISTANCE_M = 2.0
 # The least probability of a wall candidate with a GNS mapped wall within 2 m.
 # Not 1, because the mapping is from imagery and a line can be a road batter or
-# the neighbour's wall. INTERIM: 0.95 until 2026-10-07, when the lead cut it
-# to 0.80 (a first cut to 0.57 was too aggressive, the lead the same day).
-BETA_GNS_WALL_UNIT_FLOOR = 0.80
+# the neighbour's wall. 0.95; the lead cut it to 0.80 on 2026-10-07 and set it
+# back to 0.95 the same day after the review came back.
+BETA_GNS_WALL_UNIT_FLOOR = 0.95
 # The probability of a GNS-only candidate (a stretch of mapped wall with no pip
 # within 2 m): lower than the floor, because the DEM sees no step there.
 # INTERIM: 0.8 until 2026-10-07, when the lead cut it to 0.70 (a first cut to

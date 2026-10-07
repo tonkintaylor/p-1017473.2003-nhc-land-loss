@@ -157,6 +157,7 @@ NLM_MATERIAL_GEOLOGY_VALUES: dict[str, float] = {
     # Water-laid deposits.
     "River channel": GEOLOGY_COLLUVIUM_OR_ALLUVIUM,
     "Floodplain": GEOLOGY_COLLUVIUM_OR_ALLUVIUM,
+    "Alluvial fan and plains": GEOLOGY_COLLUVIUM_OR_ALLUVIUM,
     "Foreshore": GEOLOGY_COLLUVIUM_OR_ALLUVIUM,
     "Swamp": GEOLOGY_COLLUVIUM_OR_ALLUVIUM,
     # Placed ground.

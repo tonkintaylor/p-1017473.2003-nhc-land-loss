@@ -70,10 +70,14 @@ run only over elements and polygons. The rules, each where the plan sets it:
    so the band is even along the crest rather than a line wherever one ray
    climbs a steep slope.
 7. **Inundated ground**, below the toe, ends where a line from the polygon's
-   crest dipping at the reach angle meets the ground, traced down the crest
-   cell's fall line [hunter_fell_2003; de_vilder_2022]: the dry debris
-   avalanche relation for every polygon, fill included (:func:`reach_ratio`;
-   the lead, 2026-10-07), on the segment's evacuated volume. A stack's
+   crest dipping at the travel angle meets the ground, traced down the crest
+   cell's fall line [hunter_fell_2003] (:func:`reach_ratio`; the lead,
+   2026-10-07). Where the ground below the toe, read over
+   :data:`BETA_DOWNSLOPE_WINDOW_H` heights of the polygon, is at or steeper
+   than :data:`BETA_STEEP_DOWNSLOPE_DEG`, the angle is Hunter and Fell's for
+   unconfined natural slopes on that downslope angle, which is flatter than
+   the ground, so debris runs on down a steep slope; otherwise it is their
+   cut relation on the angle of the polygon's element. A stack's
    polygon also takes the reach from its free-face's own crest, so taking
    the slope above never shortens the runout below the toe (stage D1). The
    polygon takes the median of its rays' reach past the toe as one length,
@@ -198,24 +202,51 @@ BETA_SEGMENT_VOLUME_M3 = 1000.0
 # anderson_2015; kingsbury_1995]; an even chance is a placeholder.
 BETA_RETROGRESSION_P = 0.5
 
-# Reach angle against volume, log10(H/L) = slope x log10(V) + intercept, from
-# the crest of the source to the toe of the deposit [de_vilder_2022]: dry
-# debris avalanches under 100,000 m3 (Figure 2.3, sr2019-038-F03, R2 0.113,
-# N 144) and fill flow slides (Figure 2.6, sr2019-038-F20, R2 0.299). Both
-# read against the figure images on 2026-10-02; the medians, the 50%
-# exceedance lines (sr2019-038-F02).
-DRY_REACH_LOG_SLOPE = -0.033
-DRY_REACH_LOG_INTERCEPT = 0.0315
-FILL_REACH_LOG_SLOPE = -0.090
-FILL_REACH_LOG_INTERCEPT = -0.148
+# The travel angle H/L, from the crest of the source to the toe of the
+# deposit, by the source's angle or the ground's below its toe
+# [hunter_fell_2003] (the lead, 2026-10-07, in place of the dry debris
+# avalanche reach angle against volume [de_vilder_2022], whose H/L of 0.86 to
+# 1.0 put the deposit toe on the source itself for every face flatter than
+# about 42 degrees, so 97% of the pilot's polygons ran out only the 1 m floor).
+#
+# A cut failing onto near-horizontal ground, under 500 m3 (Eq. [2], from
+# Finlay et al. 1999; hunter2003-F06): H/L = 0.78 (tan a_cut)^0.5. It leaves
+# the source only where the cut is steeper than about 31 degrees.
+CUT_REACH_COEFFICIENT = 0.78
+CUT_REACH_EXPONENT = 0.5
+# Hong Kong natural slopes, unconfined (Eq. [3], hunter2003-F21, r2 0.71, 11
+# slides with tan a2 0.31 to 0.93): H/L = 0.77 tan a2 + 0.087, with a2 the
+# downslope angle below the source toe over at least half the travel
+# (hunter2003-F24). It is flatter than the ground below for every a2 over
+# about 21 degrees, so debris runs on down a steep slope.
+DOWNSLOPE_REACH_SLOPE = 0.77
+DOWNSLOPE_REACH_INTERCEPT = 0.087
+# The steepest tan a2 of the unconfined cases; steeper ground below the toe
+# is read at it, which leaves the line flatter than the ground, so the
+# runout goes on to the caps.
+DOWNSLOPE_MAX_TAN = 0.93
 
-# The two failure styles, which pick the reach angle relation. Every polygon
-# runs out as a dry debris avalanche (the lead, 2026-10-07): the fill flow
-# slide relation is from loose, saturated, mostly rain-triggered Hong Kong
-# fills that flowed, and on every fill element it ran debris tens of metres
-# down Wellington hillsides.
-DRY_DEBRIS_AVALANCHE = "dry_debris_avalanche"
-FILL_FLOW_SLIDE = "fill_flow_slide"
+# Judgement (the lead, 2026-10-07): ground below the toe at or steeper than
+# this, in degrees, takes the downslope relation; flatter, the cut relation.
+# Near the bottom of the unconfined cases' range (17 degrees), and the angle
+# under which Franks (1996) saw confined debris flows deposit
+# (hunter2003-F27).
+BETA_STEEP_DOWNSLOPE_DEG = 20.0
+
+# Judgement: the cut relation is read at no steeper a source than this, in
+# degrees; tan a_cut grows without bound towards a vertical face, which a
+# step on the DEM (a line element, 90 degrees) would otherwise be.
+BETA_MAX_CUT_ANGLE_DEG = 80.0
+
+# Judgement: the ground below the toe is read along the fall line over this
+# many of the polygon's heights, half the furthest runout
+# (BETA_MAX_RUNOUT_H), and never over fewer than this many metres, two cells.
+BETA_DOWNSLOPE_WINDOW_H = 1.5
+BETA_DOWNSLOPE_WINDOW_M = 2.0
+
+# The two runout relations, as the polygon's ``style``.
+CUT_SLOPE = "cut_slope"
+DOWNSLOPE = "downslope"
 
 # Judgement (the lead, 2026-10-07): the inundated strip runs no further past
 # the toe than this many of the polygon's heights, nor further than holds its
@@ -261,9 +292,9 @@ STACK_OVERLAP = "stack"
 SEPARATE_CATCHMENTS = "separate_catchments"
 WITHIN_WIDTH = "within_width"
 
-# The volume the reach angle relations are read at is never under this, in
-# cubic metres, so a sliver of a polygon does not take a logarithm of zero.
-_MIN_VOLUME_M3 = 1.0
+# A travel angle so steep that the line from the crest is under the ground at
+# the first cell past the toe: it marches every ray to its toe and no further.
+_TOE_ONLY_HL = 1e9
 
 # Judgement: elements whose aspects differ by more than this, in degrees, face
 # apart, so the ground between them is a divide, not one slope. The plan's
@@ -285,7 +316,8 @@ class SlopePolygons:
         polygons: One row per polygon, indexed from 1 by ``polygon``: the
             element it is a segment of (``element``, ``segment``), the
             element's ``element_type`` and ``ground_group``, ``is_fill``,
-            ``style`` (always :data:`DRY_DEBRIS_AVALANCHE`), ``width_rule``,
+            ``style`` (the travel angle's relation, :data:`CUT_SLOPE` or
+            :data:`DOWNSLOPE`), ``width_rule``,
             ``width_behind_crest_m`` (the rule's, or the floor of
             :func:`min_evacuated_width_m` where wider),
             ``width_floored`` (the floor set it),
@@ -297,7 +329,10 @@ class SlopePolygons:
             ``height_m`` (the polygon's, toe of the element to the crest of
             the highest element in it, median over its rays), ``length_m``
             (along the contour), ``area_m2``, ``depth_m``, ``volume_m3``,
-            ``reach_hl`` (H/L of the runout), ``imminent_width_m`` (the
+            ``source_angle_deg`` (its element's angle),
+            ``downslope_angle_deg`` (the ground's below its toe, median over
+            its rays, NaN where none is read), ``reach_hl`` (H/L of the
+            runout, :func:`reach_ratio`), ``imminent_width_m`` (the
             imminent band's width behind the evacuated ground,
             :func:`imminent_width_m`), ``runout_m`` (the inundated strip's
             length past the toe, :func:`inundated_length_m`),
@@ -499,22 +534,42 @@ def planar_depth_m(
     return np.maximum(z - plane, 0.0)
 
 
-def reach_ratio(volume_m3: ArrayLike, style: ArrayLike) -> NDArray[np.float64]:
-    """H/L of a failure's runout, from its volume and style [de_vilder_2022].
+def reach_ratio(
+    source_angle_deg: ArrayLike, downslope_angle_deg: ArrayLike
+) -> tuple[NDArray[np.float64], NDArray[np.str_]]:
+    """H/L of a failure's runout and the relation that set it [hunter_fell_2003].
 
     Args:
-        volume_m3: The evacuated volume; read at no less than 1 m3.
-        style: :data:`DRY_DEBRIS_AVALANCHE` or :data:`FILL_FLOW_SLIDE`.
+        source_angle_deg: The angle of the failing face.
+        downslope_angle_deg: The angle of the ground below its toe; NaN where
+            it is not known, which takes the cut relation.
 
     Returns:
-        The median H/L: 0.86 for a dry failure of 1,000 m3 and 0.38 for a
-        fill flow slide.
+        ``(hl, style)``: where the ground below the toe is at or steeper than
+        :data:`BETA_STEEP_DOWNSLOPE_DEG`, ``0.77 tan a2 + 0.087`` with
+        ``tan a2`` no more than :data:`DOWNSLOPE_MAX_TAN` (:data:`DOWNSLOPE`);
+        otherwise ``0.78 (tan a_cut)^0.5`` with the source angle no steeper
+        than :data:`BETA_MAX_CUT_ANGLE_DEG` (:data:`CUT_SLOPE`).
     """
-    log_volume = np.log10(np.maximum(np.asarray(volume_m3, dtype=float), 1.0))
-    fill = np.asarray(style) == FILL_FLOW_SLIDE
-    slope = np.where(fill, FILL_REACH_LOG_SLOPE, DRY_REACH_LOG_SLOPE)
-    intercept = np.where(fill, FILL_REACH_LOG_INTERCEPT, DRY_REACH_LOG_INTERCEPT)
-    return np.power(10.0, slope * log_volume + intercept)
+    source = np.clip(
+        np.nan_to_num(np.asarray(source_angle_deg, dtype=float), nan=0.0),
+        0.0,
+        BETA_MAX_CUT_ANGLE_DEG,
+    )
+    downslope = np.asarray(downslope_angle_deg, dtype=float)
+    with np.errstate(invalid="ignore"):
+        steep = downslope >= BETA_STEEP_DOWNSLOPE_DEG
+    cut = CUT_REACH_COEFFICIENT * np.power(
+        np.tan(np.radians(source)), CUT_REACH_EXPONENT
+    )
+    tan_below = np.minimum(
+        np.tan(np.radians(np.where(steep, downslope, 0.0))), DOWNSLOPE_MAX_TAN
+    )
+    below = DOWNSLOPE_REACH_SLOPE * tan_below + DOWNSLOPE_REACH_INTERCEPT
+    return (
+        np.where(steep, below, cut).astype(float),
+        np.where(steep, DOWNSLOPE, CUT_SLOPE),
+    )
 
 
 def inundated_length_m(
@@ -969,19 +1024,7 @@ def _march_downhill(
         index = np.nonzero(active)[0]
         if index.size == 0:
             break
-        step = k * WALK_STEP_CELLS
-        r = np.rint(rays.row[index] - step * rays.up_row[index]).astype(np.intp)
-        c = np.rint(rays.col[index] - step * rays.up_col[index]).astype(np.intp)
-        inside = (r >= 0) & (r < shape[0]) & (c >= 0) & (c < shape[1])
-        r_in = np.where(inside, r, 0)
-        c_in = np.where(inside, c, 0)
-        dist = (
-            -(
-                (r - rays.row[index]) * rays.up_row[index]
-                + (c - rays.col[index]) * rays.up_col[index]
-            )
-            * cell_size_m
-        )
+        r_in, c_in, inside, dist = _step_down(rays, index, k, shape, cell_size_m)
         z = np.where(inside, dem[r_in, c_in], np.nan)
         lab = np.where(inside, labels[r_in, c_in], OUTSIDE)
         on_base[index] &= (lab == rays.base[index]) | _on_own_ground(
@@ -1000,6 +1043,88 @@ def _march_downhill(
         active[index[blocked | (past & ~covered)]] = False
     reach = np.where(np.isfinite(last_d), last_d - toe_d + cell_size_m, 0.0)
     return toe_d, reach
+
+
+def _step_down(
+    rays: _Rays,
+    index: NDArray[np.intp],
+    k: int,
+    shape: tuple[int, int],
+    cell_size_m: float,
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_], NDArray[np.float64]]:
+    """The cell ``k`` steps down the fall line of each indexed ray.
+
+    Returns:
+        ``(row, col, inside, dist)``: the cell (0 where off the grid), whether
+        it is on the grid, and the horizontal distance of its centre in front
+        of the ray's crest cell's, along the ray.
+    """
+    step = k * WALK_STEP_CELLS
+    r = np.rint(rays.row[index] - step * rays.up_row[index]).astype(np.intp)
+    c = np.rint(rays.col[index] - step * rays.up_col[index]).astype(np.intp)
+    inside = (r >= 0) & (r < shape[0]) & (c >= 0) & (c < shape[1])
+    dist = (
+        -(
+            (r - rays.row[index]) * rays.up_row[index]
+            + (c - rays.col[index]) * rays.up_col[index]
+        )
+        * cell_size_m
+    )
+    return np.where(inside, r, 0), np.where(inside, c, 0), inside, dist
+
+
+def _downslope_angle_deg(
+    dem: NDArray[np.float64],
+    rays: _Rays,
+    *,
+    toe_d: NDArray[np.float64],
+    window_m: NDArray[np.float64],
+    cell_size_m: float,
+) -> NDArray[np.float64]:
+    """The mean angle of the ground below each ray's toe, in degrees.
+
+    Read along the ray's fall line from its toe (``toe_d`` in front of its
+    crest cell, from :func:`_march_downhill`) to ``window_m`` past it, as the
+    drop between the two over the distance; where nodata or the edge of the
+    grid comes first, to the last cell before it. NaN where the ray has no
+    toe or no cell past it.
+    """
+    shape = dem.shape
+    n_rays = rays.row.size
+    toe_z = np.full(n_rays, np.nan)
+    far_z = np.full(n_rays, np.nan)
+    far_d = np.full(n_rays, np.nan)
+    active = np.isfinite(toe_d)
+    max_steps = int(2 * (shape[0] + shape[1]) / WALK_STEP_CELLS)
+    for k in range(1, max_steps + 1):
+        index = np.nonzero(active)[0]
+        if index.size == 0:
+            break
+        r_in, c_in, inside, dist = _step_down(rays, index, k, shape, cell_size_m)
+        z = np.where(inside, dem[r_in, c_in], np.nan)
+        blocked = ~inside | ~np.isfinite(z)
+        start = toe_d[index]
+        with np.errstate(invalid="ignore"):
+            at_toe = (
+                ~blocked & np.isnan(toe_z[index]) & (dist >= start - _DISTANCE_SLACK_M)
+            )
+            toe_z[index[at_toe]] = z[at_toe]
+            within = (
+                ~blocked
+                & ~at_toe
+                & np.isfinite(toe_z[index])
+                & (dist <= start + window_m[index] + _DISTANCE_SLACK_M)
+            )
+            far_z[index[within]] = z[within]
+            far_d[index[within]] = dist[within]
+            done = (blocked & (dist >= start - _DISTANCE_SLACK_M)) | (
+                dist > start + window_m[index] + _DISTANCE_SLACK_M
+            )
+        active[index[done]] = False
+    with np.errstate(invalid="ignore", divide="ignore"):
+        run = far_d - toe_d
+        angle = np.degrees(np.arctan2(toe_z - far_z, run))
+    return np.where(run > 0, angle, np.nan)
 
 
 def _on_own_ground(
@@ -1413,6 +1538,8 @@ def _empty(
         "area_m2",
         "depth_m",
         "volume_m3",
+        "source_angle_deg",
+        "downslope_angle_deg",
         "reach_hl",
         "imminent_width_m",
         "runout_m",
@@ -1815,7 +1942,6 @@ def build_slope_polygons(
     polygons["element_type"] = element_type[base - 1]
     polygons["ground_group"] = elements["ground_group"].to_numpy()[base - 1]
     polygons["is_fill"] = fill[base - 1]
-    polygons["style"] = DRY_DEBRIS_AVALANCHE
     polygons["width_rule"] = rule[base - 1]
     polygons["width_behind_crest_m"] = width[base - 1]
     polygons["width_floored"] = np.isclose(
@@ -1887,9 +2013,6 @@ def build_slope_polygons(
     polygons["volume_m3"] = volume
     with np.errstate(invalid="ignore", divide="ignore"):
         polygons["depth_m"] = volume / polygons["area_m2"].to_numpy()
-    polygons["reach_hl"] = reach_ratio(
-        np.maximum(volume, _MIN_VOLUME_M3), polygons["style"].to_numpy()
-    )
     polygons["n_rays"] = by_polygon.size().reindex(polygons.index, fill_value=0)
 
     def per_polygon(values: NDArray[np.float64]) -> pd.Series:
@@ -1937,13 +2060,47 @@ def build_slope_polygons(
     # leaves its element and its polygon's evacuated ground. A ray's
     # reach is from the polygon's crest, and for a stack the longer of that
     # and the reach from its own free-face's crest, so taking the stack never
-    # runs out shorter than the free-face alone would.
-    hl = per_ray(polygons["reach_hl"])
+    # runs out shorter than the free-face alone would. The travel angle is
+    # the polygon's (reach_ratio): from the ground below its toe where that
+    # is steep, otherwise from its element's angle.
     n_cells = shape[0] * n_cols
     own_keys = np.unique(
         evac_cells["polygon"].to_numpy(dtype=np.int64) * n_cells
         + evac_cells["cell"].to_numpy(dtype=np.int64)
     )
+    ray_keys = ray_polygon.astype(np.int64) * n_cells
+    # Where each ray leaves its own ground does not hang on the travel angle:
+    # a line that drops at once stops every ray at its toe.
+    toe_d, _ = _march_downhill(
+        found.labels,
+        elevation,
+        rays,
+        top_z=elevation[rays.row, rays.col],
+        top_d=np.zeros(rays.row.size),
+        reach_hl=np.full(rays.row.size, _TOE_ONLY_HL),
+        barriers=barrier_grid,
+        cell_size_m=cell_size_m,
+        own_keys=own_keys,
+        ray_keys=ray_keys,
+    )
+    polygons["source_angle_deg"] = angle[base - 1]
+    polygons["downslope_angle_deg"] = per_polygon(
+        _downslope_angle_deg(
+            elevation,
+            rays,
+            toe_d=toe_d,
+            window_m=np.maximum(
+                BETA_DOWNSLOPE_WINDOW_H * per_ray(polygons["height_m"]),
+                BETA_DOWNSLOPE_WINDOW_M,
+            ),
+            cell_size_m=cell_size_m,
+        )
+    )
+    polygons["reach_hl"], polygons["style"] = reach_ratio(
+        polygons["source_angle_deg"].to_numpy(),
+        polygons["downslope_angle_deg"].to_numpy(),
+    )
+    hl = per_ray(polygons["reach_hl"])
     marches = [
         _march_downhill(
             found.labels,
@@ -1955,14 +2112,13 @@ def build_slope_polygons(
             barriers=barrier_grid,
             cell_size_m=cell_size_m,
             own_keys=own_keys,
-            ray_keys=ray_polygon.astype(np.int64) * n_cells,
+            ray_keys=ray_keys,
         )
         for top_z, top_d in (
             (uphill.top_z, uphill.top_d),
             (elevation[rays.row, rays.col], np.zeros(rays.row.size)),
         )
     ]
-    toe_d = marches[0][0]
     reach = np.fmax(marches[0][1], marches[1][1])
     polygons["runout_m"] = inundated_length_m(
         per_polygon(np.where(np.isfinite(toe_d), reach, np.nan)).to_numpy(),

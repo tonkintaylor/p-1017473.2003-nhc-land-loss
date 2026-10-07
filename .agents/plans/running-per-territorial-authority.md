@@ -57,18 +57,32 @@ candidates outside the ground map.
 
 ### Phase 1 — A tiling utility
 
-- [ ] `landloss.common.utils.tiles`: the tile grid with margins, a reader that
-      returns one tile of a raster with its margin, a writer that keeps the
-      core, and the representative-point ownership rule for vectors.
-- [ ] Tests: a synthetic raster processed whole and tiled gives the same
-      answer to within the margin rule; a vector layer split and recombined
-      has no duplicates and no gaps.
+- [x] `landloss.common.utils.tiles`: the tile grid with margins
+      (`tile_grid`), a reader that returns one tile of a raster with its
+      margin (`read_window`), and the representative-point ownership rule for
+      vectors (`owned_by`), 2026-10-07. No core writer yet: the first step
+      tiled (landslide step 6) writes vectors, not rasters.
+- [x] Tests: the cores cover every cell once, a window reads what a whole
+      read holds there, a feature on a seam has exactly one owner
+      (`tests/landloss/common/utils/test_tiles.py`); step 6 tiled gives the
+      candidates it gives whole (`test_tiled_candidates.py`, and on both
+      pilots at 1 and 3 m).
 
 ### Phase 2 — The 1 m steps, tiled
 
+Measured on the Porirua pilot on 2026-10-07 (peak memory per step, scaled
+by area): only landslide step 6's delineation (about 85 GB over Porirua) and
+step 12's faces (95 GB) and wall zones (77 GB) outgrow a 64 GB machine;
+step 3 peaked at 33 GB over Porirua, and step 13 and the wall units scale to
+about 28 GB.
+
 - [ ] Landslide step 3 fetches and writes the 1 m DEM and derivatives per
-      tile; the coarser grids are built from the tiles.
-- [ ] The faces layer (faces plan, phase 1) is built per tile.
+      tile; the coarser grids are built from the tiles. Not needed for
+      Porirua (33 GB); likely needed for Wellington City and the Hutt.
+- [x] Step 6's delineation per tile, identical to the whole grid's.
+- [x] Step 12's faces and wall zones per tile (`s12_urban_slope_faces/tiled.py`);
+      the zones are close but not yet identical to the whole grid's (see
+      that step's plan, phase 6).
 - [ ] Vectorised zonal statistics (faces plan, phase 0) wherever a step reads
       rasters onto polygons.
 
@@ -91,7 +105,8 @@ candidates outside the ground map.
 
 - [ ] The pilot rerun tiled, checked equal to the untiled pilot.
 - [ ] Wellington City run end to end, timed per step, with peak memory.
-- [ ] Lower Hutt, Upper Hutt and Porirua.
+- [ ] Lower Hutt, Upper Hutt and Porirua. Porirua runs as the `porirua`
+      extent, its bounding box, before Phase 0's outline clip.
 
 ## Risks
 

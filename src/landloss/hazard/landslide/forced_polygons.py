@@ -29,9 +29,10 @@ drawn here as geometry from its line, so it may overlap other polygons:
   the T-45 band of a face this steep (a metre), as the polygon builder gives
   a line element on level ground behind it.
 - **Inundated:** in front of the line, to where a line from the crest at the
-  dry debris avalanche reach angle
-  (:func:`~landloss.hazard.landslide.slope_polygons.reach_ratio` on the
-  evacuated volume) meets level ground, ``H / (H/L)``, as the builder traces
+  cut relation's travel angle for a step
+  (:func:`~landloss.hazard.landslide.slope_polygons.reach_ratio` at 90
+  degrees, the ground below not read) meets level ground, ``H / (H/L)``,
+  as the builder traces
   a line element's runout down a level fall line, held to the builder's caps
   (:func:`~landloss.hazard.landslide.slope_polygons.inundated_length_m`);
   where that strip would carry the volume too deep, it spreads back over the
@@ -58,7 +59,6 @@ from landloss.domain.constants import MIN_WALL_HEIGHT_M
 from landloss.hazard.landslide.slope_elements import BANK, FREE_FACE
 from landloss.hazard.landslide.slope_polygons import (
     BETA_REPOSE_ANGLE_DEG,
-    DRY_DEBRIS_AVALANCHE,
     EVACUATED,
     IMMINENT,
     INUNDATED,
@@ -216,7 +216,8 @@ def gen_forced_zones(
         ``element``, ``segment``, ``element_type``, ``is_fill``, ``style``,
         ``width_rule``, ``width_behind_crest_m``, ``width_floored``,
         ``width_realised_m``, ``is_stack``, ``base_height_m``, ``height_m``,
-        ``length_m``, ``area_m2``, ``depth_m``, ``volume_m3``, ``reach_hl``,
+        ``length_m``, ``area_m2``, ``depth_m``, ``volume_m3``,
+        ``source_angle_deg``, ``downslope_angle_deg`` (NaN), ``reach_hl``,
         ``imminent_width_m``, ``runout_m``, ``imminent_area_m2``,
         ``inundated_area_m2``, ``forced``, ``side_unknown``, ``scenario`` and
         the zone's geometry.
@@ -240,8 +241,10 @@ def gen_forced_zones(
     )
     depth = np.where(np.isnan(depth), _area_depth_m(area), depth)
     volume = depth * area
-    style = np.full(len(forced), DRY_DEBRIS_AVALANCHE)
-    reach = reach_ratio(volume, style)
+    reach, style = reach_ratio(
+        forced["overall_angle_deg"].to_numpy(dtype=float),
+        np.full(len(forced), np.nan),
+    )
     runout = inundated_length_m(
         height / reach,
         height_m=height,
@@ -273,6 +276,8 @@ def gen_forced_zones(
             "area_m2": area[k],
             "depth_m": depth[k],
             "volume_m3": volume[k],
+            "source_angle_deg": float(element["overall_angle_deg"]),
+            "downslope_angle_deg": np.nan,
             "reach_hl": reach[k],
             "imminent_width_m": behind[k] - width[k],
             "runout_m": runout[k],

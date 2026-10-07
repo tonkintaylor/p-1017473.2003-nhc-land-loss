@@ -33,7 +33,9 @@ low-height walls, GNS-only pieces, each independent) is unchanged.
    GNS floor falls 0.95 → 0.80 and a GNS-only candidate 0.8 → 0.70 (the
    lead's correction the same day; a first cut to 0.57 and 0.48 was too
    aggressive); `BETA_WALL_BASE_P` is solved for the total (0.225), marked
-   interim.
+   interim. After the review came back the same day the lead raised the total
+   by about 40% (1.4 x 2,398 = 3,357) and set the GNS floor back to 0.95
+   (GNS-only stays 0.70); the base re-solves to 0.458.
 
 ## Why change
 

@@ -8,8 +8,10 @@ description: >-
   share model outputs in QGIS, or asks for a .qgs/.qgz, a 'QGIS project' or a
   'map project', or says things like 'load these in QGIS', 'set me up a project
   with the landslide output', 'I want to eyeball the realisation', or 'make
-  something I can send to the team to open'. Also use when extending or
-  debugging the builder. Always ask whether the project should point at the
+  something I can send to the team to open'. For a whole-run summary (all
+  hazards, exposure, vul and cost for an extent; 'e2e build', 'summarise the
+  pilot in QGIS') it runs the committed end-to-end generator. Also use when
+  extending or debugging the builder. Always ask whether the project should point at the
   local cache or at T: unless the user has already said.
 compatibility:
   platform: universal
@@ -97,6 +99,14 @@ code.
 
 List the directory to confirm each file is actually there before building.
 
+**Check for more than one geometry column.** Some step outputs carry extra geometry
+columns beside `geometry` (the step 8 urban slope model has `rep_point`, `evacuated`,
+`inundated` and `imminent`). QGIS's OGR provider takes the *first* one and offers no
+sublayer for the others, so the layer loads as valid points and a polygon renderer
+draws nothing. Read the GeoParquet `geo` metadata (`pq.read_schema(f).metadata[b"geo"]`):
+where `columns` holds more than one entry, write a copy with only `geometry` into
+`temp/<module>/qgis/` and point the project at that, saying so to the user.
+
 ## 3. Choose styling
 
 House colour maps live in `src/landloss/common/utils/colors.py` and the builder reads them
@@ -136,6 +146,13 @@ widths put nearly every feature in one or two classes and waste the ramp on empt
 The breaks are read off the file at build time, so a graduated layer pointing at a file
 this machine cannot open needs `min` and `max` in the spec instead, and then gets equal
 intervals.
+
+Give `breaks` (a list of edges) to fix the bands instead of reading them off the file.
+Use it for a probability (`[0, 0.05, 0.1, 0.2, ... 1]`) and for money, so every layer
+and every build reads on one legend. Where most features are zero (damaged area,
+cost), filter the file to the non-zero features first, since quantiles of a mostly-zero
+column collapse into one or two bands. `label_decimals` sets the legend's decimals;
+otherwise a field under 10 gets two and anything larger gets none.
 
 `categories` is either a name from `colors.py` (`land_class`, `gwrc_severity`) or an
 explicit `{value: [colour, label]}` map, and `field` is the column it reads. Both are
@@ -276,6 +293,51 @@ every other script under `src/scripts/` (see the `adding-steps-scripts` skill, s
 2a). Do not copy the XML writer into the repo; the NLM has a committed generator that
 predates its builder and duplicates it, and that duplication is the thing worth not
 repeating.
+
+## End-to-end build: the whole-run summary project
+
+When the user asks for a QGIS project that summarises a run, meaning all hazards,
+exposure, vul and cost for an extent, **run the committed generator rather than
+writing a spec**. That way the summary is the same every time:
+
+```bash
+uv run --frozen python src/scripts/landloss/qgis/gen_qgis_e2e_build.py
+```
+
+Set `EXTENT`, `WORLD_ID` and `REALISATION_ID` in `src/scripts/landloss/qgis/config.py`
+first. It writes `temp/qgis/e2e_build/e2e_build<suffix>.qgs`, with its derived layers
+beside it. Before running it:
+
+1. Check that the run exists: `gen_all.py` for hazard, exposure and vul, and
+   `loss/gen_loss.py` for the cost layers. Loss is not run by `gen_all.py`. Run it
+   through its own `main(extent=..., realisation_ids=[...])`, never by editing the loss
+   module or its config (the loss module belongs to someone else). If a step's output is
+   missing, the generator leaves that layer out with a `WARNING`. Report each one.
+2. Then verify and measure every layer as in section 5, at the extent's own box.
+
+The legend, top down. Keep this order and these groups when extending it:
+
+| Group | Layers |
+|---|---|
+| Cost | total settlement (on), total repair, landslide (land repair + spoil removal), retaining wall repair, liquefaction land repair. Per claim on its insured land, only claims with that cost, fixed NZD bands, claim count and total in the name |
+| Vul | walls damaged by shaking (true/false), evacuated and inundated insured area (non-zero properties, 8 quantile bands), liquefaction land damage state per property |
+| Hazard | landslide realisation by land class (on), urban potential evacuated ground by probability of triggering, urban fragility θ, Hancox areal coverage on the house probability bands, liquefaction P(state 2) and P(state 3) as 100 m cells, drawn liquefaction state, lateral spread zones, PGV, PGA, site class |
+| Ground model | material, groundwater depth |
+| Exposure | insured walls by type, wall candidates by `p_wall`, insured land by land rate, address land value, driveways |
+| Context | contours 5 m with 25 m index (on), slope 3 m, DEM 3 m, Esri satellite (on) |
+
+A few of these need explaining to the person reading the map:
+
+- **Hancox coverage is the probability a point fails.** It is the expected share of
+  the cell that fails, so it is drawn on the same probability bands as the ESNZ grid.
+  Over most urban ground it sits under 0.5%.
+- **The trigger probability is evaluated, not stored.** Step 9 keeps `p_fail` only for
+  the polygons it draws as failed. The generator evaluates it for every step 8 polygon
+  with step 9's own functions (`sample_pgv` and `lognormal_failure_probability`), and
+  draws it on the polygon's `evacuated` geometry.
+
+Add a layer the user asks for to the generator, in its group. Do not hand-build a
+variant: the next run then rebuilds without it.
 
 ## Google Earth
 

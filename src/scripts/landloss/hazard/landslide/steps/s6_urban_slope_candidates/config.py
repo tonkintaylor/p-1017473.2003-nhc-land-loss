@@ -41,3 +41,18 @@ MIN_PATCH_CELLS = 9
 # segments. To be replaced by failure widths from the rainfall inventory when
 # it is supplied.
 MAX_PATCH_LENGTH_M = 25.0
+
+# A scale whose slope grid holds more cells than this is delineated tile by
+# tile (landloss.common.utils.tiles) rather than whole, so a territorial
+# authority's 1 m grid does not exhaust memory. 50 million cells is about
+# 7 by 7 km at 1 m: every pilot box runs whole, as it always has, and over
+# Porirua only the 1 m scale is tiled.
+MAX_UNTILED_CELLS = 50_000_000
+
+# The side of a tile's core, in metres.
+TILE_CORE_M = 3_000.0
+
+# The width read around each core, in metres. It has to be wider than the
+# largest candidate, so that a candidate is seen whole by the tile that owns
+# it: the largest 1 m candidate on the two pilot boxes is 231 m across.
+TILE_MARGIN_M = 300.0

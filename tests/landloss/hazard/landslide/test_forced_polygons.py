@@ -12,7 +12,9 @@ from rasterio.transform import Affine
 from landloss.hazard.landslide import forced_polygons as forced
 from landloss.hazard.landslide.slope_elements import BANK, FREE_FACE
 from landloss.hazard.landslide.slope_polygons import (
+    BETA_MIN_RUNOUT_M,
     BETA_REPOSE_ANGLE_DEG,
+    CUT_SLOPE,
     EVACUATED,
     IMMINENT,
     INUNDATED,
@@ -103,7 +105,7 @@ def test_a_forced_polygon_takes_the_line_elements_depth_and_zones():
     assert imminent.area == pytest.approx(20.0 * (behind - 2.0))
     assert imminent.bounds[1] == pytest.approx(22.0)
     inundated = walled_rows.loc[walled_rows["zone"] == INUNDATED].geometry.iloc[0]
-    runout = 4.0 / float(reach_ratio([80.0], ["dry_debris_avalanche"])[0])
+    runout = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0])
     assert inundated.bounds[1] == pytest.approx(20.0 - runout)
     # The bare one, of unknown side: the bank rule's cover depth, no
     # imminent or inundated zone.
@@ -114,7 +116,7 @@ def test_a_forced_polygon_takes_the_line_elements_depth_and_zones():
     assert (zones["forced"]).all()
 
 
-def test_a_forced_polygon_on_fill_runs_out_as_a_dry_debris_avalanche():
+def test_a_forced_polygon_on_fill_runs_out_by_the_cut_relation():
     lines = _lines([(5, 20), (25, 20)])
     elements = forced.gen_forced_elements(
         lines,
@@ -131,9 +133,9 @@ def test_a_forced_polygon_on_fill_runs_out_as_a_dry_debris_avalanche():
         first_polygon=1,
         scenario="w000",
     )
-    assert (zones["style"] == "dry_debris_avalanche").all()
+    assert (zones["style"] == CUT_SLOPE).all()
     inundated = zones.loc[zones["zone"] == INUNDATED].geometry.iloc[0]
-    runout = 4.0 / float(reach_ratio([80.0], ["dry_debris_avalanche"])[0])
+    runout = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0])
     assert inundated.bounds[1] == pytest.approx(20.0 - runout)
 
 
@@ -159,7 +161,8 @@ def test_a_deep_forced_deposit_spreads_back_over_its_evacuated_band():
     )
     row = zones.iloc[0]
     assert row["volume_m3"] == pytest.approx(200.0)
-    runout = 1.0 / float(reach_ratio([200.0], ["dry_debris_avalanche"])[0])
+    # A 1 m step's reach is under the 1 m strip every failure leaves.
+    runout = max(1.0 / float(reach_ratio([90.0], [np.nan])[0][0]), BETA_MIN_RUNOUT_M)
     inundated = zones.loc[zones["zone"] == INUNDATED].geometry.iloc[0]
     assert inundated.area == pytest.approx(20.0 * (runout + 1.0))
     assert inundated.bounds[3] == pytest.approx(21.0)
