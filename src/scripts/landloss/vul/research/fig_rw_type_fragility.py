@@ -10,8 +10,12 @@ five initial-condition rungs of Koutsoupaki et al. (2023) [koutsoupaki_2023],
 Fs = 1.5 to 1.1 (Tables A1 to A5), on the moderate damage state (DS2, 5% of
 H), since moderate damage usually leads to replacement in a claim (the lead,
 2026-10-06). New timber pole walls take that rung times 1.3 and engineered
-modern walls times 1.5. The figure sets those choices beside the other
-evidence, each on its moderate state too:
+modern walls times 1.5. Each type has one curve per height class, under 2 m
+and 2 m and over (the lead, 2026-10-07): gravity masonry, old timber pole,
+block or RC cantilever and landscaper timber take the published height effect
+switched (the 6 m curve under 2 m, the 3 m curve at 2 m and over), and crib,
+new timber pole and engineered modern take the 3 m curve for both. The figure
+sets those choices beside the other evidence, each on its moderate state too:
 
 - the same curve for a wall retaining fill and a wall retaining a cut, scaled
   by the module's position factors;
@@ -24,14 +28,18 @@ evidence, each on its moderate state too:
 - the share of walls that failed in the Port Hills in 2010 to 2011, by type:
   Very Poor in Anderson, Wood and Scott (2015) [anderson_2015], the only class
   it gives by type, and Moderate plus Major in Stone et al. (2015)
-  [stone_2015], Table 3, plotted at the range of PGA recorded there.
+  [stone_2015], Table 3, plotted at the range of PGA recorded there;
+- the model's no-wall (localised) urban slope curve, in green, at the mid
+  rating of each Kingsbury zone, converted from PGV to free-field PGA at
+  :data:`PILOT_PGV_PGA_RATIO_M_S_PER_G` with no topographic amplification.
 
 The Canterbury shares are cumulative over the sequence, lean to council road
 walls, and include walls facing strong loess, so they are an upper bound on one
 event's rate at one PGA, not points on a curve. The published comparators are
 converted to the same stored form, the 15th and 50th percentiles, and back.
 
-Writes ``rw-type-fragility.png`` to ``report/vul/rw/fig/``. The findings are in
+Writes ``rw-type-fragility.png`` and ``rw-type-fragility-by-position.png`` to
+``report/vul/rw/fig/``. The findings are in
 ``fig_rw_type_fragility.md`` beside this script.
 """
 
@@ -44,7 +52,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from landloss.domain import constants
 from landloss.exposure.rw.lines import CUT, FILL
+from landloss.hazard.landslide import susceptibility
+from landloss.hazard.landslide.urban import fragility as urban_fragility
 from landloss.hazard.landslide.urban import wall_type_fragility as wtf
 from scripts.landloss.paths import REPORT_DIR
 
@@ -89,10 +100,32 @@ DE_SILVA_YIELD_ACCELERATION_G = 0.5
 # Table 1), drawn as the horizontal extent of every Canterbury share.
 PORT_HILLS_PGA_G = (1.0, 1.7)
 
-# The size class each panel draws: medium, the 3 m curve, for every type but
-# engineered modern, which is drawn large, the 6 m curve.
-PANEL_SIZE_CLASS = "medium"
-LARGE_SIZE_CLASS = "large"
+# The height class each panel of the main figure draws: under 2 m for every
+# type but engineered modern, which is drawn 2 m and over.
+SHORT_HEIGHT_CLASS, TALL_HEIGHT_CLASS = wtf.HEIGHT_CLASSES
+PANEL_HEIGHT_CLASS = SHORT_HEIGHT_CLASS
+HEIGHT_CLASS_LABELS = {
+    SHORT_HEIGHT_CLASS: "under 2 m",
+    TALL_HEIGHT_CLASS: "2 m and over",
+}
+
+# The PGV/PGA ratio (m/s per g) the no-wall curves are drawn at, to put their
+# PGV medians on the figures' free-field PGA axis: the median of the pilot
+# model polygons' pgv_pga_ratio_m_s_per_g in the 2026-10-06 run. For plotting
+# only; the model converts each wall curve at the polygon's own ratio.
+PILOT_PGV_PGA_RATIO_M_S_PER_G = 0.848
+
+# The rating each Kingsbury zone's no-wall curve is drawn at, about the middle
+# of the zone's band (susceptibility.ZONE_BREAKS), and its line style. For
+# plotting only: the model sets the no-wall median from the continuous rating.
+NO_WALL_ZONE_RATINGS = {1: 10.0, 2: 40.0, 3: 80.0, 4: 120.0, 5: 145.0}
+NO_WALL_ZONE_STYLES = {
+    1: (0, (1, 1.5)),
+    2: (0, (3, 1.5)),
+    3: (0, (6, 2)),
+    4: (0, (6, 1.5, 1, 1.5)),
+    5: "-",
+}
 
 
 @dataclass(frozen=True)
@@ -132,7 +165,7 @@ class Panel:
 
     wall_type: str
     title: str
-    size_class: str = PANEL_SIZE_CLASS
+    height_class: str = PANEL_HEIGHT_CLASS
     comparators: tuple[Comparator, ...] = ()
     anderson: tuple[str, float] | None = None
     stone: tuple[tuple[str, float], ...] = ()
@@ -195,8 +228,8 @@ PANELS = (
     Panel("landscaper_timber", "Landscaper timber\n(unconsented, <1.5 m)"),
     Panel(
         "engineered_modern",
-        "Engineered modern, large\n(MSE, soil nail, RC)",
-        size_class=LARGE_SIZE_CLASS,
+        "Engineered modern, 2 m and over\n(MSE, soil nail, RC)",
+        height_class=TALL_HEIGHT_CLASS,
         anderson=("MSE, 18 walls", 0.0),
     ),
 )
@@ -207,6 +240,7 @@ PROPOSED = "#2a78d6"
 COMPARATORS = ("#eb6834", "#eda100", "#e87ba4", "#008300")
 ANDERSON = "#1baf7a"
 STONE = "#4a3aa7"
+NO_WALL = "#1d7a35"
 GHOST = "#c9c9c4"
 INK = "#3d3d3a"
 # Wall position, in the reference categorical order: fill, none known, cut.
@@ -227,6 +261,105 @@ def curve(p15: float, p50: float, factor: float = 1.0) -> np.ndarray:
     """Return P(replace | PGA) over :data:`PGA` for a stored curve."""
     theta, beta = wtf.percentiles_to_lognormal(p15 * factor, p50 * factor)
     return wtf.lognormal_failure_probability(PGA, theta, beta)
+
+
+@dataclass(frozen=True)
+class NoWallCurve:
+    """The no-wall (localised) urban slope curve at one zone's mid rating."""
+
+    zone: int
+    rating: float
+    p15: float
+    p50: float
+
+    @property
+    def label(self) -> str:
+        """The legend entry: zone, rating and the two percentiles."""
+        name = susceptibility.ZONE_LABELS[self.zone]
+        return (
+            f"no wall, zone {self.zone} {name} (rating {self.rating:g}): "
+            f"p15/p50 {self.p15:.2f}/{self.p50:.2f} g"
+        )
+
+
+def no_wall_curves() -> tuple[NoWallCurve, ...]:
+    """Return the no-wall curve at each zone's mid rating, on free-field PGA.
+
+    The PGV median is the model's own (``localised_theta_base_m_s`` with its
+    committed constants) divided by :data:`PILOT_PGV_PGA_RATIO_M_S_PER_G`, with
+    no topographic amplification; the dispersion is
+    ``constants.LOCALISED_FRAGILITY_BETA``.
+    """
+    ratings = np.array(list(NO_WALL_ZONE_RATINGS.values()), dtype=float)
+    theta_pga_g = (
+        urban_fragility.localised_theta_base_m_s(ratings)
+        / PILOT_PGV_PGA_RATIO_M_S_PER_G
+    )
+    p15, p50 = wtf.lognormal_to_percentiles(
+        theta_pga_g, constants.LOCALISED_FRAGILITY_BETA
+    )
+    return tuple(
+        NoWallCurve(zone, float(rating), float(low), float(mid))
+        for zone, rating, low, mid in zip(
+            NO_WALL_ZONE_RATINGS, ratings, p15, p50, strict=True
+        )
+    )
+
+
+def plot_no_wall(ax: plt.Axes, no_wall: tuple[NoWallCurve, ...]) -> list:
+    """Draw the no-wall curves in green, one line style per zone.
+
+    Returns:
+        The line handles, for one shared legend.
+    """
+    handles = []
+    for one in no_wall:
+        (line,) = ax.plot(
+            PGA,
+            curve(one.p15, one.p50),
+            color=NO_WALL,
+            lw=1.1,
+            ls=NO_WALL_ZONE_STYLES[one.zone],
+            alpha=0.85,
+            label=one.label,
+        )
+        handles.append(line)
+    return handles
+
+
+NO_WALL_NOTE = (
+    "Green: the no-wall (localised) urban slope curve, drawn at each Kingsbury "
+    "zone's mid rating for plotting only (the model sets the no-wall median from "
+    "the continuous rating), converted from PGV at "
+    f"{PILOT_PGV_PGA_RATIO_M_S_PER_G:g} m/s per g (the pilot median) with no "
+    "topographic amplification. On sloping land both the wall and the no-wall "
+    "medians are divided by the polygon's amplification."
+)
+
+
+def add_no_wall_legend(fig: plt.Figure, handles: list) -> None:
+    """Put one legend entry per zone below the panels, with the note."""
+    fig.legend(
+        handles=handles,
+        labels=[handle.get_label() for handle in handles],
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.025),
+        ncol=3,
+        fontsize=7.5,
+        frameon=False,
+        handlelength=4,
+    )
+    fig.text(0.5, 0.005, NO_WALL_NOTE, ha="center", fontsize=7, color=INK)
+
+
+def own_legend(ax: plt.Axes, no_wall_handles: list, **kwargs: object) -> None:
+    """Draw the panel's legend, leaving out the shared no-wall lines."""
+    own = [line for line in ax.get_lines() if line not in no_wall_handles]
+    own += [
+        container for container in ax.containers if container.get_label()[:1] != "_"
+    ]
+    own = [artist for artist in own if artist.get_label()[:1] != "_"]
+    ax.legend(handles=own, labels=[artist.get_label() for artist in own], **kwargs)
 
 
 def plot_ladder(ax: plt.Axes) -> None:
@@ -281,9 +414,20 @@ def plot_canterbury(ax: plt.Axes, panel: Panel) -> None:
         )
 
 
-def plot_wall_type(ax: plt.Axes, panel: Panel, table: pd.DataFrame) -> None:
-    """Draw one wall type's proposed curve with the evidence beside it."""
-    height = 6 if panel.size_class == LARGE_SIZE_CLASS else 3
+def plot_wall_type(
+    ax: plt.Axes,
+    panel: Panel,
+    table: pd.DataFrame,
+    no_wall: tuple[NoWallCurve, ...],
+) -> list:
+    """Draw one wall type's proposed curve with the evidence beside it.
+
+    Returns:
+        The no-wall line handles, for the shared legend.
+    """
+    key = (panel.wall_type, panel.height_class)
+    row = table.set_index(list(wtf.TABLE_KEY)).loc[key]
+    height = int(row["published_height_m"])
     for by_height in KOUTSOUPAKI_DS2.values():
         ax.plot(
             PGA,
@@ -291,7 +435,7 @@ def plot_wall_type(ax: plt.Axes, panel: Panel, table: pd.DataFrame) -> None:
             color=GHOST,
             lw=1,
         )
-    row = table.set_index(list(wtf.TABLE_KEY)).loc[(panel.wall_type, panel.size_class)]
+    handles = plot_no_wall(ax, no_wall)
     p15, p50 = row["p15"], row["p50"]
     ax.plot(
         PGA,
@@ -299,7 +443,8 @@ def plot_wall_type(ax: plt.Axes, panel: Panel, table: pd.DataFrame) -> None:
         color=PROPOSED,
         lw=2.2,
         label=(
-            f"Proposed: Fs {row['published_fs']} x{row['type_factor']:g}, "
+            f"Proposed, {HEIGHT_CLASS_LABELS[panel.height_class]}: "
+            f"Fs {row['published_fs']} {height} m x{row['type_factor']:g}, "
             f"p15/p50 {p15:.2f}/{p50:.2f} g"
         ),
     )
@@ -324,7 +469,8 @@ def plot_wall_type(ax: plt.Axes, panel: Panel, table: pd.DataFrame) -> None:
         )
     plot_canterbury(ax, panel)
     ax.set_title(panel.title, fontsize=9)
-    ax.legend(loc="upper left", fontsize=5.5, frameon=False)
+    own_legend(ax, handles, loc="upper left", fontsize=5.5, frameon=False)
+    return handles
 
 
 def plot_type_fragility(table: pd.DataFrame) -> plt.Figure:
@@ -332,8 +478,10 @@ def plot_type_fragility(table: pd.DataFrame) -> plt.Figure:
     fig, axes = plt.subplots(2, 4, figsize=(16, 8.5), sharex=True, sharey=True)
     flat = axes.ravel()
     plot_ladder(flat[0])
+    no_wall = no_wall_curves()
+    handles = []
     for ax, panel in zip(flat[1:], PANELS, strict=True):
-        plot_wall_type(ax, panel, table)
+        handles = plot_wall_type(ax, panel, table, no_wall)
     for ax in flat:
         ax.set_xlim(0, 2.5)
         ax.set_ylim(0, 1)
@@ -353,24 +501,35 @@ def plot_type_fragility(table: pd.DataFrame) -> plt.Figure:
         "Port Hills failure shares (shaded: 1.0 to 1.7 g recorded 22 Feb 2011)",
         fontsize=10,
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
+    add_no_wall_legend(fig, handles)
     return fig
 
 
 def plot_variants(table: pd.DataFrame) -> plt.Figure:
-    """One panel per wall type: every size class and wall position on one plot.
+    """One panel per wall type: both height classes and every wall position.
 
     The curves are the model's own (the stored percentiles times the position
-    factor). Small and medium walls share the 3 m curve, so they draw as one
-    line; large walls take the 6 m curve, dashed.
+    factor): walls under 2 m solid, walls 2 m and over dashed, each labelled
+    with the published wall height its curve was read from. The no-wall curves
+    are drawn in green on every panel.
     """
     curves = table.set_index(list(wtf.TABLE_KEY))
+    no_wall = no_wall_curves()
+    handles = []
     fig, axes = plt.subplots(2, 4, figsize=(16, 8.5), sharex=True, sharey=True)
     flat = axes.ravel()
     for ax, wall_type in zip(flat, wtf.WALL_TYPES, strict=False):
-        for size_classes, style in ((("small", "medium"), "-"), (("large",), "--")):
-            row = curves.loc[(wall_type, size_classes[0])]
-            label_size = "small/medium (3 m)" if len(size_classes) > 1 else "large (6 m)"
+        handles = plot_no_wall(ax, no_wall)
+        for height_class, style in (
+            (SHORT_HEIGHT_CLASS, "-"),
+            (TALL_HEIGHT_CLASS, "--"),
+        ):
+            row = curves.loc[(wall_type, height_class)]
+            label_size = (
+                f"{HEIGHT_CLASS_LABELS[height_class]} "
+                f"({int(row['published_height_m'])} m curve)"
+            )
             for position, colour, factor in (
                 (FILL, POSITION_COLOURS[FILL], wtf.FILL_CAPACITY_FACTOR),
                 ("unknown", POSITION_COLOURS["unknown"], 1.0),
@@ -387,17 +546,32 @@ def plot_variants(table: pd.DataFrame) -> plt.Figure:
                         f"{row['p15'] * factor:.2f}/{row['p50'] * factor:.2f} g"
                     ),
                 )
-        ax.set_title(wall_type.replace("_", " "), fontsize=9)
-        ax.legend(loc="lower right", fontsize=5.5, frameon=False, title="p15/p50",
-                  title_fontsize=6)
+        effect = curves.loc[(wall_type, SHORT_HEIGHT_CLASS), "height_effect"]
+        ax.set_title(
+            f"{wall_type.replace('_', ' ')} (height effect: {effect})", fontsize=9
+        )
+        own_legend(
+            ax,
+            handles,
+            loc="lower right",
+            fontsize=5.5,
+            frameon=False,
+            title="p15/p50",
+            title_fontsize=6,
+        )
     flat[-1].axis("off")
     flat[-1].text(
         0.0,
         0.5,
         "Colour: wall position (fill x0.85, cut x1.15, unknown x1).\n"
-        "Solid: small and medium walls, which share the 3 m curve.\n"
-        "Dashed: large walls (over 2.5 m), the 6 m curve.\n\n"
-        "Within a size class the curve does not change with height.\n"
+        "Solid: walls under 2 m (or of unknown height).\n"
+        "Dashed: walls 2 m and over.\n\n"
+        "Switched (gravity masonry, old timber pole, block or RC\n"
+        "cantilever, landscaper timber): under 2 m takes the 6 m curve\n"
+        "and 2 m and over the 3 m curve, taller walls being the worse.\n"
+        "None (crib, new timber pole, engineered modern): the 3 m\n"
+        "curve for both, so the dashed line lies on the solid one.\n"
+        "Within a height class the curve does not change with height.\n\n"
         "Koutsoupaki et al. 2023 DS2 (moderate, 5% of H), free-field PGA.\n"
         "On sloping land the model converts the median to PGV and\n"
         "divides it by the polygon's topographic amplification (1 to 1.5).",
@@ -417,11 +591,12 @@ def plot_variants(table: pd.DataFrame) -> plt.Figure:
     for ax in axes[:, 0]:
         ax.set_ylabel("P(wall replaced | PGA)", fontsize=9)
     fig.suptitle(
-        "Retaining wall fragility by type, size class and wall position, as the "
+        "Retaining wall fragility by type, height class and wall position, as the "
         "model reads it",
         fontsize=10,
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
+    add_no_wall_legend(fig, handles)
     return fig
 
 

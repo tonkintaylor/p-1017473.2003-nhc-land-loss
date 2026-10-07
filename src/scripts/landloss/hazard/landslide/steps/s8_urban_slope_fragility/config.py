@@ -7,7 +7,7 @@ their own, so what a run did can be established by reading this file and the
 git history of it rather than by remembering which flags were typed.
 
 The fragility numbers are not here. The wall curves are the packaged
-``retaining-wall-type-fragility.csv`` (one per wall type and size class) and
+``retaining-wall-type-fragility.csv`` (one per wall type and height class) and
 the localised median's constants live in
 `landloss.hazard.landslide.urban.fragility`, because they are the model, not a
 setting of a run.

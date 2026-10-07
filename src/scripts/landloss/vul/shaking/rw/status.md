@@ -19,7 +19,8 @@ on synthetic inputs; not yet run on the pilot since the change.
 - Keep the **wall type separate from the damage state**. The type describes
   the wall before the earthquake and picks its fragility; the damage state is
   the outcome.
-- Index the curves on the wall type and size class the exposure module draws,
+- Index the curves on the wall type the exposure module draws and the wall's
+  height class (under 2 m, or 2 m and over),
   so the two modules share one vocabulary, and read "replace" at the
   moderate damage state, since moderate damage usually means replacement in
   a claim; a fill wall's curve is 15% weaker
@@ -56,8 +57,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   draws a state per wall on the vulnerability stream with the world appended,
   to `temp/vul/wall-damage-state-wNNN-rNNN[-pilot].geoparquet` with the curve,
   the site class and the PGV/PGA ratio recorded on every row.
-- The fragility is the wall type curve for the wall's type and size class
-  in `retaining-wall-type-fragility.csv` (Koutsoupaki et al. 2023, moderate
+- The fragility is the wall type curve for the wall's type and height class
+  (under 2 m, or 2 m and over, from `height_m`; the lead, 2026-10-07, in place
+  of the size class) in `retaining-wall-type-fragility.csv` (Koutsoupaki et al. 2023, moderate
   damage state), scaled by its fill or cut position, a PGA curve converted at
   the ratio of shaking
   step 3's PGV to the TS1170.5 PGA at the midpoint
@@ -86,7 +88,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    and `n_properties` for this; today each wall is one row on its primary
    property with `length_m` its whole simplified line. The loss module is
    not changed yet.
-5. Read each wall's curve from its type, size class and fill or cut
+5. Read each wall's curve from its type, height class and fill or cut
    position (`wall_type_failure_probability`), once exposure draws the type
    (wall types plan, phase 3).
 

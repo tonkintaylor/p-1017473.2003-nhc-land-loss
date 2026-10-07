@@ -27,7 +27,7 @@
 id = "RW-A01"
 step = "faces"
 title = "A wall must make pips to be found"
-text = "A pip is a 1 m DEM cell that drops at least 0.7 m at 1, 3 and 5 cells in one of eight directions. A wall lower than about 0.7 m (about 1.0 m facing a diagonal) makes no pips, so it is a candidate only where GNS maps it. No probability is lowered to allow for the walls that are missed."
+text = "A pip (potential instability point) is a 1 m DEM cell that stands more than {PIP_DROP_M} m above each of the cells 1, 3 and 5 cells away in one of eight directions (1.41 times that along a diagonal). A wall lower than about {PIP_DROP_M} m (about 1.0 m facing a diagonal) makes no pips, so it is a candidate only where GNS maps it. No probability is lowered to allow for the walls that are missed."
 status = "beta"
 source = "src/landloss/hazard/landslide/instability_zones.py (PIP_DROP_M, PIP_OFFSETS_M); wall_units.py module docstring"
 
@@ -35,7 +35,7 @@ source = "src/landloss/hazard/landslide/instability_zones.py (PIP_DROP_M, PIP_OF
 id = "RW-A02"
 step = "faces"
 title = "Pips join into faces (pifs)"
-text = "Pips within 2 m of each other join into a pif, which needs at least 3 pips and a spine of at least 3 m. A pif lying mostly inside a building outline is dropped."
+text = "Pips within {PIF_JOIN_M} m of each other join into a pif (potential instability face), which needs at least 3 pips and a spine of at least 3 m. A pif lying mostly inside a building outline is dropped. Pifs come from the DEM alone; GNS mapping only flags them."
 status = "beta"
 source = "s12_urban_slope_faces_method.md"
 

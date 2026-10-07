@@ -148,10 +148,11 @@ for the lead:
 
 ## Phase 3 — The researched rules
 
-- [x] Name the wall classes and give the table a row per class and size:
+- [x] Name the wall classes and give the table a row per class and height:
       seven wall types in `retaining-wall-type-fragility.csv`, read through
       `wall_type_fragility.wall_type_curves()` on the drawn wall's
-      `wall_type`, `size_class` and own `wall_position` (fill 0.85, cut
+      `wall_type`, height class (from `height_m`; `size_class` until
+      2026-10-07) and own `wall_position` (fill 0.85, cut
       1.15). `wall_class` and `initial_condition` are gone from the model
       file; `wall_type` replaces them, and `retaining-wall-fragility.csv` is
       retired (2026-10-06).

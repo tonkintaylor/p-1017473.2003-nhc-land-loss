@@ -1,0 +1,561 @@
+# Content of the landslide reviewer page: the overview, the flow diagram, the
+# inputs and one table per step. Same schema as reviewer/rw/steps.toml.
+#
+# First collated 2026-10-07 from the code, configs and pilot outputs (not only
+# the status and method prose, several of which lag the code; the assumptions
+# marked `check` say where). The retaining wall page covers wall placement,
+# p_wall and the wall damage flags; this page points at its RW-A ids rather
+# than repeating them.
+#
+# `outputs` and `inputs` name keys of layer_files in gen_reviewer_landslide.py.
+# `layers` names the map layers drawn for the step (the first `visible` count
+# are switched on). `charts` names pilot summaries the generator computes.
+# `tables` are CSVs relative to the repository root. `checked` is the date the
+# narrative was last checked against the code.
+
+title = "Landslides: large and urban failures, and the land they take"
+short = "Landslide reviewer"
+
+overview = """
+Earthquake landslides are modelled as two populations that meet in one
+realisation:
+
+1. **Large failures** ({LARGE_MIN_SOURCE_AREA_M2} m² of source or more) on natural hillsides. A
+   coverage model turns the shaking into an expected failed area per 10 m cell
+   (today Hancox et al. 1997 model 3, with Kritikos et al. 2015 and the ESNZ
+   grid built as alternatives). Slope units localise it, and step 1 draws
+   ellipse-shaped sources and their runout.
+2. **Urban failures** on the faces of house lots, road cuts and fills. Sharp
+   drops in the 1 m LiDAR DEM (*pips*) are joined into faces (*pifs*), tested
+   against a slope table (*sizs*) and grown into *elements*. Each element gets
+   evacuated, imminent and inundated zones. Each zone polygon gets a fragility
+   on PGV: a retaining wall curve where a wall is drawn, and a Kingsbury rating
+   curve where none is.
+3. **One draw per earthquake.** Step 9 draws every urban polygon, lets a large
+   failure supersede the urban polygons it overlaps and a larger urban failure
+   absorb a smaller one, then writes both populations into one layer.
+4. **Land damage** is geometric: the evacuated and inundated area, and its
+   depth, inside each property's insured land.
+
+The demand is the TS1170.5 2,500-year field per site class (T-26). Where a
+model needs a magnitude and distance it takes Mw {BETA_SCENARIO_MW} at {BETA_SITE_DISTANCE_KM} km.
+
+The 2026-10-07 pilot run places **no large failure** (Hancox gives about 1.3
+expected over the pilot), so the pilot exercises the urban chain only. The
+urban chain still fails far too much ground: **64% of polygons, 12.9% of the
+non-flat pilot**, against the order of 0.1 to 1% the literature gives. The
+fitted fragility that should bring this down has run as a validation but is not
+yet in the code (LS-A32).
+"""
+
+[flow]
+edges = [
+    ["dem", "terrain"],
+    ["geology", "ground"], ["terrain", "ground"],
+    ["terrain", "units"], ["ground", "units"],
+    ["terrain", "coverage"], ["ground", "coverage"], ["shaking", "coverage"],
+    ["coverage", "large"], ["units", "large"], ["terrain", "large"],
+    ["dem", "faces"], ["ground", "faces"],
+    ["faces", "zones"], ["walls", "zones"],
+    ["zones", "fragility"], ["walls", "fragility"], ["ground", "fragility"], ["shaking", "fragility"],
+    ["fragility", "realisation"], ["large", "realisation"], ["shaking", "realisation"],
+    ["realisation", "land"],
+    ["land", "loss"],
+]
+
+[[flow.nodes]]
+id = "dem"
+label = "LiDAR DEM 1 m"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "geology"
+label = "SLIDE, 1:50k geology, NLM, WCC"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "shaking"
+label = "PGA / PGV realisation (TS1170.5)"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "walls"
+label = "Drawn walls (RW reviewer)"
+kind = "data"
+module = "exposure"
+
+[[flow.nodes]]
+id = "terrain"
+label = "1 Terrain grids"
+kind = "step"
+module = "hazard"
+step = "terrain"
+
+[[flow.nodes]]
+id = "ground"
+label = "2 Ground map"
+kind = "step"
+module = "hazard"
+step = "ground"
+
+[[flow.nodes]]
+id = "units"
+label = "3 Slope units"
+kind = "step"
+module = "hazard"
+step = "slope_units"
+
+[[flow.nodes]]
+id = "coverage"
+label = "4 Large coverage"
+kind = "step"
+module = "hazard"
+step = "coverage"
+
+[[flow.nodes]]
+id = "large"
+label = "5 Large realisation"
+kind = "step"
+module = "hazard"
+step = "large"
+
+[[flow.nodes]]
+id = "faces"
+label = "6 Faces and elements"
+kind = "step"
+module = "hazard"
+step = "faces"
+
+[[flow.nodes]]
+id = "zones"
+label = "7 Urban zones"
+kind = "step"
+module = "hazard"
+step = "zones"
+
+[[flow.nodes]]
+id = "fragility"
+label = "8 Urban fragility"
+kind = "step"
+module = "hazard"
+step = "fragility"
+
+[[flow.nodes]]
+id = "realisation"
+label = "9 Combined realisation"
+kind = "step"
+module = "hazard"
+step = "realisation"
+
+[[flow.nodes]]
+id = "land"
+label = "10 Land damage"
+kind = "step"
+module = "vul"
+step = "land"
+
+[[flow.nodes]]
+id = "loss"
+label = "Loss"
+kind = "data"
+module = "loss"
+
+
+[[inputs]]
+name = "LiDAR DEM and DSM, 1 m"
+source = "LINZ elevation STAC catalogue (LiDAR where flown, 8 m contour DEM elsewhere), mosaicked by landslide step 3"
+licence = "CC BY 4.0: attribute LINZ in anything derived and published."
+used_by = "Terrain grids, faces, zones, every model's slope"
+file = "dem_1m"
+
+[[inputs]]
+name = "GNS SLIDE morphology and materials"
+source = "GNS Science / MBIE via Koordinates layers 125308 and 125309"
+licence = "No licence on the service; credit GNS/MBIE and confirm with GNS before delivery."
+used_by = "Ground map, wall evidence, checks against breaks in slope"
+
+[[inputs]]
+name = "GNS 1:50k Wellington urban geology"
+source = "GNS GeoServer"
+licence = "CC BY 3.0 NZ"
+used_by = "Ground map"
+
+[[inputs]]
+name = "WCC cut and fill areas"
+source = "Wellington City Council"
+licence = "CC BY-ND 4.0"
+used_by = "Ground map, Kingsbury rebuild (step 2, comparison only)"
+
+[[inputs]]
+name = "NLM flatland, geomorphology and groundwater depth"
+source = "T+T National Liquefaction Model (flatland V0p5, Koordinates 120641)"
+licence = "T+T project data, internal."
+used_by = "Flatland mask on the large models, ground map, groundwater"
+
+[[inputs]]
+name = "Shaking realisation (PGA, PGV)"
+source = "Hazard shaking steps 2 to 5, TS1170.5 2,500-year by site class"
+licence = "Derived"
+used_by = "Coverage models, urban fragility (PGV/PGA ratio), step 9 demand"
+
+[[inputs]]
+name = "ESNZ earthquake-induced landslide probability, 32 m"
+source = "GNS/ESNZ, EILProb_PGA2g.tif on T: SourceMaterial"
+licence = "Supplied; not ours to publish. L-08 restricts it to comparison."
+used_by = "Step 1 when COVERAGE_MODEL = 'esnz' (not the current setting)"
+
+[[inputs]]
+name = "NZ Active Faults AF250"
+source = "GNS WFS"
+licence = "CC BY 3.0 NZ, attribute GNS"
+used_by = "Kritikos model (step 11, not wired in)"
+
+[[inputs]]
+name = "LINZ coastline, buildings, property boundaries"
+source = "LINZ Data Service via Koordinates"
+licence = "CC BY 4.0"
+used_by = "Sea mask on the faces, pifs inside buildings dropped, insured land"
+
+[[inputs]]
+name = "Wall curves and urban fragility anchors"
+source = "Koutsoupaki (2023), retaining-wall-type-fragility.csv; urban-fragility-anchors.csv (judgement readings of Kingsbury 1995 and GNS reports)"
+licence = "Published values transcribed; anchors derived."
+used_by = "Step 8; the anchors only in the calibration validation"
+
+[[inputs]]
+name = "Literature relationships"
+source = "Hancox et al. (1997, 2010), Marc et al. (2016), Worden et al. (2012), Massey et al. (2020), Guzzetti et al. (2009), de Vilder et al. (2022, 2024), Kingsbury (1995)"
+licence = "Published; transcribed."
+used_by = "Coverage, size law, volume law, runout, repose line, rating"
+
+# --------------------------------------------------------------------- steps
+
+[[steps]]
+id = "terrain"
+number = 1
+title = "Terrain grids at 1 to 100 m"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s3_multiscale_slope"
+scripts = ["gen_multiscale_slope.py", "gen_terrain_derivatives.py"]
+inputs = ["dem_1m"]
+outputs = ["dem_10m", "slope_10m", "aspect_10m", "tpi_100m"]
+layers = ["slope_10m", "tpi_100m"]
+visible = 1
+charts = []
+tables = []
+checked = "2026-10-07"
+narrative = """
+Only the 1 m DEM is fetched. Every coarser grid (3, 10, 30, 50, 100 m) is its
+block mean, snapped so the grids nest. Slope is Horn's method at each cell size
+and aspect is the downhill bearing.
+
+The large models read the 10 m DEM, slope and aspect, and the 100 m
+topographic position index (TPI) used for the crest lift in step 1. The other
+derivatives (face height, cut/fill residual, curvature, vegetation height)
+serve the ground map and the urban faces.
+
+Pilot (2026-10-06): 3.3 × 2.1 km, mean 10 m slope 8°, maximum 50°. No figures
+have been rendered for this step.
+"""
+
+[[steps]]
+id = "ground"
+number = 2
+title = "Ground map"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s4_ground_map"
+scripts = ["gen_ground_map.py"]
+inputs = ["dem_1m"]
+outputs = ["ground_map"]
+layers = ["ground_material", "flatland"]
+visible = 1
+charts = ["material_shares"]
+tables = []
+checked = "2026-10-07"
+narrative = """
+One planar partition of the extent. Each piece takes its material,
+modification, prior failure, groundwater depth and strength set from the first
+source in a precedence order (SLIDE, then 1:50k geology, NLM, WCC earthworks)
+whose polygon contains it (LS-A58).
+
+The large models read only one thing from it: whether a piece is NLM
+**flatland**, where no large failure may start (LS-A11). The urban chain reads
+the ground group (soil-like, weak rock, stronger rock) for its slope test, and
+the Kingsbury factors and fill thickness for its fragility and depth.
+
+Pilot (2026-10-06): 19,275 pieces; flatland 54% of the area. Material: rock
+34%, colluvium 31%, uncontrolled fill 17%, unknown 9%, alluvium 9%; fill as the
+*modification* covers 74% (LS-A59).
+"""
+
+[[steps]]
+id = "slope_units"
+number = 3
+title = "Slope units"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s5_slope_units"
+scripts = ["gen_slope_units.py"]
+inputs = ["dem_10m", "ground_map"]
+outputs = ["slope_units"]
+layers = ["slope_units", "slope_10m"]
+visible = 2
+charts = []
+tables = []
+checked = "2026-10-07"
+narrative = """
+Half-basins after the r.slopeunits logic of Alvioli et al. (2016), rebuilt
+without GRASS: channels at 5 ha of upstream area, each link's catchment split
+left and right, units under 1 ha absorbed, neighbours within 45° of aspect
+merged up to 50 ha (LS-A18).
+
+Units only localise the large failures: step 1 sums the expected failed area per
+unit and draws its failures inside it. They do not set a failure's size.
+
+Pilot (2026-10-06): 41 units over 6.93 km²; median flatland share 0.38.
+"""
+
+[[steps]]
+id = "coverage"
+number = 4
+title = "Large-failure coverage: how much ground fails"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s10_hancox_1997 (+ s11_kritikos_2015, built, not run in gen_hazard)"
+scripts = ["gen_hancox_1997_coverage.py", "gen_kritikos_2015_hazard.py", "gen_kritikos_2015_transfer_function.py"]
+inputs = ["slope_10m", "pgv_realisation", "ground_map"]
+outputs = ["hancox_coverage", "kritikos_coverage"]
+layers = ["hancox_coverage", "kritikos_coverage", "flatland", "slope_units"]
+visible = 1
+charts = ["coverage_tiles"]
+tables = [
+    "report/hazard/landslide/kritikos-2015-validation/tab/kritikos_2015_reproduction.csv",
+    "report/hazard/landslide/kritikos-2015-validation/tab/kritikos_2015_transfer_function_totals.csv",
+]
+checked = "2026-10-07"
+narrative = """
+The route for large failures is not chosen (LS-A01). Each model keeps its own
+published calibration, and Kaikōura, Marc et al. and the Hancox extent are
+tests, not targets (LS-A02).
+
+**Hancox et al. (1997) model 3, the one step 1 reads today** (LS-A03):
+
+1. PGV becomes MM through Worden et al. (2012). Nothing fails below MM7 (LS-A12);
+   the pilot is at MM 9.3 to 10, so the threshold never binds.
+2. The event total comes from Marc et al. (2016) for Mw 8.1 (18.0 km²; LS-A14).
+3. The study takes the share its eligible (non-flat) ground is of Hancox's area
+   affected at Mw 8.1, 11,912 km² (LS-A15).
+4. That amount is spread over cells by the Hancox (2010) slope-class shares
+   (LS-A16).
+
+Pilot (2026-10-06): 3,232 m² expected, 0.047% of the pilot. The cell maximum
+is 0.50, where the 17% extremely-steep share lands on a few cells.
+
+**Kritikos et al. (2015) model 2** is built and checked: it reproduces the
+paper's Wenchuan AUC (0.831 against 0.839) and brackets Northridge. It gives
+about 17 times Hancox's pilot area (mean coverage 1.47%) but is not run by
+`gen_hazard` (LS-A17). **ESNZ** remains a `COVERAGE_MODEL` option (LS-A10,
+LS-A27). Nowicki Jessee (2018) is a validated library only.
+"""
+
+[[steps]]
+id = "large"
+number = 5
+title = "Large-failure realisation"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s1_landslide_realisation"
+scripts = ["s1_simulate_landslides.py", "fig_landslide_realisation.py"]
+inputs = ["hancox_coverage", "slope_units", "dem_10m", "tpi_100m", "ground_map"]
+outputs = ["large_realisation"]
+layers = ["large_realisation", "slope_units", "hancox_coverage"]
+visible = 2
+charts = ["large_tiles"]
+tables = []
+checked = "2026-10-07"
+narrative = """
+For each slope unit:
+
+1. Expected source area = coverage × cell area summed over the unit's
+   non-flat cells × source fraction (1 for Hancox) × (1 − urban share, 0)
+   (LS-A05, LS-A09, LS-A11).
+2. A Poisson count with mean expected area over the mean failure size (LS-A08).
+3. Each failure's size from a truncated power law, exponent {SIZE_EXPONENT},
+   {LARGE_MIN_SOURCE_AREA_M2} to {MAX_SOURCE_AREA_M2} m² (mean about 2,530 m²; LS-A04, LS-A06, LS-A07).
+4. A seed among the unit's 10 highest-weighted cells, lifted towards crests
+   (LS-A20).
+5. The source is an ellipse of aspect 2 down the fall line, its crest at the
+   seed (LS-A21). Overlapping sources are dropped, largest kept (LS-A22).
+6. The runout is the same ellipse translated 1 to 40 m by slope (LS-A23).
+   Volume is 0.074 A^1.46 (LS-A24).
+
+Pilot (2026-10-07 10:28): **no failures**. With about 1.3 expected, an empty
+draw has a probability of about 0.28. The figure in `report/` dates from
+2026-09-22 and predates the cap, flatland and coverage changes.
+"""
+
+[[steps]]
+id = "faces"
+number = 6
+title = "Urban faces: pips, pifs, sizs and elements"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s12_urban_slope_faces (+ s13_pif_cut_fill)"
+scripts = ["gen_urban_slope_faces.py", "table_urban_slope_face_checks.py"]
+inputs = ["dem_1m", "ground_map"]
+outputs = ["sizs", "elements"]
+layers = ["pips", "pifs", "elements"]
+visible = 3
+charts = ["sizs_by_group_band"]
+tables = [
+    "report/hazard/landslide/urban-slope-faces/tab/sizs-by-group-band.csv",
+    "report/hazard/landslide/urban-slope-faces/tab/gns-agreement.csv",
+]
+checked = "2026-10-07"
+narrative = """
+The faces are shared with the retaining wall chain (RW reviewer step 1).
+
+- A **pip** is a 1 m cell that drops at least {PIP_DROP_M} m at 1, 3 and 5 cells (LS-A30,
+  RW-A01).
+- Pips within 2 m join into a **pif** (LS-A31, RW-A02).
+- A whole pif is a **siz** if any pair of its points stands steeper than the
+  two-band slope table for its ground group and makes the near step (LS-A33,
+  LS-A34).
+- Each pif is cut into 3 to 50 m pieces (RW-A03), and each siz piece grows an
+  **element** down the slope to a {BETA_GROW_ANGLE_DEG}° grow angle (LS-A35). Every siz element
+  is kept.
+
+The domain is the whole DEM inside the coastline. The {URBAN_BUILDING_DISTANCE_M} m building buffer the
+status describes is no longer applied (LS-A36).
+
+Pilot (2026-10-07): 6,220 pif pieces, 4,884 of them sizs. The two tables listed
+date from 2026-10-04 and count an earlier set of pifs.
+"""
+
+[[steps]]
+id = "zones"
+number = 7
+title = "Urban zones: evacuated, imminent, inundated"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s12_urban_slope_faces"
+scripts = ["gen_urban_slope_wall_zones.py", "fig_urban_slope_wall_zones.py"]
+inputs = ["elements", "wall_units", "wall_draws"]
+outputs = ["zones_world", "zones_walled", "zones_bare"]
+layers = ["zones_world", "zones_walled", "zones_bare", "elements", "forced"]
+visible = 1
+charts = ["zone_areas"]
+tables = ["report/hazard/landslide/urban-slope-faces/tab/polygon-sizes.csv"]
+checked = "2026-10-07"
+narrative = """
+Each element becomes one or more polygons, each with three zones:
+
+- **evacuated**: the face plus at least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest
+  (LS-A37, RW-A20), cut into segments of about {BETA_SEGMENT_VOLUME_M3} m³ along the contour
+  (LS-A39). Its depth is set by the face type (LS-A38);
+- **imminent**: to a {BETA_REPOSE_ANGLE_DEG}° repose line from the toe (LS-A43);
+- **inundated**: the de Vilder et al. (2022) dry reach angle from the crest,
+  held to {BETA_MAX_RUNOUT_H} H and to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, never less than a {BETA_MIN_RUNOUT_M} m strip, and spread
+  back over its own scar if the deposit would be too deep (LS-A41, LS-A42).
+
+Zones are built for each exposure world's drawn walls, and for the every-wall
+and no-wall bounds. A wall changes the width only where the floor does not set
+it, and on the pilot the floor sets every width.
+
+Pilot (2026-10-07): evacuated 663,401 m² in world 0 (664,919 m² walled, 657,131
+m² bare); longest runout 20 m; 5 forced polygons.
+"""
+
+[[steps]]
+id = "fragility"
+number = 8
+title = "Urban fragility: one curve per polygon"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s8_urban_slope_fragility"
+scripts = ["gen_urban_slope_fragility.py", "fig_urban_slope_model.py"]
+inputs = ["zones_world", "drawn_walls", "ground_map", "pgv_realisation", "tpi_100m"]
+outputs = ["urban_model"]
+layers = ["urban_model_theta", "zones_world"]
+visible = 1
+charts = ["localised_curves", "theta_by_wall_state"]
+tables = [
+    "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-fit.csv",
+    "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-zone-shares.csv",
+    "src/landloss/io/assets/urban-fragility-anchors.csv",
+]
+checked = "2026-10-07"
+narrative = """
+Each polygon gets a lognormal fragility on PGV, a median θ and a dispersion β:
+
+- **Walled polygon** (its unit drew a sloping wall in this world, insured or
+  not; LS-A44): the Koutsoupaki curve for the wall's type and size, ×0.85 for
+  fill or ×1.15 for cut, converted from PGA to PGV at the site's ratio (LS-A45,
+  LS-A46; RW-A23).
+- **Unwalled polygon**: a median that falls log-linearly with the Kingsbury
+  (1995) rating, from {LOCALISED_THETA_AT_ZERO_RATING_M_S} m/s at rating 0 to {LOCALISED_THETA_AT_MAX_RATING_M_S} m/s at 150, β {LOCALISED_FRAGILITY_BETA} (LS-A32).
+
+Every median is then divided by a topographic amplification factor (LS-A47)
+and multiplied by a rate factor (LS-A48).
+
+The **calibration** in `validations/urban/` fits the unwalled curve to the
+Kaikōura area share and five polygon anchors (LS-A49). Its adopted fit (θ 2.46
+to 0.492 m/s, β 0.724) **has run but is not in the code yet** (LS-A32).
+
+Pilot (2026-10-07): 5,277 polygons (3,247 no wall, 1,543 cut wall, 487 fill
+wall). Median θ: 0.99 m/s no wall, 0.42 cut wall, 0.32 fill wall, against a
+realised PGV of about 1.37 m/s.
+"""
+
+[[steps]]
+id = "realisation"
+number = 9
+title = "One draw: urban failures, supersession and absorption"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s9_urban_slope_realisation"
+scripts = ["gen_urban_slope_realisation.py", "fig_urban_slope_realisation.py"]
+inputs = ["urban_model", "pgv_realisation", "large_realisation", "wall_population"]
+outputs = ["realisation", "wall_outcome"]
+layers = ["failures", "large_realisation", "urban_model_theta"]
+visible = 1
+charts = ["realisation_tiles", "failed_by_wall_state", "failed_by_kingsbury_zone"]
+tables = []
+checked = "2026-10-07"
+narrative = """
+1. PGV is read at each polygon, and p_fail = Φ(ln(PGV/θ)/β).
+2. Each polygon is drawn on a uniform. Every polygon on one wall unit shares a
+   uniform, and if any fails the wall fails (LS-A50, RW-A25). Unwalled
+   polygons are independent (LS-A51).
+3. A failed urban polygon that shares more than 0.01 m² of evacuated ground with
+   a large failure is **superseded**. A larger urban failure then **absorbs** a
+   smaller one it overlaps (LS-A52).
+4. Each survivor is written as three rows (evacuated, inundated, imminent)
+   beside the step 1 rows, in one layer.
+
+Pilot (w0, r0, 2026-10-07): **3,388 of 5,277 polygons fail (64%)**: 77% of
+cut-wall, 83% of fill-wall and 55% of no-wall polygons. Evacuated 293,756 m²,
+12.9% of the non-flat pilot; inundated 191,247 m²; imminent 61,681 m². No large
+rows, so supersession is not exercised. No figure has been rendered.
+"""
+
+[[steps]]
+id = "land"
+number = 10
+title = "Land damage"
+module = "vul / landslide land"
+folder = "src/scripts/landloss/vul/landslide/land/steps/s3_landslide_land_damage"
+scripts = ["gen_landslide_land_damage.py"]
+inputs = ["realisation", "insured_land"]
+outputs = ["land_damage"]
+layers = ["failures", "insured_land"]
+visible = 2
+charts = ["land_damage_tiles"]
+tables = []
+checked = "2026-10-07"
+narrative = """
+The measure is geometric, not a damage state (LS-A53). Evacuated and inundated
+ground is intersected with each property's insured land and kept separate:
+inundated area is unioned, not summed; depth is area-weighted; imminent ground
+is not counted (T-45). Nothing is priced here.
+
+**Check the freshness panel first.** The pilot output (2026-10-06 17:20) is
+older than the step 9 realisation (2026-10-07 12:25), and the vul land status is
+dated 2026-10-02. Do not quote its counts until it is rerun.
+"""

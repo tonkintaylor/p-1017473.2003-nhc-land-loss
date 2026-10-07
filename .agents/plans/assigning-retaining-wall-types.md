@@ -54,6 +54,20 @@ Nick Peters). This plan:
 
 Since 2026-10-06 landslide step 8 and vul shaking step 9 read the type table.
 
+**Changed 2026-10-07 (the lead): two height classes, not three size
+classes.** The table is keyed on `(wall_type, height_class)`, 14 rows:
+`under_2_m` (height below 2.0 m, or unknown) and `2_m_and_over`, from each
+drawn wall's `height_m` (`wall_type_fragility.height_class`). `size_class`
+stays on every wall for the loss module's pricing; only the fragility lookup
+moved. Gravity masonry, old timber pole, block or RC cantilever and landscaper
+timber take the published height effect switched (`height_effect =
+switched`): taller walls of these types are the worse, so `under_2_m` takes
+the 6 m curve and `2_m_and_over` the 3 m curve. Crib, new timber pole and
+engineered modern have no height effect (`none`) and take the 3 m curve for
+both. `wall_type_curves` and `wall_type_failure_probability` take `height_m`
+in place of `size_class`. The table below gives the 3 m and 6 m readings; the
+height rule picks between them.
+
 ## The wall types and their curves
 
 All on DS2, moderate, `Ux = 5% of H`.
@@ -133,8 +147,8 @@ walls.
 
 ### 3. Failure
 
-`wall_type_failure_probability(pga_g, wall_type, size_class, wall_position,
-table)` gives each wall's probability of replacement. `wall_position` is the
+`wall_type_failure_probability(pga_g, wall_type, height_m, wall_position,
+table)` (`size_class` until 2026-10-07) gives each wall's probability of replacement. `wall_position` is the
 unit's `fill` or `cut` (step 13's class, already on the drawn walls). It
 replaces the `(wall_class, size_class, initial_condition)` lookup in:
 

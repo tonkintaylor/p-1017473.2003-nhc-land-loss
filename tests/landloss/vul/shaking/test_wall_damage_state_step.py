@@ -22,6 +22,7 @@ from landloss.domain import constants
 from landloss.hazard.landslide.urban.wall_type_fragility import (
     CUT_CAPACITY_FACTOR,
     FILL_CAPACITY_FACTOR,
+    HEIGHT_CLASSES,
     WALL_TYPES,
 )
 from landloss.hazard.realisation import realisation_seed
@@ -92,7 +93,7 @@ def wall_at(row, column, length_m=20.0):
     return LineString([(x - length_m / 2, y), (x + length_m / 2, y)])
 
 
-# The synthetic wall types: MODERN takes the size's median, OLD 0.7 of it.
+# The synthetic wall types: MODERN takes the height class's median, OLD 0.7 of it.
 MODERN = "block_rc_cantilever"
 OLD = "gravity_masonry"
 
@@ -107,6 +108,9 @@ WALLS = [
     ("C03-RW02", (2, 2), "medium", MODERN, False),
     ("C04-RW01", (5, 5), "large", OLD, True),
 ]
+# Each wall's height by its size class: medium walls are 2.2 m, so they take
+# the curve of 2 m and over with the large ones.
+HEIGHT_BY_SIZE = {"small": 1.0, "medium": 2.2, "large": 3.0}
 # Each wall's own position: unknown on the first, so its curve is unshifted.
 POSITIONS = {"C01-RW01": None, "C01-RW02": "cut"}
 
@@ -121,7 +125,7 @@ def wall_population():
             "size_class": size_class,
             "wall_type": wall_type,
             "age_bin": "pre_1970",
-            "height_m": 1.5,
+            "height_m": HEIGHT_BY_SIZE[size_class],
             "length_m": 20.0,
             "wall_position": POSITIONS.get(rw_id, "fill"),
             "is_flatland": is_flatland,
@@ -134,29 +138,29 @@ def wall_population():
     return gpd.GeoDataFrame(rows, geometry="geometry", crs=constants.DEFAULT_CRS)
 
 
-# The synthetic wall types: MODERN takes the size's median, OLD 0.7 of it.
+# The synthetic wall types: MODERN takes the height class's median, OLD 0.7 of it.
 MODERN = "block_rc_cantilever"
 OLD = "gravity_masonry"
 
 
 def wall_table():
-    """Every wall type and size, as ``load_wall_type_fragility`` returns them.
+    """Every wall type and height class, as ``load_wall_type_fragility`` returns.
 
-    The medians are on PGA: 0.5, 0.8 and 1.0 g for the three sizes, times 0.7
-    for :data:`OLD`.
+    The medians are on PGA: 0.5 g under 2 m and 1.0 g at 2 m and over, times
+    0.7 for :data:`OLD`.
     """
     rows = []
-    for size_class, theta in (("small", 0.5), ("medium", 0.8), ("large", 1.0)):
+    for height_class, theta in zip(HEIGHT_CLASSES, (0.5, 1.0), strict=True):
         for wall_type in WALL_TYPES:
             shift = 0.7 if wall_type == OLD else 1.0
             rows.append(
                 {
                     "wall_type": wall_type,
-                    "size_class": size_class,
+                    "height_class": height_class,
                     "im": PGA_IM,
                     "theta": theta * shift,
                     "beta": 0.5,
-                    "source": f"test_{size_class}_{wall_type}",
+                    "source": f"test_{height_class}_{wall_type}",
                 }
             )
     return pd.DataFrame(rows)
@@ -313,17 +317,17 @@ def test_a_pga_curve_is_converted_at_the_walls_own_ratio(synthetic_run):
     assert wall["theta_base_pga_g"] == 0.5
     assert wall["pgv_pga_ratio_m_s_per_g"] == pytest.approx(ratio, rel=1e-6)
     assert wall["theta"] == pytest.approx(0.5 * ratio, rel=1e-6)
-    assert wall["fragility_source"] == f"test_small_{MODERN}"
+    assert wall["fragility_source"] == f"test_under_2_m_{MODERN}"
     expected = norm.cdf(np.log(wall["pgv_m_s"] / wall["theta"]) / 0.5)
     assert wall["failure_probability"] == pytest.approx(expected, rel=1e-6)
 
-    # C01-RW02: medium, old, 0.56 g, retaining a cut, in cell (0, 1) of
+    # C01-RW02: medium and 2.2 m high, old, 0.7 g, retaining a cut, in cell (0, 1) of
     # class 2.
     ratio = STEP3_PGV[0, 1] / pga_for_class(2)
     wall = states.loc["C01-RW02"]
     assert wall["wall_position"] == "cut"
-    assert wall["theta_base_pga_g"] == pytest.approx(0.56 * CUT_CAPACITY_FACTOR)
-    assert wall["theta"] == pytest.approx(0.56 * CUT_CAPACITY_FACTOR * ratio, rel=1e-6)
+    assert wall["theta_base_pga_g"] == pytest.approx(0.7 * CUT_CAPACITY_FACTOR)
+    assert wall["theta"] == pytest.approx(0.7 * CUT_CAPACITY_FACTOR * ratio, rel=1e-6)
     assert wall["beta"] == 0.5
 
     # C03-RW01: small, old, 0.35 g, retaining fill, in cell (2, 0) of class 3.

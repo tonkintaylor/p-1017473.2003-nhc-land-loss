@@ -23,7 +23,8 @@ returns a **probability of failure at the ground motion the wall saw**, which is
 what a fragility curve is, and the state is a draw against it.
 
 The curve is the ``retaining-wall-type-fragility.csv`` row for the wall's type
-and size class, its PGA median scaled by the wall's position (0.85 retaining
+and height class (under 2 m, or 2 m and over, from its ``height_m``; the lead,
+2026-10-07), its PGA median scaled by the wall's position (0.85 retaining
 fill, 1.15 retaining a cut, unchanged where unknown). It is converted from PGA
 to PGV at the wall's own PGV/PGA ratio: step
 3's PGV grid over the unscaled TS1170.5 PGA grid at ``RETURN_PERIOD_YR``, both
@@ -53,6 +54,7 @@ from landloss.domain.loss_contract import (
 from landloss.exposure.rw.wall_type import AGE_BIN_COLUMN
 from landloss.hazard.landslide.urban import fragility as urban_fragility
 from landloss.hazard.landslide.urban.wall_type_fragility import (
+    height_class,
     load_wall_type_fragility,
 )
 from landloss.hazard.realisation import realisation_seed
@@ -62,6 +64,7 @@ from landloss.io.ts1170 import get_ts1170_pga
 from landloss.vul.shaking.fragility import (
     DAMAGE_STATE_COLUMN,
     FAILURE_PROBABILITY_COLUMN,
+    HEIGHT_M_COLUMN,
     PGV_IM,
     PGV_PGA_RATIO_COLUMN,
     REPLACE,
@@ -114,7 +117,7 @@ POPULATION_COLUMNS = [
     WALL_TYPE_COLUMN,
     AGE_BIN_COLUMN,
     WALL_POSITION_COLUMN,
-    "height_m",
+    HEIGHT_M_COLUMN,
     "length_m",
     IS_FLATLAND_COLUMN,
 ]
@@ -276,8 +279,10 @@ def describe_states(states):
         f"  {len(converted):,} walls on PGA curves, converted at a "
         f"PGV/PGA ratio of {ratio_range}"
     )
-    print("  median theta (m/s) by wall type and size class:")
-    by_curve = states.groupby([WALL_TYPE_COLUMN, SIZE_CLASS_COLUMN])
+    print("  median theta (m/s) by wall type and height class:")
+    by_curve = states.groupby(
+        [states[WALL_TYPE_COLUMN], height_class(states[HEIGHT_M_COLUMN])]
+    )
     print(by_curve[THETA_COLUMN].median().to_string())
 
     replaced = states[states[DAMAGE_STATE_COLUMN] == REPLACE]

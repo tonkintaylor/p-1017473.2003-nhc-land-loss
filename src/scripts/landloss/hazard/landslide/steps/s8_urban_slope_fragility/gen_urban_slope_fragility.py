@@ -40,7 +40,8 @@ section 4; the build contract, sections 3.8, 6 and 7.7):
    it (when insured), and nowhere else does. The geometry and depths are the
    zones step 12 built for the world.
 2. **The median.** A polygon with a wall takes the wall type curve for the
-   wall's type and size (``retaining-wall-type-fragility.csv``,
+   wall's type and height class, under 2 m or 2 m and over
+   (``retaining-wall-type-fragility.csv``,
    [koutsoupaki_2023]), its PGA median scaled by the wall's own fill or cut
    position, converted from PGA to PGV by the study's own PGV/PGA ratio at
    the polygon's representative point: shaking step 3's PGV grid over
