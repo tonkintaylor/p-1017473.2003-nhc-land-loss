@@ -30,6 +30,7 @@ dependencies = [
     "pyarrow>=19.0",
     "pyproj>=3.7",
     "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
     "rasterio>=1.4",
     "requests>=2.32",
     "rioxarray>=0.19",
@@ -241,6 +242,11 @@ strict-checking = true
 [tool.deptry]
 extend_exclude = ["src/notebooks", "src/scripts", "src/archive"]
 experimental_namespace_package = true
+
+[tool.deptry.per_rule_ignores]
+# Used only by scripts under src/scripts, which deptry does not scan: PyYAML
+# writes the YAML the technical report reads its numbers from.
+DEP002 = ["pyyaml"]
 
 [tool.sync-with-uv.repo-to-package]
 "https://github.com/astral-sh/uv-pre-commit" = "uv"

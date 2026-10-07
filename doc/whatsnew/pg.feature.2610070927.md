@@ -1,0 +1,1 @@
+The loss module reads the four loss tables per exposure world as well as per earthquake, with a `WORLD_IDS` setting beside `REALISATION_IDS` (T-66). Its land cover cap and settlement files, and the viewer CSV, now carry the world in their names (`-w000-r000`) and a `world_id` column; the world-less `loss_input_path` is deleted.

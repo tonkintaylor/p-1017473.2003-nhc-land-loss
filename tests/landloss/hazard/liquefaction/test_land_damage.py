@@ -72,18 +72,22 @@ def test_the_six_states_sum_to_one_everywhere():
     assert np.allclose(sum(expanded.values()).values, 1.0)
 
 
-def test_none_splits_in_half_into_none_and_minor():
+def test_a_tenth_of_the_none_band_becomes_minor():
     expanded = expand([0.4], [0.2])
-    # None band is 1 - 0.4 = 0.6, half of it to Minor.
-    assert expanded["None"].values == pytest.approx(0.3)
-    assert expanded["Minor"].values == pytest.approx(0.3)
+    # None band is 1 - 0.4 = 0.6, a tenth of it to Minor.
+    assert expanded["None"].values == pytest.approx(0.54)
+    assert expanded["Minor"].values == pytest.approx(0.06)
 
 
-def test_major_splits_into_severe_very_severe_and_a_quarter_left_as_major():
-    expanded = expand([0.4], [0.4])
+def test_major_band_splits_by_the_exceedance_ratios():
+    # P(at least Severe) is 2/3 and P(Very Severe) 1/5 of P(at least Major), so
+    # a Major band of 0.3 is Major 0.1, Severe 0.14 and Very Severe 0.06.
+    expanded = expand([0.3], [0.3])
     assert expanded["Major"].values == pytest.approx(0.1)
-    assert expanded["Severe"].values == pytest.approx(0.2)
-    assert expanded["Very Severe"].values == pytest.approx(0.1)
+    assert expanded["Severe"].values == pytest.approx(0.14)
+    assert expanded["Very Severe"].values == pytest.approx(0.06)
+    severe_or_worse = expanded["Severe"].values + expanded["Very Severe"].values
+    assert severe_or_worse == pytest.approx(0.3 * 2 / 3)
 
 
 def test_the_moderate_band_passes_through_the_subdivision_untouched():
@@ -91,10 +95,10 @@ def test_the_moderate_band_passes_through_the_subdivision_untouched():
     assert expanded["Moderate"].values == pytest.approx(0.3)
 
 
-def test_a_cell_with_no_liquefaction_is_all_none_and_minor():
+def test_a_cell_with_no_liquefaction_is_mostly_none_and_a_tenth_minor():
     expanded = expand([0.0], [0.0])
-    assert expanded["None"].values == pytest.approx(0.5)
-    assert expanded["Minor"].values == pytest.approx(0.5)
+    assert expanded["None"].values == pytest.approx(0.9)
+    assert expanded["Minor"].values == pytest.approx(0.1)
     assert expanded["Moderate"].values == pytest.approx(0.0)
 
 

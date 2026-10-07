@@ -14,5 +14,8 @@ than an edit to this file.
 # this checks itself against.
 EXTENT = "wlg-pilot"
 
+# Which exposure worlds to settle, each a draw of the wall population.
+WORLD_IDS = [0]
+
 # Which modelled earthquakes to settle.
 REALISATION_IDS = [0]

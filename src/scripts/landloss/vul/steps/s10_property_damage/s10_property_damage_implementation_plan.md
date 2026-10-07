@@ -79,8 +79,8 @@ world signature of Phase 1b each call raised `TypeError`.
       `loss_input_path(t, r, extent=e)` equals
       `world_loss_input_path(t, 0, r, extent=e)` and reads the file the step
       writes for world 0.
-- [ ] Delete `loss_input_path()` once the loss owner moves the five calls to
-      `world_loss_input_path()` with a `WORLD_IDS` setting.
+- [x] Delete `loss_input_path()` once the loss owner moves the five calls to
+      `world_loss_input_path()` with a `WORLD_IDS` setting (T-66, 2026-10-07).
 
 ## Phase 2 — Resolve what the join exposed
 

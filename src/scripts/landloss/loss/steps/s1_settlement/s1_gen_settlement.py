@@ -98,6 +98,7 @@ from landloss.loss.pricing import (
     timber_pole_rate_excl_gst_nzd_per_m2,
 )
 from landloss.loss.settlement import DamagedClaim, settle
+from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     CAP_COLUMN,
     HAS_CROSSING_COLUMN,
@@ -107,7 +108,7 @@ from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import 
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.paths import TEMP_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
-    loss_input_path,
+    world_loss_input_path,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -166,10 +167,11 @@ REPLACEMENT_WALL_RATE_COLUMN = "replacement_wall_rate_excl_gst_nzd_per_m2"
 WALL_ENLARGED_COLUMN = "wall_enlarged_for_landslide"
 
 
-def settlement_path(realisation_id: int, *, extent: str) -> Path:
-    """Return the file a run writes one realisation's settlements to.
+def settlement_path(world_id: int, realisation_id: int, *, extent: str) -> Path:
+    """Return the file a run writes one world and realisation's settlements to.
 
     Args:
+        world_id: The exposure world, one draw of the wall population.
         realisation_id: The modelled earthquake.
         extent: The extent the run is over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
@@ -178,7 +180,8 @@ def settlement_path(realisation_id: int, *, extent: str) -> Path:
         The path, under ``temp/loss``.
     """
     suffix = extent_suffix(extent)
-    return WORK_DIR / f"{OUT_STEM}-r{realisation_id:03d}{suffix}.parquet"
+    stem = f"{OUT_STEM}-w{world_id:03d}-r{realisation_id:03d}"
+    return WORK_DIR / f"{stem}{suffix}.parquet"
 
 
 def _exposure(stem: str, *, extent: str, geo: bool) -> pd.DataFrame:
@@ -689,9 +692,9 @@ def describe_settlement(claims, policy):
     )
 
 
-def check_cap_against_step_0(claims, realisation_id, *, extent):
+def check_cap_against_step_0(claims, world_id, realisation_id, *, extent):
     """Compare this step's cap with step 0's, which built it independently."""
-    path = land_cover_cap_path(realisation_id, extent=extent)
+    path = land_cover_cap_path(world_id, realisation_id, extent=extent)
     if not path.exists():
         print(f"  Step 0's caps are not on disk at {path}; cap not cross-checked")
         return
@@ -701,156 +704,174 @@ def check_cap_against_step_0(claims, realisation_id, *, extent):
     print(f"  Cap agrees with step 0 to {gap:,.6f} NZD at worst")
 
 
-def main(*, extent, realisation_ids):
-    """Settle every claim and write the result, per realisation.
+def main(*, extent, world_ids, realisation_ids):
+    """Settle every claim and write the result, per world and realisation.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
+        world_ids: Which exposure worlds to settle.
         realisation_ids: Which modelled earthquakes to settle.
     """
     policy = PolicySettings()
 
-    for realisation_id in realisation_ids:
-        print(f"\nSettling realisation {realisation_id} ...", flush=True)
-        tables = {
-            name: gpd.read_parquet(loss_input_path(name, realisation_id, extent=extent))
-            for name in LOSS_TABLES
-        }
-        land, rw = tables["land"], tables["rw"]
-
-        claims = loss_claims.land_by_claim(land)
-        ratings = site_ratings_by_claim(land, extent=extent)
-        claims = claims.join(ratings)
-
-        ground = landslide_ground_by_claim(land)
-        # The claims whose own wall is being replaced. They are charged for
-        # that wall -- enlarged where the slip needs more -- and never for one
-        # invented beside it.
-        walled = pd.Index(loss_claims.damaged_walls(rw)[CLAIM_ID_COLUMN].unique())
-
-        claims = claims.join(
-            filled_wall_repair(
-                wall_repair_by_claim(rw, ratings, ground=ground, policy=policy),
-                claims.index,
+    for world_id in world_ids:
+        for realisation_id in realisation_ids:
+            print(
+                f"\nSettling world {world_id}, realisation {realisation_id} ...",
+                flush=True,
             )
-        )
-        land_repair = land_repair_by_claim(
-            land,
-            ratings,
-            ground=ground,
-            walled=walled,
-            policy=policy,
-        ).reindex(claims.index)
-        claims[LAND_REPAIR_COLUMN] = land_repair[LAND_REPAIR_COLUMN].fillna(0.0)
-        claims[SYNTHETIC_WALL_COLUMN] = (
-            land_repair[SYNTHETIC_WALL_COLUMN].fillna(value=False).astype(bool)
-        )
-        claims[LANDSLIDE_REPAIR_AREA_COLUMN] = land_repair[
-            LANDSLIDE_REPAIR_AREA_COLUMN
-        ].fillna(0.0)
-        claims[NEW_WALL_SIZE_COLUMN] = land_repair[NEW_WALL_SIZE_COLUMN].fillna("")
-        claims[NEW_WALL_HEIGHT_COLUMN] = land_repair[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
-        claims[NEW_WALL_LENGTH_COLUMN] = land_repair[NEW_WALL_LENGTH_COLUMN].fillna(0.0)
-        claims[LIQ_REPAIR_COLUMN] = (
-            liquefaction_repair_by_claim(land).reindex(claims.index).fillna(0.0)
-        )
-        # Clearing the spoil is now its own line as well as setting the
-        # earthworks rating, so a claim with buried ground and no wall is no
-        # longer charged nothing for it.
-        claims[SPOIL_VOLUME_COLUMN] = (
-            spoil_by_claim(land).reindex(claims.index).fillna(0.0)
-        )
-        claims[SPOIL_REPAIR_COLUMN] = inundation_removal_cost_incl_gst_nzd(
-            claims[SPOIL_VOLUME_COLUMN].to_numpy(), policy=policy
-        )
+            tables = {
+                name: gpd.read_parquet(
+                    world_loss_input_path(name, world_id, realisation_id, extent=extent)
+                )
+                for name in LOSS_TABLES
+            }
+            land, rw = tables["land"], tables["rw"]
 
-        n_dwellings = loss_claims.dwelling_counts(
-            claims.index.to_numpy(), claims.reset_index()
-        )
+            claims = loss_claims.land_by_claim(land)
+            ratings = site_ratings_by_claim(land, extent=extent)
+            claims = claims.join(ratings)
 
-        # A damaged crossing is settled at its sub-cap limit by adding that
-        # figure to both sides: it contributes the limit to the cap, and the
-        # same amount to the repair cost so the comparison does not reduce it.
-        caps = pd.read_parquet(land_cover_cap_path(realisation_id, extent=extent))
-        has_crossing = (
-            caps.set_index(CLAIM_ID_COLUMN)[HAS_CROSSING_COLUMN]
-            .reindex(claims.index)
-            .fillna(value=False)
-            .to_numpy()
-        )
-        crossing_limit = policy.bridge_culvert_limit_nzd(n_dwellings)
-        claims[CROSSING_REPAIR_COLUMN] = np.where(has_crossing, crossing_limit, 0.0)
+            ground = landslide_ground_by_claim(land)
+            # The claims whose own wall is being replaced. They are charged for
+            # that wall -- enlarged where the slip needs more -- and never for one
+            # invented beside it.
+            walled = pd.Index(loss_claims.damaged_walls(rw)[CLAIM_ID_COLUMN].unique())
 
-        # Professional fees are charged once on a claim that **involves a
-        # wall**, whether one that failed or one invented to reinstate ground.
-        # A wall is the thing that gets designed, consented and supervised.
-        # Clearing spoil on its own does not: no consent, no producer statement,
-        # no survey. Nor does a Canterbury liquefaction cost, which is what NHC
-        # settled rather than a works estimate, so it already stands for
-        # everything that claim cost.
-        works = (claims[WALL_REPAIR_COLUMN] > 0) | (claims[LAND_REPAIR_COLUMN] > 0)
-        claims[FEES_COLUMN] = np.where(
-            works,
-            professional_fees_incl_gst_nzd(
-                ratings=ratings_for(claims.reset_index(), ratings), policy=policy
-            ),
-            0.0,
-        )
+            claims = claims.join(
+                filled_wall_repair(
+                    wall_repair_by_claim(rw, ratings, ground=ground, policy=policy),
+                    claims.index,
+                )
+            )
+            land_repair = land_repair_by_claim(
+                land,
+                ratings,
+                ground=ground,
+                walled=walled,
+                policy=policy,
+            ).reindex(claims.index)
+            claims[LAND_REPAIR_COLUMN] = land_repair[LAND_REPAIR_COLUMN].fillna(0.0)
+            claims[SYNTHETIC_WALL_COLUMN] = (
+                land_repair[SYNTHETIC_WALL_COLUMN].fillna(value=False).astype(bool)
+            )
+            claims[LANDSLIDE_REPAIR_AREA_COLUMN] = land_repair[
+                LANDSLIDE_REPAIR_AREA_COLUMN
+            ].fillna(0.0)
+            claims[NEW_WALL_SIZE_COLUMN] = land_repair[NEW_WALL_SIZE_COLUMN].fillna("")
+            claims[NEW_WALL_HEIGHT_COLUMN] = land_repair[NEW_WALL_HEIGHT_COLUMN].fillna(
+                0.0
+            )
+            claims[NEW_WALL_LENGTH_COLUMN] = land_repair[NEW_WALL_LENGTH_COLUMN].fillna(
+                0.0
+            )
+            claims[LIQ_REPAIR_COLUMN] = (
+                liquefaction_repair_by_claim(land).reindex(claims.index).fillna(0.0)
+            )
+            # Clearing the spoil is now its own line as well as setting the
+            # earthworks rating, so a claim with buried ground and no wall is no
+            # longer charged nothing for it.
+            claims[SPOIL_VOLUME_COLUMN] = (
+                spoil_by_claim(land).reindex(claims.index).fillna(0.0)
+            )
+            claims[SPOIL_REPAIR_COLUMN] = inundation_removal_cost_incl_gst_nzd(
+                claims[SPOIL_VOLUME_COLUMN].to_numpy(), policy=policy
+            )
 
-        claims[REPAIR_COST_COLUMN] = (
-            claims[WALL_REPAIR_COLUMN]
-            + claims[LAND_REPAIR_COLUMN]
-            + claims[SPOIL_REPAIR_COLUMN]
-            + claims[FEES_COLUMN]
-            + claims[LIQ_REPAIR_COLUMN]
-            + claims[CROSSING_REPAIR_COLUMN]
-        )
+            n_dwellings = loss_claims.dwelling_counts(
+                claims.index.to_numpy(), claims.reset_index()
+            )
 
-        # The invented wall is a remediation cost and never an asset, so the
-        # undepreciated value handed to the cap is the real walls' alone, taken
-        # from what step 0 priced.
-        rw_udv = (
-            caps.set_index(CLAIM_ID_COLUMN)[RW_UDV_COLUMN]
-            .reindex(claims.index)
-            .fillna(0.0)
-            .to_numpy()
-        )
-        claims[RW_UDV_COLUMN] = rw_udv
+            # A damaged crossing is settled at its sub-cap limit by adding that
+            # figure to both sides: it contributes the limit to the cap, and the
+            # same amount to the repair cost so the comparison does not reduce it.
+            caps = pd.read_parquet(
+                land_cover_cap_path(world_id, realisation_id, extent=extent)
+            )
+            has_crossing = (
+                caps.set_index(CLAIM_ID_COLUMN)[HAS_CROSSING_COLUMN]
+                .reindex(claims.index)
+                .fillna(value=False)
+                .to_numpy()
+            )
+            crossing_limit = policy.bridge_culvert_limit_nzd(n_dwellings)
+            claims[CROSSING_REPAIR_COLUMN] = np.where(has_crossing, crossing_limit, 0.0)
 
-        settlement = settle(
-            DamagedClaim(
-                damaged_area_m2=claims[loss_claims.DAMAGED_AREA_COLUMN].to_numpy(),
-                land_rate_incl_gst_nzd_per_m2=claims[
-                    loss_claims.LAND_RATE_COLUMN
-                ].to_numpy(),
-                repair_cost_incl_gst_nzd=claims[REPAIR_COST_COLUMN].to_numpy(),
-                n_dwellings=n_dwellings,
-                retaining_wall_udv_incl_gst_nzd=rw_udv,
-                bridge_culvert_udv_incl_gst_nzd=np.where(
-                    has_crossing, crossing_limit, 0.0
+            # Professional fees are charged once on a claim that **involves a
+            # wall**, whether one that failed or one invented to reinstate ground.
+            # A wall is the thing that gets designed, consented and supervised.
+            # Clearing spoil on its own does not: no consent, no producer statement,
+            # no survey. Nor does a Canterbury liquefaction cost, which is what NHC
+            # settled rather than a works estimate, so it already stands for
+            # everything that claim cost.
+            works = (claims[WALL_REPAIR_COLUMN] > 0) | (claims[LAND_REPAIR_COLUMN] > 0)
+            claims[FEES_COLUMN] = np.where(
+                works,
+                professional_fees_incl_gst_nzd(
+                    ratings=ratings_for(claims.reset_index(), ratings), policy=policy
                 ),
-            ),
-            policy=policy,
-        )
-        claims["land_cover_cap_incl_gst_nzd"] = settlement.land_cover_cap_nzd
-        claims[EXCESS_COLUMN] = settlement.excess_nzd
-        claims[SETTLEMENT_COLUMN] = settlement.settlement_nzd
-        claims[CAPPED_COLUMN] = settlement.capped
+                0.0,
+            )
 
-        describe_ratings(claims)
-        describe_repair(claims)
-        describe_settlement(claims, policy)
-        check_cap_against_step_0(claims, realisation_id, extent=extent)
+            claims[REPAIR_COST_COLUMN] = (
+                claims[WALL_REPAIR_COLUMN]
+                + claims[LAND_REPAIR_COLUMN]
+                + claims[SPOIL_REPAIR_COLUMN]
+                + claims[FEES_COLUMN]
+                + claims[LIQ_REPAIR_COLUMN]
+                + claims[CROSSING_REPAIR_COLUMN]
+            )
 
-        out = claims.reset_index()
-        out.insert(0, REALISATION_ID_COLUMN, realisation_id)
-        out_path = settlement_path(realisation_id, extent=extent)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out.to_parquet(out_path)
-        print(RULE)
-        print(f"Wrote {len(out):,} claims to {out_path}")
+            # The invented wall is a remediation cost and never an asset, so the
+            # undepreciated value handed to the cap is the real walls' alone, taken
+            # from what step 0 priced.
+            rw_udv = (
+                caps.set_index(CLAIM_ID_COLUMN)[RW_UDV_COLUMN]
+                .reindex(claims.index)
+                .fillna(0.0)
+                .to_numpy()
+            )
+            claims[RW_UDV_COLUMN] = rw_udv
+
+            settlement = settle(
+                DamagedClaim(
+                    damaged_area_m2=claims[loss_claims.DAMAGED_AREA_COLUMN].to_numpy(),
+                    land_rate_incl_gst_nzd_per_m2=claims[
+                        loss_claims.LAND_RATE_COLUMN
+                    ].to_numpy(),
+                    repair_cost_incl_gst_nzd=claims[REPAIR_COST_COLUMN].to_numpy(),
+                    n_dwellings=n_dwellings,
+                    retaining_wall_udv_incl_gst_nzd=rw_udv,
+                    bridge_culvert_udv_incl_gst_nzd=np.where(
+                        has_crossing, crossing_limit, 0.0
+                    ),
+                ),
+                policy=policy,
+            )
+            claims["land_cover_cap_incl_gst_nzd"] = settlement.land_cover_cap_nzd
+            claims[EXCESS_COLUMN] = settlement.excess_nzd
+            claims[SETTLEMENT_COLUMN] = settlement.settlement_nzd
+            claims[CAPPED_COLUMN] = settlement.capped
+
+            describe_ratings(claims)
+            describe_repair(claims)
+            describe_settlement(claims, policy)
+            check_cap_against_step_0(claims, world_id, realisation_id, extent=extent)
+
+            out = claims.reset_index()
+            out.insert(0, REALISATION_ID_COLUMN, realisation_id)
+            out.insert(1, WORLD_ID_COLUMN, world_id)
+            out_path = settlement_path(world_id, realisation_id, extent=extent)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out.to_parquet(out_path)
+            print(RULE)
+            print(f"Wrote {len(out):,} claims to {out_path}")
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

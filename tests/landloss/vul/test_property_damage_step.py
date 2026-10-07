@@ -274,30 +274,6 @@ def test_an_unknown_table_is_refused():
         step.world_loss_input_path("walls", 0, 0, extent="wlg-pilot")
 
 
-@pytest.mark.parametrize("extent", ["wlg-pilot", "full"])
-@pytest.mark.parametrize("table", ["land", "rw", "culverts", "bridges"])
-@pytest.mark.parametrize("realisation_id", [0, 7])
-def test_the_deprecated_path_resolves_world_0(table, realisation_id, extent):
-    # The loss module's five callers pass no world (contract decision 37).
-    assert step.loss_input_path(
-        table, realisation_id, extent=extent
-    ) == step.world_loss_input_path(table, 0, realisation_id, extent=extent)
-
-
-def test_the_deprecated_path_refuses_an_unknown_table():
-    with pytest.raises(ValueError, match="unknown loss table"):
-        step.loss_input_path("walls", 0, extent="wlg-pilot")
-
-
-def test_the_deprecated_path_reads_the_file_world_0_writes(synthetic_run):
-    step.main(extent="wlg-pilot", world_ids=[0, 1], realisation_ids=[1])
-
-    for table in ("land", "rw", "culverts", "bridges"):
-        written = gpd.read_parquet(step.loss_input_path(table, 1, extent="wlg-pilot"))
-        assert (written["world_id"] == 0).all()
-        assert (written["realisation_id"] == 1).all()
-
-
 # --- end to end ------------------------------------------------------------------
 
 

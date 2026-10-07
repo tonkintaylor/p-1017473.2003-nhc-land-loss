@@ -5,22 +5,30 @@ scripts beside it, which take no arguments, so what a run did can be read off
 this file and its git history.
 """
 
-import getpass
-from pathlib import Path
-
-from scripts.landloss.paths import REPORT_DIR, TEMP_DIR
+from scripts.landloss.paths import (
+    CLAIM_REPORTS_EXTRACTED_DIR,  # noqa: F401 -- read as config.CLAIM_REPORTS_EXTRACTED_DIR
+    REPORT_DIR,
+    TEMP_DIR,
+)
 
 # The claim report extraction (the CSVs extract_claim_reports.py writes, one
-# folder per claims list), held on the user's U: drive rather than in the
-# repo's gitignored assets folder.
-CLAIM_REPORTS_EXTRACTED_DIR = (
-    Path("U:/")
-    / getpass.getuser().upper()
-    / "land-loss"
-    / "claim_reports"
-    / "extracted"
+# folder per claims list) is read from CLAIM_REPORTS_EXTRACTED_DIR, the one
+# copy on Maxim Millen's U: drive that the extraction writes to, whoever runs
+# this. Every claims list with an extraction is read; allianz-1509000 is left
+# out, since its one claim has no report and so no extraction folder.
+CLAIMS_LISTS = (
+    "iag-1502000",
+    "suncorp-1501000",
+    "kaikoura-2016",
+    "seddon-2013",
+    "loss-adjusters-1502100",
+    "tower-1503000",
+    "fmg-1504000",
+    "mas-1505000",
+    "ando-1506000",
+    "chubb-1507000",
+    "qbe-1508000",
 )
-CLAIMS_LISTS = ("iag-1502000", "suncorp-1501000", "kaikoura-2016", "seddon-2013")
 
 # Whether to reuse the already-clipped LINZ and GNS layers. Set False to fetch
 # them again.

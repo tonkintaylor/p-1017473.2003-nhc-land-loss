@@ -138,32 +138,6 @@ def world_loss_input_path(
     )
 
 
-def loss_input_path(table: str, realisation_id: int, *, extent: str) -> Path:
-    """Return world 0's contract table for one earthquake (deprecated).
-
-    Deprecated: it exists only for the loss module's five callers
-    (``s0_gen_land_cover_cap.py``, ``s1_gen_settlement.py``,
-    ``gen_calc_walkthrough.py`` twice and ``gen_viewer_data.py``), which pass no
-    world, until the loss module's owner moves them to worlds. It always reads
-    world 0, which is every world this build runs. Nothing in vul calls it; vul
-    code uses :func:`world_loss_input_path`. Once the loss calls pass a world
-    this function is deleted (contract decision 37).
-
-    Args:
-        table: The contract table, one of ``LOSS_TABLES``.
-        realisation_id: The earthquake realisation the file holds.
-        extent: The extent to run over, a name from
-            landloss.io.area_of_interest.EXTENTS or "full".
-
-    Returns:
-        ``world_loss_input_path(table, 0, realisation_id, extent=extent)``.
-
-    Raises:
-        ValueError: If ``table`` is not one of the four contract tables.
-    """
-    return world_loss_input_path(table, 0, realisation_id, extent=extent)
-
-
 def in_default_crs(table: gpd.GeoDataFrame, name: str) -> gpd.GeoDataFrame:
     """Return ``table`` in EPSG:2193, refusing one with no CRS at all."""
     if table.crs is None:

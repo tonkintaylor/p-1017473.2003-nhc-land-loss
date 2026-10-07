@@ -1,6 +1,6 @@
 """Write the one CSV the static loss viewer reads, and put the viewer beside it.
 
-    uv run --frozen python src/scripts/landloss/loss/validations/gen_viewer_data.py
+    uv run --frozen python src/scripts/landloss/loss/ui/gen_viewer_data.py
 
 The viewer is `loss_viewer.html`, a single page with no server and no build
 step: open it, drag the CSV on, and it settles every claim in the browser. The
@@ -33,11 +33,13 @@ from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from landloss.io.area_of_interest import extent_suffix
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
-    BETA_SIZE_CLASS_HEIGHT_M,
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
     timber_pole_rate_excl_gst_nzd_per_m2,
+)
+from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
+    wall_udv_by_claim,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
@@ -54,10 +56,9 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     WALL_REPAIR_COLUMN,
     settlement_path,
 )
-from scripts.landloss.loss.validations.gen_calc_walkthrough import wall_shape
 from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
-    loss_input_path,
+    world_loss_input_path,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -68,7 +69,7 @@ VIEWER = "loss_viewer.html"
 HERE = __import__("pathlib").Path(__file__).resolve().parent
 
 
-def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
+def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return each claim's position in degrees, for the map.
 
     The insured land is a polygon; the viewer wants a dot, so this takes a
@@ -76,6 +77,7 @@ def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
     L-shaped section can fall outside the property altogether.
 
     Args:
+        world_id: The exposure world.
         realisation_id: The modelled earthquake.
         extent: The extent the run is over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
@@ -83,7 +85,9 @@ def claim_points(realisation_id: int, *, extent: str) -> pd.DataFrame:
     Returns:
         ``lon`` and ``lat`` per claim.
     """
-    land = gpd.read_parquet(loss_input_path("land", realisation_id, extent=extent))
+    land = gpd.read_parquet(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent)
+    )
     inside = land.geometry.representative_point()
     degrees = gpd.GeoSeries(inside, crs=land.crs).to_crs(4326)
     return (
@@ -107,22 +111,33 @@ def site_multiplier(claims: pd.DataFrame) -> pd.Series:
     )
 
 
-def viewer_rows(claims: pd.DataFrame, walls: pd.DataFrame) -> pd.DataFrame:
+def wall_value_excl_gst(rw: pd.DataFrame, policy: PolicySettings) -> pd.Series:
+    """Return each claim's damaged wall value before GST, summed wall by wall.
+
+    Taken from step 0's own function, so the viewer's cap is built from the same
+    value the module's is. A claim's walls are valued one by one and then added:
+    a single size, length and rate per claim would price every metre of a claim
+    with walls of mixed sizes at its tallest wall's size and highest rate.
+    """
+    return wall_udv_by_claim(rw, policy=policy) / (1.0 + policy.gst_rate)
+
+
+def viewer_rows(claims: pd.DataFrame, wall_value: pd.Series) -> pd.DataFrame:
     """Return the table the viewer reads, one row per claim.
 
-    Only what the Act does not decide. Wall cost arrives as a **face area and a
-    rate** rather than as a price, because a price already has GST, the site
-    multiplier and the specification uplift baked into it -- and all three are
-    controls on the page.
+    Only what the Act does not decide. Wall value and wall cost arrive **before
+    GST**, and the repair as a face area and a rate rather than as a price,
+    because a price already has GST, the site multiplier and the specification
+    uplift baked into it -- and all three are controls on the page.
 
     Args:
         claims: Step 1's settlements, indexed by claim.
-        walls: The damaged walls' size, length and rate per claim.
+        wall_value: The damaged walls' value before GST per claim, as
+            :func:`wall_value_excl_gst` returns.
 
     Returns:
         The viewer's rows.
     """
-    height = walls["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     new_height = claims[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
     new_rate = np.where(
         new_height > 0, timber_pole_rate_excl_gst_nzd_per_m2(new_height), 0.0
@@ -132,9 +147,10 @@ def viewer_rows(claims: pd.DataFrame, walls: pd.DataFrame) -> pd.DataFrame:
             "dwellings": claims["dwelling_count"].astype(int),
             "damaged_area_m2": claims["damaged_area_m2"].round(4),
             "land_rate_incl_gst": claims["land_rate_incl_gst_nzd_per_m2"].round(6),
-            # Wall geometry and rate, not a wall price.
-            "wall_face_m2": (height * walls["wall_length_m"].fillna(0.0)).round(6),
-            "wall_rate_excl_gst": walls["wall_rate_excl_gst"].fillna(0.0).round(6),
+            # What the damaged walls were worth, before GST: it builds the cap.
+            "wall_value_excl_gst": wall_value.reindex(claims.index)
+            .fillna(0.0)
+            .round(6),
             # What the damaged wall is replaced at, which a landslide can make
             # larger than the wall that was there. The value above builds the
             # cap; this builds the repair.
@@ -183,7 +199,7 @@ def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFram
     spec = 1.0 + policy.replacement_spec_uplift
     mult = 1.0 + rows["site_multiplier"]
 
-    udv = rows["wall_face_m2"] * rows["wall_rate_excl_gst"] * gst
+    udv = rows["wall_value_excl_gst"] * gst
     wall = (
         rows["replacement_face_m2"]
         * rows["replacement_rate_excl_gst"]
@@ -242,22 +258,28 @@ def check_viewer_against_the_model(rows, claims, policy) -> float:
     return worst
 
 
-def main(*, extent, realisation_ids):
-    """Write the viewer's CSV and copy the page beside it."""
+def main(*, extent, world_ids, realisation_ids):
+    """Write the viewer's CSV for the first world and realisation, and the page."""
     policy = PolicySettings()
+    world_id = world_ids[0]
     realisation_id = realisation_ids[0]
-    claims = pd.read_parquet(settlement_path(realisation_id, extent=extent)).set_index(
-        CLAIM_ID_COLUMN
+    claims = pd.read_parquet(
+        settlement_path(world_id, realisation_id, extent=extent)
+    ).set_index(CLAIM_ID_COLUMN)
+    rw = gpd.read_parquet(
+        world_loss_input_path("rw", world_id, realisation_id, extent=extent)
     )
-    walls = wall_shape(realisation_id, extent=extent).reindex(claims.index)
-    rows = viewer_rows(claims, walls)
-    rows = rows.join(claim_points(realisation_id, extent=extent)).reset_index()
+    rows = viewer_rows(claims, wall_value_excl_gst(rw, policy))
+    points = claim_points(world_id, realisation_id, extent=extent)
+    rows = rows.join(points).reset_index()
 
     check_viewer_against_the_model(rows.set_index(CLAIM_ID_COLUMN), claims, policy)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     suffix = extent_suffix(extent)
-    csv_path = OUT_DIR / f"loss-viewer-r{realisation_id:03d}{suffix}.csv"
+    csv_path = (
+        OUT_DIR / f"loss-viewer-w{world_id:03d}-r{realisation_id:03d}{suffix}.csv"
+    )
     rows.to_csv(csv_path, index=False)
     shutil.copy(HERE / VIEWER, OUT_DIR / VIEWER)
     print(f"Wrote {len(rows):,} claims to {csv_path}")
@@ -267,4 +289,8 @@ def main(*, extent, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

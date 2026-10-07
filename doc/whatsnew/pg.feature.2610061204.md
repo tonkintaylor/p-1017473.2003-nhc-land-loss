@@ -1,0 +1,1 @@
+The retaining wall dataset comparison now reads the other insurers' claim report lists as well as the IAG, Suncorp, Kaikōura and Seddon ones: Tower, FMG, MAS, Ando, Chubb, QBE and the loss adjusters' codes, set in `CLAIMS_LISTS` in its `config.py`.

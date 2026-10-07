@@ -1,6 +1,6 @@
 """Write the settlement calculation as a spreadsheet, for review off the code.
 
-    uv run --frozen python src/scripts/landloss/loss/validations/gen_calc_walkthrough.py
+    uv run --frozen python src/scripts/landloss/loss/ui/gen_calc_walkthrough.py
 
 Three tabs, for two different questions.
 
@@ -81,7 +81,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
 )
 from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
-    loss_input_path,
+    world_loss_input_path,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -1067,7 +1067,9 @@ def repair_letters() -> dict[str, str]:
     return {key: get_column_letter(number) for key, number in repair_columns().items()}
 
 
-def land_areas_by_claim(realisation_id: int, *, extent: str) -> pd.DataFrame:
+def land_areas_by_claim(
+    world_id: int, realisation_id: int, *, extent: str
+) -> pd.DataFrame:
     """Return the landslide extents `vul` sends, summed onto the claim.
 
     The evacuated and inundated footprints **overlap**, so they are carried
@@ -1076,6 +1078,7 @@ def land_areas_by_claim(realisation_id: int, *, extent: str) -> pd.DataFrame:
     the overlap visible instead of implied.
 
     Args:
+        world_id: The exposure world.
         realisation_id: The modelled earthquake.
         extent: The extent the run is over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
@@ -1083,7 +1086,9 @@ def land_areas_by_claim(realisation_id: int, *, extent: str) -> pd.DataFrame:
     Returns:
         The evacuated, inundated and total insured areas per claim.
     """
-    land = gpd.read_parquet(loss_input_path("land", realisation_id, extent=extent))
+    land = gpd.read_parquet(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent)
+    )
     state = land[LIQ_LD_STATE_COLUMN]
     # vul's liquefied area per polygon, summed over the claim, which is what
     # `claims.damaged_area_m2` takes for liquefaction, one polygon at a time.
@@ -1427,7 +1432,7 @@ def wall_damage_cause(damaged: pd.DataFrame) -> pd.Series:
     return causes
 
 
-def wall_shape(realisation_id: int, *, extent: str) -> pd.DataFrame:
+def wall_shape(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return the size, length and rate of each claim's damaged walls.
 
     One wall per property today, so these are that wall's. Where a claim carries
@@ -1435,6 +1440,7 @@ def wall_shape(realisation_id: int, *, extent: str) -> pd.DataFrame:
     makes the Repair cost tab's wall figures an approximation on that claim.
 
     Args:
+        world_id: The exposure world.
         realisation_id: The modelled earthquake.
         extent: The extent the run is over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
@@ -1442,7 +1448,9 @@ def wall_shape(realisation_id: int, *, extent: str) -> pd.DataFrame:
     Returns:
         A frame indexed by ``claim_id``.
     """
-    rw = gpd.read_parquet(loss_input_path("rw", realisation_id, extent=extent))
+    rw = gpd.read_parquet(
+        world_loss_input_path("rw", world_id, realisation_id, extent=extent)
+    )
     damaged = loss_claims.damaged_walls(rw)
     order = pd.Categorical(
         damaged[RW_SIZE_COLUMN], categories=list(BETA_SIZE_CLASS_HEIGHT_M), ordered=True
@@ -1473,14 +1481,15 @@ def wall_shape(realisation_id: int, *, extent: str) -> pd.DataFrame:
     return out
 
 
-def main(*, extent, realisation_ids):
-    """Write the walkthrough for the first realisation asked for."""
+def main(*, extent, world_ids, realisation_ids):
+    """Write the walkthrough for the first world and realisation asked for."""
     policy = PolicySettings()
+    world_id = world_ids[0]
     realisation_id = realisation_ids[0]
-    claims = pd.read_parquet(settlement_path(realisation_id, extent=extent))
+    claims = pd.read_parquet(settlement_path(world_id, realisation_id, extent=extent))
     claims = claims.set_index("claim_id")
 
-    walls = wall_shape(realisation_id, extent=extent).reindex(claims.index)
+    walls = wall_shape(world_id, realisation_id, extent=extent).reindex(claims.index)
     claims["wall_size"] = walls["wall_size"].fillna("none")
     claims["wall_length_m"] = walls["wall_length_m"].fillna(0.0)
     claims["wall_rate_excl_gst"] = walls["wall_rate_excl_gst"].fillna(0.0)
@@ -1490,7 +1499,9 @@ def main(*, extent, realisation_ids):
     claims["wall_height_m"] = (
         claims["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     )
-    areas = land_areas_by_claim(realisation_id, extent=extent).reindex(claims.index)
+    areas = land_areas_by_claim(world_id, realisation_id, extent=extent).reindex(
+        claims.index
+    )
     for column in areas.columns:
         claims[column] = areas[column].fillna(0.0)
     chosen = pick_claims(claims)
@@ -1524,4 +1535,8 @@ def main(*, extent, realisation_ids):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, realisation_ids=config.REALISATION_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

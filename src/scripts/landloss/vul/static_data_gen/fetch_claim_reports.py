@@ -471,6 +471,19 @@ def write_index(path: Path, rows: dict[str, IndexRow]) -> None:
             writer.writerow(asdict(rows[name]))
 
 
+def is_folder(path: Path) -> bool:
+    """Return whether ``path`` is a folder, taking one we may not look at as one.
+
+    Some subproject folders are locked down so that even asking what they are
+    is refused (1504000.0472 is one). Counting such a folder in keeps it in the
+    run, where its report is recorded as unreadable, rather than stopping it.
+    """
+    try:
+        return path.is_dir()
+    except OSError:
+        return True
+
+
 def subproject_dirs(project_dir: Path, wanted: list[str] | None = None) -> list[Path]:
     """Return the project's subproject folders, in order.
 
@@ -482,7 +495,7 @@ def subproject_dirs(project_dir: Path, wanted: list[str] | None = None) -> list[
     Returns:
         The folders, sorted by name.
     """
-    top = [path for path in project_dir.iterdir() if path.is_dir()]
+    top = [path for path in project_dir.iterdir() if is_folder(path)]
     # Some offices filed a claim inside another claim's folder, e.g.
     # 86101.0360\86101.0371, so one level of nesting is searched as well. A
     # folder we are not allowed into (1502000.1937 is one) is kept as itself
@@ -500,7 +513,7 @@ def subproject_dirs(project_dir: Path, wanted: list[str] | None = None) -> list[
         nested += [
             child
             for child in children
-            if child.is_dir() and SUBPROJECT_PATTERN.match(child.name)
+            if is_folder(child) and SUBPROJECT_PATTERN.match(child.name)
         ]
     dirs = sorted(top + nested, key=lambda path: path.name)
     if wanted is None:

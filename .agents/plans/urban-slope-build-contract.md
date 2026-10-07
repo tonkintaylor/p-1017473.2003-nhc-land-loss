@@ -1296,8 +1296,8 @@ loss module, owned elsewhere and not edited in this build, calls
 `loss_input_path(name, realisation_id, pilot=pilot)` in
 `loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py`,
 `loss/steps/s1_settlement/s1_gen_settlement.py`,
-`loss/validations/gen_calc_walkthrough.py` (twice) and
-`loss/validations/gen_viewer_data.py`. Against the signature above each call
+`loss/ui/gen_calc_walkthrough.py` (twice) and
+`loss/ui/gen_viewer_data.py`. Against the signature above each call
 raises `TypeError`, with the realisation id landing in `world_id`, and no loss
 test calls the path function. Until the loss owner loops over worlds, step 10
 carries two path functions in place of the one above:

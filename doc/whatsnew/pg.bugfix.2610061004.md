@@ -1,0 +1,1 @@
+The claim report fetch no longer stops when a subproject folder refuses even a check of what it is, as `T:\Auckland\Projects\1504000\1504000.0472` does. The folder is kept in the run and its report recorded as unreadable, as a folder that cannot be opened already was.

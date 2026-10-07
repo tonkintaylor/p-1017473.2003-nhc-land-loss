@@ -315,6 +315,24 @@ def test_a_folder_that_cannot_be_read_does_not_stop_the_run(tmp_path, monkeypatc
     }
 
 
+def test_a_folder_that_cannot_even_be_stat_does_not_stop_the_run(tmp_path, monkeypatch):
+    project = tmp_path / "1504000"
+    locked = project / "1504000.0472"
+    locked.mkdir(parents=True)
+    touch(project / "1504000.0001" / "IssuedDocuments" / "Report.docx", mtime=1_000)
+    real_is_dir = Path.is_dir
+
+    def is_dir(self, *args, **kwargs):
+        if self == locked or locked in self.parents:
+            raise PermissionError(5, "Access is denied")
+        return real_is_dir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    names = [path.name for path in fcr.subproject_dirs(project)]
+    assert names == ["1504000.0001", "1504000.0472"]
+    assert fcr.index_subproject(locked).status == fcr.UNREADABLE
+
+
 def test_an_interrupted_run_keeps_what_it_did_and_a_rerun_carries_on(
     tmp_path, cached, monkeypatch
 ):

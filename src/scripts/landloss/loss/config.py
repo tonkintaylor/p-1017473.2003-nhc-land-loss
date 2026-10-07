@@ -1,6 +1,6 @@
 """Run settings for running the whole loss module end to end.
 
-`gen_loss.py` beside this runs every step of the module in order. The two
+`gen_loss.py` beside this runs every step of the module in order. The three
 settings here override each step's own `config.py`, so the whole module runs
 over one extent and one set of realisations.
 
@@ -16,6 +16,10 @@ than a loop. A step runs the Act as it stands unless it is handed otherwise.
 # Wellington pilot box). Must match the run of vul step 10, whose four tables
 # this module reads.
 EXTENT = "wlg-pilot"
+
+# Which exposure worlds to run, each a draw of the wall population. Each must
+# already have been run through the exposure, hazard and vulnerability modules.
+WORLD_IDS = [0]
 
 # Which modelled earthquakes to run. Each must already have been run through the
 # exposure, hazard and vulnerability modules.

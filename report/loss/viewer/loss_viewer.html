@@ -179,7 +179,7 @@ function settle(r, s) {
   const gst = 1 + s.gst, spec = 1 + s.spec, mult = 1 + nz(r.site_multiplier);
   const dwellings = Math.max(1, nz(r.dwellings));
 
-  const udv = nz(r.wall_face_m2) * nz(r.wall_rate_excl_gst) * gst;
+  const udv = nz(r.wall_value_excl_gst) * gst;
   const wall = nz(r.replacement_face_m2) * nz(r.replacement_rate_excl_gst) * gst * mult * spec;
   const newWall = nz(r.new_wall_face_m2) * nz(r.new_wall_rate_excl_gst) * gst * mult * spec;
   const spoil = nz(r.spoil_m3) * s.spoilRate * gst;

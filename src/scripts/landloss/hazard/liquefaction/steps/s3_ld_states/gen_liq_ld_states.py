@@ -182,7 +182,13 @@ def main(*, extent, realisation_ids):
 
         # The projection is written back explicitly rather than relied on to
         # survive the draw, because write_raster refuses a grid without one.
-        grid = states.rename(LD_STATE_NAME).rio.write_crs(constants.DEFAULT_CRS)
+        # NaN is declared as no data so a cell off the grid is not read as a
+        # state: QGIS's paletted renderer draws an undeclared NaN as state 1.
+        grid = (
+            states.rename(LD_STATE_NAME)
+            .rio.write_crs(constants.DEFAULT_CRS)
+            .rio.write_nodata(np.nan)
+        )
         path = write_raster(grid, ld_state_path(realisation_id, extent=extent))
         print(f"Wrote {path}")
 

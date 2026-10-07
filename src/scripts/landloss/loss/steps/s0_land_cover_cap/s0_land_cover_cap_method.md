@@ -16,7 +16,9 @@
   ratings, of which only earthworks can be derived (**Q-10**), and damaged land
   has no Land SOW behind it. The cap is the half that can be built.
 - It reads all four contract tables through vul step 10's own path function,
-  `loss_input_path()`, so the file names live in one place.
+  `world_loss_input_path()`, so the file names live in one place, once per
+  exposure world in `WORLD_IDS` and earthquake in `REALISATION_IDS`. Its
+  output, like step 1's, carries both in its name and its columns.
 
 ## Bringing polygons and walls onto the claim
 
