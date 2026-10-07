@@ -201,6 +201,17 @@ checks them against held-out claims.
 - [ ] Run over Porirua, then the other three territorial authorities; a
       process pool over the tiles.
 
+## Phase 7 — More wall records (the lead, 2026-10-08)
+
+- [x] Read T+T's manually mapped walls (Koordinates 125317) beside the GNS
+      mapped walls, dropping any within 2 m of a GNS wall, and use the rest
+      as GNS walls are (`gen_mapped_walls`).
+- [x] Refuse a claim layer older than any claims list's extraction, so the
+      seven lists added on 2026-10-06 reach the claim update.
+- [ ] Rebuild the claim layer (`exposure/rw/validations/gen_rw_dataset_properties.py`,
+      reads T:), then rerun this step's faces, step 13 and the wall units
+      over the pilot, then exposure rw step 6.
+
 ## Potential future improvements
 
 - Walled units under 1.5 m are 73% against 54% in Anderson et al. at the

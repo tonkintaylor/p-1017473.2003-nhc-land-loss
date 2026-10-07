@@ -30,6 +30,12 @@ USE_CACHED_LAYERS = True
 # 2 m for a wall).
 GNS_WALL_MATCH_M = 2.0
 
+# T+T's manually mapped walls (Koordinates 125317, pilot only) join the GNS
+# mapped walls and are used exactly as they are; a manual wall within this many
+# metres of a GNS wall is dropped first as the same wall mapped twice (the
+# lead, 2026-10-08).
+MANUAL_WALL_DUPLICATE_M = 2.0
+
 # A GNS break in slope counts as agreeing with a pif within this many metres
 # (3 m in the plan's detection check).
 GNS_BREAK_MATCH_M = 3.0

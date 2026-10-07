@@ -233,6 +233,7 @@ def main(*, extent, realisation_ids, world_ids):
                     extent=extent,
                     use_cached_layers=faces_config.USE_CACHED_LAYERS,
                     gns_wall_match_m=faces_config.GNS_WALL_MATCH_M,
+                    manual_wall_duplicate_m=faces_config.MANUAL_WALL_DUPLICATE_M,
                     search_m=faces_config.SEARCH_M,
                     gns_only_min_length_m=faces_config.GNS_ONLY_MIN_LENGTH_M,
                     end_window_m=faces_config.PIF_END_WINDOW_M,

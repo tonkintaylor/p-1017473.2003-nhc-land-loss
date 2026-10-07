@@ -118,6 +118,12 @@ WCC_FILL_AREAS_LAYER_ID = 125311
 # MBIE-funded SLIDE programme, mirrored onto the T+T instance for this study.
 GNS_SLIDE_MORPHOLOGY_LAYER_ID = 125308
 
+# https://ttgroup.koordinates.com/layer/125317-manuallydefinedretainingwalls/
+# Retaining walls T+T mapped by hand from aerial imagery for this study, as
+# lines: 71 walls, 1.1 km, over the Wellington pilot only (published
+# 2026-09-25). Read beside the GNS mapped walls as a second mapped wall source.
+TT_MANUAL_WALLS_LAYER_ID = 125317
+
 # https://ttgroup.koordinates.com/layer/125309-gns-slide-morphological-data-genesis/
 # The companion polygon layer from the same study: the process that formed each
 # piece of ground -- cut slope, fill body, landfill, landslide, and so on.

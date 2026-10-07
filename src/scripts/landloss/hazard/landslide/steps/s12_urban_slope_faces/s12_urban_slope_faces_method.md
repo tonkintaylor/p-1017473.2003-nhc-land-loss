@@ -119,6 +119,22 @@
   ground. No barrier grid is passed, so buildings and roads do not stop the
   runout. The rules are in the `slope_polygons` module docstring (rules 6
   and 7).
+- **Mapped walls** are the GNS SLIDE mapped walls [townsend_2020] and, since
+  2026-10-08, the walls T+T mapped by hand from aerial imagery
+  (`get_tt_manual_walls`, Koordinates 125317: 71 walls, 1.1 km, Wellington
+  pilot only), joined by `wall_candidates.gen_mapped_walls`. A manual wall
+  within `MANUAL_WALL_DUPLICATE_M` (2 m) of a GNS wall is first dropped whole
+  as the same wall mapped twice (the lead, 2026-10-08). Every kept manual wall
+  is then used exactly as a GNS wall is, below: it is evidence on a pif
+  (`gns_wall`, `gns_wall_m`), lifts a unit to the GNS floor, and a stretch of
+  it no pif covers becomes a `gns_only` candidate. "GNS mapped wall" below
+  means either source; a `gns_only` candidate's `wall_source` (`gns` or
+  `tt_manual`) says which. Over the `wlg-pilot` DEM box 17 manual walls
+  (367 m) fall inside: 4 (147 m) are dropped, each 82 to 100% of its length
+  within 2 m of a GNS wall, and 13 (220 m) kept, beside 1,092 GNS walls
+  (30.7 km). The checks in `table_urban_slope_face_checks.py` and
+  `table_urban_slope_wall_checks.py` still score the pifs against the GNS
+  walls alone.
 - The evidence for a retaining wall is read onto every pif by
   `landloss.hazard.landslide.wall_candidates.wall_candidate_evidence`: distance
   to a GNS mapped wall and to a GNS cut/fill line, whether any point of the pif
@@ -291,7 +307,12 @@
     floor was 0.80 for part of 2026-10-07), with the base
     (`BETA_WALL_BASE_P`, 0.458) solved so the pilot's expected walls are
     3,357: the lead's 40% increase on the interim 2,398 after the review. The claim
-    layer (`exposure/rw/validations/config.PROPERTIES_PATH`) is read onto
+    layer (`exposure/rw/validations/config.PROPERTIES_PATH`, built from
+    every claims list in that folder's `CLAIMS_LISTS`: since 2026-10-06 the
+    Tower, FMG, MAS, Ando, Chubb, QBE and loss adjusters' lists as well as
+    IAG, Suncorp, Kaikōura and Seddon) is refused by
+    `check_records_current` if it is older than any list's `reports.csv`,
+    so a list added since is never silently left out. It is read onto
     each LINZ property by the smallest record polygon holding its
     representative point (`gen_property_wall_records`), and
     `gen_wall_unit_probability` updates each property's units on the walls

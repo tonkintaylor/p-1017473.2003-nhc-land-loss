@@ -11,7 +11,7 @@ judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-06
+**Updated:** 2026-10-08
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -188,13 +188,17 @@ chance (kappa 0.03 between GNS and NZMM), so none of them can be the truth.
 | Dataset | Access | What it locates | Covers | What it misses |
 |---|---|---|---|---|
 | GNS SLIDE mapped walls [townsend_2020] | `get_gns_slide_morphology`, `Type == MAPPED_WALL_TYPE`; Koordinates 125308 (T+T instance), CC BY 4.0 | A line: 11,288 segments, 280 km | Urban Wellington City | Walls not visible from above; flags 21% of properties |
+| T+T manually mapped walls | `get_tt_manual_walls`; Koordinates 125317 (T+T instance), T+T project data licence (NHC use only) | A line: 71 walls, 1.1 km | Wellington pilot only | Walls not visible from above; 4 of the 17 in the pilot DEM box duplicate a GNS wall |
 | NHC NZMM land attributes | `get_nzmm_land_attributes`, `has_retaining_wall`; on T: under `SENSITIVE/`, put on LINZ polygons via `qv_rating_roll.linz_valuation_reference`; sensitive, aggregates only | A property, Y/N | Four councils | Flags 3% of properties; how it is filled is not documented |
-| Claim reports | `extract_claim_reports.py` output (`reports.csv`, `walls.csv` per claims list), held on U: (`validations/config.py`); private, aggregates only | A property: count, construction, length and height per wall; no position | 1,551 claimed properties, mostly hill land | Walls that do not matter to the claim |
+| Claim reports | `extract_claim_reports.py` output (`reports.csv`, `walls.csv` per claims list), held on U: (`validations/config.py`); private, aggregates only | A property: count, construction, length and height per wall; no position | 1,551 claimed properties, mostly hill land, before the seven lists added 2026-10-06 (Tower, FMG, MAS, Ando, Chubb, QBE, loss adjusters) | Walls that do not matter to the claim |
 
 How each can be used:
 
-- [x] **GNS is the only one that locates a wall**, so it is the only one that
-  is evidence on a candidate line. It is already used as a floor on `p_wall`.
+- [x] **GNS and T+T's manual walls are the only ones that locate a wall**, so
+  they are the only evidence on a candidate line. The manual walls join the
+  GNS walls in landslide step 12, less any within 2 m of a GNS wall, and are
+  used exactly as GNS walls are: evidence on a pif, the floor on `p_wall`, and
+  `gns_only` candidates of their own (2026-10-08).
 - [ ] **NZMM and the claims locate a property, not a wall.** At most they can
   say how many walls a property has. They cannot say which candidate line
   is the wall.
@@ -349,33 +353,39 @@ What this module owes the retaining wall table `loss` reads
 
 ## Next
 
-1. **Rerun the pilot chain downstream of exposure step 6** (vul and the loss
+1. **Run `exposure/rw/validations/gen_rw_dataset_properties.py` from the
+   console** (it reads NZMM and QV on T:), so the claim layer takes in the
+   seven claims lists added on 2026-10-06; landslide step 12's wall units
+   now stop until it is newer than every list's extraction. Then rerun
+   landslide step 12's faces, step 13, step 12's wall units, and step 6, for
+   the claims and the T+T manual walls.
+2. **Rerun the pilot chain downstream of exposure step 6** (vul and the loss
    inputs), so they read the wall-unit population of 2026-10-05 rather than
-   the one drawn from the lines; landslide step 8 needs its join repaired (3)
+   the one drawn from the lines; landslide step 8 needs its join repaired (4)
    first.
-2. Rerun landslide steps 12 and 13 and then step 6 over the pilot, for the
+3. Rerun landslide steps 12 and 13 and then step 6 over the pilot, for the
    new wall height and class prior, and recheck the size classes and the
    share under 1.5 m against Anderson et al. [anderson_2015] (54%).
-3. Repair landslide step 8's edge join: the drawn walls carry wall unit ids,
+4. Repair landslide step 8's edge join: the drawn walls carry wall unit ids,
    so it matches none of the step 7 lines, and step 8 now stops with an error
    rather than build every polygon `no_wall`; resolved when steps 8 and 9 read
    step 12's zones.
-4. Add walls on the flat land: every wall unit is a face of sloping ground.
-5. Tie a wall on a property boundary, which is one unit on each side, so one
+5. Add walls on the flat land: every wall unit is a face of sloping ground.
+6. Tie a wall on a property boundary, which is one unit on each side, so one
    draw serves both, or count it on both.
-6. **Run `gen_wall_age.py` from the console** (it reads the QV roll on T:),
+7. **Run `gen_wall_age.py` from the console** (it reads the QV roll on T:),
    then rerun step 6's population and the pilot chain, so the drawn walls
    carry their age bin and wall type (wall types plan, phase 3).
-7. Have Nick Peters review the type shares and frontage multipliers
+8. Have Nick Peters review the type shares and frontage multipliers
    (wall types plan, phase 4).
-8. Bring subdivision age into `p_wall`.
-9. Calibrate the wall units' weights on the held-out claims, GNS and the
+9. Bring subdivision age into `p_wall`.
+10. Calibrate the wall units' weights on the held-out claims, GNS and the
    strata once **T-50** is complete (Wall datasets, above).
-10. Record where the collected input datasets are held, so the inputs are
+11. Record where the collected input datasets are held, so the inputs are
     reproducible.
-11. Delete the two height-range constants once the loss owner has moved the
+12. Delete the two height-range constants once the loss owner has moved the
     pricing test (**I-14**).
-12. Possibly correlate the wall draw between nearby units, so a wall makes its
+13. Possibly correlate the wall draw between nearby units, so a wall makes its
     neighbours likelier while each unit keeps its `p_wall`: a Gaussian copula
     whose correlation reaches zero at a set range (spherical or Wendland),
     factored once per cluster of nearby units, so milliseconds per world. The

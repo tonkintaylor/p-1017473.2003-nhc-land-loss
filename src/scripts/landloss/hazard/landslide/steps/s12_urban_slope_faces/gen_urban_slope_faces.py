@@ -7,6 +7,8 @@ grows the sizs into
 elements and builds the evacuated, imminent and inundated zones twice: once
 with every siz walled and once with none. It also reads the evidence for a
 retaining wall onto each pif (:mod:`landloss.hazard.landslide.wall_candidates`).
+The mapped walls are the GNS SLIDE walls and T+T's manually mapped walls, less
+any manual wall within ``MANUAL_WALL_DUPLICATE_M`` of a GNS wall.
 Reads the DEM from step 3 and the ground map from step 4.
 
 Run from the repository root::
@@ -44,7 +46,9 @@ from landloss.hazard.landslide.slope_polygons import (
     polygon_geometries,
 )
 from landloss.hazard.landslide.wall_candidates import (
+    TT_MANUAL_WALL_SOURCE,
     gen_gns_only_candidates,
+    gen_mapped_walls,
     property_of_pifs,
     wall_candidate_evidence,
 )
@@ -55,6 +59,7 @@ from landloss.io.readers import (
     get_nz_coastline_polygons,
     get_nz_property_boundaries,
     get_slide_genesis,
+    get_tt_manual_walls,
 )
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     dem_path,
@@ -365,11 +370,23 @@ def describe_properties(table):
     )
 
 
+def describe_manual_walls(manual_walls, mapped_walls):
+    """Print how many manually mapped walls were kept and dropped as duplicates."""
+    kept = mapped_walls[mapped_walls["wall_source"] == TT_MANUAL_WALL_SOURCE]
+    print(
+        f"T+T manual walls: {len(manual_walls):,} ({manual_walls.length.sum():,.0f} m), "
+        f"{len(kept):,} kept ({kept.length.sum():,.0f} m), "
+        f"{len(manual_walls) - len(kept):,} dropped within the duplicate distance "
+        "of a GNS wall"
+    )
+
+
 def main(
     *,
     extent,
     use_cached_layers,
     gns_wall_match_m,
+    manual_wall_duplicate_m,
     search_m,
     gns_only_min_length_m,
     end_window_m,
@@ -390,6 +407,8 @@ def main(
         extent: The build extent (``landloss.io.area_of_interest.EXTENTS``).
         use_cached_layers: Whether to reuse the cached LINZ and GNS layers.
         gns_wall_match_m: A mapped wall within this many metres of a pif is on it.
+        manual_wall_duplicate_m: A manually mapped wall this close to a GNS
+            wall is dropped as a duplicate.
         search_m: Walls, lines and buildings further than this are not recorded.
         gns_only_min_length_m: Mapped wall with no pip near it becomes a candidate
             of its own if at least this long, in metres.
@@ -458,7 +477,13 @@ def main(
     properties = get_nz_property_boundaries(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
-    mapped_walls = morphology[morphology["Type"] == MAPPED_WALL_TYPE]
+    manual_walls = get_tt_manual_walls(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
+    mapped_walls = gen_mapped_walls(
+        morphology[morphology["Type"] == MAPPED_WALL_TYPE],
+        manual_walls,
+        duplicate_m=manual_wall_duplicate_m,
+    )
+    describe_manual_walls(manual_walls, mapped_walls)
     evidence = wall_candidate_evidence(
         table,
         walls=mapped_walls,
@@ -495,6 +520,12 @@ def main(
         f"{len(gns_only):,} GNS-only candidates, {gns_only['length_m'].sum():,.0f} m "
         f"of {mapped_walls.length.sum():,.0f} m mapped; {on_property:,} on a property"
     )
+    print(
+        gns_only.groupby("wall_source")["length_m"]
+        .agg(["size", "sum"])
+        .round(0)
+        .to_string()
+    )
     elements.to_parquet(elements_path(extent=extent))
     print(f"Written to {WORK_DIR}")
 
@@ -504,6 +535,7 @@ if __name__ == "__main__":
         extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         gns_wall_match_m=config.GNS_WALL_MATCH_M,
+        manual_wall_duplicate_m=config.MANUAL_WALL_DUPLICATE_M,
         search_m=config.SEARCH_M,
         gns_only_min_length_m=config.GNS_ONLY_MIN_LENGTH_M,
         end_window_m=config.PIF_END_WINDOW_M,
