@@ -20,7 +20,7 @@ probability because that is what a fragility is: the realisation draws
 against it.
 
 A polygon with a wall on its edge takes the wall type curve for the wall's
-type and size [koutsoupaki_2023], its PGA median scaled by the wall's own
+type and height class [koutsoupaki_2023], its PGA median scaled by the wall's own
 fill or cut position, then converted from PGA to PGV by the study's own ratio
 at the polygon's representative point. The wall is any the
 world drew on the line, insured or not (decision 36 of the build contract):
@@ -123,6 +123,10 @@ ROCK_DEMAND, SITE_DEMAND = ANCHOR_DEMAND_AT
 STATE_COLUMN = "wall_state"
 WALL_TYPE_COLUMN = "wall_type"
 SIZE_CLASS_COLUMN = "size_class"
+# The drawn wall's height, which picks its height class in the wall type
+# table (the lead, 2026-10-07); read off the drawn walls, not carried onto the
+# model file.
+WALL_HEIGHT_COLUMN = "height_m"
 MODEL_COLUMNS = (
     geometry.SLOPE_ID_COLUMN,
     geometry.WALL_LINE_ID_COLUMN,
@@ -175,13 +179,15 @@ _CARRIED_POLYGON_COLUMNS = (
 # The drawn wall columns the join reads (contract section 3.7). ``rw_id`` is
 # carried onto the model and is null on a wall that is not insured (decision
 # 36); whether a polygon has a wall is read from the wall lines on its edge
-# alone. The wall's own ``wall_position`` shifts its curve; it is merged as
+# alone. The wall's ``height_m`` picks its height class in the wall type
+# table. The wall's own ``wall_position`` shifts its curve; it is merged as
 # _WALL_OWN_POSITION_COLUMN so it is never read for the polygon's position,
 # which sets the wall state and can come from another edge line.
 _WALL_COLUMNS = (
     RW_ID_COLUMN,
     geometry.WALL_LINE_ID_COLUMN,
     SIZE_CLASS_COLUMN,
+    WALL_HEIGHT_COLUMN,
     WALL_TYPE_COLUMN,
     geometry.WALL_POSITION_COLUMN,
 )
@@ -568,7 +574,8 @@ def _wall_rows(
 ) -> pd.DataFrame:
     """Look up the type curve of every polygon with a wall, on the polygons' index.
 
-    The PGA median is shifted by the wall's own position, not the polygon's.
+    The curve is the wall's type and height class; its PGA median is shifted
+    by the wall's own position, not the polygon's.
     """
     out = pd.DataFrame(
         {
@@ -583,7 +590,7 @@ def _wall_rows(
         return out
     curves = wall_type_fragility.wall_type_curves(
         with_wall[WALL_TYPE_COLUMN],
-        with_wall[SIZE_CLASS_COLUMN],
+        with_wall[WALL_HEIGHT_COLUMN],
         with_wall[_WALL_OWN_POSITION_COLUMN],
         wall_table,
     )
@@ -702,7 +709,7 @@ def assign_fragility(
     when any line on its edge drew one, whether or not that wall is insured:
     an uninsured wall still holds the slope, so it gives its polygon the wall
     state and curve with ``rw_id`` null (decision 36 of the build contract).
-    The polygon takes the curve, ``rw_id``, type and size of the first
+    The polygon takes the curve, ``rw_id``, type and size class of the first
     such line in edge order (longest shared edge first, :func:`drawn_edge_walls`),
     and the state of its own ``wall_position``, the position of the line
     sharing its longest edge, because step 7 fixed one wall geometry per
@@ -731,9 +738,10 @@ def assign_fragility(
         walls: Every wall exposure step 6 drew in this world, before the
             claim and coverage filters (``drawn_walls_path``, contract section
             3.7), carrying ``rw_id`` (null on a wall that is not insured),
-            ``wall_line_id``, ``size_class``, ``wall_type``, ``wall_position``
-            and ``is_flatland``. Flat-land walls are left out of the join
-            (:func:`sloping_walls`).
+            ``wall_line_id``, ``size_class``, ``height_m`` (which picks the
+            wall's height class in ``wall_table``), ``wall_type``,
+            ``wall_position`` and ``is_flatland``. Flat-land walls are left
+            out of the join (:func:`sloping_walls`).
         wall_table: The table
             :func:`landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility`
             returns.

@@ -53,6 +53,15 @@ from rasterio.windows import from_bounds
 from scipy.stats import norm
 
 from landloss.domain import constants
+from landloss.exposure.rw import wall_type
+from landloss.hazard.landslide import instability_zones, wall_units
+from landloss.hazard.landslide.instability_zones import (
+    DIRECTIONS,
+    PIP_DROP_M,
+    PIP_OFFSETS_M,
+)
+from landloss.hazard.landslide.pif_cut_fill import QUADRATIC_TERMS, eval_quadratic
+from landloss.hazard.landslide.urban import wall_type_fragility
 from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
@@ -121,8 +130,47 @@ WEB_MERCATOR = "EPSG:3857"
 # small.
 COORDINATE_PRECISION_DEG = 1e-6
 
-# A constant named in braces in the content files, {BETA_WALL_BASE_P}.
+# A constant named in braces in the content files, {BETA_WALL_BASE_P}, and the
+# modules it is looked up in, in order.
+CONSTANT_SOURCES = (
+    constants,
+    instability_zones,
+    wall_units,
+    wall_type,
+    wall_type_fragility,
+)
+
+# The points totals the points-to-prior table is read at.
+POINTS_SCALE = np.arange(-60, 81, 10)
+# The width of a bar in the histogram of the pilot's points totals.
+POINTS_BIN_WIDTH = 10
 CONSTANT_PLACEHOLDER = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
+
+# Each pif's cross-section runs along one pip's walk to the foot of its face,
+# from this far uphill of the pip to this far downhill, sampled every
+# SECTION_STEP_M. Pips of the same pif within SECTION_PIP_BUFFER_M of the line
+# are drawn on it.
+SECTION_UPHILL_M = 15.0
+SECTION_DOWNHILL_M = 25.0
+SECTION_STEP_M = 0.5
+SECTION_PIP_BUFFER_M = 1.5
+# The step 13 figures a section prints beside it.
+SECTION_METRICS = [
+    "cut_fill_class",
+    "n_pips",
+    "face_drop_m",
+    "crest_residual_m",
+    "foot_residual_m",
+    "excess_drop_m",
+    "uncertain_below_m",
+    "position",
+    "surface_scale_m",
+]
+
+# The pip rule example: the DEM cells along one pilot pip's fall direction,
+# from this many cells uphill of it to this many downhill.
+PIP_EXAMPLE_UPHILL_CELLS = 4
+PIP_EXAMPLE_DOWNHILL_CELLS = 9
 
 # Each table on the page is cut at this many rows; the CSV itself is linked.
 MAX_TABLE_ROWS = 60
@@ -158,6 +206,8 @@ UNIT_COLUMNS = [
     "height_m",
     "length_m",
     "n_pifs",
+    "wall_points",
+    "wall_points_explain",
     "p_prior",
     "p_prior_basis",
     "p_floor",
@@ -268,11 +318,20 @@ def fill_constants(text):
     """Replace each ``{NAME}`` with today's value of that constant.
 
     The wall constants change from one day to the next, so the content files
-    name them rather than quote them. A name that is not in
-    :mod:`landloss.domain.constants` raises ``AttributeError``, which is the
-    point: a renamed constant must not leave a stale number on the page.
+    name them rather than quote them. A name is looked up in
+    :data:`CONSTANT_SOURCES` in order; one found in none raises
+    ``AttributeError``, which is the point: a renamed constant must not leave a
+    stale number on the page.
     """
-    return CONSTANT_PLACEHOLDER.sub(lambda m: f"{getattr(constants, m[1]):g}", text)
+
+    def value(match):
+        for source in CONSTANT_SOURCES:
+            if hasattr(source, match[1]):
+                return f"{getattr(source, match[1]):g}"
+        msg = f"{match[1]} is in no module of CONSTANT_SOURCES"
+        raise AttributeError(msg)
+
+    return CONSTANT_PLACEHOLDER.sub(value, text)
 
 
 def read_content(name):
@@ -395,19 +454,202 @@ def lognormal_beta(p15, p50):
 
 
 def fragility_curves():
-    """The wall type curves as median and dispersion, for plotting only."""
+    """The wall type curves as median and dispersion, for plotting only.
+
+    The table's band column was ``size_class`` until 2026-10-07 and is
+    ``height_class`` since; whichever it carries is the band each curve is
+    labelled and dashed by.
+    """
     path = REPO_ROOT / "src" / "landloss" / "io" / "assets"
     table = pd.read_csv(path / "retaining-wall-type-fragility.csv")
+    band = "height_class" if "height_class" in table.columns else "size_class"
     return [
         {
-            "label": f"{row.wall_type} {row.size_class}",
-            "wall_type": row.wall_type,
-            "size_class": row.size_class,
-            "theta": float(row.p50),
-            "beta": lognormal_beta(float(row.p15), float(row.p50)),
+            "label": f"{row['wall_type']} {row[band]}",
+            "wall_type": row["wall_type"],
+            "band": row[band],
+            "theta": float(row["p50"]),
+            "beta": lognormal_beta(float(row["p15"]), float(row["p50"])),
         }
-        for row in table.itertuples()
+        for _, row in table.iterrows()
     ]
+
+
+# ---- the wall model's own tables ---------------------------------------------
+
+
+def table_chart(title, frame, *, note=None, wide=False):
+    """A table chart from a frame; a ``wide`` one spans the step's full width."""
+    chart = {
+        "kind": "table",
+        "title": title,
+        "rows": json.loads(frame.to_json(orient="records", double_precision=3)),
+        "wide": wide,
+    }
+    if note:
+        chart["note"] = note
+    return chart
+
+
+def explain_counts(explain):
+    """How many units scored each attribute bin, from ``wall_points_explain``.
+
+    The explain string lists the bins that scored, "verticality 0.5 and over
+    +10; setting road_frontage +20", so this counts what step 12 wrote rather
+    than scoring the units again.
+    """
+    parts = explain.fillna("").str.split("; ").explode()
+    parts = parts[parts.str.len() > 0]
+    scored = parts.str.extract(r"^(?P<bin>.*) (?P<points>[+-]\d+)$")
+    tally = scored.value_counts().reset_index(name="units")
+    tally["points"] = tally["points"].astype(int)
+    return tally.sort_values(["bin"]).reset_index(drop=True)
+
+
+def wall_points_charts(units):
+    """The points table, the points-to-prior scale and how the units scored.
+
+    The table and the scale are the model's own (``wall_units.load_wall_points``
+    and ``wall_units.wall_probability`` at the step 12 constants); the pilot
+    charts count the ``wall_points`` and ``wall_points_explain`` step 12 wrote.
+    """
+    table = wall_units.load_wall_points()
+    charts = {
+        "wall_points_table": table_chart(
+            "Points for a wall, by attribute bin",
+            table[["attribute", "bin", "lower", "upper", "points", "reason"]],
+            note="wall-probability-points.csv. Bins are lower ≤ x < upper. Every "
+            "value is judgement (BETA) until calibrated.",
+            wide=True,
+        )
+    }
+    per_doubling = constants.BETA_WALL_POINTS_PER_DOUBLING
+    scale = pd.DataFrame(
+        {
+            "points": POINTS_SCALE,
+            "p_prior_siz": wall_units.wall_probability(
+                POINTS_SCALE,
+                base_p=constants.BETA_WALL_BASE_P,
+                per_doubling=per_doubling,
+            ),
+            "p_prior_low_height": wall_units.wall_probability(
+                POINTS_SCALE,
+                base_p=constants.BETA_LOW_HEIGHT_WALL_PRIOR,
+                per_doubling=per_doubling,
+            ),
+        }
+    )
+    charts["points_to_prior"] = table_chart(
+        "Points total to prior",
+        scale,
+        note=f"{per_doubling:g} points double the odds; 0 points is "
+        f"{constants.BETA_WALL_BASE_P:g} for a siz piece and "
+        f"{constants.BETA_LOW_HEIGHT_WALL_PRIOR:g} for a low-height wall. The GNS "
+        f"floor ({constants.BETA_GNS_WALL_UNIT_FLOOR:g}) and the claim update "
+        "come after.",
+    )
+    if units is None or "wall_points" not in units.columns:
+        return charts
+    points = units["wall_points"].dropna()
+    lows = np.floor(points / POINTS_BIN_WIDTH).astype(int) * POINTS_BIN_WIDTH
+    tally = lows.value_counts().sort_index()
+    charts["wall_points_hist"] = {
+        "kind": "bar",
+        "title": "Units by points total",
+        "data": [
+            [f"{lo:+d} to {lo + POINTS_BIN_WIDTH:+d}", int(n)]
+            for lo, n in tally.items()
+        ],
+    }
+    charts["wall_points_scored"] = table_chart(
+        "Units scoring each bin (pilot)",
+        explain_counts(units["wall_points_explain"]),
+        note="Counted from wall_points_explain; a bin worth 0 points is not "
+        "listed there, so is not counted.",
+    )
+    return charts
+
+
+def wall_type_charts(walls):
+    """The type shares, the frontage multipliers and the drawn type mix.
+
+    The shares and multipliers are read with exposure rw's own loaders; the mix
+    counts the ``wall_type`` and ``age_bin`` the population step drew.
+    """
+    shares = wall_type.load_beta_wall_type_shares().reset_index()
+    multipliers = wall_type.load_beta_frontage_multipliers().reset_index()
+    charts = {
+        "wall_type_shares": table_chart(
+            "Wall type shares by age bin and height band",
+            shares,
+            note="beta-retaining-wall-type-shares.csv: each row sums to 1. The wall "
+            "first draws an age bin from its property's shares, moves one bin "
+            f"later with probability {wall_type.BETA_WALL_REBUILT_SHARE:g} "
+            "(rebuilt since the house), then draws its type from this row. "
+            "Height bands break at 1.5 m (consent) and 2.5 m.",
+            wide=True,
+        ),
+        "frontage_multipliers": table_chart(
+            "Road frontage multipliers",
+            multipliers,
+            note="beta-retaining-wall-frontage-multipliers.csv: on a road "
+            "frontage the row's shares are multiplied by these and renormalised.",
+        ),
+    }
+    if walls is not None and len(walls):
+        mix = pd.crosstab(walls["wall_type"], walls["age_bin"])
+        charts["drawn_type_by_age"] = table_chart(
+            "Drawn walls by type and age bin (this world)",
+            mix.reindex(columns=[b for b in wall_type.AGE_BINS if b in mix.columns])
+            .rename_axis(columns=None)
+            .reset_index(),
+        )
+    return charts
+
+
+def fragility_table_chart():
+    """The type curves as the model reads them, with its lognormal β."""
+    table = wall_type_fragility.load_wall_type_fragility()
+    return table_chart(
+        "Wall type fragility, P(replace | PGA)",
+        table[
+            [
+                "wall_type",
+                "height_class",
+                "p15",
+                "p50",
+                "beta",
+                "published_height_m",
+                "published_fs",
+                "type_factor",
+                "height_effect",
+            ]
+        ],
+        note="retaining-wall-type-fragility.csv: Koutsoupaki (2023), DS2 "
+        "(moderate) read as replace. p15 and p50 are PGA (g); β is the "
+        "lognormal dispersion through them. The height class splits at "
+        f"{wall_type_fragility.HEIGHT_CLASS_SPLIT_M:g} m. On a slope, landslide "
+        f"step 8 multiplies the median by {wall_type_fragility.FILL_CAPACITY_FACTOR:g} "
+        f"for a fill wall and {wall_type_fragility.CUT_CAPACITY_FACTOR:g} for a cut "
+        "wall, then converts it to PGV.",
+        wide=True,
+    )
+
+
+def wall_model_charts(units, walls):
+    """Every chart of the wall model's own tables, for either reviewer page."""
+    return {
+        **wall_points_charts(units),
+        **wall_type_charts(walls),
+        "wall_type_fragility": fragility_table_chart(),
+        "fragility_curves": {
+            "kind": "curves",
+            "title": "Wall fragility, P(replace | PGA)",
+            "note": "Lognormal through the table's p15 and p50, before the fill or "
+            "cut factor.",
+            "curves": fragility_curves(),
+        },
+    }
 
 
 def pilot_summaries(frames):
@@ -486,12 +728,7 @@ def pilot_summaries(frames):
             "title": "Zone area by scenario (ha)",
             "rows": json.loads(pd.DataFrame(zone_rows).to_json(orient="records")),
         }
-    charts["fragility_curves"] = {
-        "kind": "curves",
-        "title": "Wall fragility, P(replace | PGA)",
-        "note": "Lognormal through the table's p15 and p50, for display.",
-        "curves": fragility_curves(),
-    }
+    charts.update(wall_model_charts(units, frames["drawn_walls"]))
     if frames["wall_outcome"] is not None:
         charts["outcomes"] = {
             "kind": "bar",
@@ -634,6 +871,164 @@ def site_layers(box, frames, walls):
             [*WALL_COLUMNS, "insured", "outcome", "taken_by", *FLAG_COLUMNS],
         )
     return layers
+
+
+def section_pip(pips):
+    """The pip a pif's section runs through: the one with a foot nearest its middle."""
+    walked = pips[pips["foot_x"].notna()]
+    if walked.empty:
+        return None
+    middle_x, middle_y = walked["x"].median(), walked["y"].median()
+    gap = np.hypot(walked["x"] - middle_x, walked["y"] - middle_y)
+    return walked.loc[gap.idxmin()]
+
+
+def pif_section(pif, pips, dem):
+    """One pif's cross-section as step 13 saw it, or None if it has no walk.
+
+    The line runs along the chosen pip's own walk to its foot, which is the
+    direction step 13 measured the face in, so the crest and foot on the section
+    are the ones its residuals were taken at. The surface drawn is the
+    quadratic step 13 fitted and saved for the pif, evaluated along the line;
+    nothing is refitted. The class itself rests on medians over all the pif's
+    pips, so one section illustrates it rather than proves it.
+    """
+    pip = section_pip(pips)
+    if pip is None:
+        return None
+    run = np.hypot(pip["foot_x"] - pip["x"], pip["foot_y"] - pip["y"])
+    if run == 0:
+        return None
+    ux, uy = (pip["foot_x"] - pip["x"]) / run, (pip["foot_y"] - pip["y"]) / run
+    along = np.arange(-SECTION_UPHILL_M, SECTION_DOWNHILL_M + 1e-9, SECTION_STEP_M)
+    xs, ys = pip["x"] + along * ux, pip["y"] + along * uy
+    ground = np.array([z[0] for z in dem.sample(zip(xs, ys, strict=True))], float)
+    ground[ground == dem.nodata] = np.nan
+    coefficients = pif[[f"surface_{t}" for t in QUADRATIC_TERMS]].to_numpy(float)
+    surface = None
+    if np.isfinite(coefficients).all():
+        surface = eval_quadratic(
+            coefficients,
+            (pif["surface_centre_x"], pif["surface_centre_y"]),
+            pif["surface_radius_m"],
+            xs,
+            ys,
+        )
+    dx, dy = pips["x"] - pip["x"], pips["y"] - pip["y"]
+    offset = (dx * -uy + dy * ux).abs()
+    distance = dx * ux + dy * uy
+    near = (offset <= SECTION_PIP_BUFFER_M) & distance.between(
+        -SECTION_UPHILL_M, SECTION_DOWNHILL_M
+    )
+    ends = gpd.GeoSeries(gpd.points_from_xy(xs[[0, -1]], ys[[0, -1]]), crs=NZTM).to_crs(
+        WGS84
+    )
+
+    def rounded(values):
+        return [None if not np.isfinite(v) else round(float(v), 2) for v in values]
+
+    return {
+        "pif_id": int(pif["pif_id"]),
+        "along": rounded(along),
+        "ground": rounded(ground),
+        "surface": None if surface is None else rounded(surface),
+        "pips": [
+            [round(float(d), 2), round(float(z), 2)]
+            for d, z in zip(distance[near], pips["z"][near], strict=True)
+        ],
+        "crest": [0.0, round(float(pip["z"]), 2)],
+        "foot": [round(float(run), 2), round(float(pip["foot_z"]), 2)],
+        "crest_surface": rounded([pip["crest_surface_z"]])[0],
+        "foot_surface": rounded([pip["foot_surface_z"]])[0],
+        "metrics": records(pif.to_frame().T, SECTION_METRICS)[0],
+        "line": [[p.y, p.x] for p in ends],
+    }
+
+
+def pif_sections(pif_ids, frames, dem_path):
+    """The cross-section of every pif named, keyed by pif id."""
+    table, pips = frames["pif_cut_fill"], frames["pif_cut_fill_pips"]
+    if table is None or pips is None or not dem_path.exists():
+        return {}
+    table = table.set_index("pif_id", drop=False)
+    chosen = pips[pips["pif_id"].isin(pif_ids)]
+    sections = {}
+    with rasterio.open(dem_path) as dem:
+        for pif_id, its_pips in chosen.groupby("pif_id"):
+            if pif_id not in table.index:
+                continue
+            section = pif_section(table.loc[pif_id], its_pips, dem)
+            if section is not None:
+                sections[str(pif_id)] = section
+    return sections
+
+
+def pip_example(site, half_width_m, frames, dem_path):
+    """The DEM cells along one real pip's fall, for drawing the pip rule.
+
+    The pip is the middle pip of the longest fill pif at the site (any class if
+    there is no fill), and its direction is the one step 12 recorded for it
+    (``pip_direction``), so the example is a pip the model found, read the way
+    the model read it. Only the cells are returned; the page applies the rule
+    from :mod:`landloss.hazard.landslide.instability_zones` to them, with the
+    drop and offsets passed from the code, so the drawing cannot drift from it.
+    """
+    sizs = frames["sizs"]
+    if sizs is None or not dem_path.exists():
+        return None
+    pifs = around(sizs, site_box(site, half_width_m)).copy()
+    if pifs.empty:
+        return None
+    if frames["pif_cut_fill"] is not None:
+        classes = frames["pif_cut_fill"].set_index("pif_id")["cut_fill_class"]
+        pifs["cut_fill_class"] = pifs["pif_id"].map(classes)
+        if (pifs["cut_fill_class"] == "fill").any():
+            pifs = pifs[pifs["cut_fill_class"] == "fill"]
+    pif = pifs.loc[pifs["n_pips"].idxmax()]
+    points = list(pif.geometry.geoms)
+    middle = len(points) // 2
+    dr, dc = DIRECTIONS[int(pif["pip_direction"][middle])]
+    with rasterio.open(dem_path) as dem:
+        row, col = dem.index(points[middle].x, points[middle].y)
+        steps = range(-PIP_EXAMPLE_UPHILL_CELLS, PIP_EXAMPLE_DOWNHILL_CELLS + 1)
+        cells = [(row + k * dr, col + k * dc) for k in steps]
+        rows = [r for r, _ in cells]
+        cols = [c for _, c in cells]
+        window = rasterio.windows.Window(
+            min(cols), min(rows), max(cols) - min(cols) + 1, max(rows) - min(rows) + 1
+        )
+        block = dem.read(1, window=window)
+        cell_m = dem.res[0]
+        nodata = dem.nodata
+        pip_cells = {dem.index(p.x, p.y) for p in points}
+    step_m = cell_m * math.hypot(dr, dc)
+    profile = []
+    for k, (r, c) in zip(steps, cells, strict=True):
+        z = float(block[r - window.row_off, c - window.col_off])
+        profile.append(
+            {
+                "k": k,
+                "along_m": round(k * step_m, 2),
+                "z": None if z == nodata else round(z, 3),
+                "is_pip": (r, c) in pip_cells,
+            }
+        )
+    bearing = (math.degrees(math.atan2(dc, -dr)) + 360.0) % 360.0
+    return {
+        "site": site["id"],
+        "pif_id": int(pif["pif_id"]),
+        "cut_fill_class": pif.get("cut_fill_class"),
+        "x": round(points[middle].x, 1),
+        "y": round(points[middle].y, 1),
+        "bearing_deg": round(bearing),
+        "diagonal": dr != 0 and dc != 0,
+        "cell_m": cell_m,
+        "step_m": round(step_m, 3),
+        "drop_m": PIP_DROP_M,
+        "offsets_cells": [max(1, round(o / cell_m)) for o in PIP_OFFSETS_M],
+        "need_m": round(PIP_DROP_M * math.hypot(dr, dc), 3),
+        "cells": profile,
+    }
 
 
 def unit_chains(unit_ids, frames, walls):
@@ -789,13 +1184,17 @@ def main(*, extent, world_id, realisation_id, site_half_width_m):
     )
 
     site_payload = []
-    unit_ids = set()
+    unit_ids, pif_ids = set(), set()
     for site in sites:
         box = site_box(site, site_half_width_m)
         layers = site_layers(box, frames, walls)
         unit_ids.update(
             feature["properties"]["wall_unit_id"]
             for feature in layers.get("units", {}).get("features", [])
+        )
+        pif_ids.update(
+            feature["properties"]["pif_id"]
+            for feature in layers.get("pifs", {}).get("features", [])
         )
         centre = gpd.GeoSeries(
             gpd.points_from_xy([site["x"]], [site["y"]]), crs=NZTM
@@ -815,6 +1214,13 @@ def main(*, extent, world_id, realisation_id, site_half_width_m):
     for step in steps:
         step["table_data"] = [read_table(path) for path in step.get("tables", [])]
 
+    chains = unit_chains(unit_ids, frames, walls)
+    for chain in chains.values():
+        pif_ids.update(chain["unit"].get("member_pif_ids") or [])
+    sections = pif_sections(pif_ids, frames, files["dem_1m"])
+    print(f"{len(sections)} pif cross-sections")
+    pip_rule = pip_example(sites[0], site_half_width_m, frames, files["dem_1m"])
+
     payload = {
         "title": content["title"],
         "short": content["short"],
@@ -824,7 +1230,9 @@ def main(*, extent, world_id, realisation_id, site_half_width_m):
         "steps": steps,
         "assumptions": assumptions,
         "sites": site_payload,
-        "chains": unit_chains(unit_ids, frames, walls),
+        "chains": chains,
+        "sections": sections,
+        "pip_example": pip_rule,
         "charts": pilot_summaries(frames),
         "files": {key: file_record(path) for key, path in files.items()},
         "checks": row_checks(frames, world_id=world_id) + staleness_checks(files),

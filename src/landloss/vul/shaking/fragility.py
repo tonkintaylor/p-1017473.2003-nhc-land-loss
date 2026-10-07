@@ -14,7 +14,8 @@ against. It stays a probability however well the hazard is resolved.
 Two fragilities live here.
 
 - **Retaining walls on flat land** take the wall type curve for their type
-  and size class, its PGA median scaled by the wall's fill or cut position,
+  and height class (under 2 m, or 2 m and over), its PGA median scaled by
+  the wall's fill or cut position,
   from :func:`landloss.hazard.landslide.urban.wall_type_fragility.wall_type_curves`
   (``retaining-wall-type-fragility.csv``), converted to PGV by
   :func:`landloss.hazard.landslide.urban.fragility.pga_to_pgv_theta`.
@@ -64,8 +65,12 @@ WALL_RATE_FACTOR = 1.0
 PGA_IM = urban_fragility.PGA_IM
 PGV_IM = urban_fragility.IM
 
-# The columns the wall population carries that pick and shift the curve.
+# The columns the wall population carries that pick and shift the curve:
+# the type and height (put in its height class by
+# wall_type_fragility.height_class) pick it, the position shifts it. The size
+# class is carried through for pricing and no longer picks the curve.
 SIZE_CLASS_COLUMN = "size_class"
+HEIGHT_M_COLUMN = "height_m"
 WALL_TYPE_COLUMN = "wall_type"
 WALL_POSITION_COLUMN = "wall_position"
 
@@ -114,8 +119,9 @@ def wall_failure_probability(
 ) -> pd.DataFrame:
     """Evaluate each wall's type curve at the PGV it saw.
 
-    Per wall the curve is the table row for its ``wall_type`` and
-    ``size_class``, the PGA median scaled by its ``wall_position`` (0.85 for
+    Per wall the curve is the table row for its ``wall_type`` and the height
+    class of its ``height_m`` (:func:`wall_type_fragility.height_class`), the
+    PGA median scaled by its ``wall_position`` (0.85 for
     fill, 1.15 for cut, 1 where unknown;
     :func:`wall_type_fragility.wall_type_curves`). The scaled PGA median is
     recorded and converted to PGV with :func:`urban_fragility.pga_to_pgv_theta`
@@ -129,7 +135,7 @@ def wall_failure_probability(
     undamaged; the step reports the count.
 
     Args:
-        walls: One row per wall, carrying ``wall_type``, ``size_class`` and
+        walls: One row per wall, carrying ``wall_type``, ``height_m`` and
             ``wall_position``.
         pgv_m_s: The PGV each wall saw, in m/s, in ``walls`` order.
         table: The wall type fragility table, as
@@ -148,7 +154,7 @@ def wall_failure_probability(
         ValueError: If ``pgv_m_s`` is not one value per wall, or
             ``pgv_pga_ratio`` is not on ``walls.index``; and from
             :func:`wall_type_fragility.wall_type_curves` if a wall's type and
-            size class have no row or its position is neither fill, cut nor
+            height class have no row or its position is neither fill, cut nor
             null.
     """
     pgv = np.asarray(pgv_m_s, dtype=float)
@@ -163,7 +169,7 @@ def wall_failure_probability(
     count = len(walls)
     curves = wall_type_fragility.wall_type_curves(
         walls[WALL_TYPE_COLUMN],
-        walls[SIZE_CLASS_COLUMN],
+        walls[HEIGHT_M_COLUMN],
         walls[WALL_POSITION_COLUMN],
         table,
     )

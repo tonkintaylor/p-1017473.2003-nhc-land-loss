@@ -109,11 +109,17 @@
   two depths are the polygon's own, already the world's
   (`fragility._pick_state()` takes a single column where the polygons carry
   one, and the state's column of step 7's polygons otherwise).
-- A polygon with a wall takes the curve of the wall's `wall_type` and
-  `size_class` (`wall_type_fragility.wall_type_curves()`): the median and
-  dispersion through the stored 15% and 50% PGA of
-  `retaining-wall-type-fragility.csv`, read from [koutsoupaki_2023] as the
-  asset README records them. The PGA median is scaled by the wall's own
+- A polygon with a wall takes the curve of the wall's `wall_type` and height
+  class (`wall_type_fragility.wall_type_curves()`, given the drawn wall's
+  `height_m`): `under_2_m` below 2.0 m or where the height is unknown,
+  `2_m_and_over` at 2.0 m and above (the lead, 2026-10-07; until then the
+  curve was keyed on `size_class`, which the model file still carries for
+  pricing). The median and dispersion run through the stored 15% and 50% PGA
+  of `retaining-wall-type-fragility.csv`, read from [koutsoupaki_2023] as the
+  asset README records them: gravity masonry, old timber pole, block or RC
+  cantilever and landscaper timber take the published height effect switched
+  (6 m curve under 2 m, 3 m curve at 2 m and over), and crib, new timber pole
+  and engineered modern the 3 m curve for both. The PGA median is scaled by the wall's own
   `wall_position`, 0.85 for a wall retaining fill and 1.15 for a cut
   (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`); the wall's position is
   read from the drawn wall, not the polygon's, which sets the wall state and

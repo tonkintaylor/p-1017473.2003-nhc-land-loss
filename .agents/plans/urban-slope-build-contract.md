@@ -890,7 +890,7 @@ both Series in.
 | `rw_id` | str, nullable | The insured wall drawn on the edge in world `w`; null when the line drew none, has none, or drew a wall that is not insured (decision 36) |
 | `wall_state` | str | `no_wall`, `fill_wall`, `cut_wall` |
 | `wall_type` | str, nullable | From the drawn wall (2026-10-06; replaced `wall_class` and `initial_condition`) |
-| `size_class` | str, nullable | From the drawn wall |
+| `size_class` | str, nullable | From the drawn wall; carried for pricing, no longer picks the curve (2026-10-07) |
 | `im` | str | `pgv_m_s` |
 | `theta_base` | float64 | Median before adjustment, m/s |
 | `theta_base_pga_g` | float64 | The wall type's PGA median times the drawn wall's own fill (0.85) or cut (1.15) factor, before conversion; NaN for localised curves |
@@ -1900,9 +1900,12 @@ def assign_fragility(
   from `landloss.hazard.landslide.urban.wall_type_fragility`:
   `load_wall_type_fragility(path: Path = WALL_TYPE_FRAGILITY_PATH) -> pd.DataFrame`
   reads `retaining-wall-type-fragility.csv`, and
-  `wall_type_curves(wall_type, size_class, wall_position, table) -> pd.DataFrame`
+  `wall_type_curves(wall_type, height_m, wall_position, table) -> pd.DataFrame`
   returns `theta_pga_g`, `beta` and `source` per wall, its median scaled by
-  the wall's own fill or cut position. `lognormal_failure_probability` and
+  the wall's own fill or cut position. Since 2026-10-07 the table is keyed on
+  `(wall_type, height_class)`, `under_2_m` or `2_m_and_over`, from the drawn
+  wall's `height_m` (`height_class()`; unknown is `under_2_m`), in place of
+  `size_class`; the drawn walls the join reads carry `height_m`. `lognormal_failure_probability` and
   `PGA_IM` live in `landloss.hazard.landslide.urban.lognormal` and are
   re-exported here. `assign_fragility` keeps its signature; `wall_table` is
   what `load_wall_type_fragility()` returns.
@@ -2217,8 +2220,8 @@ def wall_failure_probability(
 ```
 
 (As of 2026-10-06 `table` is what `load_wall_type_fragility()` returns, each
-wall's curve comes from `wall_type_curves(wall_type, size_class,
-wall_position, table)`, and every row is on PGA, so the ratio is recorded on
+wall's curve comes from `wall_type_curves(wall_type, height_m,
+wall_position, table)` (`size_class` until 2026-10-07), and every row is on PGA, so the ratio is recorded on
 every row; the `wall_curve` lookup below is retired.)
 Looks up `wall_curve(table, wall_class=UNNAMED_WALL_CLASS, size_class=..., initial_condition=...)`
 per wall, converts PGA rows with `pga_to_pgv_theta(theta_pga_g, pgv_pga_ratio)`
@@ -2308,7 +2311,8 @@ survey the tiles came from.
 
 Retired on 2026-10-06: the model reads `retaining-wall-type-fragility.csv`
 through `landloss.hazard.landslide.urban.wall_type_fragility` instead, one
-curve per `(wall_type, size_class)` shifted by the wall's fill or cut position
+curve per `(wall_type, height_class)` (per `(wall_type, size_class)` until
+2026-10-07) shifted by the wall's fill or cut position
 (`.agents/plans/assigning-retaining-wall-types.md`). The section below is the
 contract as first built.
 

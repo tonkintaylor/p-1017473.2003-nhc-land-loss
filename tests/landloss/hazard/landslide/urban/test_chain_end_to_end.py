@@ -34,10 +34,11 @@ and checked against the columns step 8 and the wall probability read.
 The draws are forced so the assertions are deterministic whatever the seed:
 every wall unit is walled in the world and every unit is made a wall
 (``p_wall`` set to 1 after the probability table is built), the wall medians
-of every type are far below the PGV for small and medium walls and far above
-it for large ones, whatever type and fill or cut shift a wall draws, and the
-PGV is far above every localised median, so every polygon fails and the large
-flat-land wall stands. The wall units are all on sloping ground
+of every type are far below the PGV for walls under 2 m (the toe and crest
+units, 1.8 m) and far above it for walls 2 m and over (the flat unit, 3 m),
+whatever type and fill or cut shift a wall draws, and the PGV is far above
+every localised median, so every polygon fails and the tall flat-land wall
+stands. The wall units are all on sloping ground
 as step 12 builds them; the flat one is flagged ``is_flatland`` by hand so the
 flat-land path of vul shaking rw step 9 stays covered.
 """
@@ -69,7 +70,6 @@ from landloss.exposure.land.extent import (
 )
 from landloss.exposure.rw import population, wall_probability
 from landloss.exposure.rw.age import AGE_BINS
-from landloss.exposure.rw.beta_population import SIZE_CLASSES
 from landloss.exposure.rw.wall_age import AGE_BASIS_COLUMN, AGE_SHARE_COLUMNS
 from landloss.exposure.rw.wall_type import AGE_BIN_COLUMN, ROAD_FRONTAGE_COLUMN
 from landloss.hazard.landslide import susceptibility
@@ -158,8 +158,8 @@ RATE_SETTING = "medium"
 SOUTH = 180.0
 
 # The earthquake's PGV everywhere, m/s: far above every localised median (3 m/s
-# at most before amplification) and every small or medium wall median, far
-# below the large wall median.
+# at most before amplification) and every median under 2 m, far below the
+# median of 2 m and over.
 PGV_M_S = 100.0
 # Step 3's PGV at the return period over the unscaled PGA: the ratio a PGA wall
 # median is converted at.
@@ -171,7 +171,9 @@ ALWAYS_FAILS_G = 1e-5
 NEVER_FAILS_G = 1e4
 WALL_BETA = 0.6
 
-WALL_UNIT_HEIGHTS_M = {"toe": 2.0, "crest": 2.0, "flat": 3.0}
+# Toe and crest walls are medium and under 2 m; the flat wall is large and
+# 2 m and over, so its height class alone keeps it standing.
+WALL_UNIT_HEIGHTS_M = {"toe": 1.8, "crest": 1.8, "flat": 3.0}
 FACE_ANGLE_DEG = 45.0
 
 # The two claims, their insured land and their property polygons.
@@ -349,24 +351,26 @@ def make_insured_land():
 
 
 def make_wall_table(path):
-    """A wall type table in the packaged CSV's form, medians forced by size."""
+    """A wall type table in the packaged CSV's form, medians forced by height."""
+    short, tall = wall_type_fragility.HEIGHT_CLASSES
     rows = []
     for wall_type in wall_type_fragility.WALL_TYPES:
-        for size_class in SIZE_CLASSES:
-            theta = NEVER_FAILS_G if size_class == "large" else ALWAYS_FAILS_G
+        for height_class in (short, tall):
+            theta = NEVER_FAILS_G if height_class == tall else ALWAYS_FAILS_G
             p15, p50 = wall_type_fragility.lognormal_to_percentiles(theta, WALL_BETA)
             rows.append(
                 {
                     "wall_type": wall_type,
-                    "size_class": size_class,
+                    "height_class": height_class,
                     "im": fragility.PGA_IM,
                     "p15": float(p15),
                     "p50": float(p50),
                     "published_height_m": 3.0,
                     "published_fs": 1.5,
                     "type_factor": 1.0,
+                    "height_effect": "none",
                     "damage_state": "moderate",
-                    "source": f"synthetic_{size_class}",
+                    "source": f"synthetic_{height_class}",
                     "basis": "forced for the chain test",
                 }
             )
@@ -1010,7 +1014,7 @@ def test_the_uninsured_walls_polygon_takes_the_wall_fragility_and_writes_no_loss
     assert pd.isna(row[RW_ID_COLUMN])
     assert row[urban.WALL_STATE_COLUMN] == geometry.FILL_WALL
     assert row["fragility_basis"] == fragility.WALL_BASIS
-    assert row["fragility_source"] == "synthetic_medium"
+    assert row["fragility_source"] == "synthetic_under_2_m"
     # The crest wall retains fill, so its own position shifts its median.
     assert drawn.loc[crest, geometry.WALL_POSITION_COLUMN] == geometry.FILL
     assert row["theta"] == pytest.approx(

@@ -30,8 +30,10 @@
   `pgv_path(realisation_id, extent=...)`, sampled at each wall's **midpoint**
   (`midpoints()`, `landloss.common.utils.terrain.sample_at_points`) and
   written as `pgv_m_s`.
-- **The curve is the wall type curve** for the wall's `wall_type` and
-  `size_class`, read from `retaining-wall-type-fragility.csv` through
+- **The curve is the wall type curve** for the wall's `wall_type` and height
+  class, `under_2_m` (`height_m` below 2.0 m, or unknown) or `2_m_and_over`
+  (the lead, 2026-10-07; `size_class` until then, still carried for pricing),
+  read from `retaining-wall-type-fragility.csv` through
   `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility()`
   and looked up by `wall_type_curves()`, which scales the PGA median by the
   wall's `wall_position`: 0.85 for a wall retaining fill, 1.15 for a cut, and
@@ -71,7 +73,7 @@
   key), `failure_probability`, `damage_state` and `geometry`.
 - The run prints, per world and earthquake, the state split, the PGV range,
   the walls off the grid or without a probability, the count of converted
-  curves and the ratio range, the median `theta` by wall type and size class,
+  curves and the ratio range, the median `theta` by wall type and height class,
   and the properties carrying a wall to replace.
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/shaking/test_wall_damage_state_step.py`.

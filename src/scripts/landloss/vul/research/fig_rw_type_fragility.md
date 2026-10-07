@@ -18,8 +18,15 @@ and how do those curves compare with what Port Hills walls did in 2010 and 2011?
   state.
 - Each type is placed on one of the five initial-condition rungs of
   Koutsoupaki et al. (2023) [koutsoupaki_2023], Tables A1 to A5: DS2,
-  horizontal displacement of 5% of H, on free-field PGA. The 3 m wall gives
-  the small and medium classes and the 6 m wall the large class.
+  horizontal displacement of 5% of H, on free-field PGA. Each type has two
+  height classes (the lead, 2026-10-07), `under_2_m` (below 2.0 m, or of
+  unknown height) and `2_m_and_over`, in place of the three size classes,
+  which stay on every wall for pricing. Gravity masonry, old timber pole,
+  block or RC cantilever and landscaper timber take the published height
+  effect switched, taller walls being the worse: under 2 m takes the 6 m
+  wall and 2 m and over the 3 m wall. Crib, new timber pole and engineered
+  modern have no height effect and take the 3 m wall for both. The table's
+  `height_effect` column records which.
 - Two types then scale both percentiles (the lead, 2026-10-06): new timber
   pole times 1.3 and engineered modern times 1.5. Concrete block and RC
   cantilever keep the Fs 1.5 rung unscaled.
@@ -53,11 +60,35 @@ and how do those curves compare with what Port Hills walls did in 2010 and 2011?
 | 1.2 | 0.31/0.59 | 0.617 | 0.36/0.71 | 0.661 |
 | 1.1 | 0.27/0.51 | 0.630 | 0.32/0.63 | 0.658 |
 
+The figures also draw the model's no-wall (localised) urban slope curve in
+green on every wall type panel, one line style per Kingsbury zone, at each
+zone's mid rating (10, 40, 80, 120 and 145) through
+`localised_theta_base_m_s` and `constants.LOCALISED_FRAGILITY_BETA`. The zone
+is for plotting only; the model sets the no-wall median from the continuous
+rating. Its PGV medians are put on the free-field PGA axis at
+`PILOT_PGV_PGA_RATIO_M_S_PER_G` = 0.848 m/s per g, the median of the pilot
+model polygons' `pgv_pga_ratio_m_s_per_g` in the 2026-10-06 run, with no
+topographic amplification; on slopes both the wall and the no-wall medians
+are divided by the polygon's amplification. With the committed constants
+(3.0 m/s at rating 0, 0.6 m/s at 150, beta 0.6) the zone curves' p15/p50 are
+1.71/3.18 g (zone 1), 1.24/2.30 g (2), 0.81/1.50 g (3), 0.52/0.98 g (4) and
+0.40/0.75 g (5). A wall under 2 m (position unknown) has a higher PGA median
+than the zone 5 bare slope for every type but gravity masonry, landscaper
+timber and crib.
+
+The main figure (`rw-type-fragility.png`) draws each type's under 2 m curve,
+except engineered modern, drawn 2 m and over; the by-position figure
+(`rw-type-fragility-by-position.png`) draws both classes, solid under 2 m and
+dashed 2 m and over.
+
 The rungs are not evenly spaced. Most of the drop is from Fs 1.5 (dry) to
 Fs 1.4, the first rise of the water table. Below that, the rungs are close
 together.
 
 ## The proposal and the evidence
+
+Under 2 m a switched type takes the bracketed 6 m reading and 2 m and over
+the 3 m one; a type with no height effect takes the 3 m reading for both.
 
 | Type | Curve, p15/p50 3 m (6 m) | Other published curve, moderate | Canterbury share |
 | --- | --- | --- | --- |

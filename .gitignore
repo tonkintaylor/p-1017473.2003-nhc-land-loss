@@ -205,6 +205,7 @@ src/scripts/landloss/vul/assets/claims-report-paths-iag-1502000.csv
 # are tracked, so a new one of those has to be added to the list below.
 .agents/skills/*
 !.agents/skills/adding-steps-scripts/
+!.agents/skills/building-reviewer-pages/
 !.agents/skills/maintaining-status-files/
 !.agents/skills/making-kml-files/
 !.agents/skills/making-qgis-projects/

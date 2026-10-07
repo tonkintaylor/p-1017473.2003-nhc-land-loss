@@ -10,6 +10,17 @@
 #
 # No site yet shows a large (step 1) failure: the 2026-10-07 pilot draw placed
 # none. Add one when a realisation does.
+#
+# The first site is the whole pilot (`scale = "pilot"`): the generator sets its
+# centre and size from the 10 m DEM and carries only the slope-unit-scale layers
+# (rasters, ground map, slope units, failures), so the large-failure steps have a
+# map that shows them.
+
+[[sites]]
+id = "whole-pilot"
+title = "Whole pilot"
+scale = "pilot"
+why = "The large-failure steps work at slope-unit scale: coverage, slope units and step 1's draw read over the whole extent. House-lot layers are left off at this scale."
 
 [[sites]]
 id = "01-wall-soil"
