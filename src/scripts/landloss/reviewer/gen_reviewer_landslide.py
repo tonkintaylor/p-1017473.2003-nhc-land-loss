@@ -47,8 +47,14 @@ from rasterio.warp import (
 from rasterio.windows import from_bounds
 
 from landloss.domain import constants
-from landloss.hazard.landslide import instability_zones, slope_elements, slope_polygons
-from landloss.hazard.landslide.urban import fragility, geometry
+from landloss.exposure.rw import wall_type
+from landloss.hazard.landslide import (
+    instability_zones,
+    slope_elements,
+    slope_polygons,
+    wall_units,
+)
+from landloss.hazard.landslide.urban import fragility, geometry, wall_type_fragility
 from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
@@ -136,6 +142,9 @@ CONSTANT_SOURCES = [
     slope_polygons,
     geometry,
     fragility,
+    wall_type,
+    wall_units,
+    wall_type_fragility,
 ]
 
 # Downstream outputs must be no older than the outputs they were built from.
@@ -643,6 +652,40 @@ def pilot_summaries(frames, files):
         charts["zone_areas"] = table_chart(
             "Zone area by scenario (ha, rows summed)", pd.DataFrame(zone_rows)
         )
+    rule_rows = []
+    for key in ["zones_world", "zones_walled", "zones_bare"]:
+        zones = frames[key]
+        if zones is None:
+            continue
+        evacuated = zones[zones["zone"] == "evacuated"]
+        grouped = evacuated.groupby(["element_type", "width_rule"]).agg(
+            polygons=("zone", "size"),
+            share_floored=("width_floored", "mean"),
+            width_m=("width_behind_crest_m", "median"),
+            depth_m=("depth_m", "median"),
+            volume_m3=("volume_m3", "median"),
+            runout_m=("runout_m", "median"),
+            imminent_width_m=("imminent_width_m", "median"),
+        )
+        grouped.insert(0, "scenario", key.removeprefix("zones_"))
+        rule_rows.append(grouped.reset_index())
+    if rule_rows:
+        charts["zone_rules"] = table_chart(
+            "Evacuated rules on the pilot: medians per polygon",
+            pd.concat(rule_rows).round(2),
+        )
+    units, drawn = frames["wall_units"], frames["drawn_walls"]
+    charts.update(rw.wall_model_charts(units, drawn))
+    if units is not None and drawn is not None:
+        charts["wall_tiles"] = {
+            "kind": "tiles",
+            "data": [
+                ["wall units", f"{len(units):,}"],
+                ["expected walls (sum p_wall)", f"{units['p_wall'].sum():,.0f}"],
+                ["drawn walls (this world)", f"{len(drawn):,}"],
+                ["median points", f"{units['wall_points'].median():+.0f}"],
+            ],
+        }
     curves = localised_curves()
     if curves is not None:
         charts["localised_curves"] = curves

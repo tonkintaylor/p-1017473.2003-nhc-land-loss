@@ -42,9 +42,15 @@
       crests and toes, no grid rectangles.
 - [ ] Run over the four territorial authorities at 1 m. The segmentation is
       whole-extent numpy on the 1 m grid (about 3,200 million cells for the
-      59 by 54 km study area), which does not fit in memory; tile the extent
-      and stitch the patches at tile edges, or delineate per territorial
-      authority.
+      59 by 54 km study area), which does not fit in memory.
+- [x] Tile the delineation of a scale whose grid is over
+      `config.MAX_UNTILED_CELLS` (`delineate_tiled()`, on
+      `landloss.common.utils.tiles`), 2026-10-07. Checked identical to the
+      whole-grid delineation, geometry and attributes, at 1 and 3 m on the
+      Wellington and Porirua pilots with 800 m tiles.
+- [ ] Run over Porirua (`EXTENT = "porirua"`), the first territorial
+      authority; its whole-grid run ran out of memory at the 1 m
+      delineation on 2026-10-07.
 
 ## Phase 3 — Refine the segmentation
 

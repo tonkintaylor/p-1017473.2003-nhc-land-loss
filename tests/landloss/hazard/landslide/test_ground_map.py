@@ -942,3 +942,18 @@ def test_the_step_writes_the_contracts_file_from_synthetic_sources(synthetic_inp
         gm.NLM_GWD_SOURCE,
     )
     assert at(ground, 15, 85)["gw_source"] == gm.ASSUMED
+
+
+def test_slide_sources_build_empty_outside_slide_coverage() -> None:
+    """An extent with no SLIDE polygons (Porirua, the Hutt) builds empty sources."""
+    no_fields = gpd.GeoDataFrame(geometry=[])
+    materials = step.with_fields(no_fields, ["Type", "confidence"])
+    genesis = step.with_fields(no_fields, ["Type", "Subtype"])
+
+    sources = [
+        *step.slide_material_sources(materials),
+        *step.slide_modification_sources(materials),
+        *step.genesis_sources(genesis),
+    ]
+
+    assert all(source.frame.empty for source in sources)

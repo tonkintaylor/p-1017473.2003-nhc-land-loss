@@ -96,9 +96,17 @@
   once the wall units do.
 - The imminent and inundated zones are one width and one length per polygon,
   the median of its rays' reach (`slope_polygons.imminent_width_m` and
-  `inundated_length_m`), swept along every ray of the polygon. Every polygon
-  runs out as a dry debris avalanche, fill included (the lead, 2026-10-07),
-  and its runout is held to `BETA_MAX_RUNOUT_H` (3) heights past the toe and
+  `inundated_length_m`), swept along every ray of the polygon. The runout
+  ends where a line from the crest at Hunter and Fell's travel angle meets
+  the ground (`slope_polygons.reach_ratio`, the lead, 2026-10-07, in place of
+  the dry debris avalanche reach angle): where the ground below the toe,
+  read along each ray over `BETA_DOWNSLOPE_WINDOW_H` (1.5) heights and at
+  least 2 m (`_downslope_angle_deg`, the median of the rays as
+  `downslope_angle_deg`), is at or steeper than `BETA_STEEP_DOWNSLOPE_DEG`
+  (20°), `0.77 tan a2 + 0.087` (`style` `downslope`), flatter than the
+  ground, so debris runs on down a steep slope; otherwise `0.78 (tan
+  a_cut)^0.5` on the element's angle, no steeper than 80° (`cut_slope`,
+  `source_angle_deg`). Its runout is held to `BETA_MAX_RUNOUT_H` (3) heights past the toe and
   to the length that holds its volume at `BETA_MIN_DEPOSIT_DEPTH_M` (0.3 m),
   and never shorter than the one-cell strip of `BETA_MIN_RUNOUT_M` (1 m) that
   every failure leaves at its toe (the lead, 2026-10-07); where that strip
@@ -279,10 +287,10 @@
     `is_road_frontage`. The ground map's fill (material or `modification`)
     and the SLIDE fill bodies do not set the prior. `gen_gns_floor` lifts a
     unit with a GNS mapped wall to `BETA_GNS_WALL_UNIT_FLOOR` and sets a
-    GNS-only unit at `BETA_GNS_ONLY_WALL_PROBABILITY`, both interim (0.80 and
-    0.70 since 2026-10-07, were 0.95 and 0.8), with the base
-    (`BETA_WALL_BASE_P`, 0.225) solved so the pilot's expected walls are 60%
-    of the factor prior's 3,997. The claim
+    GNS-only unit at `BETA_GNS_ONLY_WALL_PROBABILITY` (0.95 and 0.70; the
+    floor was 0.80 for part of 2026-10-07), with the base
+    (`BETA_WALL_BASE_P`, 0.458) solved so the pilot's expected walls are
+    3,357: the lead's 40% increase on the interim 2,398 after the review. The claim
     layer (`exposure/rw/validations/config.PROPERTIES_PATH`) is read onto
     each LINZ property by the smallest record polygon holding its
     representative point (`gen_property_wall_records`), and
@@ -563,5 +571,38 @@
   Canterbury [anderson_2015]. These numbers also predate the wall height
   from step 13's face drops and the prior from its class (2026-10-06): under
   the old rules the rock cut factor applied to 2,583 units.
+
+## Tiles
+
+Over an extent whose 1 m DEM holds more than `config.MAX_UNTILED_CELLS`
+cells (every territorial authority; no pilot) the faces script and the wall
+zones script run their grid work tile by tile (`tiled.py`, on
+`landloss.common.utils.tiles`), and everything after it runs once on the
+stitched tables:
+
+- Tiles are `config.TILE_CORE_M` (3 km) cores read with a
+  `config.TILE_MARGIN_M` (750 m) margin, rounded to whole 3 m blocks so each
+  tile's catchment grid sits on the whole grid's. Each tile masks the sea,
+  burns the ground map and the building outlines on its own window and runs
+  `find_instability_zones` and the grid columns of the siz table
+  (`grid_table()`); its elements are pickled per tile under
+  `urban-slope-found{suffix}-tiles/`, and `urban-slope-found{suffix}.pkl`
+  holds a `tiled.TiledFound` index instead of the elements.
+- A pif belongs to the tile whose core holds the centre of its parent's pips
+  (`tiled.owned_parents`), so a parent and its pieces come from the one tile
+  that saw it whole: the longest parent on the pilots spans 636 m. Global pif
+  ids follow the tiles in order; a pif seen in another tile's margin is
+  matched to its global id by its pip cells (`tiled.pip_keys`), and one cut
+  short by a margin's edge matches nothing.
+- A grown element takes the ownership and the global id of its pif; a line or
+  forced element is keyed by its wall unit and belongs to the tile whose core
+  holds the unit's line; a zone polygon belongs to its element's tile.
+  Polygons are renumbered across tiles, built ones first, forced after.
+- The wall zones pass computes the lineless units over the whole extent, then
+  per tile adds the line and forced elements of the units reaching it and
+  builds every scenario with the walls flagged through the global pif ids.
+
+The tiled zones are not yet identical to the whole grid's; see the plan's
+phase 6 for the comparison on the Porirua pilot.
 
 Potential future improvements: see `s12_urban_slope_faces_implementation_plan.md`.

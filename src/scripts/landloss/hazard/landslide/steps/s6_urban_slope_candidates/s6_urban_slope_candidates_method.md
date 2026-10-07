@@ -23,6 +23,16 @@
   (`delineation.label_patches`, 4-connected); a level run in the gentlest
   band, which has no octant, joins the gentlest-band neighbour it shares the
   most edges with. Every band produces candidates, the gentlest included.
+- **Tiling.** A scale whose slope grid holds more than
+  `config.MAX_UNTILED_CELLS` cells (50 million, about 7 by 7 km at 1 m) is
+  delineated tile by tile by `delineate_tiled()`, on
+  `landloss.common.utils.tiles`: cores of `config.TILE_CORE_M` (3 km) read
+  with a margin of `config.TILE_MARGIN_M` (300 m), each delineated against
+  the whole domain, and a candidate kept by the tile whose core holds its
+  representative point. Every part of the segmentation reads only the cells
+  near a patch, so a candidate narrower than the margin comes out as it would
+  from the whole grid; the largest 1 m candidate on the two pilots is 231 m
+  across. The pilots run whole. Over Porirua only the 1 m scale is tiled.
 - **Small patches** under `config.MIN_PATCH_CELLS` (9 cells, a 3 by 3 block at
   every scale) are merged into the neighbouring patch sharing the most cell
   edges, repeatedly, by `delineation.merge_small_patches`. A small patch with

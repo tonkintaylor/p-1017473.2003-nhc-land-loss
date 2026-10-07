@@ -109,9 +109,9 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
   points-based prior (the lead, 2026-10-07: verticality, height, length,
   building distance, setting, step 13 class, rock or soil cut, wall age, the
   NHC flag; `.agents/plans/wall-probability-points.md`) and the GNS floor on
-  each (interim 0.80, GNS-only 0.70), update on the claim reports per
-  property (pilot 2026-10-07: base 0.225 solved for 2,398 expected walls,
-  60% of before; 2,441 walled in world 0), and draw each unit walled
+  each (0.95, GNS-only 0.70), update on the claim reports per property
+  (pilot 2026-10-07, after the review: base 0.458 solved for 3,357 expected
+  walls, 40% above the interim 2,398), and draw each unit walled
   per exposure world, so the hazard and the exposure share one draw
   (`.agents/plans/placing-retaining-walls-on-pifs.md`). The every-siz-walled
   and none-walled runs stay as bounds; `gen_hazard.main` runs it.
@@ -478,6 +478,19 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     back over its own scar where that strip would be deeper than its height
     or twice its source depth: no deposit is deeper than twice its source,
     and the inundated depth is 5.7 m at the 90th percentile.
+  - **Runout by Hunter and Fell's travel angles (the lead, 2026-10-07).**
+    The dry reach angle (H/L 0.86 to 1.0) met the ground at the toe of
+    every face flatter than about 42°, so 97% of the pilot's polygons ran
+    out only the 1 m strip and 69% of the inundated area lay back over its
+    own scar, even on steep slopes. Ground below the toe at 20° or steeper
+    now takes their unconfined natural slope relation on that angle, which
+    runs on down the slope; flatter ground takes their cut relation on the
+    face's angle [hunter_fell_2003]. World 0: 1,367 of 6,110 polygons on
+    steep ground (median runout 6.0 m), 77% still at the 1 m strip (faces
+    onto level ground), 13% at the 3 H cap, the longest 36 m; inundated
+    ground below the toe 284,081 m² (125,000 before), 43% of the inundated
+    area on the scar. Step 9 world 0: 210,173 m² of inundated land
+    dissolved.
 - **Step 13, pif cut and fill (2026-10-05).**
   `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
@@ -626,12 +639,18 @@ otherwise.
   (the lead, 2026-10-02), about Gold's slide.
 - **How much spatial correlation** to add.
 - **Which runout relation** replaces the translation. For the urban faces the
-  lead set the de Vilder et al. dry reach angle from the crest for every face
-  (2026-10-07); for the large failures it is part B of the review.
+  lead set Hunter and Fell's travel angles from the crest (2026-10-07, in
+  place of the de Vilder et al. dry reach angle set earlier that day); the
+  20° switch to the downslope relation, the 80° cap on the cut angle and
+  the 1.5 H window the downslope angle is read over are proposals. For the
+  large failures it is part B of the review.
 - **The deposit depth limits.** A deposit deeper than its strip allows
   spreads back over its own scar (the lead, 2026-10-07) until it is no
-  deeper than one height or twice its source depth, both proposals: 5,841
-  of the pilot's 6,203 polygons spread back, 1,510 over their whole scar.
+  deeper than one height or twice its source depth, both proposals: 4,951
+  of the pilot's 6,110 polygons spread back, 966 over their whole scar
+  (5,841 and 1,510 of 6,203 before the travel angles). Fill banks still
+  cover most of their scar (median 67%, 88% on steep ground): their depth is
+  the fill thickness, often more than their height.
 - **Depth where two runouts overlap**: the deeper or the sum.
 - **The face detection and geometry rules**: the faces plan's open decisions,
   and the headscarp band (**T-44**). Stage D2 leaves one for the lead: whether

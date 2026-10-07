@@ -185,8 +185,21 @@ checks them against held-out claims.
 
 ## Phase 6 — Per territorial authority
 
-- [ ] Run over the four territorial authorities in tiles
-      (`find_instability_zones` takes a `core`), in a process pool.
+- [x] The faces and the wall zones run tile by tile over a 1 m DEM larger
+      than `config.MAX_UNTILED_CELLS` (`tiled.py`), 2026-10-07: 3 km cores,
+      750 m margins, aligned to the 3 m catchment blocks; pifs owned by their
+      parent's pip centre, ids matched across tiles by pip cells and wall
+      unit. Checked on the Porirua pilot with 1 km tiles against the whole
+      grid: the siz table identical, 3,584 of 3,603 elements identical (19
+      differ by 1 to 4 cells), the zones' areas within 0.2% (evacuated within
+      0.01%), but about a third of the bare and 3% of the walled zone rows
+      differ in shape (median 14 m2). The differences are not at the seams
+      and not from the drainage graph; their source in
+      `build_slope_polygons` is not yet found.
+- [ ] Find what in `build_slope_polygons` reads beyond a tile, and make the
+      tiled zones identical to the whole grid's.
+- [ ] Run over Porirua, then the other three territorial authorities; a
+      process pool over the tiles.
 
 ## Potential future improvements
 

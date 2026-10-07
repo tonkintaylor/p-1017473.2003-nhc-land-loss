@@ -113,6 +113,34 @@ WELLINGTON_CITY = AreaOfInterest(
     north=-41.143536,
 )
 
+# A pilot box over central Porirua: the city centre, Elsdon, Takapuwahia and
+# the southern end of Titahi Bay, about 2.8 by 3.0 km. It is the first extent
+# outside Wellington City, so it runs without the GNS SLIDE layers and the WCC
+# earthworks record, on the 1:50,000 geology and the NLM alone, and is the
+# smoke test for that path before the whole of Porirua is run.
+PORIRUA_PILOT = AreaOfInterest(
+    name="Porirua pilot",
+    west=174.818,
+    south=-41.142,
+    east=174.852,
+    north=-41.115,
+)
+
+# The bounding box of Porirua City, from the Territorial Authority 2025
+# boundary in get_study_areas(), widened by about 500 m so it still holds the
+# whole boundary once it is reprojected to NZTM. A box rather than the TA
+# outline, because every step builds on a box: it also takes in Tawa and the
+# hill country on the Hutt and Upper Hutt edges, whose outputs are not
+# Porirua's until the steps clip to the outline (Phase 0 of
+# .agents/plans/running-per-territorial-authority.md).
+PORIRUA = AreaOfInterest(
+    name="Porirua City",
+    west=174.765,
+    south=-41.169,
+    east=175.001,
+    north=-40.999,
+)
+
 # The Canterbury earthquake sequence study area, covering Christchurch city and
 # the flat land around it. This is the extent the observed land damage evidence
 # is drawn from -- the only New Zealand dataset holding both settled land claims
@@ -144,6 +172,8 @@ EXTENTS = {
     "wlg-pilot": SMALL_WLG_PILOT,
     "wlg-earthworks-pilot": WLG_EARTHWORKS_PILOT,
     "wellington-city": WELLINGTON_CITY,
+    "porirua-pilot": PORIRUA_PILOT,
+    "porirua": PORIRUA,
 }
 
 # The file name suffix of an extent whose outputs predate the extent names. The

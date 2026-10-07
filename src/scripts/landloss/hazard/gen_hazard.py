@@ -222,6 +222,9 @@ def main(*, extent, realisation_ids, world_ids):
                     building_distance_m=candidates_config.BUILDING_DISTANCE_M,
                     min_patch_cells=candidates_config.MIN_PATCH_CELLS,
                     max_patch_length_m=candidates_config.MAX_PATCH_LENGTH_M,
+                    max_untiled_cells=candidates_config.MAX_UNTILED_CELLS,
+                    tile_core_m=candidates_config.TILE_CORE_M,
+                    tile_margin_m=candidates_config.TILE_MARGIN_M,
                 ),
             ),
             (
@@ -240,6 +243,9 @@ def main(*, extent, realisation_ids, world_ids):
                     wall_max_length_m=faces_config.WALL_MAX_LENGTH_M,
                     wall_height_reach_m=faces_config.WALL_HEIGHT_REACH_M,
                     wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
+                    max_untiled_cells=faces_config.MAX_UNTILED_CELLS,
+                    tile_core_m=faces_config.TILE_CORE_M,
+                    tile_margin_m=faces_config.TILE_MARGIN_M,
                 ),
             ),
             (

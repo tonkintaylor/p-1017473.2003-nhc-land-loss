@@ -20,6 +20,8 @@ Every stage is a public function taking and returning arrays or frames, so a
 caller can run them singly; :func:`delineate_slope_units` runs them in order.
 """
 
+import heapq
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -566,38 +568,74 @@ def merge_similar_aspect(
         re-reads the other statistics off the rasters.
     """
     state = _MergeState(units)
+    _absorb_small_units(state, min_area_m2=min_area_m2)
+    _merge_similar_pairs(state, tolerance_deg=tolerance_deg, max_area_m2=max_area_m2)
+    return state.frame()
 
-    while True:
-        small = [
-            i
-            for i in sorted(state.area, key=lambda k: state.area[k])
-            if state.area[i] < min_area_m2 and state.neighbours[i]
-        ]
-        if not small:
-            break
-        i = small[0]
+
+def _absorb_small_units(state: _MergeState, *, min_area_m2: float) -> None:
+    """Absorb each unit under ``min_area_m2`` into its closest-facing neighbour.
+
+    Smallest first, ties to the lower index. A heap keyed on (area, index)
+    holds the candidates; an entry whose unit has since been merged away or
+    has grown is stale and skipped, and a unit that grows but is still small
+    is pushed again. A unit with no neighbour never gains one, so it is
+    dropped. Each merge is then a logarithmic step rather than a re-sort of
+    every unit, which over a whole territorial authority is hours.
+    """
+    heap = [(area, i) for i, area in state.area.items() if area < min_area_m2]
+    heapq.heapify(heap)
+    while heap:
+        area, i = heapq.heappop(heap)
+        if state.area.get(i) != area or not state.neighbours[i]:
+            continue
         keep = min(state.neighbours[i], key=lambda j: (state.difference(i, j), j))
         state.merge(keep, i)
+        if state.area[keep] < min_area_m2:
+            heapq.heappush(heap, (state.area[keep], keep))
 
-    while True:
-        best: tuple[float, int, int] | None = None
-        for i, others in state.neighbours.items():
-            for j in others:
-                if j <= i:
-                    continue
-                if state.area[i] + state.area[j] >= max_area_m2:
-                    continue
-                difference = state.difference(i, j)
-                if difference < tolerance_deg and (
-                    best is None or (difference, i, j) < best
-                ):
-                    best = (difference, i, j)
-        if best is None:
-            break
-        _, i, j = best
+
+def _merge_similar_pairs(
+    state: _MergeState, *, tolerance_deg: float, max_area_m2: float
+) -> None:
+    """Merge the most alike adjacent pair while it is alike and small enough.
+
+    The pair with the least aspect difference goes first, ties to the lower
+    indices, and the lower index keeps the merged unit. A heap keyed on
+    (difference, i, j) holds every pair that could merge; a merge changes only
+    the pairs of the kept unit, so those are pushed again and an entry naming
+    a unit whose version has moved on is stale and skipped. Areas only grow,
+    so a pair once over ``max_area_m2`` never comes back under it.
+    """
+    version = dict.fromkeys(state.area, 0)
+
+    def candidate(i: int, j: int) -> tuple[float, int, int, int, int] | None:
+        i, j = min(i, j), max(i, j)
+        if state.area[i] + state.area[j] >= max_area_m2:
+            return None
+        difference = state.difference(i, j)
+        if difference >= tolerance_deg:
+            return None
+        return (difference, i, j, version[i], version[j])
+
+    heap = [
+        pair
+        for i, others in state.neighbours.items()
+        for j in others
+        if i < j and (pair := candidate(i, j)) is not None
+    ]
+    heapq.heapify(heap)
+    while heap:
+        _, i, j, version_i, version_j = heapq.heappop(heap)
+        if version.get(i) != version_i or version.get(j) != version_j:
+            continue
         state.merge(i, j)
-
-    return state.frame()
+        del version[j]
+        version[i] += 1
+        for other in state.neighbours[i]:
+            pair = candidate(i, other)
+            if pair is not None:
+                heapq.heappush(heap, pair)
 
 
 def _cluster_cells(

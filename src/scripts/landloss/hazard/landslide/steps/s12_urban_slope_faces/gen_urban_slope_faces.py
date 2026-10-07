@@ -26,6 +26,7 @@ import pandas as pd
 import rioxarray
 from rasterio import features
 
+from landloss.common.utils import tiles
 from landloss.hazard.landslide.instability_zones import (
     find_instability_zones,
     gen_pif_near_drops,
@@ -34,7 +35,10 @@ from landloss.hazard.landslide.instability_zones import (
     gen_siz_table,
     write_siz_table,
 )
-from landloss.hazard.landslide.slope_elements import rasterise_ground_map
+from landloss.hazard.landslide.slope_elements import (
+    COARSE_SLOPE_M,
+    rasterise_ground_map,
+)
 from landloss.hazard.landslide.slope_polygons import (
     ZONES,
     polygon_geometries,
@@ -58,7 +62,10 @@ from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_
 from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
     ground_map_path,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import config
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
+    config,
+    tiled,
+)
 from scripts.landloss.paths import TEMP_DIR
 
 WORK_DIR = TEMP_DIR / "hazard" / "landslide"
@@ -195,6 +202,102 @@ def fill_by_element(elements, ground_map):
     )
 
 
+def grid_table(
+    zones, dem, transform, *, end_window_m, wall_height_reach_m, wall_height_quantile
+):
+    """The siz table with the columns read off the grid: drops, verticality, spines."""
+    table = gen_siz_table(zones, transform, crs=CRS)
+    table["near_drop_p80_m"] = gen_pif_near_drops(
+        dem,
+        zones.pips,
+        zones.pif_labels,
+        abs(transform.a),
+        reach_m=wall_height_reach_m,
+        quantile=wall_height_quantile,
+    ).reindex(table.index)
+    table["verticality"] = gen_pif_verticality(
+        dem, zones.pips, zones.pif_labels
+    ).reindex(table.index)
+    return table.join(
+        gen_pif_spines(
+            table,
+            cell_size_m=abs(transform.a),
+            end_window_m=end_window_m,
+            lines=zones.pif_lines,
+        )
+    )
+
+
+def tile_found_path(tile, *, extent):
+    """Where one tile's elements, as found, are kept for the wall zones."""
+    folder = WORK_DIR / f"urban-slope-found{extent_suffix(extent)}-tiles"
+    return folder / f"tile-{tile.row:02d}-{tile.col:02d}.pkl"
+
+
+def find_tiled(
+    *, extent, use_cached_layers, core_m, margin_m, find_settings, table_settings
+):
+    """Find the pifs and elements tile by tile and stitch them (:mod:`tiled`).
+
+    Returns:
+        ``(table, elements, bbox, ground_map, buildings)``: the siz table with
+        its grid columns and the element polygons, owned rows only with
+        global ids, and the layers the rest of the step reads.
+    """
+    dem_file = dem_path(1, extent=extent)
+    bbox = dem_bbox(extent=extent)
+    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
+    buildings = get_nz_building_outlines(
+        bbox=bbox, crs=CRS, use_cache=use_cached_layers
+    )
+    land = get_nz_coastline_polygons(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
+    inputs = {"land": land, "ground_map": ground_map, "buildings": buildings}
+    # The catchments are read on blocks of cells from the window's corner, so
+    # every tile starts on the whole grid's blocks.
+    with rioxarray.open_rasterio(dem_file) as dem:
+        transform = dem.rio.transform()
+    block = max(round(COARSE_SLOPE_M / abs(transform.a)), 1)
+    grid = tiles.tile_grid(
+        dem_file, core_m=core_m, margin_m=margin_m, align_cells=block
+    )
+    print(f"{len(grid)} tiles of {core_m:,.0f} m with a {margin_m:,.0f} m margin")
+    start = time.perf_counter()
+    records = []
+    for tile in grid:
+        found = tiled.find_tile(
+            dem_file, tile, inputs=inputs, find_settings=find_settings
+        )
+        if found is None:
+            continue
+        zones, dem, transform = found
+        table = grid_table(zones, dem, transform, **table_settings)
+        path = tile_found_path(tile, extent=extent)
+        tiled.write_tile_found(zones.found, path)
+        records.append(
+            {
+                "tile": tile,
+                "path": path,
+                "table": table,
+                "elements": element_polygons(zones.found, transform),
+                "owned": tiled.owned_parents(table, tile.core_bounds),
+            }
+        )
+        print(
+            f"  tile {tile.row},{tile.col}: {len(table):,} pifs, "
+            f"{len(zones.found.elements):,} elements "
+            f"({time.perf_counter() - start:,.0f} s)",
+            flush=True,
+        )
+    found, table, elements = tiled.globalise_found(records, transform)
+    with found_path(extent=extent).open("wb") as file:
+        pickle.dump(found, file, protocol=pickle.HIGHEST_PROTOCOL)
+    print(
+        f"Stitched: {len(table):,} pifs, {int(table['is_siz'].sum()):,} sizs, "
+        f"{len(elements):,} elements"
+    )
+    return table, elements, bbox, ground_map, buildings
+
+
 def element_polygons(found, transform):
     """The grown elements as polygons, with their attributes."""
     shapes = features.shapes(
@@ -277,6 +380,9 @@ def main(
     wall_max_length_m,
     wall_height_reach_m,
     wall_height_quantile,
+    max_untiled_cells,
+    tile_core_m,
+    tile_margin_m,
 ):
     """Run the pipeline over the extent and write the siz table, elements and zones.
 
@@ -297,54 +403,58 @@ def main(
         wall_height_reach_m: A pip's near drop is read this far below it.
         wall_height_quantile: A pif's wall height is this quantile of its
             pips' near drops.
+        max_untiled_cells: A 1 m DEM larger than this, in cells, is searched
+            tile by tile (:mod:`tiled`).
+        tile_core_m: The side of a tile's core, in metres.
+        tile_margin_m: The width read around each core, in metres.
     """
-    dem, transform, bbox, ground_map, group, position = get_inputs(
-        extent=extent, use_cached_layers=use_cached_layers
-    )
-    buildings = get_nz_building_outlines(
-        bbox=bbox, crs=CRS, use_cache=use_cached_layers
-    )
-    start = time.perf_counter()
-    zones = find_instability_zones(
-        dem,
-        group,
-        transform,
-        categories={"ground_row": position},
-        exclude=building_mask(buildings, transform, dem.shape),
-        max_bends=max_bends,
-        stray_tolerance_m=stray_tolerance_m,
-        min_segment_m=min_segment_m,
-        max_turn_deg=max_turn_deg,
-    )
-    elapsed = time.perf_counter() - start
+    find_settings = {
+        "max_bends": max_bends,
+        "stray_tolerance_m": stray_tolerance_m,
+        "min_segment_m": min_segment_m,
+        "max_turn_deg": max_turn_deg,
+    }
+    table_settings = {
+        "end_window_m": end_window_m,
+        "wall_height_reach_m": wall_height_reach_m,
+        "wall_height_quantile": wall_height_quantile,
+    }
     WORK_DIR.mkdir(parents=True, exist_ok=True)
-    write_found(zones.found, extent=extent)
-    describe(zones, elapsed)
+    if tiles.raster_cells(dem_path(1, extent=extent)) > max_untiled_cells:
+        table, elements, bbox, ground_map, buildings = find_tiled(
+            extent=extent,
+            use_cached_layers=use_cached_layers,
+            core_m=tile_core_m,
+            margin_m=tile_margin_m,
+            find_settings=find_settings,
+            table_settings=table_settings,
+        )
+    else:
+        dem, transform, bbox, ground_map, group, position = get_inputs(
+            extent=extent, use_cached_layers=use_cached_layers
+        )
+        buildings = get_nz_building_outlines(
+            bbox=bbox, crs=CRS, use_cache=use_cached_layers
+        )
+        start = time.perf_counter()
+        zones = find_instability_zones(
+            dem,
+            group,
+            transform,
+            categories={"ground_row": position},
+            exclude=building_mask(buildings, transform, dem.shape),
+            **find_settings,
+        )
+        elapsed = time.perf_counter() - start
+        write_found(zones.found, extent=extent)
+        describe(zones, elapsed)
+        table = grid_table(zones, dem, transform, **table_settings)
+        elements = element_polygons(zones.found, transform)
 
     morphology = get_gns_slide_morphology(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     genesis = get_slide_genesis(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
-    table = gen_siz_table(zones, transform, crs=CRS)
-    table["near_drop_p80_m"] = gen_pif_near_drops(
-        dem,
-        zones.pips,
-        zones.pif_labels,
-        abs(transform.a),
-        reach_m=wall_height_reach_m,
-        quantile=wall_height_quantile,
-    ).reindex(table.index)
-    table["verticality"] = gen_pif_verticality(
-        dem, zones.pips, zones.pif_labels
-    ).reindex(table.index)
-    table = table.join(
-        gen_pif_spines(
-            table,
-            cell_size_m=abs(transform.a),
-            end_window_m=end_window_m,
-            lines=zones.pif_lines,
-        )
-    )
     properties = get_nz_property_boundaries(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
@@ -385,7 +495,7 @@ def main(
         f"{len(gns_only):,} GNS-only candidates, {gns_only['length_m'].sum():,.0f} m "
         f"of {mapped_walls.length.sum():,.0f} m mapped; {on_property:,} on a property"
     )
-    element_polygons(zones.found, transform).to_parquet(elements_path(extent=extent))
+    elements.to_parquet(elements_path(extent=extent))
     print(f"Written to {WORK_DIR}")
 
 
@@ -404,4 +514,7 @@ if __name__ == "__main__":
         wall_max_length_m=config.WALL_MAX_LENGTH_M,
         wall_height_reach_m=config.WALL_HEIGHT_REACH_M,
         wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
+        max_untiled_cells=config.MAX_UNTILED_CELLS,
+        tile_core_m=config.TILE_CORE_M,
+        tile_margin_m=config.TILE_MARGIN_M,
     )

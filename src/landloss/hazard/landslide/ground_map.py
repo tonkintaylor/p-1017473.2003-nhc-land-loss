@@ -303,6 +303,7 @@ NLM_MATERIALS: dict[str, str] = {
     "Loess": "loess",
     "River channel": "alluvium",
     "Floodplain": "alluvium",
+    "Alluvial fan and plains": "alluvium",
     "Foreshore": "alluvium",
     "Swamp": "alluvium",
     "Uncompacted fill": "fill_uncontrolled",

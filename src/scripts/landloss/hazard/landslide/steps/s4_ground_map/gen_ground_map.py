@@ -139,6 +139,17 @@ def read_raster(path):
         return opened.squeeze(drop=True).load()
 
 
+def with_fields(frame, fields):
+    """Give a polygon layer the fields this step reads, even when it is empty.
+
+    An ArcGIS read with nothing in the extent comes back with a geometry and no
+    fields, which is every SLIDE layer outside Wellington City (Porirua, the
+    Hutt). Adding the fields empty lets each source build with no polygons.
+    """
+    missing = [field for field in fields if field not in frame.columns]
+    return frame.assign(**dict.fromkeys(missing, pd.Series(dtype=object)))
+
+
 def slide_confidence(confidence):
     """Normalise the SLIDE ``confidence`` field onto high, medium and low.
 
@@ -462,10 +473,16 @@ def main(
     describe_extent(extent_name, area)
 
     print("\nReading the polygon sources ...", flush=True)
-    materials = get_slide_interpreted_materials(bbox=bbox, use_cache=use_cached_layers)
+    materials = with_fields(
+        get_slide_interpreted_materials(bbox=bbox, use_cache=use_cached_layers),
+        ["Type", "confidence"],
+    )
     geology = get_wellington_urban_geology(bbox=bbox, use_cache=use_cached_layers)
     landforms = get_nlm_geomorphology(bbox=bbox, use_cache=use_cached_layers)
-    genesis = get_slide_genesis(bbox=bbox, use_cache=use_cached_layers)
+    genesis = with_fields(
+        get_slide_genesis(bbox=bbox, use_cache=use_cached_layers),
+        ["Type", "Subtype"],
+    )
     cut = get_wcc_cut_areas(bbox=bbox, use_cache=use_cached_layers)
     fill = get_wcc_fill_areas(bbox=bbox, use_cache=use_cached_layers)
     flatland = read_flatland(area)

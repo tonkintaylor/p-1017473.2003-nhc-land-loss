@@ -232,3 +232,20 @@ def test_an_unknown_extent_is_refused() -> None:
     """A typo in a run setting fails loudly rather than naming a new build."""
     with pytest.raises(KeyError, match="not a known extent"):
         extent_suffix("wlg-pliot")
+
+
+def test_the_porirua_pilot_sits_inside_porirua_city() -> None:
+    """The Porirua pilot box is over Porirua City, so it tests the non-WCC path."""
+    porirua = get_study_area("Porirua City").geometry.iloc[0]
+    pilot = get_area_of_interest("porirua-pilot")
+
+    assert extent_suffix("porirua-pilot") == "-porirua-pilot"
+    assert porirua.contains(pilot.polygon(constants.DEFAULT_CRS).centroid)
+
+
+def test_the_porirua_box_covers_porirua_city() -> None:
+    """The Porirua extent holds the whole of the Porirua City boundary."""
+    porirua = get_study_area("Porirua City").geometry.iloc[0]
+    extent = get_area_of_interest("porirua").polygon(constants.DEFAULT_CRS)
+
+    assert extent.contains(porirua)

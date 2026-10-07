@@ -51,10 +51,10 @@ from landloss.hazard.landslide.slope_polygons import (
     BETA_MIN_EVACUATED_WIDTH_M,
     BETA_REPOSE_ANGLE_DEG,
     BETA_SEGMENT_VOLUME_M3,
-    DRY_DEBRIS_AVALANCHE,
+    CUT_SLOPE,
+    DOWNSLOPE,
     EVACUATED,
     FILL_BANK_WEDGE,
-    FILL_FLOW_SLIDE,
     FILL_PHI_DEG,
     HEADSCARP_BAND,
     IMMINENT,
@@ -279,18 +279,34 @@ def test_planar_depth_is_the_triangle_toe_crest_back():
 
 
 @pytest.mark.parametrize(
-    ("volume", "style", "hl"),
+    ("source", "downslope", "hl", "style"),
     [
-        (100.0, DRY_DEBRIS_AVALANCHE, 0.92),
-        (1_000.0, DRY_DEBRIS_AVALANCHE, 0.86),
-        (10_000.0, DRY_DEBRIS_AVALANCHE, 0.79),
-        (100.0, FILL_FLOW_SLIDE, 0.47),
-        (1_000.0, FILL_FLOW_SLIDE, 0.38),
-        (10_000.0, FILL_FLOW_SLIDE, 0.31),
+        # Cuts onto near-horizontal ground: 0.78 (tan a_cut)^0.5.
+        (45.0, 0.0, 0.78, CUT_SLOPE),
+        (60.0, 5.0, 0.78 * math.sqrt(math.tan(math.radians(60.0))), CUT_SLOPE),
+        # Not read below the toe: the cut relation.
+        (45.0, np.nan, 0.78, CUT_SLOPE),
+        # A vertical step is read at the steepest cut.
+        (90.0, 0.0, 0.78 * math.sqrt(math.tan(math.radians(80.0))), CUT_SLOPE),
+        # Steep ground below the toe: 0.77 tan a2 + 0.087.
+        (45.0, 20.0, 0.77 * math.tan(math.radians(20.0)) + 0.087, DOWNSLOPE),
+        (30.0, 30.0, 0.77 * math.tan(math.radians(30.0)) + 0.087, DOWNSLOPE),
+        # Read no steeper than the steepest unconfined case, tan a2 0.93.
+        (45.0, 60.0, 0.77 * 0.93 + 0.087, DOWNSLOPE),
     ],
 )
-def test_reach_ratio_matches_the_plans_evaluations(volume, style, hl):
-    assert reach_ratio(volume, style) == pytest.approx(hl, abs=0.006)
+def test_reach_ratio_follows_hunter_and_fell(source, downslope, hl, style):
+    got_hl, got_style = reach_ratio([source], [downslope])
+    assert got_hl[0] == pytest.approx(hl)
+    assert got_style[0] == style
+
+
+@pytest.mark.parametrize("downslope", [22.0, 25.0, 30.0, 40.0, 60.0])
+def test_the_downslope_line_is_flatter_than_steep_ground(downslope):
+    # Over about 21 degrees, so debris off a face on a steep slope runs on
+    # down it.
+    hl, _ = reach_ratio([35.0], [downslope])
+    assert hl[0] < math.tan(math.radians(downslope))
 
 
 @pytest.mark.parametrize(
@@ -427,10 +443,11 @@ def test_a_wall_runs_out_the_same_length_along_its_whole_toe(noise):
     assert reach.nunique() == 1
 
 
-def test_every_polygon_runs_out_as_a_dry_debris_avalanche():
+def test_a_wall_onto_level_ground_runs_out_by_the_cut_relation():
     _, _, result = run_case("01_wall", 0.0)
     assert result.polygons["is_fill"].all()
-    assert (result.polygons["style"] == DRY_DEBRIS_AVALANCHE).all()
+    assert (result.polygons["style"] == CUT_SLOPE).all()
+    assert (result.polygons["downslope_angle_deg"].abs() < 1.0).all()
 
 
 def test_conditional_failure_probability():
@@ -539,7 +556,7 @@ def test_case_1_wall_polygon_is_the_level_ground_wedge(noise):
     assert len(result.polygons) == 1
     polygon = result.polygons.iloc[0]
     assert polygon["width_rule"] == WALL_WEDGE
-    assert polygon["style"] == DRY_DEBRIS_AVALANCHE
+    assert polygon["style"] == CUT_SLOPE
     assert polygon["width_behind_crest_m"] == pytest.approx(
         0.445 * found.elements["height_m"].iloc[0], abs=0.01
     )
@@ -876,16 +893,18 @@ def test_case_12_weak_rock_banks_take_the_band_or_the_wedge(noise):
     assert (low.polygons["width_behind_crest_m"] == 1.0).all()
     _, found, high = run_case("12_weak_rock_bank_12m", noise)
     assert set(high.polygons["width_rule"]) == {WALL_WEDGE}
-    # At 40 degrees the reach angle runs neither past its toe, so each leaves
-    # only the one-cell strip in front of its toe (any more debris lies back
-    # over its own evacuated ground).
-    for result in (low, high):
+    # Onto level ground a 40 degree cut's travel line, 0.78 (tan 40)^0.5,
+    # meets level ground 0.2 heights past its toe: the 3 m bank's debris
+    # reaches under a cell and leaves the one-cell strip, the 12 m bank's
+    # 2.5 m two cells or more.
+    for result, cells in ((low, {1}), (high, {2, 3})):
+        assert (result.polygons["style"] == CUT_SLOPE).all()
         runout = zone_cells(result, INUNDATED)
         evac = zone_cells(result, EVACUATED)[["row", "col"]]
         front = runout.merge(evac, on=["row", "col"], how="left", indicator=True)
         front = front[front["_merge"] == "left_only"]
         assert not front.empty
-        assert (front.groupby("row")["col"].nunique() == 1).all()
+        assert front.groupby("row")["col"].nunique().median() in cells
     # The imminent band behind the 12 m free-face is the T-45 band alone: the
     # repose line from its toe, at 35 degrees, is under its 40 degree face.
     assert found.elements["overall_angle_deg"].iloc[0] > BETA_REPOSE_ANGLE_DEG
@@ -991,3 +1010,56 @@ def test_a_ray_runs_out_from_where_it_leaves_its_polygons_evacuated_ground():
     )
     assert toe.tolist() == [2.0]
     assert reach.tolist() == [4.0]
+
+
+@pytest.mark.parametrize(
+    ("window", "expected"),
+    [
+        # Two cells down a 25 degree slope from the toe.
+        (2.0, 25.0),
+        # Past the slope's foot onto level ground: the mean over the window.
+        (8.0, math.degrees(math.atan(4 * math.tan(math.radians(25.0)) / 8.0))),
+        # The edge of the grid comes first: the last cell before it.
+        (50.0, math.degrees(math.atan(4 * math.tan(math.radians(25.0)) / 9.0))),
+    ],
+)
+def test_the_downslope_angle_is_read_along_the_fall_line_past_the_toe(window, expected):
+    # A ray from column 0 down a row: its toe at column 2, 25 degree ground
+    # to column 6, then level to the edge at column 11.
+    x = np.arange(12, dtype=float)
+    z = -np.clip(x - 2.0, 0.0, 4.0) * math.tan(math.radians(25.0))
+    dem = np.tile(z, (3, 1))
+    rays = slope_polygons._Rays(  # noqa: SLF001
+        row=np.array([1]),
+        col=np.array([0]),
+        up_row=np.array([0.0]),
+        up_col=np.array([-1.0]),
+        base=np.array([1], dtype=np.int32),
+        toe_z=np.array([0.0]),
+        run_m=np.array([2.0]),
+    )
+    angle = slope_polygons._downslope_angle_deg(  # noqa: SLF001
+        dem,
+        rays,
+        toe_d=np.array([2.0]),
+        window_m=np.array([window]),
+        cell_size_m=1.0,
+    )
+    assert angle[0] == pytest.approx(expected)
+
+
+def test_no_toe_reads_no_downslope_angle():
+    dem = np.zeros((3, 5))
+    rays = slope_polygons._Rays(  # noqa: SLF001
+        row=np.array([1]),
+        col=np.array([0]),
+        up_row=np.array([0.0]),
+        up_col=np.array([-1.0]),
+        base=np.array([1], dtype=np.int32),
+        toe_z=np.array([0.0]),
+        run_m=np.array([1.0]),
+    )
+    angle = slope_polygons._downslope_angle_deg(  # noqa: SLF001
+        dem, rays, toe_d=np.array([np.nan]), window_m=np.array([2.0]), cell_size_m=1.0
+    )
+    assert np.isnan(angle[0])

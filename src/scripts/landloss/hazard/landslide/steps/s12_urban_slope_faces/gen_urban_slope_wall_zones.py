@@ -44,10 +44,23 @@ from landloss.hazard.landslide.forced_polygons import (
 from landloss.hazard.landslide.instability_zones import add_line_elements, with_walls
 from landloss.hazard.landslide.slope_polygons import build_slope_polygons
 from landloss.hazard.landslide.wall_units import gen_element_walls
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import config
+from landloss.io.readers import get_nz_building_outlines, get_nz_coastline_polygons
+from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+    dem_path,
+)
+from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+    ground_map_path,
+)
+from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
+    config,
+    tiled,
+)
 from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
+    CRS,
     SCENARIOS,
+    dem_bbox,
     element_polygons,
+    elements_path,
     fill_by_element,
     found_path,
     get_inputs,
@@ -147,6 +160,78 @@ def world_scenario(world_id):
     return f"w{world_id:03d}"
 
 
+def world_walls(draws, world_id):
+    """One world's walled flag per wall unit.
+
+    Raises:
+        ValueError: If the world is not in the draws.
+    """
+    rows = draws[draws["world_id"] == world_id]
+    if rows.empty:
+        msg = (
+            f"world {world_id} not drawn; add it to config WORLD_IDS and rerun "
+            "gen_urban_slope_wall_units.py"
+        )
+        raise ValueError(msg)
+    return rows.set_index("wall_unit_id")["walled"]
+
+
+def build_tiled(found, units, draws, *, extent, use_cached_layers, world_ids):
+    """Build every scenario's zones tile by tile and write them stitched.
+
+    The tiled counterpart of :func:`main`'s own pass, for an extent the faces
+    script searched in tiles (:mod:`tiled`): each tile adds the line and
+    forced elements of the wall units that reach it and builds every
+    scenario, keeping what it owns, and the tiles are numbered into one set
+    of elements and one zones file per scenario.
+    """
+    dem_file = dem_path(1, extent=extent)
+    bbox = dem_bbox(extent=extent)
+    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
+    land = get_nz_coastline_polygons(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
+    buildings = get_nz_building_outlines(
+        bbox=bbox, crs=CRS, use_cache=use_cached_layers
+    )
+    inputs = {"land": land, "ground_map": ground_map, "buildings": buildings}
+    lineless = units_without_element(
+        units, gpd.read_parquet(elements_path(extent=extent))
+    )
+    flags = dict(SCENARIOS.items())
+    for world_id in world_ids:
+        flags[world_scenario(world_id)] = world_walls(draws, world_id)
+    tile_zones = []
+    for found_tile in found.tiles:
+        tile_zones.append(
+            tiled.zones_tile(
+                found_tile,
+                dem_file,
+                tiled=found,
+                inputs=inputs,
+                units=units,
+                lineless=lineless,
+                flags_by_scenario=flags,
+                fill_by_element=fill_by_element,
+                ground_rows=ground_rows,
+                zone_frames=with_forced,
+                element_polygons=element_polygons,
+            )
+        )
+        tile = found_tile.tile
+        print(f"  tile {tile.row},{tile.col} zones built", flush=True)
+    labels = tiled.label_keys(found, tile_zones)
+    tiled.stitch_elements(tile_zones, labels).to_parquet(
+        wall_elements_path(extent=extent)
+    )
+    for scenario in flags:
+        zones = tiled.stitch_zones(tile_zones, labels, scenario)
+        zones.to_parquet(zones_path(scenario, extent=extent))
+        evacuated = zones[zones["zone"] == "evacuated"]
+        print(
+            f"{scenario}: {evacuated['polygon'].nunique():,} polygons, "
+            f"{evacuated['area_m2'].sum():,.0f} m2 evacuated"
+        )
+
+
 def main(*, extent, use_cached_layers, world_ids):
     """Build and write the zones of each world's wall draw.
 
@@ -170,10 +255,20 @@ def main(*, extent, use_cached_layers, world_ids):
             raise ValueError(msg)
     units = gpd.read_parquet(units_path)
     draws = pd.read_parquet(wall_draws_path(extent=extent))
+    found = read_found(extent=extent)
+    if isinstance(found, tiled.TiledFound):
+        build_tiled(
+            found,
+            units,
+            draws,
+            extent=extent,
+            use_cached_layers=use_cached_layers,
+            world_ids=world_ids,
+        )
+        return
     dem, transform, _, ground_map, group, position = get_inputs(
         extent=extent, use_cached_layers=use_cached_layers
     )
-    found = read_found(extent=extent)
     lineless = units_without_element(units, found.elements)
     found = add_line_elements(
         found,

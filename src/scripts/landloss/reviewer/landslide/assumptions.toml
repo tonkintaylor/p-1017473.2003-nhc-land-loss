@@ -324,7 +324,7 @@ source = "gen_urban_slope_faces.py; constants (URBAN_BUILDING_DISTANCE_M); hazar
 id = "LS-A37"
 step = "zones"
 title = "Evacuated width floor"
-text = "See RW-A20. At least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest, walled or not; on the pilot the floor sets every width."
+text = "For every polygon, walled or unwalled, the evacuated ground runs at least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest. Every face type's own rule (LS-A38) gives a width at or below this with today's values, so this minimum is the width of every polygon, not just on the pilot. See RW-A20."
 status = "decided"
 decided = "the lead, 2026-10-06"
 see = "RW-A20"
@@ -334,7 +334,7 @@ source = "slope_polygons.py (BETA_MIN_EVACUATED_WIDTH_H, BETA_MIN_EVACUATED_WIDT
 id = "LS-A38"
 step = "zones"
 title = "Evacuated width and depth by face type"
-text = "Below the floor: a wall wedge H·tan(45 − φ′/2) on φ′ 42° (0.45 H); a fill bank {BETA_FILL_BANK_WIDTH_H} H (cases 0.25 and 0.65 H); a cut or natural bank the T-44 band of 0.5 m, or 1 m above 30°. Depth: planar slip for a wall, the fill thickness for a fill bank, {COLLUVIUM_DEPTH_M} m colluvium for a cut or natural bank."
+text = "Each face type's own width rule, which applies only where it is wider than the LS-A37 minimum, and with today's values it never is: a wall wedge H·tan(45 − φ′/2) on φ′ 42° (0.45 H); a fill bank {BETA_FILL_BANK_WIDTH_H} H (cases 0.25 and 0.65 H); a cut or natural bank the T-44 band of 0.5 m, or 1 m above 30°. Depth: planar slip for a wall, the fill thickness for a fill bank, {COLLUVIUM_DEPTH_M} m colluvium for a cut or natural bank."
 status = "pending"
 source = "slope_polygons.py (element_depth_m, BETA_FILL_BANK_WIDTH_H, COLLUVIUM_DEPTH_M); faces plan phase 3"
 
@@ -357,8 +357,8 @@ source = "slope_polygons.py (STACK_DOMINANT_*, BETA_FACING_APART_DEG); faces pla
 [[assumptions]]
 id = "LS-A41"
 step = "zones"
-title = "Runout by the de Vilder dry reach angle"
-text = "log(H/L) = −0.033 log V + 0.0315 from the crest, for every face including fill; held to {BETA_MAX_RUNOUT_H} H, to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, and to at least {BETA_MIN_RUNOUT_M} m; one median length swept along the toe; no barriers. See RW-A21."
+title = "Runout by Hunter and Fell's travel angles"
+text = "From the crest: where the ground below the toe is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper (read over {BETA_DOWNSLOPE_WINDOW_H} H), H/L = 0.77 tan α2 + 0.087, which runs on down the slope; otherwise H/L = 0.78 (tan α_cut)^0.5 on the face's angle, no steeper than {BETA_MAX_CUT_ANGLE_DEG}°. Replaces the de Vilder dry reach angle, which stopped every face flatter than about 42° at its toe. Held to {BETA_MAX_RUNOUT_H} H, to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, and to at least {BETA_MIN_RUNOUT_M} m; one median length swept along the toe; no barriers. See RW-A21."
 status = "decided"
 decided = "the lead, 2026-10-07"
 see = "RW-A21"
@@ -368,7 +368,7 @@ source = "slope_polygons.py (BETA_MAX_RUNOUT_H, BETA_MIN_DEPOSIT_DEPTH_M, BETA_M
 id = "LS-A42"
 step = "zones"
 title = "A deposit spreads back over its own scar"
-text = "Until it is no deeper than {BETA_MAX_DEPOSIT_DEPTH_H} H or {BETA_MAX_DEPOSIT_DEPTH_SOURCE} times its source depth. The lead asked for the fix; the two limits are proposals. 5,841 of 6,203 polygons spread back."
+text = "Until it is no deeper than {BETA_MAX_DEPOSIT_DEPTH_H} H or {BETA_MAX_DEPOSIT_DEPTH_SOURCE} times its source depth. The lead asked for the fix; the two limits are proposals. 4,951 of 6,110 polygons spread back, 966 over their whole scar."
 status = "beta"
 source = "slope_polygons.py (BETA_MAX_DEPOSIT_DEPTH_H, BETA_MAX_DEPOSIT_DEPTH_SOURCE)"
 
@@ -392,10 +392,10 @@ source = "gen_urban_slope_fragility.py"
 [[assumptions]]
 id = "LS-A45"
 step = "fragility"
-title = "Wall curves by type and size, ×0.85 fill, ×1.15 cut"
-text = "Koutsoupaki (2023) curves for all seven wall types and size classes (median PGA 0.59 g to about 1.4 g), DS2 read as replace. RW-A26 ('every wall takes one curve') is out of date. The fill and cut factors are judgement. The curves overpredict against Christchurch (Anderson 2015), which the lead accepted on 2026-10-02."
-status = "check"
-see = "RW-A23, RW-A26"
+title = "Wall curves by type and height class, ×{FILL_CAPACITY_FACTOR} fill, ×{CUT_CAPACITY_FACTOR} cut"
+text = "Koutsoupaki (2023) curves for the seven wall types by two height classes (split at {HEIGHT_CLASS_SPLIT_M} m; median PGA about 0.51 g to 1.29 g), DS2 read as replace. The fill and cut factors are judgement. The curves overpredict against Christchurch (Anderson 2015), which the lead accepted on 2026-10-02. (Was `check` while RW-A26 said every wall took one curve; RW-A26 is retired.)"
+status = "beta"
+see = "RW-A23, RW-A33"
 source = "wall_type_fragility (FILL_CAPACITY_FACTOR, CUT_CAPACITY_FACTOR); io/assets/retaining-wall-type-fragility.csv"
 
 [[assumptions]]
@@ -515,3 +515,33 @@ text = "SLIDE's mixed fill classes take their natural material (colluvium ahead 
 status = "check"
 decided = "the lead, 2026-10-02"
 source = "ground_map.py; hazard/landslide/status.md"
+
+[[assumptions]]
+id = "LS-A60"
+step = "zones"
+title = "An unwalled bank evacuates far more than a walled face"
+text = "A walled face is cut on a planar slip, with a median depth of about 0.2 m and about 10 m³ on the pilot. With no wall, the same element is a bank that takes the fill thickness or {COLLUVIUM_DEPTH_M} m of cover: medians of 2.0 m and about 100 m³ on fill, 1.5 m and about 180 m³ elsewhere. The widths are the same, because the floor sets them all. So drawing a wall shrinks the ground a failure takes, while its curve makes failure more likely. Whether that is the intended trade has not been decided."
+status = "check"
+source = "slope_polygons.py (element_depth_m, planar_depth_m); urban-slope-zones-{walled,bare}-pilot medians, 2026-10-07"
+
+# ------------------------------------------------------------ walls
+
+[[assumptions]]
+id = "LS-A61"
+step = "walls"
+title = "Wall presence: points prior, GNS floor, claim update"
+text = "Each wall unit scores points on ten attributes (verticality, height, length, distance to a building, road frontage or boundary, cut/fill class, rock cut over 2 m, soil cut, wall age, NHC land attributes flag); every {BETA_WALL_POINTS_PER_DOUBLING} points doubles the odds from {BETA_WALL_BASE_P} at zero. A GNS-mapped wall lifts a unit to at least {BETA_GNS_WALL_UNIT_FLOOR} (GNS-only {BETA_GNS_ONLY_WALL_PROBABILITY}), and claim counts raise it further. Whether a face is walled sets both its curve and how much ground it evacuates (LS-A60)."
+status = "beta"
+note = "Every points value is judgement; the base, floor and GNS-only values are interim (the lead, 2026-10-07) until calibrated against the claim reports (T-50)."
+see = "RW-A08, RW-A10, RW-A11, RW-A13"
+source = "src/landloss/io/assets/wall-probability-points.csv; wall_units.gen_wall_points, gen_gns_floor, gen_wall_unit_probability"
+
+[[assumptions]]
+id = "LS-A62"
+step = "walls"
+title = "Wall type from age, height and road frontage"
+text = "Each drawn wall draws an age bin, moves one bin later with probability {BETA_WALL_REBUILT_SHARE}, and draws its type from the shares for that age bin and height band (under 1.5 m, 1.5 to 2.5 m, over 2.5 m), times the road frontage multipliers where it stands on one. The type picks the wall's fragility curve (LS-A45)."
+status = "pending"
+note = "The shares and multipliers are placeholders for Nick Peters' review."
+see = "RW-A16, RW-A17"
+source = "src/landloss/exposure/rw/wall_type.py; beta-retaining-wall-type-shares.csv; beta-retaining-wall-frontage-multipliers.csv"

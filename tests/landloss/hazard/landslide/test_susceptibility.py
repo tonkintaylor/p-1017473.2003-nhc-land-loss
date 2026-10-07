@@ -253,6 +253,7 @@ STUDY_AREA_MATERIALS = (
     "River channel",
     "Foreshore",
     "Floodplain",
+    "Alluvial fan and plains",
     "Uncompacted fill",
     "Water body",
     "Metamorphic",

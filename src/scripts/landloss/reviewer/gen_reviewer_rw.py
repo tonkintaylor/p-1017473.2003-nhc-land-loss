@@ -54,14 +54,14 @@ from scipy.stats import norm
 
 from landloss.domain import constants
 from landloss.exposure.rw import wall_type
-from landloss.hazard.landslide import instability_zones, wall_units
+from landloss.hazard.landslide import instability_zones, slope_polygons, wall_units
 from landloss.hazard.landslide.instability_zones import (
     DIRECTIONS,
     PIP_DROP_M,
     PIP_OFFSETS_M,
 )
 from landloss.hazard.landslide.pif_cut_fill import QUADRATIC_TERMS, eval_quadratic
-from landloss.hazard.landslide.urban import wall_type_fragility
+from landloss.hazard.landslide.urban import geometry, wall_type_fragility
 from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
@@ -138,6 +138,8 @@ CONSTANT_SOURCES = (
     wall_units,
     wall_type,
     wall_type_fragility,
+    slope_polygons,
+    geometry,
 )
 
 # The points totals the points-to-prior table is read at.
@@ -496,14 +498,26 @@ def explain_counts(explain):
 
     The explain string lists the bins that scored, "verticality 0.5 and over
     +10; setting road_frontage +20", so this counts what step 12 wrote rather
-    than scoring the units again.
+    than scoring the units again. Age is share-weighted, so its points vary by
+    unit; it is one row with the range of points it took.
     """
     parts = explain.fillna("").str.split("; ").explode()
     parts = parts[parts.str.len() > 0]
     scored = parts.str.extract(r"^(?P<bin>.*) (?P<points>[+-]\d+)$")
-    tally = scored.value_counts().reset_index(name="units")
-    tally["points"] = tally["points"].astype(int)
-    return tally.sort_values(["bin"]).reset_index(drop=True)
+    scored["points"] = scored["points"].astype(int)
+    tally = scored.groupby("bin", sort=True)["points"].agg(["size", "min", "max"])
+    points = tally["min"].map("{:+d}".format)
+    ranged = tally["min"] != tally["max"]
+    points[ranged] = (
+        points[ranged] + " to " + tally.loc[ranged, "max"].map("{:+d}".format)
+    )
+    return pd.DataFrame(
+        {
+            "bin": tally.index,
+            "points": points.to_numpy(),
+            "units": tally["size"].to_numpy(),
+        }
+    )
 
 
 def wall_points_charts(units):
