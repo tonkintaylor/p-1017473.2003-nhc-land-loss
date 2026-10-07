@@ -223,6 +223,33 @@ def test_the_wall_height_is_the_near_drop_not_the_walk_to_the_foot():
     assert top < 5.0
 
 
+def _verticality(z):
+    dem = np.tile(np.clip(z, 0.0, None), (SHAPE[0], 1))
+    pips = zones.find_pips(dem, 1.0)
+    labels, _ = zones.cluster_pifs(pips.mask, 1.0)
+    return zones.gen_pif_verticality(dem, pips, labels), labels
+
+
+def test_verticality_is_near_one_on_a_step_and_low_on_a_batter():
+    cols = np.arange(SHAPE[1], dtype=float)
+    # A 1 m wall at the top of a 30 degree slope: the first cell holds the
+    # wall's 1 m of the 1 + 2 tan 30 m within three cells.
+    step = np.where(
+        cols <= C_TOP, 20.0, 19.0 - (cols - C_TOP - 1) * math.tan(math.radians(30))
+    )
+    verticality, labels = _verticality(step)
+    assert verticality.name == "verticality"
+    top = verticality.loc[labels[0, C_TOP]]
+    assert top == pytest.approx(
+        1.0 / (1.0 + 2.0 * math.tan(math.radians(30))), abs=0.02
+    )
+    # An even 45 degree batter: a third of the drop within three cells is in
+    # the first.
+    batter = np.where(cols <= C_TOP, 20.0, 20.0 - (cols - C_TOP))
+    verticality, _ = _verticality(batter)
+    assert verticality.median() == pytest.approx(1.0 / 3.0, abs=0.02)
+
+
 def test_a_pif_with_a_spine_under_three_metres_is_dropped():
     labels = np.zeros((10, 20), dtype=np.int32)
     labels[2, 2:5] = 1  # three pips, 2 m spine

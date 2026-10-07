@@ -103,11 +103,10 @@ WALL_HEIGHT_QUANTILE = 0.7
 CLAIM_HOLDOUT_SHARE = 0.3
 CLAIM_HOLDOUT_SEED = 2003
 
-# Whether the wall probability takes the NZMM update (has_retaining_wall true
-# read as BETA_NZMM_MIN_WALLS walls, applied at BETA_NZMM_UPDATE_WEIGHT of the
-# full update). Both versions are written either way; NZMM is flagged
-# unreliable (kappa 0.03 against GNS, provenance unknown).
-USE_NZMM_UPDATE = True
+# The wall probability is the lead's points scale (2026-10-07): the points
+# table is landloss/io/assets/wall-probability-points.csv and the base and the
+# points per doubling are BETA_ constants in landloss.domain.constants. NHC's
+# land attributes flag is points, not an update.
 
 # The exposure worlds to draw the wall units for: the worlds exposure rw step 6
 # populates. Change them in that step's config.py; this step follows.

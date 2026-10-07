@@ -39,12 +39,13 @@ COVERAGE_MODEL = "hancox_1997"
 # urban model, landslide steps 6 to 9, and are not drawn here.
 LARGE_MIN_SOURCE_AREA_M2 = 700.0
 
-# The share of the calibration inventory's failed area that lies inside the
-# urban size range, taken off the expected failed area before the large count
-# is drawn so the two populations do not both claim it. A placeholder: a
-# research script measures it from the Kaikoura source polygons
-# (landloss.io.kaikoura) later. Printed by every run.
-URBAN_AREA_SHARE = 0.25
+# The share of the coverage model's failed area taken off before the large
+# count is drawn, so the large and urban populations do not both claim it.
+# Zero: the Hancox relationships come from natural-slope failures and do not
+# count the cut, fill and wall failures the urban model draws, and the large
+# model already draws nothing below LARGE_MIN_SOURCE_AREA_M2 (the project lead,
+# 2026-10-07). Printed by every run.
+URBAN_AREA_SHARE = 0.0
 
 # The downslope length of a source ellipse over its across-slope width. A
 # placeholder for the ratio measured on the Kaikoura source polygons.

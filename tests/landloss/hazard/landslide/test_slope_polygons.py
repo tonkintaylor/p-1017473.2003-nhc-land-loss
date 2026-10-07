@@ -8,7 +8,7 @@ grid's west edge, a cell's centre at ``column + 0.5``.
 
 The walls of cases 1, 2 and 5 stand on fill (the plan's case 1 says so); the
 ground rising behind case 2's wall is natural, and every other case is cut or
-natural ground, so it runs out as a dry debris avalanche.
+natural ground. Every case runs out as a dry debris avalanche.
 
 What the 1 m grid does to the numbers, worked once here for case 1, a 2 m
 vertical wall: the element is the two cells either side of the wall (centres
@@ -21,10 +21,11 @@ toe cell, about 0.94 m3 per metre of wall against the triangle's
 ``0.5 x 2 x 0.89 = 0.89``. Imminent: the repose line from the toe cell at 35
 degrees meets the level ground at ``2 / tan 35 - 1 = 1.86 m`` behind the crest
 cell, past the T-45 band of 0.89 + 1.0 m, so one cell (centre 18.5 m).
-Inundated: a fill flow slide of about 36 m3 has
-``H/L = 10^(-0.090 log10 36 - 0.148) = 0.52``, so the line from the crest cell
-(z 2) meets the ground 3.85 m out, at 23.35 m: the cells centred 21.5 and
-22.5 m.
+Inundated: every failure runs out as a dry debris avalanche, and one of
+about 36 m3 has ``H/L = 10^(0.0315 - 0.033 log10 36) = 0.95``, so the line
+from the crest cell (z 2) meets the ground 2.09 m out, at 21.59 m: the cell
+centred 21.5 m, one metre past the toe, well under the caps of three heights
+and of the volume at 0.3 m deep.
 """
 
 import math
@@ -43,6 +44,9 @@ from landloss.hazard.landslide.slope_elements import (
     find_slope_elements,
 )
 from landloss.hazard.landslide.slope_polygons import (
+    BETA_MAX_DEPOSIT_DEPTH_H,
+    BETA_MAX_DEPOSIT_DEPTH_SOURCE,
+    BETA_MAX_RUNOUT_H,
     BETA_MIN_EVACUATED_WIDTH_H,
     BETA_MIN_EVACUATED_WIDTH_M,
     BETA_REPOSE_ANGLE_DEG,
@@ -62,7 +66,10 @@ from landloss.hazard.landslide.slope_polygons import (
     SlopePolygons,
     build_slope_polygons,
     conditional_failure_probability,
+    deposit_overlap_m2,
     element_depth_m,
+    imminent_width_m,
+    inundated_length_m,
     min_evacuated_width_m,
     planar_depth_m,
     polygon_geometries,
@@ -114,6 +121,20 @@ def zone_cells(result: SlopePolygons, zone: str, polygon=None) -> pd.DataFrame:
         return cells
     polygons = [polygon] if np.isscalar(polygon) else list(polygon)
     return cells[cells["polygon"].isin(polygons)]
+
+
+def in_front(result: SlopePolygons, polygon=None) -> pd.DataFrame:
+    """The inundated cells off the polygons' own evacuated ground.
+
+    A deep deposit spreads back over its own scar as well; these are the
+    cells of the strip below the toe.
+    """
+    inundated = zone_cells(result, INUNDATED, polygon)
+    evac = zone_cells(result, EVACUATED, polygon)[["polygon", "row", "col"]]
+    merged = inundated.merge(
+        evac, on=["polygon", "row", "col"], how="left", indicator=True
+    )
+    return merged[merged["_merge"] == "left_only"].drop(columns="_merge")
 
 
 def x_of(cells: pd.DataFrame) -> np.ndarray:
@@ -272,6 +293,146 @@ def test_reach_ratio_matches_the_plans_evaluations(volume, style, hl):
     assert reach_ratio(volume, style) == pytest.approx(hl, abs=0.006)
 
 
+@pytest.mark.parametrize(
+    ("reach", "height", "volume", "toe", "expected"),
+    [
+        # The rays' reach, under the caps.
+        (5.0, 4.0, 400.0, 10.0, 5.0),
+        # No reach past the toe: the debris still lies in a strip at the toe.
+        (0.0, 4.0, 400.0, 10.0, 1.0),
+        # The strip at the toe stands even where the volume cap is shorter.
+        (5.0, 4.0, 1.0, 10.0, 1.0),
+        # A long reach is held to three heights past the toe.
+        (60.0, 2.0, 400.0, 10.0, 6.0),
+        # Or to where the deposit would thin under 0.3 m.
+        (60.0, 10.0, 30.0, 10.0, 10.0),
+    ],
+)
+def test_inundated_length_is_the_reach_capped_with_a_strip_at_the_toe(
+    reach, height, volume, toe, expected
+):
+    length = inundated_length_m(
+        reach, height_m=height, volume_m3=volume, toe_length_m=toe
+    )
+    assert length == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("reach", "height", "band", "expected"),
+    [
+        (2.0, 4.0, 1.0, 2.0),
+        # Never under the T-45 band.
+        (0.2, 4.0, 1.0, 1.0),
+        # Never past where the repose line from the toe meets level ground.
+        (40.0, 2.0, 1.0, 2.0 / math.tan(math.radians(BETA_REPOSE_ANGLE_DEG))),
+        # The band governs where it is the wider.
+        (40.0, 0.5, 1.0, 1.0),
+    ],
+)
+def test_imminent_width_is_the_reach_floored_and_capped(reach, height, band, expected):
+    width = imminent_width_m(reach, height_m=height, band_m=band)
+    assert width == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("name", sorted(TOY_CASES))
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_zones_stay_within_their_caps_of_the_evacuated_ground(name, noise):
+    _, _, result = run_case(name, noise)
+    tan_repose = math.tan(math.radians(BETA_REPOSE_ANGLE_DEG))
+    evacuated = zone_cells(result, EVACUATED)
+    # A cell centre is up to a diagonal from the line it is measured along.
+    slack = math.sqrt(2.0)
+    for polygon, row in result.polygons.iterrows():
+        own = evacuated[evacuated["polygon"] == polygon][["row", "col"]].to_numpy()
+        caps = {
+            INUNDATED: BETA_MAX_RUNOUT_H * row["height_m"],
+            IMMINENT: max(row["height_m"] / tan_repose, 1.0),
+        }
+        for zone, cap in caps.items():
+            cells = zone_cells(result, zone, polygon)[["row", "col"]].to_numpy()
+            if cells.size == 0:
+                continue
+            gaps = np.hypot(
+                *(cells[:, None, :] - own[None, :, :]).transpose(2, 0, 1)
+            ).min(axis=1)
+            assert gaps.max() <= cap + slack, (polygon, zone)
+
+
+@pytest.mark.parametrize(
+    ("volume", "height", "depth", "strip", "expected"),
+    [
+        # Shallow enough on the strip in front: no overlap.
+        (10.0, 2.0, 5.0, 10.0, 0.0),
+        # 40 m3 on 10 m2 is 4 m deep against a 2 m limit (the height): 10 m2
+        # more.
+        (40.0, 2.0, 5.0, 10.0, 10.0),
+        # No strip at all: the whole deposit lies on the evacuated ground.
+        (40.0, 2.0, 5.0, 0.0, 20.0),
+        # A shallow failure on a high face: twice its 0.5 m source depth, not
+        # its 10 m height, is the limit, so 20 m3 needs 20 m2: 15 m2 more.
+        (20.0, 10.0, 0.5, 5.0, 15.0),
+    ],
+)
+def test_deposit_overlap_is_the_area_that_brings_it_under_the_limit(
+    volume, height, depth, strip, expected
+):
+    assert BETA_MAX_DEPOSIT_DEPTH_H == 1.0
+    assert BETA_MAX_DEPOSIT_DEPTH_SOURCE == 2.0
+    overlap = deposit_overlap_m2(
+        volume, height_m=height, depth_m=depth, strip_area_m2=strip
+    )
+    assert overlap == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("name", sorted(TOY_CASES))
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_a_deep_deposit_spreads_back_over_the_lowest_evacuated_ground(name, noise):
+    terrain, _, result = run_case(name, noise)
+    z = terrain.dem
+    for polygon, row in result.polygons.iterrows():
+        evac = zone_cells(result, EVACUATED, polygon)
+        inundated = zone_cells(result, INUNDATED, polygon)
+        if inundated.empty:
+            continue
+        evac_keys = set(zip(evac["row"], evac["col"], strict=True))
+        on_evac = [
+            (r, c)
+            for r, c in zip(inundated["row"], inundated["col"], strict=True)
+            if (r, c) in evac_keys
+        ]
+        depth = row["volume_m3"] / len(inundated)
+        limit = min(
+            BETA_MAX_DEPOSIT_DEPTH_H * row["height_m"],
+            BETA_MAX_DEPOSIT_DEPTH_SOURCE * row["depth_m"],
+        )
+        if on_evac:
+            # Spread back only as far as it must (one cell of slack), and
+            # over the lowest of the evacuated ground first.
+            assert depth > limit * (1 - 1 / len(inundated)) - 1e-9 or len(
+                on_evac
+            ) == len(evac_keys)
+            highest_covered = max(z[r, c] for r, c in on_evac)
+            uncovered = evac_keys - set(on_evac)
+            if uncovered:
+                assert highest_covered <= min(z[r, c] for r, c in uncovered)
+        else:
+            assert depth <= limit + 1e-9
+
+
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_a_wall_runs_out_the_same_length_along_its_whole_toe(noise):
+    terrain, _, result = run_case("01_wall", noise)
+    runout = middle(zone_cells(result, INUNDATED), terrain.dem.shape[0])
+    reach = runout.groupby("row")["col"].max()
+    assert reach.nunique() == 1
+
+
+def test_every_polygon_runs_out_as_a_dry_debris_avalanche():
+    _, _, result = run_case("01_wall", 0.0)
+    assert result.polygons["is_fill"].all()
+    assert (result.polygons["style"] == DRY_DEBRIS_AVALANCHE).all()
+
+
 def test_conditional_failure_probability():
     assert conditional_failure_probability(0.2, retrogression_p=0.5) == pytest.approx(
         0.6
@@ -307,7 +468,7 @@ def test_barriers_stop_the_runout():
     result = build_slope_polygons(
         found, terrain.dem, terrain.transform, is_fill=fill, barriers=barriers
     )
-    assert set(zone_cells(result, INUNDATED)["col"]) == {21}
+    assert set(in_front(result)["col"]) == {21}
 
 
 def test_geometries_are_true_to_the_cells():
@@ -378,7 +539,7 @@ def test_case_1_wall_polygon_is_the_level_ground_wedge(noise):
     assert len(result.polygons) == 1
     polygon = result.polygons.iloc[0]
     assert polygon["width_rule"] == WALL_WEDGE
-    assert polygon["style"] == FILL_FLOW_SLIDE
+    assert polygon["style"] == DRY_DEBRIS_AVALANCHE
     assert polygon["width_behind_crest_m"] == pytest.approx(
         0.445 * found.elements["height_m"].iloc[0], abs=0.01
     )
@@ -395,9 +556,8 @@ def test_case_1_wall_polygon_is_the_level_ground_wedge(noise):
     # m) by about 0.1 m, so under noise that cell is imminent in some rows.
     imminent = set(x_of(middle(zone_cells(result, IMMINENT), rows)))
     assert {18.5} <= imminent <= ({17.5, 18.5} if noise else {18.5})
-    runout = x_of(middle(zone_cells(result, INUNDATED), rows))
-    assert {21.5, 22.5} <= set(runout)
-    assert runout.max() <= 24.5
+    runout = set(x_of(middle(zone_cells(result, INUNDATED), rows)))
+    assert {21.5} <= runout <= {21.5, 22.5}
 
 
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
@@ -604,7 +764,7 @@ def test_case_8_concave_toe_runs_out_onto_the_easing(noise):
     terrain, found, result = run_case("08_concave_toe", noise)
     face = found.elements.index[found.elements["element_type"] == FREE_FACE][0]
     polygons = result.polygons[result.polygons["element"] == face]
-    runout = middle(zone_cells(result, INUNDATED, polygons.index), 40)
+    runout = middle(in_front(result, polygons.index), 40)
     # The debris lands on the easing below the free-face's toe.
     assert not runout.empty
     face_rows, face_cols = np.nonzero(found.labels == face)
@@ -716,9 +876,16 @@ def test_case_12_weak_rock_banks_take_the_band_or_the_wedge(noise):
     assert (low.polygons["width_behind_crest_m"] == 1.0).all()
     _, found, high = run_case("12_weak_rock_bank_12m", noise)
     assert set(high.polygons["width_rule"]) == {WALL_WEDGE}
-    # At 40 degrees both deposit on themselves: no ground below the toe.
-    assert low.polygons["inundated_area_m2"].sum() <= 2.0
-    assert high.polygons["inundated_area_m2"].sum() <= 2.0
+    # At 40 degrees the reach angle runs neither past its toe, so each leaves
+    # only the one-cell strip in front of its toe (any more debris lies back
+    # over its own evacuated ground).
+    for result in (low, high):
+        runout = zone_cells(result, INUNDATED)
+        evac = zone_cells(result, EVACUATED)[["row", "col"]]
+        front = runout.merge(evac, on=["row", "col"], how="left", indicator=True)
+        front = front[front["_merge"] == "left_only"]
+        assert not front.empty
+        assert (front.groupby("row")["col"].nunique() == 1).all()
     # The imminent band behind the 12 m free-face is the T-45 band alone: the
     # repose line from its toe, at 35 degrees, is under its 40 degree face.
     assert found.elements["overall_angle_deg"].iloc[0] > BETA_REPOSE_ANGLE_DEG
@@ -792,3 +959,35 @@ def test_two_overlapping_tiles_stitch_to_the_whole_grid():
     assert tiled[0] == whole[0]
     assert tiled[1] == whole[1]
     assert whole[1]
+
+
+def test_a_ray_runs_out_from_where_it_leaves_its_polygons_evacuated_ground():
+    # A plane falling 2 m a metre to the east; the ray's element is column 2
+    # and its polygon's evacuated ground runs on over column 3.
+    dem = np.tile(-2.0 * np.arange(8, dtype=float), (3, 1))
+    labels = np.zeros(dem.shape, dtype=np.int32)
+    labels[:, 2] = 1
+    rays = slope_polygons._Rays(  # noqa: SLF001
+        row=np.array([1]),
+        col=np.array([2]),
+        up_row=np.array([0.0]),
+        up_col=np.array([-1.0]),
+        base=np.array([1], dtype=np.int32),
+        toe_z=np.array([-6.0]),
+        run_m=np.array([1.0]),
+    )
+    own = np.array([1 * dem.size + 1 * dem.shape[1] + 3], dtype=np.int64)
+    toe, reach = slope_polygons._march_downhill(  # noqa: SLF001
+        labels,
+        dem,
+        rays,
+        top_z=np.array([-4.0]),
+        top_d=np.array([0.0]),
+        reach_hl=np.array([1.0]),
+        barriers=None,
+        cell_size_m=1.0,
+        own_keys=own,
+        ray_keys=np.array([1 * dem.size], dtype=np.int64),
+    )
+    assert toe.tolist() == [2.0]
+    assert reach.tolist() == [4.0]

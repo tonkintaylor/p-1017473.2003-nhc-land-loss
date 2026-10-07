@@ -74,13 +74,26 @@ checks them against held-out claims.
       which put only 29% of the pilot's walled units under 1.5 m against 54%
       in Anderson et al. [anderson_2015]. Rerun and recheck the height shape.
 - [x] The GNS floor: a wall unit with a GNS mapped wall on it is at least 0.95,
-      and a `gns_only` candidate is 0.8.
+      and a `gns_only` candidate is 0.8 (0.80 and 0.70 since 2026-10-07,
+      interim).
 - [x] Update from the property databases with the Poisson-binomial update in
       `exposure/rw/status.md`: an NZMM flag raises the expected minimum to 2
       walls on the property, applied modestly (`BETA_NZMM_UPDATE_WEIGHT`, 0.3
       of the full update) and flagged unreliable, as NZMM agrees with GNS no
       better than chance; the claim reports give a per-property count with a
-      30% hold-out.
+      30% hold-out. The NZMM update was removed on 2026-10-07: the flag is
+      +5 points.
+- [x] Points-based wall probability (the lead, 2026-10-07,
+      `.agents/plans/wall-probability-points.md`): the factor prior replaced
+      by points on a logistic scale (20 points double the odds from
+      `BETA_WALL_BASE_P`), from verticality (new on the siz table), height,
+      length, building distance, setting, step 13 class, a cut in rock over
+      2.0 m or in soil, the property's wall age shares and the NHC flag; the
+      table is `src/landloss/io/assets/wall-probability-points.csv`. The
+      wall age moved into `gen_hazard`, before the wall units.
+- [ ] Replace the interim base and GNS floor (solved for 60% of the
+      factor prior's expected walls) with a calibration on the held-out
+      claims and the share of properties with a wall.
 - [x] Review fixes (2026-10-05): the spine is the geodesic diameter of the
       pif (a spanning tree's longest path folded back on thick faces); a
       corner needs the falls to turn, so stacked terraces stay apart; a
@@ -185,3 +198,10 @@ checks them against held-out claims.
   minimum polygon, and seeding growth on the wall's own threshold is the
   alternative.
 - The age bin of the claim property as evidence (T-50).
+- Pass the building outlines (`building_mask()`) as the barrier grid of
+  `build_slope_polygons`, so debris stops at the house below (the lead,
+  2026-10-07; landslide status, Next 15). Roads are not barriers.
+- Settle the deposit depth limits, `BETA_MAX_DEPOSIT_DEPTH_H` (one height)
+  and `BETA_MAX_DEPOSIT_DEPTH_SOURCE` (twice the source depth), both
+  proposals: under them most pilot failures spread back over part of their
+  scar and a quarter over all of it.

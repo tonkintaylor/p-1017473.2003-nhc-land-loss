@@ -15,29 +15,35 @@ one line, one probability, one draw. This module:
    unit is one line of 3 to 50 m with at most 3 bends turning at most 185
    degrees; each unit carries its length in every property it enters
    (:func:`gen_unit_properties`).
-2. **Prior.** Puts a prior on each unit from whether it holds a siz, the height
-   band of its wall height and the cut and fill class of landslide step 13:
-   higher on fill and cut and fill, lower on a cut in rock and on natural
-   ground (:func:`gen_wall_prior`).
+2. **Prior.** Scores each unit in points (the lead, 2026-10-07): its
+   verticality, wall height, length, distance to a building, road frontage or
+   property boundary, landslide step 13 class, a cut in rock or in soil, the
+   wall age shares of its property and NHC's land attributes flag, each from
+   the points table ``wall-probability-points.csv`` in
+   :mod:`landloss.io.assets`. The points set the odds on a logistic scale,
+   ``BETA_WALL_POINTS_PER_DOUBLING`` points doubling them from
+   ``BETA_WALL_BASE_P`` at 0 points, so no probability reaches 1
+   (:func:`gen_wall_points`). A GNS-only unit takes
+   ``BETA_GNS_ONLY_WALL_PROBABILITY`` instead.
 3. **Floor.** Lifts a unit with a GNS mapped wall on it to a floor
    (:func:`gen_gns_floor`). GNS is the only dataset that locates a wall, so it
    is the only evidence on a candidate, and it is one-sided: GNS maps only the
    walls visible from above, so the part of a unit no mapped wall reaches is
    not evidence against a wall there.
-4. **Update.** The claim reports and NZMM count walls per property, not which
+4. **Update.** The claim reports count walls per property, not which
    candidate is the wall, so each property's units are updated on the count
    with the Poisson-binomial (:func:`gen_count_update`); no probability falls.
    A unit is a wall on every property it enters by at least
    :data:`BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`, so it takes part in each of
-   their updates and keeps the highest.
-   NZMM, unreliable, takes only a share of its update
-   (``BETA_NZMM_UPDATE_WEIGHT``).
+   their updates and keeps the highest. NHC's land attributes flag (NZMM) is
+   no longer an update: it is points in the prior.
 5. **Draw.** Draws each unit walled per exposure world, and turns the draw
    into the element flags the polygon builder reads (:func:`gen_wall_draws`,
    :func:`gen_element_walls`).
 
-Every weight is a ``BETA_`` constant in :mod:`landloss.domain.constants`,
-judgement until the claim report extraction (**T-50**) calibrates it.
+Every weight is a ``BETA_`` constant in :mod:`landloss.domain.constants` or a
+row of the points table, judgement until the claim report extraction
+(**T-50**) calibrates it.
 
 **What the candidates miss.** A wall under about 0.7 m (about 1.0 m where it
 faces a diagonal) makes no pips, because that is the drop a pip needs at 1, 3
@@ -53,13 +59,16 @@ pip along its fall
 Neither its largest pip drop ``max_delta_h_m`` nor step 13's walk to the
 foot of the face, which runs on down a long batter or hillside, is used:
 both overstated the retained height. Step 13 classes every pif
-(``urban-slope-pif-cut-fill{suffix}``), and its ``cut_fill_class`` sets the prior's
-fill, rock cut and natural factors; the ground map's material says only
-whether a cut is in rock. Fill on the ground map (its fill materials and its
+(``urban-slope-pif-cut-fill{suffix}``), and its ``cut_fill_class`` sets the
+fill, natural and cut points; the ground map's material says only whether a
+cut is in rock or in soil. Fill on the ground map (its fill materials and its
 ``modification``) and the SLIDE fill bodies no longer set the prior: the
 modification is ``fill`` on 88% of the pilot's candidate pifs, rock
 included, so it lifted nearly every unit.
 """
+
+import math
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
@@ -72,13 +81,13 @@ from landloss.domain import constants
 from landloss.exposure.land.extent import stack_representatives
 from landloss.hazard.landslide import bend_split, pif_cut_fill
 from landloss.hazard.landslide.ground_map import ROCK_MATERIALS
-from landloss.hazard.landslide.slope_elements import height_band
 from landloss.hazard.landslide.wall_candidates import (
     LOW_HEIGHT_CLASS,
     SIZ_CLASS,
     _property_frame,
 )
 from landloss.hazard.realisation import realisation_seed
+from landloss.io import ASSETS_DIR
 
 # The two kinds of member a wall unit is made of.
 PIF_MEMBER, GNS_ONLY_MEMBER = "pif", "gns_only"
@@ -99,35 +108,33 @@ _MAX_LINE_POINTS = 1500
 CANDIDATE_CLASSES = (SIZ_CLASS, LOW_HEIGHT_CLASS)
 
 # The basis strings: the last rule that set a unit's probability.
-P_WALL_BASES = (
-    "prior",
-    "rock_cut",
-    "fill",
-    "natural",
-    "property_boundary",
-    "road_frontage",
-    "tall_face",
-    "gns_floor",
-    "gns_only",
-    "claims",
-    "nzmm",
-)
-(
-    PRIOR,
-    ROCK_CUT,
-    FILL,
-    NATURAL,
-    PROPERTY_BOUNDARY,
-    ROAD_FRONTAGE,
-    TALL_FACE,
-    GNS_FLOOR,
-    GNS_ONLY,
-    CLAIMS,
-    NZMM,
-) = P_WALL_BASES
+P_WALL_BASES = ("points", "gns_floor", "gns_only", "claims")
+POINTS, GNS_FLOOR, GNS_ONLY, CLAIMS = P_WALL_BASES
 
-# The two updates written to the candidates missing table.
-UPDATES = ("claims", "claims_nzmm")
+# The update written to the candidates missing table.
+UPDATES = ("claims",)
+
+# The points table (the lead, 2026-10-07): attribute, bin, lower, upper,
+# points, reason; every value judgement until a fit replaces it.
+WALL_POINTS_PATH = ASSETS_DIR / "wall-probability-points.csv"
+
+# The ground map materials a cut in which counts as a cut in soil: the soils
+# and fills, and highly or completely weathered or crushed rock, which the
+# lead scores as soil, not rock (2026-10-07).
+SOIL_CUT_MATERIALS = (
+    "alluvium",
+    "loess",
+    "colluvium",
+    "fill_engineered",
+    "fill_uncontrolled",
+    "reclamation",
+    "rock_hw_cw",
+    "rock_crushed",
+)
+
+# The age bins of exposure rw step 6's wall age shares, as the columns that
+# hold them (``p_<bin>``).
+AGE_BINS = ("pre_1970", "1970_1991", "1992_2004", "2005_on")
 
 # The stream each exposure world's wall unit draw comes from.
 DRAW_STREAM = "wall_units"
@@ -179,6 +186,7 @@ LONGEST_MEMBER_COLUMNS = (
     "ground_material",
     "height_band",
     "in_slide_fill",
+    "verticality",
 )
 
 
@@ -271,6 +279,12 @@ def gen_wall_members(
                 )
             },
             "height_m": pifs["near_drop_p80_m"].to_numpy(dtype=float),
+            # The siz table's verticality where it carries one (2026-10-07).
+            "verticality": (
+                pifs["verticality"].to_numpy(dtype=float)
+                if "verticality" in pifs.columns
+                else np.full(len(pifs), np.nan)
+            ),
             "cut_fill_class": step13["cut_fill_class"].astype(object).to_numpy(),
             "building_m": pifs["building_m"].to_numpy(dtype=float),
             "ground_group": pifs["ground_group"].astype(object).to_numpy(),
@@ -301,6 +315,7 @@ def gen_wall_members(
             "end_b_fall_deg": np.nan,
             "max_delta_h_m": np.nan,
             "height_m": gns_only["step_height_m"].to_numpy(dtype=float),
+            "verticality": np.nan,
             "cut_fill_class": pif_cut_fill.UNKNOWN,
             "building_m": gns_only["building_m"].to_numpy(dtype=float),
             "ground_group": None,
@@ -624,154 +639,233 @@ def _unit_cut_fill_class(pifs: pd.DataFrame) -> pd.Series:
     return chosen.set_index("unit")["cut_fill_class"].astype(object)
 
 
-def tall_face_factor(height_m: ArrayLike) -> NDArray[np.float64]:
-    """What a unit's prior keeps for the height of its face.
+def load_wall_points(path: Path = WALL_POINTS_PATH) -> pd.DataFrame:
+    """Read the points table.
 
-    1 up to :data:`~landloss.domain.constants.BETA_TALL_FACE_TAPER_START_M`,
-    falling linearly to
-    :data:`~landloss.domain.constants.BETA_TALL_FACE_MIN_FACTOR` at
-    :data:`~landloss.domain.constants.BETA_TALL_FACE_TAPER_END_M` and that
-    above: a face too high to be retained in full is less often a wall. An
-    unknown height keeps 1.
+    Raises:
+        ValueError: If a column is missing or a row's attribute is not one the
+            scoring reads.
     """
-    height = np.nan_to_num(np.asarray(height_m, dtype=float), nan=0.0)
-    return np.interp(
-        height,
-        [constants.BETA_TALL_FACE_TAPER_START_M, constants.BETA_TALL_FACE_TAPER_END_M],
-        [1.0, constants.BETA_TALL_FACE_MIN_FACTOR],
-    )
+    table = pd.read_csv(path)
+    _require(table, ("attribute", "bin", "lower", "upper", "points"), path.name)
+    known = {
+        "verticality",
+        "height",
+        "length",
+        "building",
+        "setting",
+        "class",
+        "rock_cut",
+        "soil_cut",
+        "age",
+        "nhc_land_attrs",
+    }
+    unknown = set(table["attribute"]) - known
+    if unknown:
+        msg = f"{path.name}: unknown attributes {sorted(unknown)}"
+        raise ValueError(msg)
+    return table
 
 
-def gen_wall_prior(units: pd.DataFrame) -> pd.DataFrame:
-    """The prior probability that each wall unit is a wall.
+def _binned(
+    values: NDArray[np.float64], rows: pd.DataFrame
+) -> tuple[NDArray[np.float64], NDArray[np.object_]]:
+    """Points and bin names of numeric values in ``[lower, upper)`` bins.
 
-    Applied in this order: :data:`~landloss.domain.constants.BETA_SIZ_WALL_PRIOR`
-    for a unit holding a siz, else
-    :data:`~landloss.domain.constants.BETA_LOW_HEIGHT_WALL_PRIOR`; times the factor
-    (:data:`~landloss.domain.constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR`)
-    of the height band of the unit's ``height_m``
-    (:func:`~landloss.hazard.landslide.slope_elements.height_band`, 0 for
-    NaN), so the wall height sets the band; the unit's ``height_band``, the
-    hazard's band of its longest pif, is not read;
-    then by the unit's landslide step 13 ``cut_fill_class``, one factor at
-    most since the classes exclude each other (and then by its setting,
-    below):
+    A value in no bin, or NaN, scores 0 and names no bin.
+    """
+    points = np.zeros(len(values))
+    names = np.full(len(values), "", dtype=object)
+    for _, row in rows.iterrows():
+        low = -np.inf if pd.isna(row["lower"]) else float(row["lower"])
+        high = np.inf if pd.isna(row["upper"]) else float(row["upper"])
+        inside = (values >= low) & ((values < high) | np.isposinf(high))
+        points[inside] = float(row["points"])
+        names[inside] = str(row["bin"])
+    return points, names
 
-    - ``cut`` on a rock material, with a height over
-      :data:`~landloss.domain.constants.BETA_ROCK_CUT_MIN_HEIGHT_M` (under it
-      the face is in the soil cover), times
-      :data:`~landloss.domain.constants.BETA_ROCK_CUT_FACTOR`; a cut in soil,
-      or in rock under that height, is unchanged;
-    - ``fill`` and ``cut_and_fill`` (:data:`FILL_CLASSES`) times
-      :data:`~landloss.domain.constants.BETA_FILL_WALL_FACTOR`;
-    - ``natural`` times
-      :data:`~landloss.domain.constants.BETA_NATURAL_WALL_FACTOR`;
-    - ``uncertain`` and ``unknown`` unchanged;
 
-    then, where the units carry the flags of :func:`gen_unit_boundary_flags`,
-    times :data:`~landloss.domain.constants.BETA_ROAD_FRONTAGE_WALL_FACTOR`
-    on a road frontage, else
-    :data:`~landloss.domain.constants.BETA_BOUNDARY_WALL_FACTOR` on a
-    property boundary (the lead, 2026-10-06); and last by
-    :func:`tall_face_factor` of ``height_m``, which falls away once a face is
-    too high to be retained in full (the lead, 2026-10-06).
+def wall_probability(
+    points: ArrayLike, *, base_p: float, per_doubling: float
+) -> NDArray[np.float64]:
+    """The probability of each points total: ``per_doubling`` points double the odds.
 
-    The prior is clipped to [0, 1]. The GNS floor and the claim update apply
-    on top (:func:`gen_gns_floor`), so a mapped wall stays at the floor. The
-    basis is the rule that applied last. A GNS-only unit has no prior: its
-    probability is set by the floor.
+    ``p = 1 / (1 + exp(-(logit(base_p) + points ln 2 / per_doubling)))``, so 0
+    points is ``base_p``, and no total reaches 0 or 1.
+    """
+    logit = math.log(base_p / (1.0 - base_p))
+    odds = logit + np.asarray(points, dtype=float) * math.log(2.0) / per_doubling
+    return 1.0 / (1.0 + np.exp(-odds))
 
-    Args:
-        units: From :func:`gen_wall_units`, with ``unit_source``, ``is_siz``,
-            ``height_m``, ``ground_material`` and ``cut_fill_class``.
+
+def gen_wall_points(
+    units: pd.DataFrame,
+    table: pd.DataFrame,
+    *,
+    base_p: float,
+    low_height_base_p: float,
+    per_doubling: float,
+    age_shares: pd.DataFrame | None = None,
+    nhc_flags: pd.Series | None = None,
+) -> pd.DataFrame:
+    """The points each wall candidate scores, and its prior from them.
+
+    The lead's points scale (2026-10-07,
+    ``.agents/plans/wall-probability-points.md``): each attribute adds the
+    points of the bin it falls in (``table``, :func:`load_wall_points`), and
+    the total sets the prior by :func:`wall_probability` from ``base_p`` (a
+    ``low_height`` candidate from ``low_height_base_p``). The attributes:
+
+    - ``verticality`` (the siz table's, the median over a pif's pips of the
+      drop in the first cell over the largest within three);
+    - ``height`` (``height_m``) and ``length`` (``length_m``);
+    - ``building`` (``building_m``; none within the search distance counts
+      as the furthest bin);
+    - ``setting``: road frontage, else property boundary
+      (:func:`gen_unit_boundary_flags`);
+    - ``class``: landslide step 13's class (fill, cut and fill, natural);
+    - ``rock_cut``: a step 13 ``cut`` on a rock material other than highly or
+      completely weathered or crushed rock, deeper than the bin's lower bound;
+    - ``soil_cut``: a ``cut`` on one of :data:`SOIL_CUT_MATERIALS`;
+    - ``age``: the share-weighted points of the primary property's wall age
+      shares (``age_shares``, exposure rw step 6's ``p_pre_1970`` and on,
+      indexed by property id); 0 where the property has none;
+    - ``nhc_land_attrs``: the primary property's NHC land attributes flag
+      (``nhc_flags``, indexed by property id).
+
+    The GNS floor and the claim update apply after (:func:`gen_gns_floor`,
+    :func:`gen_wall_unit_probability`); a GNS-only candidate's value is set by
+    the floor, but its points are scored and shown all the same.
 
     Returns:
-        A frame indexed like ``units`` with ``p_prior`` (NaN for a GNS-only
-        unit), ``p_prior_basis``, ``prior_height_band`` (the band of
-        ``height_m``), ``is_rock_cut``, ``is_fill``, ``is_natural``,
-        ``is_property_boundary``, ``is_road_frontage`` (False where the flags
-        are not carried) and ``tall_face_factor`` (computed for every
-        unit).
+        A frame indexed like ``units`` with ``wall_points``, ``p_prior``,
+        ``p_prior_basis`` (``points``, or ``gns_only``), ``wall_points_explain``
+        (the bins that scored, e.g. "verticality 0.5 and over +10; setting
+        road_frontage +20"), ``age_points``, ``has_age``, and the flags
+        ``is_fill``, ``is_natural``, ``is_rock_cut``, ``is_soil_cut``,
+        ``is_property_boundary`` and ``is_road_frontage``.
     """
-    _require(
-        units,
-        (
-            "unit_source",
-            "is_siz",
-            "height_m",
-            "ground_material",
-            "cut_fill_class",
-        ),
-        "units",
-    )
-    cut_fill = units["cut_fill_class"]
-    rock = (
-        (cut_fill == pif_cut_fill.CUT)
-        & units["ground_material"].isin(ROCK_MATERIALS)
-        & (
-            units["height_m"].to_numpy(dtype=float)
-            > constants.BETA_ROCK_CUT_MIN_HEIGHT_M
-        )
-    ).to_numpy(dtype=bool)
-    fill = cut_fill.isin(FILL_CLASSES).to_numpy(dtype=bool)
-    natural = (cut_fill == pif_cut_fill.NATURAL).to_numpy(dtype=bool)
+    n = len(units)
+    columns = {}
 
+    def numeric(name: str) -> NDArray[np.float64]:
+        if name not in units.columns:
+            return np.full(n, np.nan)
+        return units[name].to_numpy(dtype=float)
+
+    rows = dict(iter(table.groupby("attribute")))
+    empty = table.iloc[0:0]
+
+    building = numeric("building_m")
+    building = np.where(np.isnan(building), np.inf, building)
+    for attribute, values in (
+        ("verticality", numeric("verticality")),
+        ("height", numeric("height_m")),
+        ("length", numeric("length_m")),
+        ("building", building),
+    ):
+        columns[attribute] = _binned(values, rows.get(attribute, empty))
+
+    def flag(name: str) -> NDArray[np.bool_]:
+        if name not in units.columns:
+            return np.zeros(n, dtype=bool)
+        return units[name].fillna(value=False).to_numpy(dtype=bool)
+
+    def category(attribute: str, values: NDArray[np.object_]) -> tuple:
+        points = np.zeros(n)
+        names = np.full(n, "", dtype=object)
+        for _, row in rows.get(attribute, empty).iterrows():
+            hit = values == row["bin"]
+            points[hit] = float(row["points"])
+            names[hit] = str(row["bin"])
+        return points, names
+
+    road = flag("on_road_frontage")
+    boundary = flag("on_property_boundary") & ~road
+    setting = np.where(
+        road, "road_frontage", np.where(boundary, "property_boundary", "")
+    )
+    columns["setting"] = category("setting", setting.astype(object))
+
+    cut_fill = units["cut_fill_class"].astype(object).to_numpy()
+    columns["class"] = category("class", cut_fill)
+    material = units["ground_material"].astype(object).to_numpy()
+    cut = cut_fill == pif_cut_fill.CUT
+    hard_rock = np.isin(material, ROCK_MATERIALS) & ~np.isin(
+        material, SOIL_CUT_MATERIALS
+    )
+    soil = np.isin(material, SOIL_CUT_MATERIALS)
+    height = np.nan_to_num(numeric("height_m"), nan=0.0)
+    rock_rows = rows.get("rock_cut", empty)
+    rock_depth = float(rock_rows["lower"].iloc[0]) if len(rock_rows) else np.inf
+    rock_cut = cut & hard_rock & (height > rock_depth)
+    soil_cut = cut & soil
+    for attribute, hit in (("rock_cut", rock_cut), ("soil_cut", soil_cut)):
+        points = np.zeros(n)
+        names = np.full(n, "", dtype=object)
+        attribute_rows = rows.get(attribute, empty)
+        if len(attribute_rows):
+            points[hit] = float(attribute_rows["points"].iloc[0])
+            names[hit] = str(attribute_rows["bin"].iloc[0])
+        columns[attribute] = (points, names)
+
+    ids = units["property_id"].astype("string").to_numpy(dtype=object, na_value=None)
+    age_points = np.zeros(n)
+    has_age = np.zeros(n, dtype=bool)
+    if age_shares is not None and len(age_shares):
+        shares = age_shares.reindex(ids)
+        has_age = shares.notna().any(axis=1).to_numpy(dtype=bool)
+        for _, row in rows.get("age", empty).iterrows():
+            share = shares[f"p_{row['bin']}"].to_numpy(dtype=float)
+            age_points += np.nan_to_num(share) * float(row["points"])
+    columns["age"] = (
+        age_points,
+        np.where(has_age, "property ages", "").astype(object),
+    )
+    nhc = (
+        nhc_flags.reindex(ids).fillna(value=False).to_numpy(dtype=bool)
+        if nhc_flags is not None
+        else np.zeros(n, dtype=bool)
+    )
+    nhc_rows = rows.get("nhc_land_attrs", empty)
+    columns["nhc_land_attrs"] = (
+        np.where(nhc, float(nhc_rows["points"].iloc[0]) if len(nhc_rows) else 0.0, 0.0),
+        np.where(nhc, "flagged", "").astype(object),
+    )
+
+    total = sum(points for points, _ in columns.values())
+    explain = []
+    for k in range(n):
+        parts = [
+            f"{attribute} {names[k]} {points[k]:+.0f}".replace("  ", " ")
+            for attribute, (points, names) in columns.items()
+            if names[k] and round(points[k]) != 0
+        ]
+        explain.append("; ".join(parts))
+    low_height = ~units["is_siz"].to_numpy(dtype=bool) & (
+        units["unit_source"].to_numpy() == PIF_MEMBER
+    )
     prior = np.where(
-        units["is_siz"].to_numpy(dtype=bool),
-        constants.BETA_SIZ_WALL_PRIOR,
-        constants.BETA_LOW_HEIGHT_WALL_PRIOR,
+        low_height,
+        wall_probability(total, base_p=low_height_base_p, per_doubling=per_doubling),
+        wall_probability(total, base_p=base_p, per_doubling=per_doubling),
     )
-    prior_band = height_band(units["height_m"].to_numpy(dtype=float))
-    prior = prior * np.array(
-        [
-            constants.BETA_WALL_PRIOR_HEIGHT_BAND_FACTOR.get(int(b), 1.0)
-            for b in prior_band
-        ],
-        dtype=float,
-    )
-    basis = np.full(len(units), PRIOR, dtype=object)
-    for applies, factor, rule in (
-        (rock, constants.BETA_ROCK_CUT_FACTOR, ROCK_CUT),
-        (fill, constants.BETA_FILL_WALL_FACTOR, FILL),
-        (natural, constants.BETA_NATURAL_WALL_FACTOR, NATURAL),
-    ):
-        prior = np.where(applies, prior * factor, prior)
-        basis[applies] = rule
-    road = (
-        units["on_road_frontage"].to_numpy(dtype=bool)
-        if "on_road_frontage" in units.columns
-        else np.zeros(len(units), dtype=bool)
-    )
-    boundary = (
-        units["on_property_boundary"].to_numpy(dtype=bool)
-        if "on_property_boundary" in units.columns
-        else np.zeros(len(units), dtype=bool)
-    ) & ~road
-    for applies, factor, rule in (
-        (road, constants.BETA_ROAD_FRONTAGE_WALL_FACTOR, ROAD_FRONTAGE),
-        (boundary, constants.BETA_BOUNDARY_WALL_FACTOR, PROPERTY_BOUNDARY),
-    ):
-        prior = np.where(applies, prior * factor, prior)
-        basis[applies] = rule
-    tall = tall_face_factor(units["height_m"].to_numpy(dtype=float))
-    prior = prior * tall
-    basis[tall < 1.0] = TALL_FACE
-    prior = np.clip(prior, 0.0, 1.0)
-
     gns_only = units["unit_source"].to_numpy() == GNS_ONLY_MEMBER
-    prior[gns_only] = np.nan
-    basis[gns_only] = GNS_ONLY
+    basis = np.where(gns_only, GNS_ONLY, POINTS).astype(object)
     return pd.DataFrame(
         {
+            "wall_points": total,
             "p_prior": prior,
             "p_prior_basis": basis,
-            "prior_height_band": prior_band.astype(np.int64),
-            "is_rock_cut": rock,
-            "is_fill": fill,
-            "is_natural": natural,
+            "wall_points_explain": explain,
+            "age_points": age_points,
+            "has_age": has_age,
+            "is_fill": np.isin(cut_fill, FILL_CLASSES),
+            "is_natural": cut_fill == pif_cut_fill.NATURAL,
+            "is_rock_cut": rock_cut,
+            "is_soil_cut": soil_cut,
             "is_property_boundary": boundary,
             "is_road_frontage": road,
-            "tall_face_factor": tall,
         },
         index=units.index,
     )
@@ -789,7 +883,7 @@ def gen_gns_floor(units: pd.DataFrame, prior: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         units: From :func:`gen_wall_units`.
-        prior: From :func:`gen_wall_prior`, indexed like ``units``.
+        prior: From :func:`gen_wall_points`, indexed like ``units``.
 
     Returns:
         A frame indexed like ``units`` with ``p_floor`` and ``p_floor_basis``
@@ -942,20 +1036,13 @@ def gen_wall_unit_probability(
     *,
     records: pd.DataFrame,
     held_out: pd.Series,
-    nzmm_min_walls: int,
-    nzmm_weight: float,
-    use_nzmm: bool,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Update every property's wall units on the claim and NZMM counts.
+    """Update every property's wall units on the claim report counts.
 
     A claim report listing at least one wall, on a property not held out, is
-    the count for :func:`gen_count_update`; NZMM ``has_retaining_wall`` true
-    stands for ``nzmm_min_walls``. ``p_claims`` updates on the claims alone.
-    ``p_claims_nzmm`` updates on the larger of the two counts, but NZMM is
-    unreliable, so where its count is the larger the update is applied
-    modestly: ``p_claims + nzmm_weight x (p_full - p_claims)``, with ``p_full``
-    the full update on the NZMM count. ``p_wall`` is ``p_claims_nzmm`` where
-    ``use_nzmm``, else ``p_claims``. A unit with no property is never updated.
+    the count for :func:`gen_count_update`. The NHC land attributes flag is
+    no longer an update (the lead, 2026-10-07): it is points
+    (:func:`gen_wall_points`). A unit with no property is never updated.
 
     A unit is a wall on every property in its ``property_lengths_m`` (where
     the column is there; else its ``property_id`` alone), the properties its
@@ -974,22 +1061,15 @@ def gen_wall_unit_probability(
         records: From :func:`gen_property_wall_records`.
         held_out: From :func:`gen_claim_holdout`; a property not in it is not
             held out.
-        nzmm_min_walls: The walls an NZMM true stands for
-            (:data:`~landloss.domain.constants.BETA_NZMM_MIN_WALLS`).
-        nzmm_weight: The share of the full NZMM update applied, from 0 (none)
-            to 1 (as strong as a claim report listing ``nzmm_min_walls``)
-            (:data:`~landloss.domain.constants.BETA_NZMM_UPDATE_WEIGHT`).
-        use_nzmm: Whether ``p_wall`` takes the NZMM update.
 
     Returns:
         ``(probability, missing)``. ``probability`` is indexed like ``units``
-        with ``held_out``, ``claim_walls``, ``nzmm_wall``, ``p_claims``,
-        ``p_claims_nzmm``, ``p_wall`` and ``p_wall_basis`` (``claims`` or
-        ``nzmm``, whichever count set it, where the update raised it, else the
-        floor's basis). ``missing`` has one row per property and update
-        (:data:`UPDATES`) where the units cannot hold the count, claimed
-        properties with no unit included: ``property_id``, ``update``,
-        ``listed_walls``, ``n_units`` and ``missing``.
+        with ``held_out``, ``claim_walls``, ``nzmm_wall`` (for reference),
+        ``p_claims``, ``p_wall`` (``p_claims``) and ``p_wall_basis``
+        (``claims`` where the update raised it, else the floor's basis).
+        ``missing`` has one row per property where the units cannot hold the
+        count, claimed properties with no unit included: ``property_id``,
+        ``update``, ``listed_walls``, ``n_units`` and ``missing``.
     """
     property_id = units["property_id"].astype("string")
     ids = property_id.to_numpy(dtype=object, na_value=None)
@@ -999,46 +1079,23 @@ def gen_wall_unit_probability(
 
     p = p_floor["p_floor"].to_numpy(dtype=float)
     p_claims = p.copy()
-    p_claims_nzmm = p.copy()
     n_claims_of = _claim_counts(records, held_out)
-    n_nzmm_of = pd.Series(
-        np.where(records["nzmm_wall"].to_numpy(dtype=bool), nzmm_min_walls, 0),
-        index=records.index,
-    )
 
     missing = []
     positions: dict[str, list[int]] = {}
     for row, pids in enumerate(unit_property_ids(units)):
         for pid in pids:
             positions.setdefault(pid, []).append(row)
-    for pid in sorted(set(positions) | set(n_claims_of.index) | set(n_nzmm_of.index)):
+    for pid in sorted(set(positions) | set(n_claims_of.index)):
         rows = np.asarray(positions.get(pid, []), dtype=np.int64)
         n_claims = int(n_claims_of.get(pid, 0))
-        n_both = max(n_claims, int(n_nzmm_of.get(pid, 0)))
-        by_claims, short_claims = gen_count_update(p[rows], n_claims)
-        full, short_both = gen_count_update(p[rows], n_both)
+        by_claims, short = gen_count_update(p[rows], n_claims)
         p_claims[rows] = np.maximum(p_claims[rows], by_claims)
-        p_claims_nzmm[rows] = np.maximum(
-            p_claims_nzmm[rows],
-            by_claims + nzmm_weight * (full - by_claims)
-            if n_both > n_claims
-            else by_claims,
-        )
-        for update, n, short in (
-            (UPDATES[0], n_claims, short_claims),
-            (UPDATES[1], n_both, short_both),
-        ):
-            if short:
-                missing.append((pid, update, n, len(rows), short))
+        if short:
+            missing.append((pid, UPDATES[0], n_claims, len(rows), short))
 
-    chosen = p_claims_nzmm if use_nzmm else p_claims
     basis = p_floor["p_floor_basis"].to_numpy(dtype=object).copy()
-    raised = chosen > p
-    # NZMM set it where its update took the unit above the claims alone.
-    by_nzmm = use_nzmm & (p_claims_nzmm > p_claims)
-    basis[raised & ~by_nzmm] = CLAIMS
-    basis[raised & by_nzmm] = NZMM
-
+    basis[p_claims > p] = CLAIMS
     probability = pd.DataFrame(
         {
             "held_out": held,
@@ -1047,8 +1104,7 @@ def gen_wall_unit_probability(
             ),
             "nzmm_wall": nzmm,
             "p_claims": p_claims,
-            "p_claims_nzmm": p_claims_nzmm,
-            "p_wall": chosen,
+            "p_wall": p_claims,
             "p_wall_basis": basis,
         },
         index=units.index,

@@ -1,0 +1,51 @@
+# Example sites the retaining wall reviewer walks through.
+#
+# A site is a point in NZTM (EPSG:2193), not a wall unit id: unit ids are
+# minted afresh each time landslide step 12 runs, so an id would point at a
+# different wall after a rerun, while a place stays put. Each layer is cut to
+# a square of side 2 x SITE_HALF_WIDTH_M around the point, so the page shows
+# whatever the current build has there. `why` says what the site was chosen to
+# show when it was added (2026-10-07); if a rerun moves that feature away, the
+# page still draws the site and the `why` line is what to re-check.
+
+[[sites]]
+id = "fill-road-frontage"
+title = "Fill wall on a road frontage"
+x = 1748364.0
+y = 5424000.0
+why = "Step 13 fill pifs along a road frontage, scored up by the points prior, walled in world 0 and failing with their polygon in realisation 0."
+
+[[sites]]
+id = "tall-cut"
+title = "Tall cut face"
+x = 1749600.0
+y = 5424866.0
+why = "Cuts over 3 m: the rock cut and tall face points, and the GNS floor lifting a unit the points left low."
+
+[[sites]]
+id = "gns-only"
+title = "GNS-mapped walls with no pips"
+x = 1748330.0
+y = 5423800.0
+why = "Several gns_only units on one property: walls GNS maps where the DEM shows no drop of 0.7 m, so they take the flat gns_only probability."
+
+[[sites]]
+id = "claim-update"
+title = "Claim report raises the probability"
+x = 1748150.0
+y = 5424722.0
+why = "One of the 23 units whose probability the claim report wall count raised (p_wall_basis = claims)."
+
+[[sites]]
+id = "forced-polygon"
+title = "Forced polygon"
+x = 1748482.0
+y = 5424337.0
+why = "A gns_only unit with no free cell for a line element, so landslide step 12 forces a polygon on it (forced_polygons.py)."
+
+[[sites]]
+id = "dense-hillside"
+title = "Dense hillside block"
+x = 1750140.0
+y = 5425260.0
+why = "The pilot's densest 120 m cell of wall units: every cut/fill class, and the most walls failing in realisation 0."

@@ -94,6 +94,23 @@
   built by `gen_urban_slope_wall_zones.py`, not the faces script, because
   they include the elements on the GNS-only units' lines, which exist only
   once the wall units do.
+- The imminent and inundated zones are one width and one length per polygon,
+  the median of its rays' reach (`slope_polygons.imminent_width_m` and
+  `inundated_length_m`), swept along every ray of the polygon. Every polygon
+  runs out as a dry debris avalanche, fill included (the lead, 2026-10-07),
+  and its runout is held to `BETA_MAX_RUNOUT_H` (3) heights past the toe and
+  to the length that holds its volume at `BETA_MIN_DEPOSIT_DEPTH_M` (0.3 m),
+  and never shorter than the one-cell strip of `BETA_MIN_RUNOUT_M` (1 m) that
+  every failure leaves at its toe (the lead, 2026-10-07); where that strip
+  would carry the volume deeper than `BETA_MAX_DEPOSIT_DEPTH_H` (1) heights
+  or `BETA_MAX_DEPOSIT_DEPTH_SOURCE` (2) times the polygon's own evacuated
+  depth, whichever is less, the inundated zone spreads back over the polygon's own evacuated ground,
+  the lowest cells first, until it does not (`deposit_overlap_m2`), so a
+  polygon's inundated and evacuated zones can overlap;
+  its imminent band to where the 35° repose line from the toe meets level
+  ground. No barrier grid is passed, so buildings and roads do not stop the
+  runout. The rules are in the `slope_polygons` module docstring (rules 6
+  and 7).
 - The evidence for a retaining wall is read onto every pif by
   `landloss.hazard.landslide.wall_candidates.wall_candidate_evidence`: distance
   to a GNS mapped wall and to a GNS cut/fill line, whether any point of the pif
@@ -219,53 +236,67 @@
     A unit takes the `cut_fill_class` of its longest pif; where pifs tie for
     the longest, the tied class most of its pifs hold, then the lowest pif id.
     A GNS-only unit is `unknown`.
-  - **Probability.** `gen_wall_prior` sets the prior from the `BETA_` weights
-    in `landloss.domain.constants`: siz or low-height, the height band of the
-    unit's `height_m` (`prior_height_band`; the siz table's `height_band`,
-    from `max_delta_h_m`, is left for the hazard), then one factor by the
-    unit's class. `fill` and `cut_and_fill` take
-    `BETA_FILL_WALL_FACTOR`; `cut` on a rock material with a height over
-    `BETA_ROCK_CUT_MIN_HEIGHT_M` takes `BETA_ROCK_CUT_FACTOR` (a cut in soil,
-    or a lower one in rock, keeps its prior); `natural` takes
-    `BETA_NATURAL_WALL_FACTOR`; `uncertain` and `unknown` are unchanged.
-    Then the setting (approved 2026-10-06, `wall_units.gen_unit_boundary_flags`):
-    a unit with at least half its line within `BETA_WALL_BOUNDARY_DISTANCE_M`
-    (2 m) of a road parcel's boundary takes `BETA_ROAD_FRONTAGE_WALL_FACTOR`
-    (2.0), else one that near a non-road property boundary takes
-    `BETA_BOUNDARY_WALL_FACTOR` (1.5): on the pilot, candidate pifs within
-    2 m of a boundary carry a GNS wall 20% of the time against 8% off one
-    (32% against 12% on a road frontage), within each height band; set
-    under those ratios because GNS maps the walls visible from above.
-    Last, `tall_face_factor` (2026-10-06): the prior keeps all of itself up
-    to `BETA_TALL_FACE_TAPER_START_M` (5 m) of `height_m`, falling linearly
-    to `BETA_TALL_FACE_MIN_FACTOR` (0.1) at `BETA_TALL_FACE_TAPER_END_M`
-    (8 m) and above, as a face that high is rarely retained in full on a
-    residential lot. Each sets `p_prior_basis` (`road_frontage`,
-    `property_boundary`, `tall_face`) and a flag (`is_road_frontage`,
-    `is_property_boundary`, `tall_face_factor`). The GNS floor and the
-    claim update apply on top, so a mapped wall stays at 0.95. The ground
-    map's fill (material or `modification`) and the SLIDE fill bodies no
-    longer set the prior. `gen_gns_floor`
-    lifts a unit with a GNS mapped wall to `BETA_GNS_WALL_UNIT_FLOOR` and sets
-    a GNS-only unit at `BETA_GNS_ONLY_WALL_PROBABILITY`. The claim and NZMM
-    layer (`exposure/rw/validations/config.PROPERTIES_PATH`) is read onto each
-    LINZ property by the smallest record polygon holding its representative
-    point (`gen_property_wall_records`), and `gen_wall_unit_probability`
-    updates each property's units on the walls its claim report lists
-    (`p_claims`) and on the larger of that and `BETA_NZMM_MIN_WALLS` where
-    NZMM is true (`p_claims_nzmm`), with the Poisson-binomial
+  - **Probability (points, the lead, 2026-10-07).** `gen_wall_points` scores
+    each candidate in points from the table
+    `src/landloss/io/assets/wall-probability-points.csv` (every row judgement;
+    the plan is `.agents/plans/wall-probability-points.md`), and the total
+    sets the prior on a logistic scale: `BETA_WALL_POINTS_PER_DOUBLING` (20)
+    points double the odds from `BETA_WALL_BASE_P` at 0 points (a
+    low-height candidate from `BETA_LOW_HEIGHT_WALL_PRIOR`), so no prior
+    reaches 0 or 1. The attributes:
+    - `verticality`, the siz table's (since 2026-10-07,
+      `instability_zones.gen_pif_verticality`): per pip, the drop to the
+      first cell along its fall over the largest drop within 3 cells; per
+      pif piece, the median. Under 0.4 (a batter) −20, 0.4 to 0.5 −5, 0.5 and
+      over (a step) +10. A GNS-only candidate has none and scores 0.
+    - `height_m`: under 1.0 m −5, 1.0 to 2.5 m 0, 2.5 to 5 m +5, 5 to 8 m −20,
+      8 m and over −60 (replacing the tall face taper).
+    - `length_m`: under 5 m −5.
+    - `building_m`: under 2 m +10, 2 to 5 m +5, 5 to 20 m 0, 20 m and over
+      (or none within the search distance) −20.
+    - Setting (`wall_units.gen_unit_boundary_flags`): at least half the line
+      within `BETA_WALL_BOUNDARY_DISTANCE_M` (2 m) of a road parcel's
+      boundary +20, else of a non-road property boundary +10.
+    - Step 13 class: `fill` and `cut_and_fill` +5, `natural` −15.
+    - A `cut` on rock (not highly or completely weathered or crushed) with
+      `height_m` over 2.0 m −20; a `cut` in soil (alluvium, loess,
+      colluvium, the fill materials, `rock_hw_cw`, `rock_crushed`) +10.
+    - Age: the share-weighted points of the primary property's wall age
+      shares from exposure rw step 6 (`gen_wall_age`, `wall-age{suffix}`):
+      pre-1970 −10, 1970 to 1991 −5, 1992 to 2004 0, 2005 on +10. A missing
+      file prints a loud warning and every candidate scores 0; so does a
+      property with no shares (counted in the run's output).
+      `gen_hazard` runs `gen_wall_age` before the wall units.
+    - NHC land attributes (NZMM) flags the primary property: +5. It is no
+      longer an update (its yes/no has no count and agrees with GNS no better
+      than chance, kappa 0.03).
+
+    The unit table carries `wall_points`, `p_prior`, `p_prior_basis`
+    (`points`, or `gns_only`), `wall_points_explain` (the bins that scored,
+    e.g. `verticality 0.5 and over +10; setting road_frontage +20`),
+    `age_points`, `has_age` and the flags `is_fill`, `is_natural`,
+    `is_rock_cut`, `is_soil_cut`, `is_property_boundary`,
+    `is_road_frontage`. The ground map's fill (material or `modification`)
+    and the SLIDE fill bodies do not set the prior. `gen_gns_floor` lifts a
+    unit with a GNS mapped wall to `BETA_GNS_WALL_UNIT_FLOOR` and sets a
+    GNS-only unit at `BETA_GNS_ONLY_WALL_PROBABILITY`, both interim (0.80 and
+    0.70 since 2026-10-07, were 0.95 and 0.8), with the base
+    (`BETA_WALL_BASE_P`, 0.225) solved so the pilot's expected walls are 60%
+    of the factor prior's 3,997. The claim
+    layer (`exposure/rw/validations/config.PROPERTIES_PATH`) is read onto
+    each LINZ property by the smallest record polygon holding its
+    representative point (`gen_property_wall_records`), and
+    `gen_wall_unit_probability` updates each property's units on the walls
+    its claim report lists (`p_claims`), with the Poisson-binomial
     (`gen_count_update`). A unit is a wall on every property in its
     `property_lengths_m`: each property is updated over all the units on it,
     each from its floor, and a unit on several keeps the highest of its
     updates (each is conditioned on a record of that property and none
     lowers a probability); `n_units` in the candidates missing table counts
-    every unit on the property. NZMM is applied modestly: where its count is the
-    larger, a unit moves only `BETA_NZMM_UPDATE_WEIGHT` (0.3) of the way from
-    its claims update to the full NZMM update, so an NZMM flag is weaker than a
-    claim report listing two walls. `CLAIM_HOLDOUT_SHARE` of the claimed properties,
-    picked with `CLAIM_HOLDOUT_SEED`, are never updated. `p_wall` is
-    `p_claims_nzmm` where `USE_NZMM_UPDATE`, else `p_claims`; each part
-    carries the rule that set it.
+    every unit on the property. `CLAIM_HOLDOUT_SHARE` of the claimed
+    properties, picked with `CLAIM_HOLDOUT_SEED`, are never updated.
+    `p_wall` is `p_claims`; `p_wall_basis` carries the rule that set it
+    (`points`, `gns_floor`, `gns_only`, `claims`).
   - **Draws.** `gen_wall_draws` draws each unit walled, for each world in
     `WORLD_IDS` (read from exposure rw step 6's config, the worlds it
     populates), on the `wall_units` stream under `EXPOSURE_BASE_SEED`.
@@ -295,7 +326,27 @@
   is uphill (its crest cells are those whose uphill neighbour is off it),
   the width behind the crest is the floor, `max(0.5 H, 1 m)`, and the depth
   is the wall's planar slip (`0.5 H w` per metre) when walled, the bank's
-  (fill thickness or cover depth) when not. These elements are written to
+  (fill thickness or cover depth) when not. A unit whose line finds no
+  free cell (every cell it touches already another element's, or off the
+  DEM) gets its minimum polygon drawn as geometry from its line instead,
+  overlapping what it must (`forced_polygons`, the lead, 2026-10-07: "force
+  all walls to have that minimum polygon even if it overlaps"): the band
+  `max(0.5 H, 1 m)` on the uphill side of the whole line, the side read off
+  the DEM 1.5 m either side (centred on the line, and `side_unknown`, where
+  the DEM is missing or level); the same depth and volume as a line
+  element; an imminent band to where a 35° line from the toe meets level
+  ground, never under the 1 m T-45 band; and an inundated strip in front to
+  `H / (H/L)` at the dry reach angle on its volume, held to the builder's
+  caps (`slope_polygons.inundated_length_m`; no imminent or inundated zone
+  where the side is unknown). Its element (label after the line
+  elements, `grown_in` `forced`) goes in the elements file with the band as
+  geometry, and its zones follow the built ones in every zones file
+  (`forced` True), so steps 8 and 9 treat it as any other polygon. Kept
+  this way, rather than drawing every GNS-only and low-height polygon as
+  geometry, because a line element on free cells gets the polygon
+  builder's full treatment (its rays, runout down the real fall line,
+  stacks and the contest for shared ground); only the units the label grid
+  cannot hold are forced. These elements are written to
   `urban-slope-wall-elements.parquet` (`wall_elements_path()`), which
   landslide step 8 reads, and the walled and bare bounds are built from
   them. Then it builds the zones of each world's draw: an
@@ -486,6 +537,12 @@
   polygon (21 in the DEM margin, 3 GNS-only lines lying on other elements);
   664,919 m² evacuated walled, 657,131 m² bare, 663,401 m² in world 0;
   63% of walled units under 1.5 m, 55% without the GNS-only units.
+  Forced polygons (2026-10-07): 5 units on the pilot (WU0000758,
+  WU0001383, WU0001432, WU0002002, 3 to 4 m GNS leftovers inside siz
+  elements, and WU0005568, 18 m at the DEM edge), 1 with the side unknown,
+  4 overlapping a built polygon; every candidate now has a polygon, and the
+  21 insured walls with none in step 9 all lie in the DEM margin outside
+  the shaking extent.
 - Over the `wlg-pilot` extent (2026-10-05, before the spine, corner, GNS-only
   property, stacked title and NZMM weight fixes later that day; rerun the
   faces, wall units, zones and checks scripts to refresh): the 8,420

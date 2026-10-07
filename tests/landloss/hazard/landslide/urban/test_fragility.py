@@ -456,6 +456,25 @@ def test_an_anchor_table_with_a_fraction_out_of_range_is_refused(tmp_path):
         fragility.load_urban_fragility_anchors(path)
 
 
+def test_the_packaged_anchors_say_what_each_fraction_measures():
+    anchors = fragility.load_urban_fragility_anchors()
+    by_measure = anchors.groupby("measure")["anchor_id"].apply(list)
+    assert by_measure[fragility.ZONE_AREA_MEASURE] == [
+        f"A{n:02d}" for n in range(1, 17)
+    ]
+    assert by_measure[fragility.POLYGON_MEASURE] == [f"A{n}" for n in range(17, 22)]
+    assert anchors.loc[anchors["anchor_id"] == "A17", "demand_at"].item() == "site"
+
+
+def test_an_anchor_with_an_unknown_measure_is_refused(tmp_path):
+    bad = fragility.load_urban_fragility_anchors()
+    bad.loc[0, "measure"] = "volume"
+    path = tmp_path / "anchors.csv"
+    bad.to_csv(path, index=False)
+    with pytest.raises(ValueError, match="measure"):
+        fragility.load_urban_fragility_anchors(path)
+
+
 # --- the PGV/PGA ratio ----------------------------------------------------------------
 
 

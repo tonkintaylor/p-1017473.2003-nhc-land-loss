@@ -50,6 +50,7 @@ from scripts.landloss.paths import REPORT_DIR
 
 FIG_DIR = REPORT_DIR / "vul" / "rw" / "fig"
 FIG_NAME = "rw-type-fragility.png"
+VARIANTS_FIG_NAME = "rw-type-fragility-by-position.png"
 DPI = 200
 
 G = 9.81  # m/s2 in one g, for Cosentini et al.'s medians given in m/s2
@@ -208,6 +209,8 @@ ANDERSON = "#1baf7a"
 STONE = "#4a3aa7"
 GHOST = "#c9c9c4"
 INK = "#3d3d3a"
+# Wall position, in the reference categorical order: fill, none known, cut.
+POSITION_COLOURS = {FILL: "#eb6834", "unknown": "#8a8a85", CUT: "#2a78d6"}
 # The rungs are ordered, so they take one hue from light (Fs 1.5) to dark.
 RUNG_COLOURS = {
     1.5: "#86b6ef",
@@ -354,14 +357,86 @@ def plot_type_fragility(table: pd.DataFrame) -> plt.Figure:
     return fig
 
 
+def plot_variants(table: pd.DataFrame) -> plt.Figure:
+    """One panel per wall type: every size class and wall position on one plot.
+
+    The curves are the model's own (the stored percentiles times the position
+    factor). Small and medium walls share the 3 m curve, so they draw as one
+    line; large walls take the 6 m curve, dashed.
+    """
+    curves = table.set_index(list(wtf.TABLE_KEY))
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8.5), sharex=True, sharey=True)
+    flat = axes.ravel()
+    for ax, wall_type in zip(flat, wtf.WALL_TYPES, strict=False):
+        for size_classes, style in ((("small", "medium"), "-"), (("large",), "--")):
+            row = curves.loc[(wall_type, size_classes[0])]
+            label_size = "small/medium (3 m)" if len(size_classes) > 1 else "large (6 m)"
+            for position, colour, factor in (
+                (FILL, POSITION_COLOURS[FILL], wtf.FILL_CAPACITY_FACTOR),
+                ("unknown", POSITION_COLOURS["unknown"], 1.0),
+                (CUT, POSITION_COLOURS[CUT], wtf.CUT_CAPACITY_FACTOR),
+            ):
+                ax.plot(
+                    PGA,
+                    curve(row["p15"], row["p50"], factor),
+                    color=colour,
+                    lw=1.8 if style == "-" else 1.3,
+                    ls=style,
+                    label=(
+                        f"{label_size}, {position}: "
+                        f"{row['p15'] * factor:.2f}/{row['p50'] * factor:.2f} g"
+                    ),
+                )
+        ax.set_title(wall_type.replace("_", " "), fontsize=9)
+        ax.legend(loc="lower right", fontsize=5.5, frameon=False, title="p15/p50",
+                  title_fontsize=6)
+    flat[-1].axis("off")
+    flat[-1].text(
+        0.0,
+        0.5,
+        "Colour: wall position (fill x0.85, cut x1.15, unknown x1).\n"
+        "Solid: small and medium walls, which share the 3 m curve.\n"
+        "Dashed: large walls (over 2.5 m), the 6 m curve.\n\n"
+        "Within a size class the curve does not change with height.\n"
+        "Koutsoupaki et al. 2023 DS2 (moderate, 5% of H), free-field PGA.\n"
+        "On sloping land the model converts the median to PGV and\n"
+        "divides it by the polygon's topographic amplification (1 to 1.5).",
+        fontsize=8,
+        color=INK,
+        va="center",
+    )
+    for ax in flat[:-1]:
+        ax.set_xlim(0, 2.5)
+        ax.set_ylim(0, 1)
+        ax.grid(color="#e6e6e1", lw=0.6)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(labelsize=8, colors=INK)
+    for ax in axes[1]:
+        ax.set_xlabel("Free-field PGA (g)", fontsize=9)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("P(wall replaced | PGA)", fontsize=9)
+    fig.suptitle(
+        "Retaining wall fragility by type, size class and wall position, as the "
+        "model reads it",
+        fontsize=10,
+    )
+    fig.tight_layout()
+    return fig
+
+
 def main() -> None:
-    """Draw the figure and write it to the report figure directory."""
-    fig = plot_type_fragility(wtf.load_wall_type_fragility())
+    """Draw the figures and write them to the report figure directory."""
+    table = wtf.load_wall_type_fragility()
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    out = FIG_DIR / FIG_NAME
-    fig.savefig(out, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Wrote {out}")
+    for name, fig in (
+        (FIG_NAME, plot_type_fragility(table)),
+        (VARIANTS_FIG_NAME, plot_variants(table)),
+    ):
+        out = FIG_DIR / name
+        fig.savefig(out, dpi=DPI, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Wrote {out}")
     print(f"de Silva et al. 2026 at ac = {DE_SILVA_YIELD_ACCELERATION_G:g} g: {DE_SILVA}")
 
 

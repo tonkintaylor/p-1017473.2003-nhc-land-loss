@@ -30,6 +30,7 @@ from landloss.hazard.landslide.instability_zones import (
     find_instability_zones,
     gen_pif_near_drops,
     gen_pif_spines,
+    gen_pif_verticality,
     gen_siz_table,
     write_siz_table,
 )
@@ -332,6 +333,9 @@ def main(
         abs(transform.a),
         reach_m=wall_height_reach_m,
         quantile=wall_height_quantile,
+    ).reindex(table.index)
+    table["verticality"] = gen_pif_verticality(
+        dem, zones.pips, zones.pif_labels
     ).reindex(table.index)
     table = table.join(
         gen_pif_spines(

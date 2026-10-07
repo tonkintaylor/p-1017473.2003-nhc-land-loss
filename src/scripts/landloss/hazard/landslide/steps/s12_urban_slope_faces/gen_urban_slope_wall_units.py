@@ -51,12 +51,16 @@ from landloss.hazard.landslide.wall_units import (
     gen_unit_properties,
     gen_wall_draws,
     gen_wall_members,
-    gen_wall_prior,
+    gen_wall_points,
     gen_wall_unit_probability,
     gen_wall_units,
+    load_wall_points,
 )
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_property_boundaries
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_age import (
+    wall_age_path,
+)
 from scripts.landloss.exposure.rw.validations.config import PROPERTIES_PATH
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     dem_path,
@@ -209,7 +213,14 @@ def describe_units(units):
     for column in ("p_prior_basis", "p_floor_basis", "p_wall_basis"):
         print(f"By {column}:")
         print(units[column].value_counts().to_string())
-    for column in ("p_prior", "p_floor", "p_claims", "p_claims_nzmm", "p_wall"):
+    points = units["wall_points"]
+    print(
+        "Wall points: "
+        + ", ".join(
+            f"{q:.0%} {points.quantile(q):+.0f}" for q in (0.05, 0.25, 0.5, 0.75, 0.95)
+        )
+    )
+    for column in ("p_prior", "p_floor", "p_claims", "p_wall"):
         total = float(np.nansum(units[column].to_numpy(dtype=float)))
         print(f"  sum of {column}: {total:,.1f}")
 
@@ -230,9 +241,29 @@ def describe_records(records, held_out, missing):
             f"on {len(rows):,} properties"
         )
     print(
-        "  NZMM update flagged unreliable (kappa 0.03 against GNS); applied at "
-        f"weight {constants.BETA_NZMM_UPDATE_WEIGHT:g} of the full update."
+        "  NZMM's flag is points now (+5 on its property's candidates), not an update."
     )
+
+
+def read_age_shares(*, extent):
+    """Exposure rw step 6's wall age shares per property, or None, loudly.
+
+    The age points need them; without the file every candidate scores 0 for
+    age. Run exposure rw step 6's gen_wall_age.py (which reads QV on T:);
+    gen_hazard runs it before the wall units.
+    """
+    path = wall_age_path(extent=extent)
+    if not path.exists():
+        print(RULE)
+        print(
+            f"!!! wall age shares not found at {path}: every candidate scores 0 "
+            "age points. Run exposure/rw/steps/s6_wall_population/gen_wall_age.py."
+        )
+        print(RULE)
+        return None
+    shares = pd.read_parquet(path)
+    shares.index = shares.index.astype(str)
+    return shares
 
 
 def describe_lines(units):
@@ -264,7 +295,6 @@ def main(
     max_turn_deg,
     holdout_share,
     holdout_seed,
-    use_nzmm,
     world_ids,
 ):
     """Build the wall units, their probability and the draws, and write them.
@@ -278,7 +308,6 @@ def main(
         max_turn_deg: The most a unit's line may turn in all.
         holdout_share: The share of claimed properties held out of the update.
         holdout_seed: The seed that picks them.
-        use_nzmm: Whether ``p_wall`` takes the NZMM update.
         world_ids: The exposure worlds to draw.
     """
     sizs = read_sizs(extent=extent)
@@ -317,8 +346,6 @@ def main(
         .join(gen_unit_boundary_flags(units, properties))
     )
     describe_lines(units)
-    prior = gen_wall_prior(units)
-    floor = gen_gns_floor(units, prior)
 
     records = read_records(properties=properties, bbox=bbox)
     if records is None:
@@ -329,14 +356,26 @@ def main(
         held_out_ids = gen_claim_holdout(
             claimed, share=holdout_share, seed=holdout_seed
         )
-    probability, missing = gen_wall_unit_probability(
+    shares = read_age_shares(extent=extent)
+    prior = gen_wall_points(
         units,
-        floor,
-        records=records,
-        held_out=held_out_ids,
-        nzmm_min_walls=constants.BETA_NZMM_MIN_WALLS,
-        nzmm_weight=constants.BETA_NZMM_UPDATE_WEIGHT,
-        use_nzmm=use_nzmm,
+        load_wall_points(),
+        base_p=constants.BETA_WALL_BASE_P,
+        low_height_base_p=constants.BETA_LOW_HEIGHT_WALL_PRIOR,
+        per_doubling=constants.BETA_WALL_POINTS_PER_DOUBLING,
+        age_shares=shares,
+        nhc_flags=records["nzmm_wall"],
+    )
+    on_property = units["property_id"].notna().to_numpy()
+    no_age = on_property & ~prior["has_age"].to_numpy(dtype=bool)
+    if shares is not None and no_age.any():
+        print(
+            f"!!! {int(no_age.sum()):,} candidates on a property with no wall age "
+            "shares score 0 age points."
+        )
+    floor = gen_gns_floor(units, prior)
+    probability, missing = gen_wall_unit_probability(
+        units, floor, records=records, held_out=held_out_ids
     )
     units = units.join(prior).join(floor).join(probability)
     describe_units(units)
@@ -370,6 +409,5 @@ if __name__ == "__main__":
         max_turn_deg=config.MAX_TOTAL_TURN_DEG,
         holdout_share=config.CLAIM_HOLDOUT_SHARE,
         holdout_seed=config.CLAIM_HOLDOUT_SEED,
-        use_nzmm=config.USE_NZMM_UPDATE,
         world_ids=config.WORLD_IDS,
     )
