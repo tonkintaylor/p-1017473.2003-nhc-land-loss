@@ -538,11 +538,11 @@
     },
     {
       "ID": "T-68",
-      "Task": "Run the pipeline across the whole study area once Maxim Millen's changes to how outputs are saved are in, following on from T-51. Hold off until Maxim Millen says the retaining wall work is ready for a full build. The extent suffix on file names is already in.",
+      "Task": "Run the pipeline across the whole study area once Maxim Millen's changes to how outputs are saved are in, following on from T-51. Hold off until Maxim Millen says the retaining wall work is ready for a full build. The extent suffix on file names is already in. 2026-10-07: the full extent ran out of memory fetching the 1 m elevation model (26.7 GiB), so the build is running over the new wellington-city extent until the per-territorial authority tiling is built.",
       "Owner": "Perrie Gilbert",
       "Phase": "3",
       "Source": "Maxim Millen 2026-10-06; Call with Maxim Millen 2026-10-06",
-      "Status": "Open"
+      "Status": "In progress"
     },
     {
       "ID": "T-69",
@@ -682,19 +682,19 @@
     },
     {
       "ID": "T-86",
-      "Task": "Once the whole-study-area output is in (T-68), review what the loss viewer shows: fix the GST basis rather than leaving it as an input, and revise the inputs against those discussed in recent meetings (lower priority).",
+      "Task": "Once the whole-study-area output is in (T-68), review what the loss viewer shows: fix the GST basis rather than leaving it as an input, and revise the inputs against those discussed in recent meetings (lower priority). Done 2026-10-07, ahead of T-68 on the pilot: GST is fixed at 15% in the viewer and the walkthrough, the total cap input gives way to the land cap scenarios, and wall rate and land value scales are added from the 2026-10-05 sense check.",
       "Owner": "Perrie Gilbert",
       "Phase": "4",
       "Source": "Call with Maxim Millen 2026-10-06",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-87",
-      "Task": "Lay the loss viewer out with the configuration panel on the left and drag-and-drop loading at the top; a main histogram of losses with the land cap scenarios from Bridget Attwood's document (15, 30, 90 and 120) as vertical lines, the share of claims above each cap and the total insured loss under each, and a button to change the cap settings; summary results, including how many claims settle on each basis, on the right; map display settings; and a claim that can be clicked to show its intermediate values. Whether to put a table summarising the map below it is open, since it may be heavy to render.",
+      "Task": "Lay the loss viewer out with the configuration panel on the left and drag-and-drop loading at the top; a main histogram of losses with the land cap scenarios from Bridget Attwood's document (15, 30, 90 and 120) as vertical lines, the share of claims above each cap and the total insured loss under each, and a button to change the cap settings; summary results, including how many claims settle on each basis, on the right; map display settings; and a claim that can be clicked to show its intermediate values. Whether to put a table summarising the map below it is open, since it may be heavy to render. Done 2026-10-07, with a toggle for whether a land cap replaces or limits the Act's cap, and claims counted only where a property has damage; the table below the map was not built.",
       "Owner": "Perrie Gilbert",
       "Phase": "4",
       "Source": "Call with Maxim Millen 2026-10-06",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-88",
