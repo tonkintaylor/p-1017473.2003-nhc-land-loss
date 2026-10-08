@@ -36,6 +36,7 @@ import time
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rioxarray
 from rasterio import features
 
@@ -279,13 +280,19 @@ def element_polygons(found, transform):
     shapes = features.shapes(
         found.labels.astype("int32"), mask=found.labels > 0, transform=transform
     )
-    frame = gpd.GeoDataFrame.from_features(
-        [
-            {"type": "Feature", "geometry": g, "properties": {"label": int(v)}}
-            for g, v in shapes
-        ],
-        crs=CRS,
-    )
+    rows = [
+        {"type": "Feature", "geometry": g, "properties": {"label": int(v)}}
+        for g, v in shapes
+    ]
+    # A tile can hold pifs but grow no element (a few slivers of hillside at the
+    # edge of Upper Hutt did), and from_features cannot build an empty frame.
+    if not rows:
+        frame = gpd.GeoDataFrame(
+            geometry=gpd.GeoSeries([], crs=CRS),
+            index=pd.Index([], dtype="int64", name="label"),
+        )
+        return frame.join(found.elements, how="left")
+    frame = gpd.GeoDataFrame.from_features(rows, crs=CRS)
     frame = frame.dissolve(by="label")
     return frame.join(found.elements, how="left")
 
