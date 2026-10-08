@@ -1,0 +1,1 @@
+Ground step 3 (instability zones) now searches only within 100 m of a LINZ building outline (`BUILDING_REACH_M`), the urban model's domain decided on 2026-10-01. Pifs whose pips lie mostly beyond that reach are dropped, and a tile with no land within reach is skipped, so bush and farmland tiles no longer cost a full search.

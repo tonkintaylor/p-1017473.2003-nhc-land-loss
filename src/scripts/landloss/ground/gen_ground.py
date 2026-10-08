@@ -85,6 +85,7 @@ def main(*, extent):
                     end_window_m=zones_config.PIF_END_WINDOW_M,
                     wall_height_reach_m=zones_config.WALL_HEIGHT_REACH_M,
                     wall_height_quantile=zones_config.WALL_HEIGHT_QUANTILE,
+                    building_reach_m=zones_config.BUILDING_REACH_M,
                     max_untiled_cells=zones_config.MAX_UNTILED_CELLS,
                     tile_core_m=zones_config.TILE_CORE_M,
                     tile_margin_m=zones_config.TILE_MARGIN_M,
