@@ -7,9 +7,11 @@ loss -- joins onto this one file, so it is built once and re-read rather than
 re-fetched.
 
 The read is clipped to the real territorial authority boundaries, not to their
-bounding box. The four authorities sit in a rectangle that also contains most of
-the Wairarapa, so a bounding-box-only read would carry tens of thousands of
-addresses that are not in the study.
+bounding box, over every extent. The four authorities sit in a rectangle that
+also contains most of the Wairarapa, so a bounding-box-only read would carry
+tens of thousands of addresses that are not in the study, and a box over one
+authority (Porirua City's reaches into the Kapiti Coast) would carry addresses
+no later step can value.
 
     uv run --frozen python src/scripts/landloss/exposure/steps/s1_address_spine/s1_build_address_spine.py
 
@@ -181,14 +183,17 @@ def main(*, extent, fresh, out):
 
     study_areas = get_study_areas(constants.DEFAULT_CRS)
 
+    # Every extent is clipped to the four authorities, not only the full one: a
+    # box such as Porirua City's reaches past the study boundary into the Kapiti
+    # Coast, whose addresses have no land value base rate and are not in the
+    # study.
+    clip_to = study_areas
     aoi = get_area_of_interest(extent)
     if aoi is not None:
         bbox = aoi.bbox(constants.DEFAULT_CRS)
-        clip_to = None
         describe_extent(aoi.name, bbox)
     else:
         bbox = tuple(float(value) for value in study_areas.total_bounds)
-        clip_to = study_areas
         describe_extent(", ".join(study_areas["name"]), bbox)
 
     print("\nReading the LINZ NZ Addresses layer ...")

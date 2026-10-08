@@ -258,3 +258,12 @@ def test_the_lower_hutt_box_covers_lower_hutt_city() -> None:
 
     assert extent.contains(lower_hutt)
     assert extent_suffix("lower-hutt") == "-lower-hutt"
+
+
+def test_the_upper_hutt_box_covers_upper_hutt_city() -> None:
+    """The Upper Hutt extent holds the whole of the Upper Hutt City boundary."""
+    upper_hutt = get_study_area("Upper Hutt City").geometry.iloc[0]
+    extent = get_area_of_interest("upper-hutt").polygon(constants.DEFAULT_CRS)
+
+    assert extent_suffix("upper-hutt") == "-upper-hutt"
+    assert extent.contains(upper_hutt)
