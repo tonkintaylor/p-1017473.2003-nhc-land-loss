@@ -284,6 +284,7 @@ def element_polygons(found, transform):
             {"type": "Feature", "geometry": g, "properties": {"label": int(v)}}
             for g, v in shapes
         ],
+        columns=["geometry", "label"],
         crs=CRS,
     )
     frame = frame.dissolve(by="label")

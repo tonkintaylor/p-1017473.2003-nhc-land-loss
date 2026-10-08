@@ -25,6 +25,38 @@ your VS Code settings (your current directory should be the root of the repo):
 ./tasks/dev_sync.ps1
 ```
 
+## Running Multiple Extents
+
+From the repository root, run the complete model sequentially for Wellington
+City, Upper Hutt, then Porirua:
+
+```Powershell
+uv run --frozen python -u src/scripts/landloss/gen_extents.py
+```
+
+Set `EXTENTS`, `WORLD_IDS` and `REALISATION_IDS` in
+`src/scripts/landloss/config.py`. The default batch uses one exposure world and
+one earthquake realisation. For each extent it runs ground, exposure, hazard,
+vulnerability and loss before starting the next. It validates every extent name
+before starting and stops on the first failure. This runner ignores `EXTENT` and
+`START_FROM`; it uses `START_FROM_BY_EXTENT` instead. An extent without an entry
+starts from its first step. To resume Wellington City after its terrain build,
+set `START_FROM_BY_EXTENT` to
+`{"wellington-city": {"module": "ground", "step": "s2, ground map"}}`.
+The batch keeps Wellington City's completed terrain outputs and starts Upper
+Hutt and Porirua from the beginning. Set this mapping to `{}` for a fresh build.
+Restarted extents require the outputs from their skipped steps to remain on disk.
+
+Outputs carry each extent's suffix, so the three builds do not overwrite one
+another. These extents are bounding boxes, not council-boundary clips: Upper
+Hutt's box is derived from the packaged council boundary with an approximately
+500 m buffer, like the Porirua and Lower Hutt boxes. Neighbouring land must not
+be counted as belonging to that council when reporting results.
+
+Before starting, confirm the required API keys and mapped drives are available
+and there is enough disk space for both cached inputs and model outputs under
+`temp/`. Redirecting the download cache alone does not move `temp/`.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` and fill in the values you need; `.env` itself is

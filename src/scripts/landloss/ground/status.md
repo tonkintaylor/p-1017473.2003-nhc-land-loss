@@ -8,7 +8,7 @@ out; it runs first in `gen_all.py`, before exposure, hazard and vul, because it
 depends on no exposure world and no earthquake. All five steps have run over
 the pilot; the module as a whole has not been rerun since the move.
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-09
 
 For a reviewer: read this page, then each step's method file under `steps/`,
 then the code. The landslide chain that reads it is in
@@ -59,6 +59,9 @@ then the code. The landslide chain that reads it is in
   building outline (the 2026-10-01 domain) and skips tiles with no land within
   reach. On the Wellington pilot that took the 6,220 pif pieces to 5,865 and
   the 4,790 sizs to 4,657, and the step ran in 44 s.
+  The Wellington City run stopped on empty tile 4,8 on 2026-10-09; the polygon
+  constructor now retains the empty geometry schema, verified against that
+  saved tile. The city-wide search has not yet been rerun after this fix.
 - **Step 4** reads T+T's 71 manually mapped walls beside the GNS mapped walls
   (2026-10-08). On 2026-10-08 the pilot had 4,790 sizs, 98 `low_height` and
   1,332 other pieces, and 859 GNS-only pieces (4,884 sizs and 91 `low_height`
@@ -95,6 +98,9 @@ then the code. The landslide chain that reads it is in
 
 ## Validation
 
+- Empty and populated element polygon tables, and stitching with an empty tile
+  (`tests/landloss/hazard/landslide/test_instability_zones.py`,
+  `tests/landloss/hazard/landslide/test_tiled_faces.py`).
 - Faces against the GNS mapped walls and the SLIDE breaks in slope
   (`steps/s4_slope_faces/table_slope_face_checks.py`): 63% of mapped wall
   length near a siz and 67% near any pif within 2 m.

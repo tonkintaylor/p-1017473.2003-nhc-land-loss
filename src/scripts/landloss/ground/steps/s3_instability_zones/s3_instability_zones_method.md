@@ -164,6 +164,11 @@ stitched tables:
   per tile under `urban-slope-found{suffix}-tiles/`, and
   `urban-slope-found{suffix}.pkl` holds a `tiled.TiledFound` index instead of
   the elements.
+- A tile with land but no grown elements produces an empty polygon table with
+  an explicit geometry column, CRS and element attributes (`element_polygons`),
+  so it can still be stitched with the populated tiles. Per-tile pickles are
+  written during the search but are not reused to resume a failed search;
+  restarting this step recalculates its tiles.
 - A pif belongs to the tile whose core holds the centre of its parent's pips
   (`tiled.owned_parents`), so a parent and its pieces come from the one tile
   that saw it whole: the longest parent on the pilots spans 636 m. Global pif

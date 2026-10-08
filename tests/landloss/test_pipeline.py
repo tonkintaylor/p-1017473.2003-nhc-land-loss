@@ -1,8 +1,10 @@
 """Tests for running the modules' steps, from the start or part-way."""
 
+from unittest.mock import Mock, call
+
 import pytest
 
-from scripts.landloss import pipeline
+from scripts.landloss import config, gen_extents, pipeline
 
 
 def modules(ran):
@@ -77,3 +79,80 @@ def test_the_start_does_not_outlive_its_run():
     ran = []
     modules(ran)
     assert len(ran) == 4
+
+
+@pytest.mark.parametrize(
+    "start_from_by_extent",
+    [{}, {"wellington-city": {"module": "ground", "step": "s2, ground map"}}],
+)
+def test_extent_batch_runs_model_then_loss_in_configured_order(
+    monkeypatch, start_from_by_extent
+):
+    runner = Mock()
+    monkeypatch.setattr(gen_extents.gen_all, "main", runner.model)
+    monkeypatch.setattr(gen_extents.gen_loss, "main", runner.loss)
+
+    gen_extents.main(
+        extents=config.EXTENTS,
+        world_ids=[0, 1],
+        realisation_ids=[2],
+        start_from_by_extent=start_from_by_extent,
+    )
+
+    expected = []
+    assert config.EXTENTS == ["wellington-city", "upper-hutt", "porirua"]
+    for extent in config.EXTENTS:
+        ids = {"extent": extent, "world_ids": [0, 1], "realisation_ids": [2]}
+        expected.extend(
+            [
+                call.model(**ids, start_from=start_from_by_extent.get(extent)),
+                call.loss(**ids),
+            ]
+        )
+    assert runner.mock_calls == expected
+
+
+def test_extent_batch_validates_all_names_before_running(monkeypatch):
+    model = Mock()
+    monkeypatch.setattr(gen_extents.gen_all, "main", model)
+
+    with pytest.raises(KeyError, match="not a known extent"):
+        gen_extents.main(
+            extents=["wellington-city", "unknown"],
+            world_ids=[0],
+            realisation_ids=[0],
+            start_from_by_extent={},
+        )
+    model.assert_not_called()
+
+
+def test_extent_batch_rejects_restart_for_an_extent_outside_the_batch(monkeypatch):
+    model = Mock()
+    monkeypatch.setattr(gen_extents.gen_all, "main", model)
+
+    with pytest.raises(ValueError, match="Restart extents are not in EXTENTS"):
+        gen_extents.main(
+            extents=config.EXTENTS,
+            world_ids=[0],
+            realisation_ids=[0],
+            start_from_by_extent={"lower-hutt": {"module": "ground", "step": "s2"}},
+        )
+    model.assert_not_called()
+
+
+@pytest.mark.parametrize("failed_stage", ["model", "loss"])
+def test_extent_batch_stops_at_the_first_failure(monkeypatch, failed_stage):
+    runner = Mock()
+    getattr(runner, failed_stage).side_effect = RuntimeError("stage failed")
+    monkeypatch.setattr(gen_extents.gen_all, "main", runner.model)
+    monkeypatch.setattr(gen_extents.gen_loss, "main", runner.loss)
+
+    with pytest.raises(RuntimeError, match="stage failed"):
+        gen_extents.main(
+            extents=config.EXTENTS,
+            world_ids=[0],
+            realisation_ids=[0],
+            start_from_by_extent={},
+        )
+    assert runner.model.call_count == 1
+    assert runner.loss.call_count == (0 if failed_stage == "model" else 1)

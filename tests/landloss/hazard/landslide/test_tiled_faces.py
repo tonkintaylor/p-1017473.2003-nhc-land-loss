@@ -2,6 +2,7 @@
 
 import geopandas as gpd
 import pandas as pd
+import pytest
 import shapely
 from rasterio import windows
 from rasterio.transform import Affine
@@ -52,7 +53,8 @@ def test_a_parent_belongs_by_the_centre_of_all_its_pieces():
     assert tiled.owned_parents(table, east) == {1}
 
 
-def test_a_pif_two_tiles_both_claim_is_kept_once():
+@pytest.mark.parametrize("include_empty_tile", [False, True])
+def test_a_pif_two_tiles_both_claim_is_kept_once(include_empty_tile):
     # A parent longer than the margin: each tile's cut of it centres in that
     # tile's own core, so both claim the piece they share.
     shared = [(100.5, 50.5), (101.5, 50.5)]
@@ -81,6 +83,17 @@ def test_a_pif_two_tiles_both_claim_is_kept_once():
             }
         )
     assert records[0]["owned"] == records[1]["owned"] == {1}
+
+    if include_empty_tile:
+        records.append(
+            {
+                "tile": tiles.Tile(0, 2, window, window, core),
+                "path": None,
+                "table": pifs([], []),
+                "elements": elements.iloc[:0].copy(),
+                "owned": set(),
+            }
+        )
 
     found, table, elements = tiled.globalise_found(records, Affine(1, 0, 0, 0, -1, 100))
 
