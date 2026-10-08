@@ -5,6 +5,15 @@ file was condensed for review, so that nothing it recorded is lost. `status.md`
 is the current page; where the two disagree, `status.md` is current. This file
 is not kept up to date.
 
+Removed 2026-10-08: the candidate wall lines (`gen_wall_lines.py`,
+`fig_wall_lines.py`, the line builders in `landloss.exposure.rw.lines`,
+`wall-lines*.geoparquet`) and the per-line probability, along with landslide
+steps 6 and 7 that they read and fed. The candidates are now landslide step
+12's wall units, and exposure rw step 6 gives them a probability and draws the
+population (`gen_wall_probability.py`, `gen_wall_population.py`). The
+paragraphs below describing lines are the 2026-10-02 state, not the current
+method.
+
 **Status:** The candidate wall lines, a probability per line and a wall
 population per exposure world are built and were run over the pilot on
 2026-10-02; a property boundary is now a candidate only where the 1 m DEM steps
@@ -180,7 +189,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 ## Where it is now
 
-**The candidate wall lines exist.** `steps/s6_wall_population/gen_wall_lines.py`
+**The candidate wall lines existed (removed 2026-10-08).** `steps/s6_wall_population/gen_wall_lines.py`
 writes `temp/exposure/wall-lines[-pilot].geoparquet`, one line per place a wall
 could stand and no probability, through `landloss.exposure.rw.lines`: the GNS
 SLIDE mapped walls snapped onto the urban slope candidate edges, the SLIDE
@@ -192,11 +201,11 @@ carrying its face height and size class from the 5 m local relief, fill or cut
 position from the cut-and-fill residual, the ground map's material and flat
 land, and its claim (the uphill owner for a fill wall on a boundary, the
 downhill owner for a cut wall). Mapped walls under 0.5 m are kept and classed
-small. `fig_wall_lines.py` draws the lines by source. It is exercised end to
-end on synthetic inputs only; it reads landslide steps 3, 4 and 6, so the
-pilot run waits on theirs.
+small. `fig_wall_lines.py` draws the lines by source. It was exercised end to
+end on synthetic inputs only; it read landslide steps 3, 4 and 6.
 
-**The probability per line and the draw per world exist.**
+**The probability per line and the draw per world existed** (the per-line
+probability was removed 2026-10-08; the draw now runs on step 12's wall units).
 `gen_wall_probability.py` reads only the lines and writes
 `temp/exposure/wall-probability[-pilot].geoparquet`, putting on each line
 `p_wall`, from its source's prior, lowered on a rock cut, capped on flat land
@@ -247,7 +256,9 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 ## Next
 
 1. Rebuild the wall candidates on the faces layer (`.agents/plans/building-face-based-urban-slope-polygons.md`, phase 2), then
-   rerun the pilot and record the counts in the method file.
+   rerun the pilot and record the counts in the method file. Done: the wall
+   units of landslide step 12 are the candidates (the lines were removed
+   2026-10-08).
 2. Name the six wall classes, so a published fragility curve can attach to
    each cell of the class, size and condition grid.
 3. Bring the collected input datasets into the repository, or record where they

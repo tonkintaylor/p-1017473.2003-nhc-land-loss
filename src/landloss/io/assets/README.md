@@ -17,6 +17,7 @@ committed. Nothing here is large enough to belong in a cache.
 | `wellington-greywacke-depth-to-rock.csv` | Observed depths to weathered greywacke rock, and thicknesses of the colluvium and residual soil mantle, at Wellington-region T+T sites | As above | Not yet read; for landslide model 7 |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
 | `retaining-wall-type-fragility.csv` | Fragility per retaining wall type and height class (under 2 m, 2 m and over), on the moderate damage state, stored as the PGA at which 15% and 50% of walls are replaced; confirmed by the lead; read by `assign_fragility` (landslide step 8) and `wall_failure_probability` (vul shaking step 9) | Converted from Koutsoupaki et al. (2023) Tables A1 to A5, 6 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility` |
+| `retaining-wall-types.csv` | Each retaining wall type's Python name, readable label, the NHC costing tool rate row it is priced at, and what it covers | Set by the project lead, 8 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_types` |
 | `beta-retaining-wall-type-shares.csv` | The share of each retaining wall type by age bin and height band, which each wall's type is drawn from; judgement placeholders | Set by the project lead, 6 October 2026, for Nick Peters to revise — see below | `landloss.exposure.rw.wall_type.load_beta_wall_type_shares` |
 | `beta-retaining-wall-frontage-multipliers.csv` | The multiplier each retaining wall type's share takes where the wall stands on a road frontage; judgement placeholders | As above | `landloss.exposure.rw.wall_type.load_beta_frontage_multipliers` |
 | `urban-fragility-anchors.csv` | The qualitative anchors the urban failure fragility medians are fitted to: Kingsbury scenarios, the MM thresholds, the Wellington low-demand record and the Port Hills, each read as a damaged share of a zone's area or a share of matching polygons failing, with who set each number and why | Maintained by hand — see below | `landloss.hazard.landslide.urban.fragility.load_urban_fragility_anchors` and `hazard/landslide/validations/urban/` |
@@ -313,24 +314,50 @@ height is not known), `2_m_and_over` at 2.0 m and above
 what the loss module prices on; only this lookup moved. `height_effect` says
 which published height each class takes:
 
-- `switched` (gravity masonry, old timber pole, block or RC cantilever,
-  landscaper timber): taller walls of these types are the worse, so
+- `switched` (`brick_rock`, `reinforced_concrete`, `timber_pole_pre_1992`,
+  `concrete_block`, `garden_timber`): taller walls of these types are the worse, so
   `under_2_m` takes the 6 m curve and `2_m_and_over` the 3 m curve, the
   opposite of the paper, whose taller wall is the stronger.
-- `none` (crib, new timber pole, engineered modern): no height effect; both
+- `none` (`crib_gabion`, `timber_pole_post_1992`, `engineered`): no height effect; both
   classes take the 3 m curve. The damage state is DS2, *moderate*,
 `Ux = 5% of H`, not the DS3 the condition table reads: moderate damage usually
 leads to full replacement in a claim (the lead, 6 October 2026).
-`type_factor` scales both percentiles of a type's rung: 1.3 for new timber
-pole and 1.5 for engineered modern, 1 otherwise; the stored percentiles
+`type_factor` scales both percentiles of a type's rung: 1.3 for
+`timber_pole_post_1992` and 1.5 for `engineered`, 1 otherwise; the stored percentiles
 already include it. The rungs are
 judgement, ordered by the Port Hills failure shares by type [anderson_2015]
 [stone_2015]; `src/scripts/landloss/vul/research/fig_rw_type_fragility.md`
 sets them beside the other published curves.
 
+`reinforced_concrete` (8 October 2026) covers the old mass and precast
+concrete gravity walls, most of its walls since it carries up to 0.55 of the
+pre-1970 ones, and reinforced concrete cantilevers. It takes the Fs = 1.2 rung
+(Table A4, crib's) with the height effect switched like the other gravity
+walls: between brick (1.1) and block (1.5), because Nick Peters has seen the
+old concrete walls hold up (sense check, 5 October 2026). A proposal for the
+lead to confirm with the rest of the wall performance.
+
 A wall retaining fill takes both percentiles times 0.85 and a wall retaining a
 cut times 1.15 (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`, the lead,
 6 October 2026); the table holds the curve before that shift.
+
+## `retaining-wall-types.csv`
+
+One row per wall type in `WALL_TYPES`, each once. The project lead renamed
+the types on 8 October 2026 to follow the NHC costing tool's wall rows
+(`.agents/context/nhc-costing-tool.md`), from `gravity_masonry`, `crib`,
+`timber_pole_old`, `block_rc_cantilever`, `timber_pole_new`,
+`landscaper_timber` and `engineered_modern`. `gravity_masonry` split into
+`brick_rock` and `reinforced_concrete` (the old mass concrete walls, with
+reinforced concrete cantilevers); `block_rc_cantilever` became
+`concrete_block`. `wall_type` is the name the code and the other tables use;
+`label` is how a figure or map names it. `nhc_rate_item` is the row of the
+costing tool's `lists` sheet the type would be priced at
+(`landloss.loss.pricing.WALL_RATE_EXCL_GST_NZD_PER_M2`); the loss module does
+not read it yet, and it is for the loss module's owner to adopt. The timber
+pole types take the pile size from the wall's height, as the loss module
+already does. `garden_timber` on the 175 mm pole rather than Sleepers, and
+`engineered` on MSE rather than Soil Nail, are proposals awaiting the lead.
 
 ## `beta-retaining-wall-type-shares.csv`
 
@@ -345,17 +372,21 @@ is `under_1_5_m`, `1_5_to_2_5_m` or `over_2_5_m`: 1.5 m is the consent
 threshold, which is what changes the type, so the bands differ from the size
 classes on purpose. The fractions follow the finding that wall type tracked the
 era a wall was built in [anderson_2015] and the lead's meeting with Nick
-Peters; `.agents/plans/assigning-retaining-wall-types.md` (section 2) holds
-the table they were copied from.
+Peters. The project lead revised every row on 8 October 2026 for the renamed
+types, with the Wgtn land model sense check of 5 October in hand: concrete
+walls dominate the taller pre-1970 rows, crib and old timber pole the
+1970 to 1991 rows, new timber pole every row from July 1992, and reinforced
+concrete is zero from 1992, where its walls are engineered. They are still
+judgement for Nick Peters to review.
 
 ## `beta-retaining-wall-frontage-multipliers.csv`
 
 Judgement placeholders set by the project lead (6 October 2026) for Nick
 Peters to revise. One row per wall type, every type present. Where a wall
 stands on a road frontage, its row of `beta-retaining-wall-type-shares.csv`
-is multiplied by `road_frontage_multiplier` and renormalised: gravity masonry
-and block or RC cantilever ×1.5, crib ×0.5, landscaper timber ×0.3, the rest
-×1. Retaining walls on a road boundary hold up driveways, garages and footpath
+is multiplied by `road_frontage_multiplier` and renormalised: `brick_rock`,
+`reinforced_concrete` and `concrete_block` ×1.5, `crib_gabion` ×0.5,
+`garden_timber` ×0.3, the rest ×1. Retaining walls on a road boundary hold up driveways, garages and footpath
 cuts, so they are more often the heavier types.
 
 ## `urban-fragility-anchors.csv`

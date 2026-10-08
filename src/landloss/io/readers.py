@@ -1167,6 +1167,52 @@ def get_gns_slide_morphology(
     )
 
 
+def get_tt_manual_walls(
+    bbox: tuple[float, float, float, float] | None = None,
+    crs: int | str = constants.DEFAULT_CRS,
+    *,
+    use_cache: bool = True,
+) -> gpd.GeoDataFrame:
+    """Load the retaining walls T+T mapped by hand from aerial imagery.
+
+    "ManuallyDefinedRetainingWalls" at
+    https://ttgroup.koordinates.com/layer/125317-manuallydefinedretainingwalls/:
+    71 polylines, about 1.1 km, digitised by T+T for this study over the
+    Wellington pilot only (1,747,483 - 1,751,081 E, 5,422,486 - 5,426,083 N in
+    NZTM). Like the GNS mapped walls (:func:`get_gns_slide_morphology`), they
+    are walls visible from above, so they are a second partial record, not an
+    inventory. The layer carries no attributes but ``Shape_Length``.
+
+    Licence:
+        "Tonkin + Taylor Group - Project Data Licensing Statement", as recorded
+        on the layer's own metadata: T+T project data, prepared for the
+        exclusive use of the client of the engagement (NHC). It may be used in
+        this study and its deliverables to NHC; it is not open data, so do not
+        publish it or pass it to a third party, and T+T accepts no liability
+        for its use by anyone else.
+
+    Source:
+        Tonkin + Taylor, "NHC WTGN Land Damage Model" group on the T+T
+        Koordinates instance, first published 2026-09-24. No DOI.
+
+    Args:
+        bbox: The extent to clip to (minx, miny, maxx, maxy) in ``crs``. Omitting
+            it returns every wall.
+        crs: The coordinate reference system to return the walls in.
+        use_cache: Whether to read and write the clipped extent cache.
+
+    Returns:
+        A GeoDataFrame of wall lines with a ``Shape_Length`` column.
+    """
+    return get_koordinates_layer_extent(
+        layer=constants.TT_MANUAL_WALLS_LAYER_ID,
+        crs=crs,
+        bbox=bbox,
+        domain=constants.TTGROUP_DOMAIN,
+        use_cache=use_cache,
+    )
+
+
 def get_nlm_geomorphology(
     bbox: tuple[float, float, float, float] | None = None,
     crs: int | str = constants.DEFAULT_CRS,

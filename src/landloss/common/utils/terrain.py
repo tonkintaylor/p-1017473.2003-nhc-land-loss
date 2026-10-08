@@ -31,23 +31,17 @@ the coastline. Mask nodata to NaN before calling; NaN then propagates through
 both derivatives as it should.
 """
 
-import math
-from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import rasterio
 
 # Imported for the side effect of registering the ``.rio`` accessor that
 # write_raster uses; the name itself is never referenced.
 import rioxarray  # noqa: F401
 import xarray as xr
-from rasterio import features, windows
 from rasterio.enums import Resampling
-from shapely.geometry.base import BaseGeometry
 from ttpy.gis.raster.aggregation import get_rolling_aggregation
 from ttpy.gis.raster.io import save_raster
 from ttpy.gis.raster.utils import extract_point_values
@@ -68,13 +62,7 @@ TOPOGRAPHIC_POSITION_NAME = "topographic_position_m"
 LOCAL_RELIEF_NAME = "local_relief_m"
 DOWNHILL_AZIMUTH_NAME = "downhill_azimuth_degrees"
 CUT_FILL_RESIDUAL_NAME = "cut_fill_residual_m"
-PROFILE_CURVATURE_NAME = "profile_curvature_per_m"
-VEGETATION_HEIGHT_NAME = "vegetation_height_m"
 
-# The reductions zonal_statistic can apply to the cells under a polygon. A mean
-# of an azimuth raster is not among the things it should be asked for; that is
-# what zonal_azimuth_mean is for.
-ZonalStatistic = Literal["mean", "max", "min", "median"]
 
 # A full turn, in degrees. Named because it appears both as the modulus that
 # folds an azimuth into its conventional range and in the checks on one.
@@ -677,143 +665,6 @@ def cut_fill_residual(dem: xr.DataArray, base: xr.DataArray) -> xr.DataArray:
     )
 
 
-def profile_curvature(dem: xr.DataArray, resolution: float) -> xr.DataArray:
-    """Compute the curvature of the ground along the direction of steepest descent.
-
-    Zevenbergen and Thorne's partial quartic surface fitted through the 3x3
-    window around every cell [zevenbergen_thorne_1987], with the nine cells
-    numbered row by row from the top left::
-
-        Z1 Z2 Z3
-        Z4 Z5 Z6
-        Z7 Z8 Z9
-
-        D = ((Z4 + Z6) / 2 - Z5) / L**2
-        E = ((Z2 + Z8) / 2 - Z5) / L**2
-        F = (-Z1 + Z3 + Z7 - Z9) / (4 * L**2)
-        G = (-Z4 + Z6) / (2 * L)
-        H = (Z2 - Z8) / (2 * L)
-
-        profile = 2 * (D * G**2 + E * H**2 + F * G * H) / (G**2 + H**2)
-
-    The sign follows the ArcGIS profile curvature convention: negative where
-    the ground is convex along the fall line -- a crest, the lip of a cut --
-    and positive where it is concave -- a gully, the toe of a slope. At the
-    vertex of a parabola ``z = a * s**2`` along the fall line it equals
-    ``2 * a``, the second derivative, so the units are 1/m; ArcGIS reports the
-    same quantity scaled by 100.
-
-    The orientation of the raster does not matter: flipping the rows negates
-    ``F`` and ``H`` together, which leaves every term unchanged.
-
-    Args:
-        dem: Ground elevation in metres, with dimensions :data:`RASTER_DIMS`.
-        resolution: The cell size of ``dem``, in metres.
-
-    Returns:
-        The profile curvature in 1/m on the same grid as ``dem``, named
-        :data:`PROFILE_CURVATURE_NAME`. Zero on level ground, where there is
-        no fall line to measure along. The one cell border has no complete
-        window and comes back as NaN, as does any cell that is itself nodata.
-
-    Raises:
-        ValueError: If ``dem`` is not oriented (y, x), or if ``resolution`` is
-            not positive.
-    """
-    _check_dims(dem)
-
-    if resolution <= 0:
-        msg = f"The cell size has to be positive, but {resolution} was given."
-        raise ValueError(msg)
-
-    elevation = np.asarray(dem.to_numpy(), dtype=float)
-    curvature = np.full(elevation.shape, np.nan)
-
-    rows, columns = elevation.shape
-    if rows < MIN_WINDOW_CELLS or columns < MIN_WINDOW_CELLS:
-        return _as_derivative(dem, curvature, PROFILE_CURVATURE_NAME)
-
-    z1 = elevation[:-2, :-2]
-    z2 = elevation[:-2, 1:-1]
-    z3 = elevation[:-2, 2:]
-    z4 = elevation[1:-1, :-2]
-    z5 = elevation[1:-1, 1:-1]
-    z6 = elevation[1:-1, 2:]
-    z7 = elevation[2:, :-2]
-    z8 = elevation[2:, 1:-1]
-    z9 = elevation[2:, 2:]
-
-    length_squared = resolution**2
-    d = ((z4 + z6) / 2 - z5) / length_squared
-    e = ((z2 + z8) / 2 - z5) / length_squared
-    f = (-z1 + z3 + z7 - z9) / (4 * length_squared)
-    g = (-z4 + z6) / (2 * resolution)
-    h = (z2 - z8) / (2 * resolution)
-
-    gradient_squared = g**2 + h**2
-    with np.errstate(divide="ignore", invalid="ignore"):
-        profile = 2 * (d * g**2 + e * h**2 + f * g * h) / gradient_squared
-
-    # Level ground has no fall line, so the ratio above is 0/0 there. Zero is
-    # the honest value -- there is no bend along a direction that does not
-    # exist -- and it is what ArcGIS reports. A window with a hole in it stays
-    # NaN: gradient_squared is NaN there, and the comparison is False.
-    profile = np.where(gradient_squared == 0, 0.0, profile)
-    curvature[1:-1, 1:-1] = profile
-
-    return _as_derivative(dem, curvature, PROFILE_CURVATURE_NAME)
-
-
-def vegetation_height(
-    dsm: xr.DataArray,
-    dem: xr.DataArray,
-    buildings: gpd.GeoSeries | None = None,
-) -> xr.DataArray:
-    """Compute the height of whatever stands on the ground, from a surface model.
-
-    The digital surface model minus the bare-earth DEM, with the surface model
-    resampled bilinearly onto the DEM's grid first. Over a hillside that is
-    tree canopy; over a building it is the roof. Given ``buildings``, every
-    cell whose centre lies in an outline is NaN, so what is left is
-    vegetation and other structures rather than rooftops.
-
-    Args:
-        dsm: The surface elevation in metres, on any grid covering ``dem``,
-            with a spatial reference.
-        dem: Ground elevation in metres, with dimensions :data:`RASTER_DIMS`
-            and a spatial reference.
-        buildings: Building outlines in the DEM's system, masked out. None
-            keeps every cell.
-
-    Returns:
-        Metres of surface above the ground on ``dem``'s grid, named
-        :data:`VEGETATION_HEIGHT_NAME`, never negative: a surface model below
-        the ground is survey noise, not a hole, and is clipped to zero. NaN
-        wherever either model has no value, which is every cell outside the
-        surveys the surface model was flown over.
-
-    Raises:
-        ValueError: If ``dem`` is not oriented (y, x), or if either raster
-            carries no coordinate reference system.
-    """
-    _check_dims(dem)
-    _check_crs(dem, "DEM")
-    _check_crs(dsm, "surface model")
-
-    height = _match_grid(dsm, dem).to_numpy() - dem.to_numpy()
-    height = np.asarray(height, dtype=float)
-    height = np.where(np.isnan(height), np.nan, np.maximum(height, 0.0))
-    if buildings is not None and not buildings.empty:
-        roofs = features.geometry_mask(
-            buildings.to_numpy(),
-            out_shape=height.shape,
-            transform=dem.rio.transform(),
-            invert=True,
-        )
-        height = np.where(roofs, np.nan, height)
-    return _as_derivative(dem, height, VEGETATION_HEIGHT_NAME)
-
-
 def _unit_vector_mean(azimuth_degrees: np.ndarray) -> tuple[float, float]:
     """Return the bearing of the mean unit vector of a set of bearings, and its length.
 
@@ -888,142 +739,6 @@ def azimuth_sd_degrees(azimuth_degrees: np.ndarray) -> float:
     if np.isclose(length, 0.0):
         return np.inf
     return float(np.degrees(np.sqrt(-2.0 * np.log(min(length, 1.0)))))
-
-
-def _polygon_cells(
-    source: rasterio.DatasetReader, geometry: BaseGeometry
-) -> np.ndarray:
-    """Read the finite raster cells whose centres fall inside one polygon.
-
-    Args:
-        source: The open raster.
-        geometry: The polygon, in the raster's coordinate reference system.
-
-    Returns:
-        The finite values of the cells inside the polygon, as a flat array;
-        empty when no cell centre falls inside it.
-    """
-    minx, miny, maxx, maxy = geometry.bounds
-    bounds = windows.from_bounds(minx, miny, maxx, maxy, transform=source.transform)
-    # Widened to whole cells so that a boundary running through a cell still
-    # reads that cell, then clipped to the raster so the read never falls off
-    # the edge. Done by hand because rasterio's own intersection raises on an
-    # empty window, and a polygon off the raster is an answer, not an error.
-    col_start = max(0, math.floor(bounds.col_off))
-    row_start = max(0, math.floor(bounds.row_off))
-    col_stop = min(source.width, math.ceil(bounds.col_off + bounds.width))
-    row_stop = min(source.height, math.ceil(bounds.row_off + bounds.height))
-    if col_stop <= col_start or row_stop <= row_start:
-        return np.empty(0)
-    window = windows.Window(
-        col_start, row_start, col_stop - col_start, row_stop - row_start
-    )
-
-    values = source.read(1, window=window, masked=True).filled(np.nan)
-    values = np.asarray(values, dtype=float)
-    inside = ~features.geometry_mask(
-        [geometry],
-        out_shape=values.shape,
-        transform=windows.transform(window, source.transform),
-        all_touched=False,
-    )
-    selected = values[inside]
-    return selected[np.isfinite(selected)]
-
-
-def _zonal_reduce(
-    raster_path: Path | str,
-    polygons: gpd.GeoSeries,
-    reduce: Callable[[np.ndarray], float],
-) -> pd.Series:
-    """Apply one reduction to the cells of a raster under each polygon.
-
-    Args:
-        raster_path: The raster to read, as a GeoTIFF on disk.
-        polygons: The polygons to read under.
-        reduce: A function from a flat array of finite values to one number.
-
-    Returns:
-        One value per polygon, on ``polygons.index``; NaN where no finite cell
-        centre falls inside the polygon or its geometry is empty.
-    """
-    with rasterio.open(raster_path) as source:
-        if source.crs is not None and polygons.crs != source.crs:
-            polygons = polygons.to_crs(source.crs)
-
-        result = np.full(len(polygons), np.nan)
-        for position, geometry in enumerate(polygons.geometry):
-            if geometry is None or geometry.is_empty:
-                continue
-            cells = _polygon_cells(source, geometry)
-            if cells.size:
-                result[position] = reduce(cells)
-
-    return pd.Series(result, index=polygons.index, dtype=float)
-
-
-def zonal_statistic(
-    raster_path: Path | str,
-    polygons: gpd.GeoSeries,
-    *,
-    statistic: ZonalStatistic = "mean",
-) -> pd.Series:
-    """Reduce the raster cells under each polygon to one number.
-
-    A cell belongs to a polygon when its centre falls inside it, as
-    ``rasterio.features.geometry_mask`` decides, so a sliver thinner than a
-    cell may hold no cells at all and reads as NaN rather than as the value
-    of whichever cell it happens to touch. The companion to
-    :func:`sample_at_points` for the patches and units the landslide work
-    reads terrain onto.
-
-    An azimuth raster must not be reduced here: the arithmetic mean of 350 and
-    10 degrees is due south. Use :func:`zonal_azimuth_mean` for one.
-
-    Args:
-        raster_path: The raster to read, as a GeoTIFF on disk.
-        polygons: The polygons to read under. Reprojected to the raster's
-            coordinate reference system if they are not already in it.
-        statistic: Which reduction to apply over the finite cells.
-
-    Returns:
-        One value per polygon, indexed as ``polygons`` is. NaN where no finite
-        cell centre falls inside a polygon, or its geometry is empty.
-
-    Raises:
-        ValueError: If ``statistic`` is not one of the reductions offered.
-    """
-    reductions: dict[str, Callable[[np.ndarray], float]] = {
-        "mean": np.mean,
-        "max": np.max,
-        "min": np.min,
-        "median": np.median,
-    }
-    if statistic not in reductions:
-        msg = f"Unknown statistic {statistic!r}; choose one of {', '.join(reductions)}."
-        raise ValueError(msg)
-
-    return _zonal_reduce(raster_path, polygons, reductions[statistic])
-
-
-def zonal_azimuth_mean(raster_path: Path | str, polygons: gpd.GeoSeries) -> pd.Series:
-    """Compute the circular mean bearing of an azimuth raster under each polygon.
-
-    :func:`zonal_statistic` with :func:`mean_azimuth_degrees` as the
-    reduction, kept as its own function so that a caller reading an aspect
-    raster onto patches cannot reach for the arithmetic mean by habit.
-
-    Args:
-        raster_path: The azimuth raster to read, in degrees clockwise from
-            north, as a GeoTIFF on disk.
-        polygons: The polygons to read under. Reprojected to the raster's
-            coordinate reference system if they are not already in it.
-
-    Returns:
-        The mean bearing in [0, 360) per polygon, indexed as ``polygons`` is.
-        NaN where no finite cell centre falls inside a polygon.
-    """
-    return _zonal_reduce(raster_path, polygons, mean_azimuth_degrees)
 
 
 def sample_at_points(raster_path: Path | str, points: gpd.GeoSeries) -> pd.Series:

@@ -13,9 +13,9 @@ that applies them, in `landloss.exposure.rw.wall_probability`.
 # The extent to run over: "full" for the four territorial authorities, or a
 # name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
 # Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
-# Must match the run of landslide steps 3, 4 and 6 whose rasters, ground map
-# and candidates gen_wall_lines.py reads, and the run of step 5 whose insured
-# land gen_wall_population.py filters on.
+# Must match the run of landslide step 12 whose wall units and draws
+# gen_wall_probability.py and gen_wall_population.py read, and the run of
+# land step 5 whose insured land gen_wall_population.py filters on.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
 EXTENT = "wlg-pilot"
 
@@ -26,16 +26,10 @@ EXTENT = "wlg-pilot"
 # reads WORLD_IDS from here. Read by gen_wall_population.py.
 WORLD_IDS = [0]
 
-# Whether to reuse the already-clipped GNS SLIDE and LINZ layers for this
-# extent. Set False to fetch them again. Read by gen_wall_lines.py, and by
-# gen_wall_probability.py for the LINZ property boundaries it ties each wall
-# unit to a claim with.
+# Whether to reuse the already-clipped LINZ layers for this extent. Set False
+# to fetch them again. Read by gen_wall_probability.py for the LINZ property
+# boundaries it ties each wall unit to a claim with.
 USE_CACHED_LAYERS = True
-
-# How near a road centreline a property boundary piece has to lie to count as
-# a road frontage rather than a boundary between neighbours. Read by
-# gen_wall_lines.py.
-ROAD_FRONTAGE_DISTANCE_M = 5.0
 
 # The extent exposure step 8 was run over, whose property ages
 # (gen_rwt_age.py) and per-suburb age table (table_rwt_age_by_suburb.py)

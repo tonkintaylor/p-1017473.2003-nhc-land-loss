@@ -33,6 +33,7 @@ from landloss.io.readers import (
     get_nz_topo50_water,
     get_slide_genesis,
     get_slide_interpreted_materials,
+    get_tt_manual_walls,
     get_wcc_cut_areas,
     get_wcc_fill_areas,
     get_wellington_urban_geology,
@@ -832,6 +833,22 @@ def test_get_gns_slide_morphology_requests_the_ttgroup_layer(
     assert fake_koordinates["layer_id"] == constants.GNS_SLIDE_MORPHOLOGY_LAYER_ID
     assert fake_koordinates["conn"].domain == constants.TTGROUP_DOMAIN
     assert fake_koordinates["conn"].api_key == "tnt-key"
+
+
+def test_get_tt_manual_walls_requests_the_ttgroup_layer(
+    fake_koordinates: dict[str, object],
+) -> None:
+    """T+T's own manual walls live on the T+T instance, read with its key."""
+    get_tt_manual_walls(bbox=BBOX)
+
+    assert fake_koordinates["layer_id"] == constants.TT_MANUAL_WALLS_LAYER_ID
+    assert fake_koordinates["conn"].domain == constants.TTGROUP_DOMAIN
+    assert fake_koordinates["conn"].api_key == "tnt-key"
+
+
+def test_tt_manual_walls_layer_id_matches_koordinates() -> None:
+    """Guards the layer ID against an accidental edit."""
+    assert constants.TT_MANUAL_WALLS_LAYER_ID == 125317
 
 
 def test_gns_slide_morphology_layer_id_matches_koordinates() -> None:

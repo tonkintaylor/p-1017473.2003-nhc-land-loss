@@ -12,14 +12,16 @@ from rasterio.transform import Affine
 from landloss.hazard.landslide import forced_polygons as forced
 from landloss.hazard.landslide.slope_elements import BANK, FREE_FACE
 from landloss.hazard.landslide.slope_polygons import (
-    BETA_MIN_RUNOUT_M,
     BETA_REPOSE_ANGLE_DEG,
+    BETA_SEISMIC_RUNOUT_M,
+    BETA_SEISMIC_RUNOUT_UNRATED_M,
     CUT_SLOPE,
     EVACUATED,
     IMMINENT,
     INUNDATED,
     reach_ratio,
 )
+from landloss.hazard.landslide.urban.face_polygons import BETA_OFF_MAP_GROUND
 
 CRS = 2193
 # A 40 m by 40 m grid rising to the north (y): 0.5 m per metre.
@@ -90,6 +92,7 @@ def test_a_forced_polygon_takes_the_line_elements_depth_and_zones():
         walled,
         is_fill=pd.Series(data=False, index=elements.index),
         fill_thickness_m=pd.Series(np.nan, index=elements.index),
+        ground=None,
         first_polygon=50,
         scenario="w000",
     )
@@ -105,7 +108,9 @@ def test_a_forced_polygon_takes_the_line_elements_depth_and_zones():
     assert imminent.area == pytest.approx(20.0 * (behind - 2.0))
     assert imminent.bounds[1] == pytest.approx(22.0)
     inundated = walled_rows.loc[walled_rows["zone"] == INUNDATED].geometry.iloc[0]
-    runout = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0])
+    runout = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0]) + (
+        BETA_SEISMIC_RUNOUT_UNRATED_M
+    )
     assert inundated.bounds[1] == pytest.approx(20.0 - runout)
     # The bare one, of unknown side: the bank rule's cover depth, no
     # imminent or inundated zone.
@@ -130,19 +135,80 @@ def test_a_forced_polygon_on_fill_runs_out_by_the_cut_relation():
         pd.Series([True], index=elements.index),
         is_fill=pd.Series(data=True, index=elements.index),
         fill_thickness_m=pd.Series(np.nan, index=elements.index),
+        ground=None,
         first_polygon=1,
         scenario="w000",
     )
     assert (zones["style"] == CUT_SLOPE).all()
     inundated = zones.loc[zones["zone"] == INUNDATED].geometry.iloc[0]
-    runout = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0])
+    runout = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0]) + (
+        BETA_SEISMIC_RUNOUT_UNRATED_M
+    )
     assert inundated.bounds[1] == pytest.approx(20.0 - runout)
 
 
 def test_a_deep_forced_deposit_spreads_back_over_its_evacuated_band():
-    # A 1 m bank on fill 10 m thick: 200 m3 off a 20 m line, far deeper than
-    # one height on the strip in front, so the debris also covers the whole
-    # evacuated band behind the line.
+    # A bare half-metre cut bank: the cover depth, 1.5 m, over its 1 m band
+    # off a 20 m line is 30 m3. Its run, the step's reach and the unrated
+    # seismic distance, is held to two heights, 1 m, and a deposit no deeper
+    # than its height needs 60 m2, so it also covers the whole band behind.
+    lines = _lines([(5, 20), (25, 20)])
+    elements = forced.gen_forced_elements(
+        lines,
+        pd.Series([0.5], index=lines.index),
+        dem=DEM,
+        transform=TRANSFORM,
+        first_label=1,
+    )
+    zones = forced.gen_forced_zones(
+        elements,
+        pd.Series([False], index=elements.index),
+        is_fill=pd.Series(data=False, index=elements.index),
+        fill_thickness_m=pd.Series(np.nan, index=elements.index),
+        ground=None,
+        first_polygon=1,
+        scenario="w000",
+    )
+    row = zones.iloc[0]
+    assert row["volume_m3"] == pytest.approx(30.0)
+    assert row["runout_m"] == pytest.approx(1.0)
+    inundated = zones.loc[zones["zone"] == INUNDATED].geometry.iloc[0]
+    assert inundated.area == pytest.approx(20.0 * 2.0)
+    assert inundated.bounds[3] == pytest.approx(21.0)
+    assert inundated.bounds[1] == pytest.approx(19.0)
+
+
+def test_a_forced_polygon_takes_its_zones_seismic_distance():
+    lines = _lines([(5, 20), (25, 20)])
+    elements = forced.gen_forced_elements(
+        lines,
+        pd.Series([4.0], index=lines.index),
+        dem=DEM,
+        transform=TRANSFORM,
+        first_label=1,
+    )
+    ground = pd.DataFrame([BETA_OFF_MAP_GROUND], index=elements.index)
+    zones = forced.gen_forced_zones(
+        elements,
+        pd.Series([True], index=elements.index),
+        is_fill=pd.Series(data=False, index=elements.index),
+        fill_thickness_m=pd.Series(np.nan, index=elements.index),
+        ground=ground,
+        first_polygon=1,
+        scenario="w000",
+    )
+    row = zones.iloc[0]
+    zone = int(row["kingsbury_zone"])
+    assert row["seismic_runout_m"] == pytest.approx(BETA_SEISMIC_RUNOUT_M[zone])
+    reach = 4.0 / float(reach_ratio([90.0], [np.nan])[0][0])
+    assert row["runout_m"] == pytest.approx(
+        min(reach + BETA_SEISMIC_RUNOUT_M[zone], 2.0 * 4.0)
+    )
+
+
+def test_a_forced_fill_bank_is_no_deeper_than_its_slip():
+    # A bare 1 m bank on fill 10 m thick takes the slip from its toe, half its
+    # height on the mean behind a step, not the fill.
     lines = _lines([(5, 20), (25, 20)])
     elements = forced.gen_forced_elements(
         lines,
@@ -156,14 +222,8 @@ def test_a_deep_forced_deposit_spreads_back_over_its_evacuated_band():
         pd.Series([False], index=elements.index),
         is_fill=pd.Series(data=True, index=elements.index),
         fill_thickness_m=pd.Series([10.0], index=elements.index),
+        ground=None,
         first_polygon=1,
         scenario="w000",
     )
-    row = zones.iloc[0]
-    assert row["volume_m3"] == pytest.approx(200.0)
-    # A 1 m step's reach is under the 1 m strip every failure leaves.
-    runout = max(1.0 / float(reach_ratio([90.0], [np.nan])[0][0]), BETA_MIN_RUNOUT_M)
-    inundated = zones.loc[zones["zone"] == INUNDATED].geometry.iloc[0]
-    assert inundated.area == pytest.approx(20.0 * (runout + 1.0))
-    assert inundated.bounds[3] == pytest.approx(21.0)
-    assert inundated.bounds[1] == pytest.approx(20.0 - runout)
+    assert zones.iloc[0]["depth_m"] == pytest.approx(0.5)

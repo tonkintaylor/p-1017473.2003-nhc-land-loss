@@ -8,12 +8,15 @@ import shapely
 from landloss.hazard.landslide import bend_split
 from landloss.hazard.landslide.wall_candidates import (
     GNS_ONLY_CLASS,
+    GNS_WALL_SOURCE,
     LOW_HEIGHT_CLASS,
     NOT_CANDIDATE,
     SIZ_CLASS,
+    TT_MANUAL_WALL_SOURCE,
     _property_frame,
     boundary_positions,
     gen_gns_only_candidates,
+    gen_mapped_walls,
     property_of_pifs,
     wall_candidate_evidence,
 )
@@ -264,3 +267,53 @@ def test_boundary_positions_cut_once_per_property():
     assert boundary_positions(line, lots, 3.0) == pytest.approx([19.0, 39.0])
     # A stretch under 3 m joins its neighbour.
     assert boundary_positions(shapely.LineString([(1, 0), (21, 0)]), lots, 3.0) == []
+
+
+def test_a_manual_wall_within_the_duplicate_distance_of_a_gns_wall_is_dropped():
+    gns = _layer([shapely.LineString([(0.0, 0.0), (10.0, 0.0)])])
+    manual = _layer(
+        [
+            shapely.LineString([(0.0, 1.5), (10.0, 1.5)]),
+            shapely.LineString([(13.0, 0.0), (20.0, 0.0)]),
+            shapely.LineString([(0.0, 50.0), (10.0, 50.0)]),
+        ]
+    )
+    walls = gen_mapped_walls(gns, manual, duplicate_m=2.0)
+    assert walls["wall_source"].tolist() == [
+        GNS_WALL_SOURCE,
+        TT_MANUAL_WALL_SOURCE,
+        TT_MANUAL_WALL_SOURCE,
+    ]
+    assert walls.geometry.iloc[2].equals(manual.geometry.iloc[2])
+    assert walls.index.tolist() == [0, 1, 2]
+
+
+def test_mapped_walls_are_returned_in_the_gns_crs():
+    gns = _layer([shapely.LineString([(0.0, 0.0), (10.0, 0.0)])])
+    manual = _layer([shapely.LineString([(0.0, 50.0), (10.0, 50.0)])]).to_crs(4326)
+    walls = gen_mapped_walls(gns, manual, duplicate_m=2.0)
+    assert walls.crs == gns.crs
+    assert walls.geometry.iloc[1].distance(manual.to_crs(CRS).geometry.iloc[0]) < 1e-6
+
+
+def test_a_gns_only_candidate_keeps_the_source_of_its_wall(properties):
+    sizs = _pif_table([[(100, 0), (101, 0)]])
+    walls = _layer(
+        [
+            shapely.LineString([(300.0, 0.0), (310.0, 0.0)]),
+            shapely.LineString([(300.0, 50.0), (310.0, 50.0)]),
+        ],
+        wall_source=[GNS_WALL_SOURCE, TT_MANUAL_WALL_SOURCE],
+    )
+    candidates = _gns_only(sizs, walls, properties)
+    assert candidates["wall_source"].tolist() == [
+        GNS_WALL_SOURCE,
+        TT_MANUAL_WALL_SOURCE,
+    ]
+
+
+def test_a_gns_only_candidate_without_a_source_column_is_gns(properties):
+    sizs = _pif_table([[(100, 0), (101, 0)]])
+    walls = _layer([shapely.LineString([(300.0, 0.0), (310.0, 0.0)])])
+    candidates = _gns_only(sizs, walls, properties)
+    assert candidates["wall_source"].tolist() == [GNS_WALL_SOURCE]

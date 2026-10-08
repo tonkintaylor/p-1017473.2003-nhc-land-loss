@@ -703,6 +703,62 @@
       "Phase": "3",
       "Source": "Maxim Millen 2026-10-07",
       "Status": "Done"
+    },
+    {
+      "ID": "T-89",
+      "Task": "Treat the sheared, crushed argillite along the Wellington Fault (as by the Karori tunnel and Glenmore Street) and other active faults as weaker rock in the ground map, the fault buffer already proposed in the landslide review.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-90",
+      "Task": "Check whether the 1:50,000 geological map's broken formation units, or any other attribute, mark more disturbed or siltstone-rich greywacke that could set a weaker rock class.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-91",
+      "Task": "Send Nick Peters a view of PDP's revised Porirua geology from its liquefaction mapping, so he can say whether it is worth using.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-92",
+      "Task": "Represent the walls in Whitby and similar Porirua subdivisions that were built for greywacke but stand in unmapped Pleistocene alluvium, which Nick Peters has seen keel over even when new.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-93",
+      "Task": "Count the residential properties in the study area, and how many are on hill slopes, as the base the retaining wall estimate is read against.",
+      "Owner": "Unassigned",
+      "Phase": "2",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-94",
+      "Task": "Show how losses differ between suburbs, for example the mean loss per suburb as a box and whisker plot in the viewer or the report, so the equity between wealthy and less wealthy suburbs can be judged.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-95",
+      "Task": "Add controls to the loss viewer that scale the land value and the retaining wall repair cost, which John Leeves expects the losses to be most sensitive to and which need no new model run.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -1083,6 +1139,27 @@
       "Affects": "hazard/liquefaction",
       "Source": "hazard/liquefaction step method files, 2026-10-07",
       "Status": "Open"
+    },
+    {
+      "ID": "L-55",
+      "Limitation": "Surface fault rupture is not modelled, though a Wellington Fault rupture could offset the ground by about 5 m laterally and 1 m vertically. John Leeves noted that after Canterbury the boundaries were resurveyed rather than land claims paid for the shift.",
+      "Affects": "hazard, loss",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-56",
+      "Limitation": "Each wall candidate is drawn independently, though in SME experience a property with one wall usually has several, so walls may be spread too evenly across properties.",
+      "Affects": "exposure/rw",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-57",
+      "Limitation": "Pleistocene alluvium in Porirua (Whitby, Pauatahanui) is not on the geological maps, so the ground map reads greywacke where the ground is soil, understating walls, wall failures and slope failures there.",
+      "Affects": "hazard/landslide, exposure/rw, vul",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -1225,6 +1302,14 @@
       "ID": "I-18",
       "Improvement": "Route generated driveways so they cannot pass through a building or across another property, allowing non-straight paths, and route to the road in the property's street address rather than the nearest road centreline.",
       "Rationale": "Straight-line driveways sometimes cut through a neighbouring house: 382 of the pilot's 4,295 (9%) cross at least 5 m2 of a building on another property (2026-10-07). The insured land is clipped to the property so a neighbour's ground is not counted, but the full route length the construction access rating reads can be wrong, and where two roads are near equidistant the road chosen is a toss-up (T-80). Judged too complex for now and a good one for the future.",
+      "Phase": "Future",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-19",
+      "Improvement": "Use geology, soil against rock, as a second multiplier on the wall type fractions.",
+      "Rationale": "In SME experience the big concrete and brick walls are in soil country (Karori, Thorndon, Mount Cook, Mount Victoria), while walls in greywacke are mostly small ones at the front of a section; held as a future improvement in the wall types plan.",
       "Phase": "Future",
       "Source": "Wgtn land model sense check 2026-10-05",
       "Status": "Parked"
@@ -1389,6 +1474,14 @@
       "Asked of": "Bridget Attwood",
       "Answer": "",
       "Source": "Wgtn land model sense check 2026-10-05; to be asked by John Leeves or Virginie Lacrosse",
+      "Status": "Open"
+    },
+    {
+      "ID": "Q-21",
+      "Question": "Which land cap values are the scenarios? John Leeves recalled $30,000, $60,000, $100,000 and $150,000 on the call, where T-87 took 15, 30, 90 and 120 from Bridget Attwood's document.",
+      "Asked of": "Virginie Lacrosse",
+      "Answer": "",
+      "Source": "Wgtn land model sense check 2026-10-05; John Leeves from memory",
       "Status": "Open"
     }
   ]

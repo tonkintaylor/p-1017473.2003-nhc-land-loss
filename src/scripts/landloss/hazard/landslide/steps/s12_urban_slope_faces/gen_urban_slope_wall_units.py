@@ -31,7 +31,10 @@ Run ``gen_urban_slope_faces.py`` and then step 13's ``gen_pif_cut_fill.py``
 first; this stops if step 13's tables are missing or older than the siz
 table. The claim and NZMM layer is
 ``validations/config.PROPERTIES_PATH`` in exposure rw, written by
-``gen_rw_dataset_properties.py``; where it is absent no update is applied.
+``gen_rw_dataset_properties.py``, from every claims list in that folder's
+``config.CLAIMS_LISTS``; where it is absent no update is applied, and where it
+is older than any list's extraction this stops, so a claims list added since
+is never silently left out.
 Settings are in ``config.py``.
 """
 
@@ -61,7 +64,11 @@ from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_age import (
     wall_age_path,
 )
-from scripts.landloss.exposure.rw.validations.config import PROPERTIES_PATH
+from scripts.landloss.exposure.rw.validations.config import (
+    CLAIM_REPORTS_EXTRACTED_DIR,
+    CLAIMS_LISTS,
+    PROPERTIES_PATH,
+)
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
     dem_path,
 )
@@ -181,9 +188,33 @@ def read_records(*, properties, bbox):
         )
         print(RULE)
         return None
+    check_records_current()
     records = gpd.read_parquet(PROPERTIES_PATH).to_crs(CRS)
     minx, miny, maxx, maxy = bbox
     return gen_property_wall_records(properties, records.cx[minx:maxx, miny:maxy])
+
+
+def check_records_current():
+    """Refuse a claim and NZMM layer older than any claims list's extraction.
+
+    Raises:
+        ValueError: If a list's ``reports.csv`` is newer than the layer, or the
+            layer was written before the list was read at all.
+    """
+    written = PROPERTIES_PATH.stat().st_mtime
+    stale = [
+        name
+        for name in CLAIMS_LISTS
+        if (CLAIM_REPORTS_EXTRACTED_DIR / name / "reports.csv").stat().st_mtime
+        > written
+    ]
+    if stale:
+        msg = (
+            f"{PROPERTIES_PATH} is older than the claim report extraction of "
+            f"{stale}: run exposure/rw/validations/gen_rw_dataset_properties.py "
+            "before gen_urban_slope_wall_units.py"
+        )
+        raise ValueError(msg)
 
 
 def no_records():

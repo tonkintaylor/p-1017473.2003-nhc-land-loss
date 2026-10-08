@@ -85,8 +85,8 @@ def square(x, y, side):
 
 
 # The synthetic wall types: MODERN takes the size's median, OLD 0.6 of it.
-MODERN = "block_rc_cantilever"
-OLD = "gravity_masonry"
+MODERN = "concrete_block"
+OLD = "brick_rock"
 
 
 # The height each synthetic wall of a size class is drawn at: small and medium
@@ -122,7 +122,7 @@ def wall_table():
 def polygons(
     faces, *, wall_line_ids, wall_positions, ratings, amp=1.0, edge_lines=None
 ):
-    """Synthetic step 7 polygons with every column the fragility reads.
+    """Synthetic polygons (the old step 7 shape) with every column the fragility reads.
 
     The state geometries are the face itself for the no-wall state and for
     the state matching the wall's position, ``None`` for the other. Without
@@ -559,7 +559,7 @@ def test_a_polygon_with_a_wall_takes_the_wall_curve_and_one_without_the_localise
     assert cut["wall_state"] == "cut_wall"
     assert cut["rw_id"] == "C2-RW01"
     assert cut["fragility_basis"] == "wall"
-    assert cut["fragility_source"] == "test_2_m_and_over_gravity_masonry"
+    assert cut["fragility_source"] == "test_2_m_and_over_brick_rock"
     assert cut["wall_type"] == OLD
     assert cut["theta_base_pga_g"] == pytest.approx(0.6)
     assert cut["pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
@@ -753,7 +753,7 @@ def test_an_uninsured_wall_gives_its_polygon_the_wall_curve_with_no_rw_id():
     assert pd.isna(uninsured["rw_id"])
     assert uninsured["wall_state"] == "fill_wall"
     assert uninsured["fragility_basis"] == fragility.WALL_BASIS
-    assert uninsured["fragility_source"] == "test_under_2_m_block_rc_cantilever"
+    assert uninsured["fragility_source"] == "test_under_2_m_concrete_block"
     assert uninsured["size_class"] == "small"
     assert uninsured["wall_type"] == MODERN
     assert uninsured["theta_base"] == pytest.approx(0.6)
@@ -809,7 +809,7 @@ def test_a_wall_on_any_line_of_the_edge_gives_the_polygon_its_wall():
     assert walled["rw_id"] == "C3-RW01"
     assert walled["wall_line_id"] == "WL0000003"
     assert list(walled["wall_line_ids"]) == ["WL0000003"]
-    assert walled["fragility_source"] == "test_2_m_and_over_gravity_masonry"
+    assert walled["fragility_source"] == "test_2_m_and_over_brick_rock"
 
     both = wall_population(
         ["C1-RW01", "C3-RW01"],

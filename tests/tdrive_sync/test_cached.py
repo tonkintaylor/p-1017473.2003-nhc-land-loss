@@ -2,8 +2,8 @@
 
 Unlike get_path and get_source_mat, this needs no tdrive_sync_config.py at
 all -- the caller supplies the full absolute path itself, so nothing here
-touches DATA_VERSION, SOURCE_MATERIAL_DIR, or (bar one explicit check)
-local-only working mode.
+touches DATA_VERSION or SOURCE_MATERIAL_DIR. In local-only working mode a
+cached copy is used without checking the source.
 """
 
 import time
@@ -83,11 +83,11 @@ def test_get_cached_without_copy_to_local_reads_straight_from_the_source(
     assert resolved == source
 
 
-def test_get_cached_ignores_local_only_working_mode(
+def test_get_cached_in_local_mode_fetches_an_uncached_file_from_the_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Local-only working mode has no bearing here -- it still fetches from and
-    caches against the given source path."""
+    """In local-only working mode a file with no cached copy still comes from
+    the source path."""
     monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_MODE", "True")
     monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_VERSION", "scratchpad")
     source = tmp_path / "t_drive" / "data.csv"
@@ -105,3 +105,22 @@ def test_get_cached_local_path_is_where_get_cached_reads_from(tmp_path: Path) ->
     _write(local, "a\n")
 
     assert ts.get_cached(source, copy_to_local=False) == local
+
+
+def test_get_cached_in_local_mode_uses_the_cache_without_checking_the_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In local-only working mode a cached copy is returned even when the
+    source holds a newer file, so a fully cached run never touches T:."""
+    source = tmp_path / "t_drive" / "data.csv"
+    _write(source, "old\n")
+    cached = ts.get_cached(source)
+    time.sleep(0.05)
+    _write(source, "new\n")
+    monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_MODE", "True")
+    monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_VERSION", "scratchpad")
+
+    resolved = ts.get_cached(source)
+
+    assert resolved == cached
+    assert resolved.read_text() == "old\n"

@@ -1,7 +1,7 @@
 """Ids minted by location for the layers the landslide and wall models build.
 
-The ground map polygons, slope units, urban failure candidates and polygons,
-candidate wall lines and large-model landslides each carry an id of the form
+The ground map polygons, slope units, urban failure polygons, wall
+units and large-model landslides each carry an id of the form
 ``<prefix><7 digits>``, for example ``SP0000042``, numbered from 1. The prefix
 of each kind is in :mod:`landloss.domain.constants`, every one in one block.
 

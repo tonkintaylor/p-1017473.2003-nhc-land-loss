@@ -1,8 +1,9 @@
 wall_type,road_frontage_multiplier
-gravity_masonry,1.5
-crib,0.5
-timber_pole_old,1.0
-block_rc_cantilever,1.5
-timber_pole_new,1.0
-landscaper_timber,0.3
-engineered_modern,1.0
+brick_rock,1.5
+reinforced_concrete,1.5
+crib_gabion,0.5
+timber_pole_pre_1992,1.0
+concrete_block,1.5
+timber_pole_post_1992,1.0
+garden_timber,0.3
+engineered,1.0

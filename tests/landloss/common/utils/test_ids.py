@@ -10,7 +10,6 @@ from landloss.domain import constants
 PREFIXES = (
     constants.WALL_LINE_ID_PREFIX,
     constants.SLOPE_ID_PREFIX,
-    constants.CANDIDATE_ID_PREFIX,
     constants.GROUND_ID_PREFIX,
     constants.UNIT_ID_PREFIX,
     constants.LARGE_LANDSLIDE_ID_PREFIX,

@@ -30,6 +30,12 @@ USE_CACHED_LAYERS = True
 # 2 m for a wall).
 GNS_WALL_MATCH_M = 2.0
 
+# T+T's manually mapped walls (Koordinates 125317, pilot only) join the GNS
+# mapped walls and are used exactly as they are; a manual wall within this many
+# metres of a GNS wall is dropped first as the same wall mapped twice (the
+# lead, 2026-10-08).
+MANUAL_WALL_DUPLICATE_M = 2.0
+
 # A GNS break in slope counts as agreeing with a pif within this many metres
 # (3 m in the plan's detection check).
 GNS_BREAK_MATCH_M = 3.0
@@ -97,21 +103,6 @@ WALL_MAX_LENGTH_M = 50.0
 # siz table (near_drop_p80_m, named for the first setting).
 WALL_HEIGHT_REACH_M = 2.0
 WALL_HEIGHT_QUANTILE = 0.7
-
-# A 1 m DEM holding more cells than this is searched for faces, and its wall
-# zones built, tile by tile (tiled.py) rather than whole, as landslide step 6
-# delineates (its MAX_UNTILED_CELLS). Every pilot runs whole; over Porirua the
-# whole grid would need about 95 GB.
-MAX_UNTILED_CELLS = 50_000_000
-
-# The side of a tile's core, in metres.
-TILE_CORE_M = 3_000.0
-
-# The width read around each core, in metres. It has to be wider than the
-# longest parent pif, so that the tile owning a pif sees it whole and cuts it
-# into the pieces the whole grid would: the longest on the two pilots spans
-# 636 m.
-TILE_MARGIN_M = 750.0
 
 # The share of claimed properties held out of the claim update for the
 # cross-validation, and the seed that picks them.

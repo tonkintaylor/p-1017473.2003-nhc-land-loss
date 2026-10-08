@@ -10,8 +10,16 @@ more than 2 m from every pip becomes candidates of its own, classed
 (:mod:`landloss.hazard.landslide.bend_split`), so no mapped wall is lost. A
 mapped wall within 2 m of a pif piece is no candidate of its own; it sets that
 piece's ``gns_wall`` flag. Every candidate is independent (the lead,
-2026-10-07). Every candidate is tied to the property it lies on. This module attaches
-what is known about each candidate and does not put a probability on it; every
+2026-10-07).
+
+"GNS mapped wall" here means any mapped wall: the GNS SLIDE walls and,
+since 2026-10-08, the walls T+T mapped by hand from aerial imagery, less any
+of those within 2 m of a GNS wall (:func:`gen_mapped_walls`, the lead). Both
+are walls seen from above and are used alike; ``wall_source`` on a
+``gns_only`` candidate says which it came from.
+
+Every candidate is tied to the property it lies on. This module attaches what
+is known about each candidate and does not put a probability on it; every
 weight for that is judgement until the claim report extraction (T-50).
 """
 
@@ -30,6 +38,11 @@ SIZ_CLASS = "siz"
 LOW_HEIGHT_CLASS = "low_height"
 GNS_ONLY_CLASS = "gns_only"
 NOT_CANDIDATE = "none"
+
+# Where a mapped wall comes from: GNS SLIDE [townsend_2020], or T+T's walls
+# mapped by hand from aerial imagery (Koordinates layer 125317).
+GNS_WALL_SOURCE = "gns"
+TT_MANUAL_WALL_SOURCE = "tt_manual"
 
 # The columns of the LINZ property boundaries layer a candidate carries, under
 # these names. ``source`` says whether the polygon is a rateable property or a
@@ -362,6 +375,49 @@ def split_by_rules(
     return pieces
 
 
+def gen_mapped_walls(
+    gns_walls: gpd.GeoDataFrame,
+    manual_walls: gpd.GeoDataFrame,
+    *,
+    duplicate_m: float,
+) -> gpd.GeoDataFrame:
+    """Join the GNS mapped walls and T+T's manually mapped walls into one set.
+
+    The two are mapped from the same imagery, so a wall both mapped would be
+    counted twice. Every manual wall lying within ``duplicate_m`` of a GNS
+    wall, at its nearest, is dropped whole as a duplicate (the lead,
+    2026-10-08), and the GNS wall kept.
+
+    Args:
+        gns_walls: The GNS SLIDE mapped retaining walls (lines).
+        manual_walls: T+T's manually mapped retaining walls (lines).
+        duplicate_m: A manual wall this close to a GNS wall is a duplicate.
+
+    Returns:
+        The GNS walls and the kept manual walls, in the GNS walls' CRS, with
+        ``wall_source`` (:data:`GNS_WALL_SOURCE` or
+        :data:`TT_MANUAL_WALL_SOURCE`), indexed from 0.
+    """
+    manual = manual_walls.to_crs(gns_walls.crs)
+    gns_lines = gns_walls.geometry.to_numpy()
+    manual_lines = manual.geometry.to_numpy()
+    duplicate = np.zeros(len(manual_lines), dtype=bool)
+    if len(gns_lines) and len(manual_lines):
+        hits = shapely.STRtree(gns_lines).query(
+            manual_lines, predicate="dwithin", distance=duplicate_m
+        )
+        duplicate[np.unique(hits[0])] = True
+    kept = manual_lines[~duplicate]
+    return gpd.GeoDataFrame(
+        {
+            "wall_source": [GNS_WALL_SOURCE] * len(gns_lines)
+            + [TT_MANUAL_WALL_SOURCE] * len(kept)
+        },
+        geometry=np.concatenate([gns_lines, kept]),
+        crs=gns_walls.crs,
+    )
+
+
 def gen_gns_only_candidates(
     sizs: gpd.GeoDataFrame,
     *,
@@ -388,7 +444,8 @@ def gen_gns_only_candidates(
 
     Args:
         sizs: The siz table with each pif's pips as geometry.
-        walls: GNS mapped retaining walls (lines).
+        walls: Mapped retaining walls (lines), from :func:`gen_mapped_walls`
+            or GNS alone; without a ``wall_source`` column every wall is GNS.
         properties: LINZ property boundaries.
         ground_map: The ground map (``material`` and ``modification``).
         buildings: Building outlines.
@@ -404,21 +461,28 @@ def gen_gns_only_candidates(
     Returns:
         Line candidates, indexed by ``gns_only_id`` (from 0), with
         ``length_m``, ``x`` and ``y`` (the midpoint),
-        ``candidate_class``, the property columns of :func:`property_of_pifs`
-        (the property holding most of the line's length) and its
-        ``rateable_property_id`` (by the same rule as a pif's, on length),
+        ``candidate_class``, ``wall_source`` (the mapped wall's), the property
+        columns of :func:`property_of_pifs` (the property holding most of the
+        line's length) and its ``rateable_property_id`` (by the same rule as
+        a pif's, on length),
         ``ground_material``, ``ground_modification`` and ``building_m``.
     """
     pips = shapely.get_parts(sizs.geometry.to_numpy())
     tree = shapely.STRtree(pips)
     boundaries = _property_frame(properties).reset_index(drop=True)
-    pieces = []
-    for line in shapely.get_parts(walls.geometry.to_numpy()):
+    if "wall_source" in walls.columns:
+        wall_sources = walls["wall_source"].to_numpy(dtype=object)
+    else:
+        wall_sources = np.full(len(walls), GNS_WALL_SOURCE, dtype=object)
+    lines, wall_rows = shapely.get_parts(walls.geometry.to_numpy(), return_index=True)
+    pieces, sources = [], []
+    for line, row in zip(lines, wall_rows, strict=True):
         near = tree.query(line, predicate="dwithin", distance=wall_match_m)
         if len(near):
             line = line.difference(
                 shapely.union_all(shapely.buffer(pips[near], wall_match_m))
             )
+        before = len(pieces)
         pieces.extend(
             part
             for stretch in shapely.get_parts(line)
@@ -437,6 +501,7 @@ def gen_gns_only_candidates(
                 else []
             )
         )
+        sources.extend([wall_sources[row]] * (len(pieces) - before))
 
     candidates = gpd.GeoDataFrame(geometry=pieces, crs=sizs.crs)
     candidates["length_m"] = candidates.length
@@ -444,6 +509,7 @@ def gen_gns_only_candidates(
     candidates["x"] = midpoints.x
     candidates["y"] = midpoints.y
     candidates["candidate_class"] = GNS_ONLY_CLASS
+    candidates["wall_source"] = pd.Series(sources, dtype=object)
 
     candidates = candidates.join(_property_of_lines(candidates, properties))
     ground = _ground_at(candidates, ground_map)

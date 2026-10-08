@@ -1,0 +1,1 @@
+New landslide step 14 (instability zones) holds the 1 m search that was the first part of step 12: pips, pifs, pieces, the siz test and the elements. It runs once per extent and skips itself when its settings, inputs and code are unchanged, so everything after it can be rerun without the slow search. Step 12's faces script now only reads the wall evidence onto step 14's pifs.

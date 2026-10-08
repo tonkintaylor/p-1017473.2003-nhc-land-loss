@@ -10,7 +10,7 @@ The step runs the pips, pifs and sizs pipeline
 writes its layers, attaches the evidence for retaining wall candidates to the
 siz table, and runs the checks that need only those layers. Steps 8 and 9
 read its per-world zones in place of step 7's polygons (phase 5,
-2026-10-06); steps 6 and 7 are removed once that has run over the pilot.
+2026-10-06); steps 6 and 7 were removed on 2026-10-08.
 
 ## Phase 1 — The pipeline over an extent
 
@@ -177,11 +177,28 @@ checks them against held-out claims.
 - [x] The two bounds stay for the figures: `fig_urban_slope_wall_zones.py`
       draws the walled and bare zones side by side at the pilot sites
       (`FIG_ZONE_SCENARIOS`).
-- [ ] Steps 6 and 7, their figures and their tests are removed (step 6's
-      candidates still feed exposure rw step 6's wall lines; step 7 is out
-      of the pipeline but its scripts and library remain).
+- [x] Steps 6 and 7, their figures and their tests are removed (2026-10-08).
+      Removed with the old candidate method: exposure rw step 6's candidate
+      wall lines (`gen_wall_lines.py`, `fig_wall_lines.py`, the line builders
+      and the per-line probability) that step 6's candidates fed, and the step
+      3 layers only those read (face heights, profile curvature, 20 m
+      topographic position and vegetation height, with the DSM fetch).
 - [ ] The old seeding code (`find_slope_elements`) is removed with
       `fig_toy_slope_elements.py` refactored off it.
+
+## Phase 5b — A faster siz test (the lead, 2026-10-08)
+
+- [x] The fall-line siz test (`instability_zones.FALL_LINE_TEST`): each pip's
+      drop down its true downhill line to the toe of its face, by the pair
+      test's step and angle rules. 2 to 8 s on the pilots against 18 to 83 s.
+- [x] The siz test made on each piece after the split, not on the whole pif;
+      `piece_table` and the whole-pif pass removed. Compared on both pilots
+      (`research/siz_fall_line/`): soil sizs unchanged, weak rock about 10%
+      fewer.
+- [ ] Split the pifs on steepness as well (a new piece where a run of passing
+      pips meets a run of failing ones), once the pieces of mixed steepness
+      have been looked at in the comparison's QGIS projects.
+- [ ] Rerun the pilots and Porirua through step 12 and on with the new test.
 
 ## Phase 6 — Per territorial authority
 
@@ -200,6 +217,17 @@ checks them against held-out claims.
       tiled zones identical to the whole grid's.
 - [ ] Run over Porirua, then the other three territorial authorities; a
       process pool over the tiles.
+
+## Phase 7 — More wall records (the lead, 2026-10-08)
+
+- [x] Read T+T's manually mapped walls (Koordinates 125317) beside the GNS
+      mapped walls, dropping any within 2 m of a GNS wall, and use the rest
+      as GNS walls are (`gen_mapped_walls`).
+- [x] Refuse a claim layer older than any claims list's extraction, so the
+      seven lists added on 2026-10-06 reach the claim update.
+- [ ] Rebuild the claim layer (`exposure/rw/validations/gen_rw_dataset_properties.py`,
+      reads T:), then rerun this step's faces, step 13 and the wall units
+      over the pilot, then exposure rw step 6.
 
 ## Potential future improvements
 

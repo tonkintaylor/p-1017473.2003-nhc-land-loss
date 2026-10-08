@@ -18,12 +18,16 @@ crest and a foot to measure between). Pairs under
 (``landslide-seed-thresholds.csv``); pairs further apart, up to
 :data:`MAX_PAIR_M`, must be as steep as the group's slope threshold for the
 pair's height (``landslide-slope-thresholds.csv``). A pif that passes is a
-**siz** (seed instability zone). The test is made on the whole pif; the pif is then cut
-into pieces no longer than :data:`MAX_PIF_SPAN_M` (:func:`split_pifs`), and
-each piece is a pif of its own from there on (the lead, 2026-10-06), its
-siz flag and threshold the whole pif's (:func:`piece_table`,
-``parent_pif_id``), so an element's siz, a siz table row and a wall
-candidate are one piece. Ground mapped as fill is soil, not rock
+**siz** (seed instability zone). That is the pair test (:data:`PAIRS_TEST`);
+the pipeline runs the fall-line test (:data:`FALL_LINE_TEST`, the lead,
+2026-10-08), which reads each pip's drop down its true downhill line to the
+toe of its face by the same step and angle rules, at a fraction of the cost.
+Each pif is first cut into pieces no longer than :data:`MAX_PIF_SPAN_M`
+(:func:`split_pifs`), and each piece is a pif of its own from there on (the
+lead, 2026-10-06) and is tested on its own pips (the lead, 2026-10-08;
+before then each piece took its whole pif's verdict), keeping its
+``parent_pif_id``, so an element's siz, a siz table row and a wall candidate
+are one piece. Ground mapped as fill is soil, not rock
 (:func:`landloss.hazard.landslide.slope_elements.rasterise_ground_map`).
 
 The sizs seed the watershed growth of
@@ -113,6 +117,14 @@ MAX_PAIR_M = 30.0
 MAX_PIF_SPAN_M = 50.0
 # Points of a pif compared against the rest at a time, to bound memory.
 _CHUNK = 4000
+
+# The siz tests :func:`assess_pifs` can run. ``pairs`` compares every pair of a
+# pif's points up to MAX_PAIR_M apart; ``fall_line`` reads each pip's drop down
+# its own fall line out to MAX_PAIR_M, which finds the crest-to-foot lines the
+# pair test's maximum comes from without the pairs along the face. A candidate
+# since 2026-10-08, compared on the pilots before the pipeline switches.
+PAIRS_TEST = "pairs"
+FALL_LINE_TEST = "fall_line"
 
 SIZ_PASS = "siz_pass"
 # What an element built on a GNS-only wall unit's line was grown in.
@@ -305,35 +317,6 @@ def exclude_pifs(
     out = np.zeros_like(labels)
     out[rows, cols] = number[pif]
     return out, int(keep.sum()), int(drop.sum())
-
-
-# The columns of the siz test a piece takes from its whole pif: the test is
-# made on the whole pif (its pairs span the pieces), and every piece of a siz
-# seeds growth at the whole pif's threshold.
-SIZ_TEST_COLUMNS = ("threshold_angle_deg", "near_step_pass", "far_angle_pass", "is_siz")
-
-
-def piece_table(
-    pieces: pd.DataFrame, parent: NDArray[np.int64], whole: pd.DataFrame
-) -> pd.DataFrame:
-    """The siz table of the pif pieces, the siz test taken from the whole pif.
-
-    Args:
-        pieces: :func:`assess_pifs` on the pieces of :func:`split_pifs`.
-        parent: The whole pif of each piece, from :func:`split_pifs`.
-        whole: :func:`assess_pifs` on the whole pifs.
-
-    Returns:
-        ``pieces`` with ``parent_pif_id`` first and :data:`SIZ_TEST_COLUMNS`
-        the whole pif's; the piece's own geometry, ground group, heights and
-        pair angles stay its own.
-    """
-    table = pieces.copy()
-    parents = parent[table.index.to_numpy()]
-    for column in SIZ_TEST_COLUMNS:
-        table[column] = whole[column].reindex(parents).to_numpy()
-    table.insert(0, "parent_pif_id", parents.astype(np.int64))
-    return table
 
 
 def _pif_paths(
@@ -655,12 +638,107 @@ def _pair_stats(
     return max_below, max_above, max_dh, near_pass
 
 
+def _fall_line_stats(
+    z: NDArray[np.float64],
+    rows: NDArray[np.intp],
+    cols: NDArray[np.intp],
+    fall: NDArray[np.int8],
+    owner: NDArray[np.int64],
+    pif_group: NDArray[np.intp],
+    n_pifs: int,
+    cell_size_m: float,
+    *,
+    pif_labels: NDArray[np.int32],
+    downhill: tuple[NDArray[np.float64], NDArray[np.float64]] | None = None,
+) -> NDArray[np.float64]:
+    """The siz statistics of every pif from its pips' fall lines.
+
+    Each pip is read against the ground down its fall line, one cell length
+    at a time out to :data:`MAX_PAIR_M`, each step rounded to the nearest
+    cell. The fall line is the true downhill direction at the pip, from
+    ``downhill`` (``terrain_layers``' ``downhill_row`` and ``downhill_col``,
+    a unit vector per cell); where that is missing (level ground, or no
+    ``downhill`` given) it is the pip's own fall direction, the nearest of
+    the eight. The drop to each cell is the pip's height less the cell's, and
+    its distance the straight line between their centres.
+
+    A fall line stops at the toe of the pip's own face: it reads no further
+    than the largest of :data:`PIP_OFFSETS_M` past the last cell of the pip's
+    pif it crossed, the reach the pair test's support points have, so the drop
+    is the face's and not the hillside's below it.
+
+    A pif's statistics are the maxima over its pips, in the layout of
+    :func:`_pair_stats`: the steepest angle over cells at least
+    :data:`NEAR_PAIR_M` away whose drop is under / at least
+    :data:`BAND_SPLIT_M`, the largest drop, and whether a cell under
+    :data:`NEAR_PAIR_M` away is down by the pif's ground group's
+    ``adjacent_step_m``. Only drops count; a cell off the DEM or up the
+    slope is skipped.
+
+    Returns:
+        An array of shape ``(n_pifs, 4)``: ``max_below``, ``max_above``,
+        ``max_delta_h``, ``near_pass``, one row per pif from 1.
+    """
+    height, width = z.shape
+    steps = _STEPS[fall].astype(float)
+    unit_row = steps[:, 0] / np.hypot(steps[:, 0], steps[:, 1])
+    unit_col = steps[:, 1] / np.hypot(steps[:, 0], steps[:, 1])
+    if downhill is not None:
+        true_row = downhill[0][rows, cols]
+        true_col = downhill[1][rows, cols]
+        known = np.isfinite(true_row) & np.isfinite(true_col)
+        unit_row = np.where(known, true_row, unit_row)
+        unit_col = np.where(known, true_col, unit_col)
+    reach = math.ceil(MAX_PAIR_M / cell_size_m)
+    k = np.arange(1, reach + 1)
+    r2 = rows[:, None] + np.rint(k[None, :] * unit_row[:, None]).astype(np.intp)
+    c2 = cols[:, None] + np.rint(k[None, :] * unit_col[:, None]).astype(np.intp)
+    dist = cell_size_m * np.hypot(r2 - rows[:, None], c2 - cols[:, None])
+    inside = (r2 >= 0) & (r2 < height) & (c2 >= 0) & (c2 < width)
+    inside &= (dist > 0) & (dist <= MAX_PAIR_M + 1e-9)
+    on_face = np.zeros(r2.shape, dtype=bool)
+    on_face[inside] = pif_labels[r2[inside], c2[inside]] == owner.repeat(
+        inside.sum(axis=1)
+    )
+    last = np.maximum.accumulate(np.where(on_face, dist, 0.0), axis=1)
+    inside &= dist - last <= max(PIP_OFFSETS_M) + 1e-9
+    below = np.full(r2.shape, np.nan)
+    below[inside] = z[r2[inside], c2[inside]]
+    drop = z[rows, cols][:, None] - below
+    valid = np.isfinite(drop) & (drop > 0)
+    drop = np.where(valid, drop, 0.0)
+    angle = np.where(
+        valid, np.degrees(np.arctan2(drop, np.where(dist > 0, dist, 1.0))), 0.0
+    )
+    near = dist < NEAR_PAIR_M
+    high = drop >= BAND_SPLIT_M
+    per_pip = np.column_stack(
+        [
+            np.where(~near & ~high, angle, 0.0).max(axis=1),
+            np.where(~near & high, angle, 0.0).max(axis=1),
+            drop.max(axis=1),
+            np.where(near, drop, 0.0).max(axis=1),
+        ]
+    )
+    stats = np.zeros((n_pifs + 1, 4))
+    for column in range(4):
+        np.maximum.at(stats[:, column], owner, per_pip[:, column])
+    step_by_pif = np.array(
+        [ADJACENT_STEP_M[GROUND_GROUPS[g]] for g in pif_group], dtype=float
+    )
+    stats[:, 3] = stats[:, 3] >= step_by_pif
+    return stats[1:]
+
+
 def assess_pifs(
     dem: ArrayLike,
     pips: Pips,
     pif_labels: NDArray[np.int32],
     ground_group: ArrayLike,
     transform: Affine,
+    *,
+    test: str = PAIRS_TEST,
+    downhill: tuple[NDArray[np.float64], NDArray[np.float64]] | None = None,
 ) -> pd.DataFrame:
     """Test every pif over all pairs of its points and flag the sizs.
 
@@ -672,6 +750,12 @@ def assess_pifs(
             (:func:`landloss.hazard.landslide.slope_elements.rasterise_ground_map`
             with ``fill_as_soil=True``).
         transform: The grid's affine transform, north-up with square cells.
+        test: :data:`PAIRS_TEST` to compare every pair of a pif's points, or
+            :data:`FALL_LINE_TEST` to read each pip's drop down its fall line
+            (:func:`_fall_line_stats`). The columns are the same either way.
+        downhill: For the fall-line test, the true downhill direction of every
+            cell (``terrain_layers``' ``downhill_row`` and ``downhill_col``);
+            without it each pip falls along the nearest of the eight.
 
     Returns:
         One row per pif, indexed by ``pif_id``: all pifs, not only the sizs.
@@ -753,13 +837,31 @@ def assess_pifs(
     table["toe_z_m"] = ndimage.minimum(all_z, all_owner, index)
     table["fall_bearing_deg"] = np.degrees(np.arctan2(sin[index], cos[index])) % 360.0
 
-    stats = np.zeros((n_pifs, 4))
-    for i, pif in enumerate(index):
-        lo, hi = ends[pif - 1], ends[pif]
-        group = GROUND_GROUPS[pif_group[pif]]
-        stats[i] = _pair_stats(
-            all_xy[lo:hi], all_z[lo:hi], step_m=ADJACENT_STEP_M[group]
+    if test == FALL_LINE_TEST:
+        stats = _fall_line_stats(
+            z,
+            rows,
+            cols,
+            fall,
+            owner,
+            pif_group,
+            n_pifs,
+            cell_size_m,
+            pif_labels=pif_labels,
+            downhill=downhill,
         )
+    elif test == PAIRS_TEST:
+        stats = np.zeros((n_pifs, 4))
+        for i, pif in enumerate(index):
+            lo, hi = ends[pif - 1], ends[pif]
+            group = GROUND_GROUPS[pif_group[pif]]
+            stats[i] = _pair_stats(
+                all_xy[lo:hi], all_z[lo:hi], step_m=ADJACENT_STEP_M[group]
+            )
+    else:
+        known = (PAIRS_TEST, FALL_LINE_TEST)
+        msg = f"Unknown siz test {test!r}; choose one of {known}."
+        raise ValueError(msg)
     table["max_delta_h_m"] = stats[:, 2]
     table["max_angle_below_deg"] = stats[:, 0]
     table["max_angle_above_deg"] = stats[:, 1]
@@ -783,7 +885,7 @@ class InstabilityZones:
         pips: The pips.
         pif_labels: The pifs on their pips' cells: the pieces of
             :func:`split_pifs`, each a pif of its own since 2026-10-06.
-        sizs: The siz table, one row per pif piece (see :func:`piece_table`),
+        sizs: The siz table, one row per pif piece (:func:`assess_pifs` on the pieces),
             with ``parent_pif_id``.
         n_pifs_excluded: The pifs dropped on the ``exclude`` mask of
             :func:`find_instability_zones` (building outlines).
@@ -817,6 +919,7 @@ def find_instability_zones(
     stray_tolerance_m: float = 0.0,
     min_segment_m: float = 0.0,
     max_turn_deg: float = math.inf,
+    siz_test: str = FALL_LINE_TEST,
 ) -> InstabilityZones:
     """Find the pips, pifs and sizs on a DEM and grow the sizs into elements.
 
@@ -851,6 +954,8 @@ def find_instability_zones(
         stray_tolerance_m: How far a piece's line may stray from the spine.
         min_segment_m: The shortest piece.
         max_turn_deg: The most a piece's line may turn in all.
+        siz_test: The siz test each piece is put to (:func:`assess_pifs`):
+            :data:`FALL_LINE_TEST`, or :data:`PAIRS_TEST` for comparison.
 
     Returns:
         The elements, pips, pifs and the siz table.
@@ -880,9 +985,9 @@ def find_instability_zones(
     pif_labels, n_short = drop_short_pifs(
         pif_labels, cell_size_m, min_length_m=BETA_MIN_PIF_LENGTH_M
     )
-    whole = assess_pifs(elevation, pips, pif_labels, groups, transform)
     # The pifs are the pieces from here on: the siz table, the elements' siz_id
-    # and the wall candidates all name a piece (the lead, 2026-10-06).
+    # and the wall candidates all name a piece (the lead, 2026-10-06), and each
+    # piece is tested on its own pips (the lead, 2026-10-08).
     pif_labels, parent, piece_xy = split_pifs(
         pif_labels,
         cell_size_m,
@@ -893,9 +998,16 @@ def find_instability_zones(
         max_turn_deg=max_turn_deg,
         counts=(cap_cuts := Counter()),
     )
-    sizs = piece_table(
-        assess_pifs(elevation, pips, pif_labels, groups, transform), parent, whole
+    sizs = assess_pifs(
+        elevation,
+        pips,
+        pif_labels,
+        groups,
+        transform,
+        test=siz_test,
+        downhill=(layers.downhill_row, layers.downhill_col),
     )
+    sizs.insert(0, "parent_pif_id", parent[sizs.index.to_numpy()].astype(np.int64))
     pif_lines = pd.Series(
         [
             shapely.LineString(

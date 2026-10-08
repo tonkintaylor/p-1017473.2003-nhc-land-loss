@@ -6,27 +6,15 @@ landslide step 12 builds on the potential instability faces
 (:mod:`landloss.hazard.landslide.wall_units`), which carry their own
 ``p_wall``: :func:`gen_unit_probability_table` puts on each unit the claim it
 belongs to (:func:`claim_of_properties`), in the shape the population draw
-reads. The earlier candidate lines (:mod:`landloss.exposure.rw.lines`) and the
-``p_wall`` this module puts on each line are kept for the urban slope chain
-test: the probability that the line is a wall, from the source the line came
-from, lowered where the face is a cut in rock, capped on the flat land, and
-lifted where GNS Science mapped a wall along it. A wall's type, which carries
-what used to be its condition, is drawn per world in exposure step 6
-(:mod:`landloss.exposure.rw.wall_type`).
+reads. A wall's type, which carries what used to be its condition, is drawn
+per world in exposure step 6 (:mod:`landloss.exposure.rw.wall_type`).
 
 The probability carries a *basis*, the last rule that set it, so a map of
 ``p_wall_basis`` shows where the mapping reaches and where the prior is all
 there is. :mod:`landloss.exposure.rw.population` draws a world from the table
 this module writes; keeping the two apart means the evidence is read once and
-any number of worlds are drawn from it cheaply.
-
-**The mapping is one-sided.** The GNS SLIDE retaining walls are visible from
-above and Wellington City only [townsend_2020], so a mapped wall raises a
-line's probability to at least :data:`BETA_MAPPED_WALL_PROBABILITY` and the
-absence of one changes nothing. Every number that combines the evidence
-carries a ``beta`` name because it is engineering judgement with no fit behind
-it; the claim report extraction (**T-50**) is the calibration source. The walls
-a claim report lists raise the wall units' probabilities in landslide step 12
+any number of worlds are drawn from it cheaply. The walls a claim report lists
+raise the wall units' probabilities in landslide step 12
 (:func:`landloss.hazard.landslide.wall_units.gen_wall_unit_probability`), not
 here.
 """
@@ -35,53 +23,12 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 from landloss.exposure.land.extent import SOURCE_ID_COLUMN
 from landloss.exposure.rw.beta_population import SIZE_CLASSES, classify_wall_size
 from landloss.exposure.rw.lines import CUT, FILL
 from landloss.exposure.rw.population import REQUIRED_COLUMNS, WALL_LINE_ID_COLUMN
 
-# The probability of a wall along a line with one mapped on it. Not 1, because
-# the mapping is from imagery and a line can be a road batter or the
-# neighbour's wall. The one place the mapped-wall floor is typed. Replaced by
-# the share of real walls the GNS mapping captures, from the claims with walls
-# at addresses inside the SLIDE footprint.
-BETA_MAPPED_WALL_PROBABILITY = 0.9
-
-# The prior probability that a line is a wall, by the source it came from, in
-# the precedence order of landloss.exposure.rw.lines.SOURCES. A mapped wall is
-# the floor above; a cut/fill line marks an earthwork edge that is usually
-# retained; a genesis edge is coarser; a terrain break is a face the DEM sees,
-# which may be a bank or a cutting; a boundary is a place a wall often is and
-# usually is not. Judgement until the count bounds (T-50) replace them.
-BETA_SOURCE_PROBABILITY = {
-    "gns_mapped_wall": BETA_MAPPED_WALL_PROBABILITY,
-    "slide_cut_fill_line": 0.6,
-    "slide_cut_edge": 0.5,
-    "slide_fill_edge": 0.5,
-    "terrain_break": 0.4,
-    "road_frontage": 0.25,
-    "property_boundary": 0.15,
-}
-
-# What a cut face in rock keeps of its prior, set once in
-# landloss.domain.constants and shared with the wall units.
-BETA_ROCK_CUT_FACTOR = constants.BETA_ROCK_CUT_FACTOR
-
-# The most a line on the NLM flat land can carry: a wall there is a garden edge
-# at most. Set against the wall counts in the claim report extraction (T-50)
-# once it is held.
-BETA_FLATLAND_MAX_PROBABILITY = 0.1
-
-# The basis strings: the last rule that set the probability.
-WALL_BASES = ("source_prior", "rock_cut", "flatland_cap", "mapped")
-SOURCE_PRIOR, ROCK_CUT, FLATLAND_CAP, MAPPED = WALL_BASES
-
-PROBABILITY_COLUMNS = ("p_wall", "p_wall_basis")
-
-# The line columns the probability reads.
-WALL_INPUT_COLUMNS = ("source", "is_mapped_wall", "is_rock_cut", "is_flatland")
 HEIGHT_COLUMN = "face_height_m"
 
 # The wall unit columns the unit table reads (landslide step 12).
@@ -112,84 +59,6 @@ def _require(frame: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:
     if missing:
         msg = f"{name} is missing {missing}"
         raise ValueError(msg)
-
-
-def line_wall_probability(lines: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    """Return the probability that each line is a wall, and what set it.
-
-    Applied in this order: the prior of the line's source
-    (:data:`BETA_SOURCE_PROBABILITY`); multiplied by :data:`BETA_ROCK_CUT_FACTOR`
-    where ``is_rock_cut``; capped at :data:`BETA_FLATLAND_MAX_PROBABILITY` where
-    ``is_flatland``; raised to at least :data:`BETA_MAPPED_WALL_PROBABILITY`
-    where ``is_mapped_wall``, because a wall seen from above outranks a prior
-    guessed from the source. The basis is the last rule that changed the value,
-    so a mapped wall whose prior already sat at the floor keeps the basis of
-    the rule that put it there.
-
-    Args:
-        lines: One row per candidate line carrying :data:`WALL_INPUT_COLUMNS`.
-
-    Returns:
-        The probability per line, and the basis per line, one of
-        :data:`WALL_BASES`, both aligned to ``lines``.
-
-    Raises:
-        ValueError: If a column is missing, or a source is not one of
-            :data:`BETA_SOURCE_PROBABILITY`.
-    """
-    _require(lines, WALL_INPUT_COLUMNS, "lines")
-    source = lines["source"].to_numpy()
-    unknown = sorted(set(source) - set(BETA_SOURCE_PROBABILITY))
-    if unknown:
-        msg = f"lines carry sources with no prior: {unknown}"
-        raise ValueError(msg)
-
-    probability = np.array(
-        [BETA_SOURCE_PROBABILITY[name] for name in source], dtype=float
-    )
-    basis = np.full(len(lines), SOURCE_PRIOR, dtype=object)
-
-    rock_cut = lines["is_rock_cut"].to_numpy(dtype=bool)
-    lowered = probability * BETA_ROCK_CUT_FACTOR
-    changed = rock_cut & (lowered != probability)
-    probability = np.where(rock_cut, lowered, probability)
-    basis[changed] = ROCK_CUT
-
-    flat = lines["is_flatland"].to_numpy(dtype=bool)
-    capped = np.minimum(probability, BETA_FLATLAND_MAX_PROBABILITY)
-    changed = flat & (capped != probability)
-    probability = np.where(flat, capped, probability)
-    basis[changed] = FLATLAND_CAP
-
-    mapped = lines["is_mapped_wall"].to_numpy(dtype=bool)
-    lifted = np.maximum(probability, BETA_MAPPED_WALL_PROBABILITY)
-    changed = mapped & (lifted != probability)
-    probability = np.where(mapped, lifted, probability)
-    basis[changed] = MAPPED
-
-    return probability, basis
-
-
-def wall_probability_table(lines: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Return the candidate lines with the wall probability and its basis.
-
-    Args:
-        lines: The candidate wall lines ``gen_wall_lines.py`` wrote, carrying
-            :data:`WALL_INPUT_COLUMNS` and ``face_height_m``.
-
-    Returns:
-        A copy on the same rows and geometry carrying the inputs and
-        :data:`PROBABILITY_COLUMNS`.
-
-    Raises:
-        ValueError: If a required column is missing.
-    """
-    _require(lines, (*WALL_INPUT_COLUMNS, HEIGHT_COLUMN), "lines")
-    table = lines.copy()
-    p_wall, wall_basis = line_wall_probability(table)
-    table["p_wall"] = p_wall
-    table["p_wall_basis"] = wall_basis
-    return table
 
 
 def claim_of_properties(

@@ -9,7 +9,7 @@ the check that those zones and the walls exposure rw step 6 drew for the same
 world come from one draw. Used by landslide step 8
 (``s8_urban_slope_fragility``).
 
-The face polygons replace step 7's polygons in the pipeline. Step 7 built
+The face polygons replaced step 7's polygons (removed 2026-10-08). Step 7 built
 every wall state's geometry for each polygon and let step 8 pick one; step 12
 has already built each world's zones with the walls that world drew (an
 element is walled where its pif belongs to a walled wall unit), so a polygon
@@ -130,7 +130,7 @@ def unit_of_pifs(units: pd.DataFrame) -> pd.Series:
     return pd.Series(members["wall_unit_id"].to_numpy(dtype=object), index=pif.values)
 
 
-def _ground_of_elements(
+def ground_of_elements(
     elements: pd.DataFrame, ground_map: pd.DataFrame
 ) -> pd.DataFrame:
     """The ground map columns under each element, off-map defaults filled in."""
@@ -226,7 +226,7 @@ def face_polygons(
 
     element = evacuated_rows[ELEMENT_COLUMN].to_numpy(dtype=np.int64)
     by_element = elements.reindex(element)
-    ground = _ground_of_elements(
+    ground = ground_of_elements(
         by_element.assign(
             majority_ground_row=by_element["majority_ground_row"].fillna(-1)
         ),
@@ -327,11 +327,9 @@ def face_polygons(
 def _score(polygons: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Add the Kingsbury rating and zone and the continuous rating."""
     factors = geometry.kingsbury_factors(polygons)
-    rating = susceptibility.susceptibility_rating(**factors)
-    polygons["kingsbury_rating"] = rating
-    polygons["kingsbury_zone"] = pd.Series(
-        susceptibility.susceptibility_zone(rating), index=polygons.index
-    ).astype("Int64")
+    polygons["kingsbury_rating"], polygons["kingsbury_zone"] = geometry.kingsbury_score(
+        polygons
+    )
     polygons["continuous_rating"] = continuous_rating(
         slope_degrees=polygons[geometry.SLOPE_COLUMN].to_numpy(dtype=float),
         modification=factors["modification"],

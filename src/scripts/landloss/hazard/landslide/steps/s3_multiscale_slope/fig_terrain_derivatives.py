@@ -5,8 +5,8 @@
 Reads ``config.py`` beside it, the same file ``gen_terrain_derivatives.py``
 reads, and asks ``terrain_path()`` where that run's layers went, so the figure
 draws the extent last run. One panel per layer in ``TERRAIN_LAYERS``, each on
-its own colour scale: the signed layers (the residuals, the curvature, the
-topographic position) on a diverging scale centred on zero, the heights on a
+its own colour scale: the signed layers (the residuals and the
+topographic position) on a diverging scale centred on zero, any other on a
 sequential one. The scales are clipped at the 1st and 99th percentiles so a
 single cliff does not wash out the rest of the extent.
 
@@ -55,8 +55,6 @@ LAYER_ALPHA = 0.85
 SIGNED_LAYERS = {
     "cut-fill-residual-30m",
     "cut-fill-residual-100m",
-    "profile-curvature",
-    "topographic-position-20m",
     "topographic-position-100m",
 }
 SIGNED_CMAP = "RdBu_r"
@@ -66,11 +64,8 @@ HEIGHT_CMAP = "viridis"
 CLIP = (1, 99)
 
 UNITS = {
-    "local_relief_m": "m",
     "cut_fill_residual_m": "m (cut < 0 < fill)",
-    "profile_curvature_per_m": "1/m (convex < 0 < concave)",
     "topographic_position_m": "m",
-    "vegetation_height_m": "m",
 }
 
 

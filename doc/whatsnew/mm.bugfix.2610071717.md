@@ -1,0 +1,1 @@
+The NLM material class "Alluvial fan and plains", which the ground map and the susceptibility geology scores had no rule for, is now read as alluvium, the same as "Floodplain". It is absent from the Wellington pilot but present in Porirua and the Hutt.

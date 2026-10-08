@@ -23,3 +23,14 @@ WORLD_IDS = [0]
 # Which modelled earthquakes to run. The seed stream is shared across the
 # hazards, so realisation 3 is the same earthquake in every module.
 REALISATION_IDS = [0]
+
+# Where to start the run: None runs everything. To start part-way -- after a
+# failure, or to rerun only what follows a change -- name the module and the
+# start of the step's name as the run prints them, for example
+# {"module": "hazard", "step": "landslide s13"} or
+# {"module": "exposure", "step": "rw s6, wall population"}. Every module and
+# step before it is skipped and listed; the outputs they would have written must
+# already be on disk for the same extent. The modules run in the order hazard,
+# exposure, hazard urban, vul. A name that matches nothing stops the run with
+# the list of steps.
+START_FROM = None

@@ -35,11 +35,16 @@ def _ramp(height_m: float, slope_deg: float) -> np.ndarray:
     return np.tile(np.clip(z, 0.0, height_m), (SHAPE[0], 1))
 
 
-def _assess(dem: np.ndarray, group: str) -> pd.DataFrame:
+def _assess(dem: np.ndarray, group: str, test: str = zones.PAIRS_TEST) -> pd.DataFrame:
     pips = zones.find_pips(dem, 1.0)
     labels, _ = zones.cluster_pifs(pips.mask, 1.0)
     ground = np.full(dem.shape, GROUND_GROUPS.index(group), dtype=np.int8)
-    return zones.assess_pifs(dem, pips, labels, ground, TRANSFORM)
+    return zones.assess_pifs(dem, pips, labels, ground, TRANSFORM, test=test)
+
+
+# Both siz tests give the hand-worked answers on a wall and an even ramp, where
+# the steepest line is down each pip's own fall line.
+SIZ_TESTS = pytest.mark.parametrize("test", [zones.PAIRS_TEST, zones.FALL_LINE_TEST])
 
 
 def _slot(n_rows: int, height_m: float = 1.0) -> np.ndarray:
@@ -260,35 +265,6 @@ def test_a_pif_with_a_spine_under_three_metres_is_dropped():
     assert set(kept[6, 2:7]) == {1}
 
 
-def test_a_piece_takes_the_siz_test_of_its_whole_pif():
-    whole = pd.DataFrame(
-        {
-            "threshold_angle_deg": [35.0],
-            "near_step_pass": [True],
-            "far_angle_pass": [False],
-            "is_siz": [True],
-            "max_delta_h_m": [6.0],
-        },
-        index=pd.Index([1], name="pif_id"),
-    )
-    pieces = pd.DataFrame(
-        {
-            "threshold_angle_deg": [45.0, 45.0],
-            "near_step_pass": [False, False],
-            "far_angle_pass": [False, False],
-            "is_siz": [False, False],
-            "max_delta_h_m": [1.0, 2.0],
-        },
-        index=pd.Index([1, 2], name="pif_id"),
-    )
-    table = zones.piece_table(pieces, np.array([0, 1, 1]), whole)
-    assert table["parent_pif_id"].tolist() == [1, 1]
-    assert table["is_siz"].tolist() == [True, True]
-    assert table["threshold_angle_deg"].tolist() == [35.0, 35.0]
-    # The piece's own height stays its own.
-    assert table["max_delta_h_m"].tolist() == [1.0, 2.0]
-
-
 def test_a_long_pif_is_cut_into_pieces_no_longer_than_the_limit():
     labels = np.zeros((10, 100), dtype=np.int32)
     labels[5, :70] = 1
@@ -333,44 +309,55 @@ def test_adjacent_step_loader_rejects_a_missing_column(tmp_path):
 # Sizs -----------------------------------------------------------------------
 
 
-def test_a_soil_wall_of_0_8_m_is_a_siz():
-    table = _assess(_wall(0.8), "soil_like")
+@SIZ_TESTS
+def test_a_soil_wall_of_0_8_m_is_a_siz(test):
+    table = _assess(_wall(0.8), "soil_like", test)
     assert table["is_siz"].all()
     assert table["near_step_pass"].all()
 
 
-def test_a_rock_wall_of_2_m_is_not_a_siz_and_one_of_3_m_is():
-    assert not _assess(_wall(2.0), "weak_rock")["is_siz"].any()
-    assert _assess(_wall(3.0), "weak_rock")["is_siz"].all()
-    assert _assess(_wall(3.0), "stronger_rock")["is_siz"].all()
+@SIZ_TESTS
+def test_a_rock_wall_of_2_m_is_not_a_siz_and_one_of_3_m_is(test):
+    assert not _assess(_wall(2.0), "weak_rock", test)["is_siz"].any()
+    assert _assess(_wall(3.0), "weak_rock", test)["is_siz"].all()
+    assert _assess(_wall(3.0), "stronger_rock", test)["is_siz"].all()
 
 
-def test_a_tall_rock_slope_uses_the_gentler_angle_above_3_5_m():
+@SIZ_TESTS
+def test_a_tall_rock_slope_uses_the_gentler_angle_above_3_5_m(test):
     # 42 degrees is under the 45 degree limit for faces under 3.5 m but over the
     # 40 degree limit from 3.5 m up, so height decides.
-    tall = _assess(_ramp(10.0, 42.0), "weak_rock")
+    tall = _assess(_ramp(10.0, 42.0), "weak_rock", test)
     assert tall["is_siz"].all()
     assert tall["max_angle_above_deg"].iloc[0] == pytest.approx(42.0, abs=0.5)
-    assert not _assess(_ramp(3.0, 42.0), "weak_rock")["is_siz"].any()
+    assert not _assess(_ramp(3.0, 42.0), "weak_rock", test)["is_siz"].any()
 
 
-def test_a_rock_slope_under_both_limits_is_not_a_siz():
-    assert not _assess(_ramp(10.0, 38.0), "weak_rock")["is_siz"].any()
+@SIZ_TESTS
+def test_a_rock_slope_under_both_limits_is_not_a_siz(test):
+    assert not _assess(_ramp(10.0, 38.0), "weak_rock", test)["is_siz"].any()
 
 
-def test_a_soil_slope_of_36_degrees_is_a_siz_and_one_of_34_has_no_pips():
-    assert _assess(_ramp(10.0, 36.0), "soil_like")["is_siz"].all()
-    assert _assess(_ramp(10.0, 34.0), "soil_like").empty
+@SIZ_TESTS
+def test_a_soil_slope_of_36_degrees_is_a_siz_and_one_of_34_has_no_pips(test):
+    assert _assess(_ramp(10.0, 36.0), "soil_like", test)["is_siz"].all()
+    assert _assess(_ramp(10.0, 34.0), "soil_like", test).empty
 
 
-def test_the_table_records_the_face_for_the_rw_workflow():
-    row = _assess(_ramp(10.0, 50.0), "weak_rock").iloc[0]
+@SIZ_TESTS
+def test_the_table_records_the_face_for_the_rw_workflow(test):
+    row = _assess(_ramp(10.0, 50.0), "weak_rock", test).iloc[0]
     assert row["ground_group"] == "weak_rock"
     assert row["fall_bearing_deg"] == pytest.approx(90.0)
     assert row["crest_z_m"] == pytest.approx(10.0)
     assert row["toe_z_m"] < 1.0
     assert row["max_delta_h_m"] > 8.0
     assert row["threshold_angle_deg"] == 40.0
+
+
+def test_an_unknown_siz_test_is_refused():
+    with pytest.raises(ValueError, match="Unknown siz test"):
+        _assess(_wall(3.0), "weak_rock", "nearest")
 
 
 def test_a_pif_takes_the_ground_group_of_its_pips():

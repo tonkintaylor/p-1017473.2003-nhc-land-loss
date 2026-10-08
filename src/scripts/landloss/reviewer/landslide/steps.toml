@@ -32,7 +32,7 @@ realisation:
    evacuated, imminent and inundated zones. Whether a face carries a wall is a
    probability from a points score, a GNS floor and claim counts, drawn per
    exposure world, and a drawn wall's type comes from its age, height and road
-   frontage (step 7). Each zone polygon gets a fragility on PGV: the retaining
+   frontage (exposure rw step 6). Each zone polygon gets a fragility on PGV: the retaining
    wall curve for the wall's type where a wall is drawn, and a Kingsbury rating
    curve where none is.
 3. **One draw per earthquake.** Step 9 draws every urban polygon, lets a large
@@ -259,8 +259,8 @@ and aspect is the downhill bearing.
 
 The large models read the 10 m DEM, slope and aspect, and the 100 m
 topographic position index (TPI) used for the crest lift in step 1. The other
-derivatives (face height, cut/fill residual, curvature, vegetation height)
-serve the ground map and the urban faces.
+derivatives step 3 now writes are the cut/fill residuals at 30 m and 100 m,
+which serve the ground map.
 
 Pilot (2026-10-06): 3.3 × 2.1 km, mean 10 m slope 8°, maximum 50°. No figures
 have been rendered for this step.
@@ -429,8 +429,8 @@ The faces are shared with the retaining wall chain (RW reviewer step 1).
   **element** down the slope to a {BETA_GROW_ANGLE_DEG}° grow angle (LS-A35). Every siz element
   is kept.
 
-The domain is the whole DEM inside the coastline. The {URBAN_BUILDING_DISTANCE_M} m building buffer the
-status describes is no longer applied (LS-A36).
+The domain is the whole DEM inside the coastline. The 100 m building buffer the
+old step 6 used was removed with it on 2026-10-08 (LS-A36).
 
 Pilot (2026-10-07): 6,220 pif pieces, 4,884 of them sizs. The two tables listed
 date from 2026-10-04 and count an earlier set of pifs.
@@ -528,8 +528,8 @@ unit walled (`zones_walled`) and for none (`zones_bare`).
 | **Evacuated: the minimum width, and the width actually used** | At least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest (LS-A37). 0.45 H is always below 0.5 H, so **a walled face is always exactly max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m)**. | The same minimum. A fill bank's {BETA_FILL_BANK_WIDTH_H} H and a band of at most {BETA_HEADSCARP_BAND_STEEP_M} m are also always at or below it, so **an unwalled face is the same width as a walled one**. |
 | **Evacuated: what else it takes** | A face steeper than {STACK_DOMINANT_ANGLE_DEG}° and taller than {STACK_DOMINANT_HEIGHT_M} m takes the whole stack of faces above it (LS-A40). | No stack: only its own width. |
 | **Evacuated: segments** | Cut along the contour every {BETA_SEGMENT_VOLUME_M3} m³ of volume, never shorter than H (LS-A39). | The same. |
-| **Evacuated: depth (sets the volume)** | A straight slip plane from the toe to the back of the width: a mean of 0.5 H·w / (run + w), so **shallow** (LS-A38). | Fill bank: the ground map's fill thickness, else the volume–area relation. Other bank: {COLLUVIUM_DEPTH_M} m of cover. So **deeper**, and 10 to 20 times the volume (LS-A60). |
-| **Inundated: how far** | Hunter and Fell's (2003) travel angle from the crest: on the ground below the toe where it is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper, otherwise on the face's angle. The run past the toe is the median of its rays, held to {BETA_MAX_RUNOUT_H} H and to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, never under {BETA_MIN_RUNOUT_M} m, and swept along the whole toe (LS-A41). | The same rule; onto flatter ground it reads the bank's angle, not the wall's. |
+| **Evacuated: depth (sets the volume)** | A straight slip plane from the toe to the back of the width: a mean of 0.5 H·w / (run + w), so **shallow** (LS-A38). | Fill bank: the same slip plane, no deeper than the ground map's fill thickness. Other bank: {COLLUVIUM_DEPTH_M} m of cover, so **deeper** (LS-A60). |
+| **Inundated: how far** | Hunter and Fell's (2003) travel angle from the crest: on the ground below the toe where it is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper, otherwise on the face's angle. The run past the toe is the median of its rays, held to {BETA_MAX_RUNOUT_H_FLAT}, {BETA_MAX_RUNOUT_H_MODERATE} or {BETA_MAX_RUNOUT_H_STEEP} H (ground below the toe under {BETA_MODERATE_DOWNSLOPE_DEG}°, to {BETA_STEEP_RUNOUT_DOWNSLOPE_DEG}°, steeper) the travel run held to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit and the Kingsbury zone's seismic distance added before the cap (LS-A61), and swept along the whole toe (LS-A41). | The same rule; onto flatter ground it reads the bank's angle, not the wall's. |
 | **Inundated: spreading back** | If the strip would be deeper than min({BETA_MAX_DEPOSIT_DEPTH_H} H, {BETA_MAX_DEPOSIT_DEPTH_SOURCE} × the evacuated depth), the debris spreads back over the polygon's own evacuated ground, lowest cells first (LS-A42). | The same, against the deeper source depth. |
 | **Imminent: how far** | From the back of the evacuated ground to where a line from the toe at {BETA_REPOSE_ANGLE_DEG}° meets the ground. At least the T-45 band, at most H / tan {BETA_REPOSE_ANGLE_DEG}°. One median width per polygon, swept along the crest (LS-A43). | The same rule. |
 | **When it fails (step 8 and 9)** | On the wall's Koutsoupaki curve for its type and size. Every polygon on one wall shares one draw, so if any fails they all fail (LS-A45, LS-A50). | On the Kingsbury rating curve (LS-A32). Each polygon is drawn on its own (LS-A51). |

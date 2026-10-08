@@ -19,7 +19,8 @@
   every candidate walled and none, are drawn by step 12's
   `fig_urban_slope_wall_zones.py` (its `FIG_ZONE_SCENARIOS`).
 - The polygons are landslide step 12's zones of each world's wall draw, not
-  step 7's polygons, which the pipeline no longer builds (2026-10-06). Step
+  step 7's polygons, which the pipeline stopped building on 2026-10-06 and
+  which were removed on 2026-10-08. Step
   12 draws per world which wall units are walled and builds that world's
   zones with them (`urban-slope-zones-wNNN`); exposure rw step 6 writes the
   same draw as its drawn walls, each wall's `wall_line_id` the unit's id. So
@@ -88,8 +89,9 @@
   and size class of its unit's wall, written as the model's `wall_line_id`,
   and the unit is written to the model's `wall_line_ids` (empty on a
   `no_wall` row), so step 9 gives the wall the outcome of every polygon on
-  it. The same functions still read step 7's polygons, whose edge can carry
-  several lines and every state's geometry, for the library tests. Whether a polygon has a wall is
+  it. The same functions still accept the shape of the old step 7 polygons
+  (removed 2026-10-08), whose edge can carry several lines and every state's
+  geometry, for the library tests. Whether a polygon has a wall is
   a match on the edge lines, not a non-null `rw_id`: the claim and coverage filters
   decide what is insured, not whether a wall holds the slope, so an
   uninsured wall (a council or road-reserve wall, or one beyond its claim's
@@ -101,7 +103,7 @@
   on a polygon edge (often along the flatland boundary of the urban domain)
   leaves that polygon `no_wall` with a null `rw_id`: vul shaking rw step 9
   draws a flat-land wall and nowhere else does (contract sections 3.11 and
-  5.1); step 7 already records sloping-land lines only, so such a wall is
+  5.1); the old step 7 recorded sloping-land lines only, so such a wall is
   never on an edge; the wall units are faces of sloping ground and none is
   flat land. `gen_urban_slope_fragility.describe_flatland_walls()` prints how
   many were left out and how many of those were a polygon's unit, which
@@ -116,10 +118,11 @@
   curve was keyed on `size_class`, which the model file still carries for
   pricing). The median and dispersion run through the stored 15% and 50% PGA
   of `retaining-wall-type-fragility.csv`, read from [koutsoupaki_2023] as the
-  asset README records them: gravity masonry, old timber pole, block or RC
-  cantilever and landscaper timber take the published height effect switched
-  (6 m curve under 2 m, 3 m curve at 2 m and over), and crib, new timber pole
-  and engineered modern the 3 m curve for both. The PGA median is scaled by the wall's own
+  asset README records them: `brick_rock`, `reinforced_concrete`,
+  `timber_pole_pre_1992`, `concrete_block` and `garden_timber` take the published height effect switched
+  (6 m curve under 2 m, 3 m curve at 2 m and over), and `crib_gabion`,
+  `timber_pole_post_1992` and `engineered` the 3 m curve for both (types renamed
+  2026-10-08, `retaining-wall-types.csv`). The PGA median is scaled by the wall's own
   `wall_position`, 0.85 for a wall retaining fill and 1.15 for a cut
   (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`); the wall's position is
   read from the drawn wall, not the polygon's, which sets the wall state and

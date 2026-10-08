@@ -316,9 +316,9 @@ source = "slope_elements.py (BETA_GROW_ANGLE_DEG); instability_zones.py (keep_al
 id = "LS-A36"
 step = "faces"
 title = "The urban domain is the whole DEM inside the coastline"
-text = "Step 12 finds faces everywhere on the DEM, masked only by the LINZ coastline; neither the {URBAN_BUILDING_DISTANCE_M} m building buffer (URBAN_BUILDING_DISTANCE_M, read only by the superseded step 6) nor the NLM flatland mask is applied. The status Approach still says 'within 100 m of a building'."
+text = "Step 12 finds faces everywhere on the DEM, masked only by the LINZ coastline; neither the 100 m building buffer of the old step 6 (removed 2026-10-08, with its URBAN_BUILDING_DISTANCE_M constant) nor the NLM flatland mask is applied. The status Approach still says 'within 100 m of a building'."
 status = "check"
-source = "gen_urban_slope_faces.py; constants (URBAN_BUILDING_DISTANCE_M); hazard/landslide/status.md"
+source = "gen_urban_slope_faces.py; hazard/landslide/status.md"
 
 [[assumptions]]
 id = "LS-A37"
@@ -334,7 +334,7 @@ source = "slope_polygons.py (BETA_MIN_EVACUATED_WIDTH_H, BETA_MIN_EVACUATED_WIDT
 id = "LS-A38"
 step = "zones"
 title = "Evacuated width and depth by face type"
-text = "Each face type's own width rule, which applies only where it is wider than the LS-A37 minimum, and with today's values it never is: a wall wedge H·tan(45 − φ′/2) on φ′ 42° (0.45 H); a fill bank {BETA_FILL_BANK_WIDTH_H} H (cases 0.25 and 0.65 H); a cut or natural bank the T-44 band of 0.5 m, or 1 m above 30°. Depth: planar slip for a wall, the fill thickness for a fill bank, {COLLUVIUM_DEPTH_M} m colluvium for a cut or natural bank."
+text = "Each face type's own width rule, which applies only where it is wider than the LS-A37 minimum, and with today's values it never is: a wall wedge H·tan(45 − φ′/2) on φ′ 42° (0.45 H); a fill bank {BETA_FILL_BANK_WIDTH_H} H (cases 0.25 and 0.65 H); a cut or natural bank the T-44 band of 0.5 m, or 1 m above 30°. Depth: planar slip for a wall, the same slip no deeper than the fill thickness for a fill bank (the lead, 2026-10-08), {COLLUVIUM_DEPTH_M} m colluvium for a cut or natural bank."
 status = "pending"
 source = "slope_polygons.py (element_depth_m, BETA_FILL_BANK_WIDTH_H, COLLUVIUM_DEPTH_M); faces plan phase 3"
 
@@ -358,17 +358,26 @@ source = "slope_polygons.py (STACK_DOMINANT_*, BETA_FACING_APART_DEG); faces pla
 id = "LS-A41"
 step = "zones"
 title = "Runout by Hunter and Fell's travel angles"
-text = "From the crest: where the ground below the toe is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper (read over {BETA_DOWNSLOPE_WINDOW_H} H), H/L = 0.77 tan α2 + 0.087, which runs on down the slope; otherwise H/L = 0.78 (tan α_cut)^0.5 on the face's angle, no steeper than {BETA_MAX_CUT_ANGLE_DEG}°. Replaces the de Vilder dry reach angle, which stopped every face flatter than about 42° at its toe. Held to {BETA_MAX_RUNOUT_H} H, to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, and to at least {BETA_MIN_RUNOUT_M} m; one median length swept along the toe; no barriers. See RW-A21."
+text = "From the crest: where the ground below the toe is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper (read over {BETA_DOWNSLOPE_WINDOW_H} H), H/L = 0.77 tan α2 + 0.087, which runs on down the slope; otherwise H/L = 0.78 (tan α_cut)^0.5 on the face's angle less the {BETA_DEM_RUN_SMEAR_M} m of run the DEM adds, no steeper than {BETA_MAX_CUT_ANGLE_DEG}°, laid out from the face's own toe. Replaces the de Vilder dry reach angle, which stopped every face flatter than about 42° at its toe. Held to {BETA_MAX_RUNOUT_H_FLAT}, {BETA_MAX_RUNOUT_H_MODERATE} or {BETA_MAX_RUNOUT_H_STEEP} H (ground below the toe under {BETA_MODERATE_DOWNSLOPE_DEG}°, to {BETA_STEEP_RUNOUT_DOWNSLOPE_DEG}°, steeper); the travel run held to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, then the seismic distance of the polygon's Kingsbury zone added before the height cap (0.5, 0.5, 1, 2 and 3 m for very low to very high; LS-A61); one median length swept along the toe; no barriers. See RW-A21."
 status = "decided"
 decided = "the lead, 2026-10-07"
 see = "RW-A21"
-source = "slope_polygons.py (BETA_MAX_RUNOUT_H, BETA_MIN_DEPOSIT_DEPTH_M, BETA_MIN_RUNOUT_M)"
+source = "slope_polygons.py (max_runout_h, BETA_MIN_DEPOSIT_DEPTH_M, BETA_SEISMIC_RUNOUT_M)"
+
+[[assumptions]]
+id = "LS-A61"
+step = "zones"
+title = "A seismic distance by Kingsbury zone"
+text = "Added to the travel angle's run past the toe, not by SRSS: 0.5 m very low and low, 1 m moderate, 2 m high, 3 m very high, set loosely for a Mw 7.5, 0.7 g earthquake because the zones are one geometry per world, not per earthquake. Replaces the 1 m strip every failure left; overrides the deposit depth cap; held to the height cap. The zone is scored in step 12, as step 8 scores it. A Newmark displacement (Jibson 2007) at that shaking is centimetres to about a metre, so the values are judgement. Pilot world 0: 18% of polygons at their height cap, 57% of those faces under 1 m."
+status = "decided"
+decided = "the lead, 2026-10-08"
+source = "slope_polygons.py (BETA_SEISMIC_RUNOUT_M, inundated_length_m)"
 
 [[assumptions]]
 id = "LS-A42"
 step = "zones"
 title = "A deposit spreads back over its own scar"
-text = "Until it is no deeper than {BETA_MAX_DEPOSIT_DEPTH_H} H or {BETA_MAX_DEPOSIT_DEPTH_SOURCE} times its source depth. The lead asked for the fix; the two limits are proposals. 4,951 of 6,110 polygons spread back, 966 over their whole scar."
+text = "Until it is no deeper than {BETA_MAX_DEPOSIT_DEPTH_H} H or {BETA_MAX_DEPOSIT_DEPTH_SOURCE} times its source depth. The lead asked for the fix; the two limits are proposals. 3,138 of 5,850 polygons spread back, 72 over their whole scar."
 status = "beta"
 source = "slope_polygons.py (BETA_MAX_DEPOSIT_DEPTH_H, BETA_MAX_DEPOSIT_DEPTH_SOURCE)"
 
@@ -486,7 +495,7 @@ source = "face_polygons (BETA_OFF_MAP_GROUND)"
 id = "LS-A56"
 step = "faces"
 title = "Steps 6 and 7 are superseded, but step 6 still runs"
-text = "Banded slope and aspect patches had no published basis; step 12's zones replaced step 7's polygons on 2026-10-06. gen_hazard.main still runs step 6, whose output nothing reads, and the s9 method still says main_urban runs after steps 7 and 8."
+text = "Banded slope and aspect patches had no published basis; step 12's zones replaced step 7's polygons on 2026-10-06, and steps 6 and 7 were removed on 2026-10-08."
 status = "check"
 source = "gen_hazard.py; s9_urban_slope_realisation_method.md; step 12 plan phase 5"
 
@@ -520,7 +529,7 @@ source = "ground_map.py; hazard/landslide/status.md"
 id = "LS-A60"
 step = "zones"
 title = "An unwalled bank evacuates far more than a walled face"
-text = "A walled face is cut on a planar slip, with a median depth of about 0.2 m and about 10 m³ on the pilot. With no wall, the same element is a bank that takes the fill thickness or {COLLUVIUM_DEPTH_M} m of cover: medians of 2.0 m and about 100 m³ on fill, 1.5 m and about 180 m³ elsewhere. The widths are the same, because the floor sets them all. So drawing a wall shrinks the ground a failure takes, while its curve makes failure more likely. Whether that is the intended trade has not been decided."
+text = "A walled face is cut on a planar slip, with a median depth of about 0.2 m and about 10 m³ on the pilot. With no wall, the same element is a bank: on fill the same slip, no deeper than the fill (since 2026-10-08; it took the whole fill thickness, a median of 2.0 m, before), elsewhere {COLLUVIUM_DEPTH_M} m of cover, a median of about 180 m³. The widths are the same, because the floor sets them all. So drawing a wall shrinks the ground a failure takes, while its curve makes failure more likely. Whether that is the intended trade has not been decided."
 status = "check"
 source = "slope_polygons.py (element_depth_m, planar_depth_m); urban-slope-zones-{walled,bare}-pilot medians, 2026-10-07"
 

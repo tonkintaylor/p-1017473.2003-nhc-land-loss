@@ -94,8 +94,8 @@ def wall_at(row, column, length_m=20.0):
 
 
 # The synthetic wall types: MODERN takes the height class's median, OLD 0.7 of it.
-MODERN = "block_rc_cantilever"
-OLD = "gravity_masonry"
+MODERN = "concrete_block"
+OLD = "brick_rock"
 
 # rw_id, cell, size class, wall type, flat land. The sloping walls must not be
 # drawn; the last flat wall lies outside every grid.
@@ -139,8 +139,8 @@ def wall_population():
 
 
 # The synthetic wall types: MODERN takes the height class's median, OLD 0.7 of it.
-MODERN = "block_rc_cantilever"
-OLD = "gravity_masonry"
+MODERN = "concrete_block"
+OLD = "brick_rock"
 
 
 def wall_table():

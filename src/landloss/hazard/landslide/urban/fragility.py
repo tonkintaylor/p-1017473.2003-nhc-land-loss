@@ -639,8 +639,8 @@ def sloping_walls(walls: pd.DataFrame) -> pd.DataFrame:
     polygon whose edge line drew one stays in the ``no_wall`` state; taking it
     here as well would draw the same wall twice against two demands. A wall
     with no line is dropped too: a merge treats two nulls as equal, so it would
-    otherwise land on every polygon without a line (step 6 never writes one,
-    but a hand-built frame might).
+    otherwise land on every polygon without a line (exposure rw step 6 never writes
+    one, but a hand-built frame might).
 
     Args:
         walls: The world's drawn walls, carrying ``wall_line_id`` and
@@ -666,7 +666,9 @@ def drawn_edge_walls(
     polygon its wall, and every such wall fails with the polygon.
 
     Args:
-        polygons: The step 7 polygons, carrying ``wall_line_id`` and
+        polygons: The polygons (step 12's zones, shaped by
+            :mod:`~landloss.hazard.landslide.urban.face_polygons`; the old
+            step 7 polygons were removed 2026-10-08), carrying ``wall_line_id`` and
             ``wall_line_ids``.
         walls: The walls a polygon may take (:func:`sloping_walls`), one per
             ``wall_line_id``.
@@ -712,8 +714,9 @@ def assign_fragility(
     The polygon takes the curve, ``rw_id``, type and size class of the first
     such line in edge order (longest shared edge first, :func:`drawn_edge_walls`),
     and the state of its own ``wall_position``, the position of the line
-    sharing its longest edge, because step 7 fixed one wall geometry per
-    polygon. The model carries that line as ``wall_line_id`` and every edge
+    sharing its longest edge, because the old step 7 polygons (removed
+    2026-10-08) fixed one wall geometry per polygon. The model carries that line
+    as ``wall_line_id`` and every edge
     line that drew a wall as ``wall_line_ids``, so step 9 can give each of
     those walls the polygon's outcome. It then sets the wall state, picks the
     state's fixed
@@ -733,8 +736,9 @@ def assign_fragility(
             whose wall line is the polygon's wall unit and whose geometry is
             already the world's (one ``evacuated``, ``inundated`` and
             ``imminent`` column, and ``depth_evacuated_m`` and
-            ``depth_inundated_m``); or step 7's polygons (contract section
-            3.6), carrying every state's geometry for the state to pick.
+            ``depth_inundated_m``); or the old step 7 polygons (contract section
+            3.6, removed 2026-10-08), carrying every state's geometry for the
+            state to pick.
         walls: Every wall exposure step 6 drew in this world, before the
             claim and coverage filters (``drawn_walls_path``, contract section
             3.7), carrying ``rw_id`` (null on a wall that is not insured),

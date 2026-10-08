@@ -118,6 +118,12 @@ WCC_FILL_AREAS_LAYER_ID = 125311
 # MBIE-funded SLIDE programme, mirrored onto the T+T instance for this study.
 GNS_SLIDE_MORPHOLOGY_LAYER_ID = 125308
 
+# https://ttgroup.koordinates.com/layer/125317-manuallydefinedretainingwalls/
+# Retaining walls T+T mapped by hand from aerial imagery for this study, as
+# lines: 71 walls, 1.1 km, over the Wellington pilot only (published
+# 2026-09-25). Read beside the GNS mapped walls as a second mapped wall source.
+TT_MANUAL_WALLS_LAYER_ID = 125317
+
 # https://ttgroup.koordinates.com/layer/125309-gns-slide-morphological-data-genesis/
 # The companion polygon layer from the same study: the process that formed each
 # piece of ground -- cut slope, fill body, landfill, landslide, and so on.
@@ -356,13 +362,6 @@ BASE_SEED = 1017473
 # because whether a wall exists is not something the earthquake decides.
 EXPOSURE_BASE_SEED = 2003
 
-# The urban slope model runs within this distance of a LINZ building outline,
-# off the NLM flatland.
-URBAN_BUILDING_DISTANCE_M = 100.0
-
-# The cell sizes the urban failure candidates are delineated at; nesting across
-# them is kept.
-URBAN_SCALES_M = (1, 3, 10, 30)
 
 # A candidate wall line with a DEM face lower than this is not modelled.
 MIN_WALL_HEIGHT_M = 0.5
@@ -405,11 +404,6 @@ BETA_GNS_WALL_UNIT_FLOOR = 0.95
 # INTERIM: 0.8 until 2026-10-07, when the lead cut it to 0.70 (a first cut to
 # 0.48 was too aggressive, the lead the same day).
 BETA_GNS_ONLY_WALL_PROBABILITY = 0.70
-# What exposure rw step 6's line candidates (landloss.exposure.rw.wall_probability)
-# keep of their probability on a rock cut: a rock cut stands unsupported
-# (Wellington greywacke cuts stand at 55 to 75 degrees, nzgs_2025_torlesse) and
-# is claimed for spalling or slides rather than wall failure. Replaced by T-50.
-BETA_ROCK_CUT_FACTOR = 0.3
 
 # Multiplier on every urban fragility median by config.URBAN_RATE. Medium is
 # 1.0 by definition; low and high are placeholders to be set by the anchoring
@@ -432,8 +426,6 @@ WALL_LINE_ID_PREFIX = "WL"
 WALL_UNIT_ID_PREFIX = "WU"
 # Urban failure polygon ids, SP<7 digits>.
 SLOPE_ID_PREFIX = "SP"
-# Urban failure candidate ids, UC<7 digits>.
-CANDIDATE_ID_PREFIX = "UC"
 # Ground map polygon ids, GM<7 digits>.
 GROUND_ID_PREFIX = "GM"
 # Slope unit ids, SU<7 digits>.

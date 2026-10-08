@@ -49,7 +49,14 @@ coverage filter, the landslide footprint intersection and the settlement read.
 A property with two or three walls is simply a property with two or three
 candidate lines that drew, each with its own height and condition.
 
-### Phase 2a — The candidate lines (`gen_wall_lines.py`, complete)
+### Phase 2a — The candidate lines (`gen_wall_lines.py`, complete, removed 2026-10-08)
+
+Removed 2026-10-08 with the old candidate method: `gen_wall_lines.py`,
+`fig_wall_lines.py`, the line builders in `landloss.exposure.rw.lines` and the
+`wall-lines*.geoparquet` output are gone, along with landslide steps 6 and 7
+that they read and fed. `lines.py` keeps the mapped and cut/fill type names,
+the wall positions and `step_height_m`, which step 12's wall units use. The
+items below are history.
 
 Candidate lines come from geometry that marks where a wall could be
 (`landloss.exposure.rw.lines`, contract sections 3.5 and 7.8):
@@ -122,7 +129,11 @@ Candidate lines come from geometry that marks where a wall could be
       than moved whole. Replace with a whole-line snap when step 7's
       reconciliation shows it matters.
 
-### Phase 2b — A probability per line (`gen_wall_probability.py`, complete)
+### Phase 2b — A probability per line (`gen_wall_probability.py`, complete, per-line probability removed 2026-10-08)
+
+The per-line probability (`line_wall_probability`, `wall_probability_table`,
+the `BETA_SOURCE_PROBABILITY` priors) was removed on 2026-10-08 with the lines;
+the probability is now on step 12's wall units. The items below are history.
 
 Each line takes a probability from what the lines step read onto it
 (`landloss.exposure.rw.wall_probability`, contract sections 3.7 and 7.9):
@@ -275,12 +286,12 @@ here, per property:
       (`table_urban_slope_wall_checks.py`); no calibration until **T-50**.
 - [ ] Walls on the flat land: every unit is a face of sloping ground, so
       `is_flatland` is False throughout.
-- [ ] Landslide step 8's edge join reads `wall_line_id` against the step 7
-      line ids; the drawn walls now carry wall unit ids, so it matches none
-      until steps 8 and 9 read step 12's zones (step 12 plan, phase 5).
-- [ ] Remove `gen_wall_lines.py`, `fig_wall_lines.py` and the line
-      probability once nothing reads them (landslide step 7 and the chain test
-      do today).
+- [x] Landslide step 8's edge join reads `wall_line_id` against the step 7
+      line ids; the drawn walls now carry wall unit ids, so steps 8 and 9 read
+      step 12's zones instead (2026-10-06).
+- [x] Remove `gen_wall_lines.py`, `fig_wall_lines.py` and the line
+      probability once nothing reads them (done 2026-10-08, with landslide
+      steps 6 and 7).
 
 The earlier text of this phase, from the free-face faces layer, follows.
 (`.agents/plans/building-face-based-urban-slope-polygons.md`, phases 1 and 2),

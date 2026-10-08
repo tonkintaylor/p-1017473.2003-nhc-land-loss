@@ -1,8 +1,7 @@
 """Tests for get_source_mat: a read-only, unversioned SourceMaterial fetch.
 
-Unlike the DATA_VERSION store, there is no save side and no local-only working
-mode to consider -- these tests only cover fetching from the SOURCE_MATERIAL_DIR
-stand-in and caching locally.
+Unlike the DATA_VERSION store, there is no save side. In local-only working
+mode a cached copy is used without checking the SOURCE_MATERIAL_DIR stand-in.
 """
 
 import time
@@ -77,11 +76,10 @@ def test_get_source_mat_without_copy_to_local_reads_straight_from_t(
     assert resolved == base_path
 
 
-def test_get_source_mat_ignores_local_only_working_mode(
+def test_get_source_mat_in_local_mode_fetches_an_uncached_file_from_t(
     configured: Path, source_material_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Local-only working mode has no bearing on SourceMaterial -- it still
-    fetches from and caches against the T: stand-in."""
+    """In local-only working mode a file with no cached copy still comes from T:."""
     monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_MODE", "True")
     monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_VERSION", "scratchpad")
     _write(source_material_dir / "loss.csv", "a\n")
@@ -89,3 +87,21 @@ def test_get_source_mat_ignores_local_only_working_mode(
     resolved = ts.get_source_mat("loss.csv")
 
     assert resolved.read_text() == "a\n"
+
+
+def test_get_source_mat_in_local_mode_uses_the_cache_without_checking_t(
+    configured: Path, source_material_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In local-only working mode a cached copy is returned even when T: holds a
+    newer file, so a fully cached run never touches T:."""
+    _write(source_material_dir / "loss.csv", "old\n")
+    cached = ts.get_source_mat("loss.csv")
+    time.sleep(0.05)
+    _write(source_material_dir / "loss.csv", "new\n")
+    monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_MODE", "True")
+    monkeypatch.setenv("TTDRIVE_SYNC_LOCAL_VERSION", "scratchpad")
+
+    resolved = ts.get_source_mat("loss.csv")
+
+    assert resolved == cached
+    assert resolved.read_text() == "old\n"

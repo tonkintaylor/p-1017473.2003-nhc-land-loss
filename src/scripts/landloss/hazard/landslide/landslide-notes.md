@@ -5,6 +5,14 @@ was condensed for review, so that nothing it recorded is lost. `status.md` is
 the current page and points into this one by section; where the two disagree,
 `status.md` is current. This file is not kept up to date.
 
+Removed 2026-10-08: landslide steps 6 and 7 (the urban slope candidates and
+polygons, `landloss.hazard.landslide.urban.delineation` and the reconcile, split
+and snap code in `urban.geometry`), the step 3 layers only they read (face
+heights, profile curvature, 20 m topographic position, vegetation height) and
+the exposure candidate wall lines. The urban polygons are step 12's zones, read
+by step 8 through `urban.face_polygons`. Everything below that describes those
+steps is the 2026-10-02 state, not the current method.
+
 **Status:** A first cut of the extend-ESNZ route ran over the pilot and the
 full extent and is now reworked onto slope units, not yet rerun; the Nowicki
 Jessee (2018) model is rebuilt and checked; the portfolio of models is proposed
@@ -99,7 +107,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 - [x] Extend step 3 to 1 m, write the aspect per scale, and derive face height,
   cut-and-fill residual, profile curvature, topographic position and
-  vegetation height (`s3_multiscale_slope`).
+  vegetation height (`s3_multiscale_slope`; all but the cut-and-fill residuals
+  and the 100 m topographic position removed 2026-10-08).
 - [x] Build the ground map, one planar partition carrying material,
   modification, prior failure, groundwater and a strength set per piece
   (`s4_ground_map`); QMAP and the NZGD boreholes are not read.
@@ -107,10 +116,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   `r.slopeunits`, on the repository's own flow routing (`s5_slope_units`).
 - [x] Delineate the urban failure candidates at 1, 3, 10 and 30 m by banded
   connected components within 100 m of a building (`s6_urban_slope_candidates`);
-  superseded by the faces below.
+  superseded by the faces below, removed 2026-10-08.
 - [x] Reconcile the candidates to the wall lines and fix each polygon's
   evacuated, inundated and imminent geometry per wall state
-  (`s7_urban_slope_polygons`); superseded by the faces below.
+  (`s7_urban_slope_polygons`); superseded by the faces below, removed
+  2026-10-08.
 - [x] Run the urban chain over the pilot end to end (the lead, 2026-10-02); what
   it showed is the context of `.agents/plans/building-face-based-urban-slope-polygons.md`.
 - [>] Find faces, crest to toe, once from the 1 m DEM as a static layer, by
@@ -318,8 +328,9 @@ inputs, and only the step 3 DEM, slope and aspect run over the pilot:
 
 - `steps/s3_multiscale_slope/` builds the DEM, slope and aspect at 1, 3, 10,
   30, 50 and 100 m from one 1 m LINZ fetch, and `gen_terrain_derivatives.py`
-  writes face height, cut-and-fill residual, profile curvature, topographic
-  position and vegetation height (from a new LINZ 1 m surface model reader,
+  wrote face height, cut-and-fill residual, profile curvature, topographic
+  position and vegetation height (only the cut-and-fill residuals and the 100 m
+  topographic position remain since 2026-10-08; the rest came from a new LINZ 1 m surface model reader,
   `landloss.io.readers.get_dsm`). `gen_multiscale_slope.py` is run over the
   pilot (the DEM, slope and aspect at all six cell sizes are in
   `temp/hazard/landslide/`); `gen_terrain_derivatives.py` and the two figure
@@ -336,11 +347,11 @@ inputs, and only the step 3 DEM, slope and aspect run over the pilot:
   (`landloss.hazard.landslide.slope_units`, on `hydrology.route_grid`; pysheds
   is not used), with the unit count's sensitivity to the channel threshold
   printed.
-- `steps/s6_urban_slope_candidates/` writes
+- (Removed 2026-10-08.) `steps/s6_urban_slope_candidates/` writes
   `urban-slope-candidates[-pilot].geoparquet`, the banded connected components
   at each scale with the terrain, distance and ground map attributes on each
   (`landloss.hazard.landslide.urban.delineation`).
-- `steps/s7_urban_slope_polygons/` writes
+- (Removed 2026-10-08.) `steps/s7_urban_slope_polygons/` writes
   `urban-slope-polygons[-pilot].geoparquet`: candidates snapped and split to
   the exposure wall lines, `slope_id`, the wall on each edge, the nesting
   parent, the Kingsbury rating and zone, the amplification factor and the
