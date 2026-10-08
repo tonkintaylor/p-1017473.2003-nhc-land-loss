@@ -1467,6 +1467,13 @@
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Liquefaction repair rate review 2026-10-08",
       "Status": "Open"
+    },
+    {
+      "ID": "L-73",
+      "Limitation": "The loss viewer chooses which properties are uninsured at random, fixed per property, to meet the insurance penetration (L-10). Real uninsured homes are unlikely to be random and may cluster by suburb, so totals hold but the spread of losses between suburbs, and between NHC and homeowners, may not.",
+      "Affects": "loss viewer",
+      "Source": "Loss viewer review 2026-10-09",
+      "Status": "Open"
     }
   ],
   "Improvements": [
