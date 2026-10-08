@@ -26,10 +26,10 @@ combined realisation landed.
 
 Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
 
-- [x] Read landslide step 9's combined realisation
+- [x] Read landslide step 6's combined realisation
       (`combined_realisation_path(world_id, realisation_id, extent=...)`), the
       large model's polygons and the urban slope model's together, in place of
-      step 1's large-model file.
+      landslide step 3's large-model file.
 - [x] Take the land classes from `landloss.hazard.landslide.land_class`
       through `damaged_area`, and ignore the urban model's third class,
       `imminent land`, until **T-45** decides how it is settled
@@ -39,7 +39,7 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
       `world_id` after `realisation_id`.
 - [x] Run the step end to end on synthetic inputs in
       `tests/landloss/vul/landslide/land/test_landslide_land_damage_step.py`.
-- [ ] Rerun the pilot once exposure step 5 and landslide steps 1 to 9 have
+- [ ] Rerun the pilot once exposure step 5 and landslide steps 1 to 6 have
       been run for world 0, and record the counts in the method document.
 
 ## Phase 2 — Pricing

@@ -11,7 +11,7 @@ specifically wanted are marked **Reviewer:**.
 
 Every urban failure polygon carries a lognormal fragility on PGV, median
 `theta` and dispersion `beta`
-(`landloss.hazard.landslide.urban.fragility`, landslide step 8). A polygon
+(`landloss.hazard.landslide.urban.fragility`, landslide step 5). A polygon
 with a wall takes the wall's curve by size and condition; a polygon without
 one takes a localised curve whose median falls with its Kingsbury rating. All
 the numbers that set these curves are placeholders:
@@ -122,13 +122,13 @@ zone [kingsbury_1995], and the forecasts read the same way: the SH58 cuts are
 of a zone is `sum(p_i x A_i) / sum(A_i)` over its face polygons, so it can be
 compared with an anchor whatever size one polygon is. A per-polygon anchor
 changes meaning every time the face segmentation changes. The per-polygon
-`p_fail` stays what step 9 draws on.
+`p_fail` stays what landslide step 6 draws on.
 
 ### Question 2: the net rate on the ground
 
 No change from the skeleton. A step inside a bank, or a segment beside its
 neighbour, both add to the evacuated share. The share in question 1 is
-counted after step 9's absorption, so nested failures are counted once.
+counted after landslide step 6's absorption, so nested failures are counted once.
 
 ### Question 3: evidence at 1 to 2 g
 

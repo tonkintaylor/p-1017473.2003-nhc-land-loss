@@ -1,10 +1,9 @@
 """Run settings for running the whole pipeline end to end.
 
-`gen_all.py` beside this runs hazard, exposure, the hazard module's urban pass
-and vul in that order, each through its own `gen_<module>.py`. The three
-settings here override every module's own, so the whole pipeline runs over one
-extent, one set of exposure worlds and one set of realisations and ends at the
-tables the loss module reads.
+`gen_all.py` beside this runs ground, exposure, hazard and vul in that order,
+each through its own `gen_<module>.py`. The settings here override every
+module's own, so the whole pipeline runs over one extent, one set of exposure
+worlds and one set of realisations and ends at the tables the loss module reads.
 """
 
 # The extent to run over: "wlg-pilot" for the small Wellington pilot box,
@@ -27,10 +26,10 @@ REALISATION_IDS = [0]
 # Where to start the run: None runs everything. To start part-way -- after a
 # failure, or to rerun only what follows a change -- name the module and the
 # start of the step's name as the run prints them, for example
-# {"module": "hazard", "step": "landslide s13"} or
+# {"module": "ground", "step": "s4"} or
 # {"module": "exposure", "step": "rw s6, wall population"}. Every module and
 # step before it is skipped and listed; the outputs they would have written must
-# already be on disk for the same extent. The modules run in the order hazard,
-# exposure, hazard urban, vul. A name that matches nothing stops the run with
+# already be on disk for the same extent. The modules run in the order ground,
+# exposure, hazard, vul. A name that matches nothing stops the run with
 # the list of steps.
 START_FROM = None

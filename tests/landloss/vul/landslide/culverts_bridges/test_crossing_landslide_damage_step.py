@@ -20,7 +20,7 @@ from landloss.hazard.landslide.urban.realisation import COMBINED_COLUMNS
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population import (
     gen_crossing_population,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation,
 )
 from scripts.landloss.vul.landslide.culverts_bridges.steps.s11_crossing_landslide_damage import (  # noqa: E501

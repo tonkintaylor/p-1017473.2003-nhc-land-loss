@@ -7,7 +7,7 @@ import xarray as xr
 from shapely.geometry import box
 
 from landloss.hazard.landslide.models.kritikos_2015 import evaluation
-from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015 import (
+from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015 import (
     gen_kritikos_2015_transfer_function as fit,
 )
 from scripts.landloss.hazard.landslide.validations.kritikos_2015 import event_inputs

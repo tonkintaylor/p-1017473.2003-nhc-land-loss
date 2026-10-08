@@ -5,20 +5,21 @@ large failures placed in slope units on the supplied ESNZ grid, and urban
 failures on slopes near buildings, coupled to the retaining walls. The urban
 result fails far too much ground; its polygons are being rebuilt from faces
 and its fragilities are placeholders until they are anchored. The first part
-of that rebuild, steps 3 to 5 and the faces plan up to the wall candidates, was
+of that rebuild, ground steps 1 and 2, landslide step 1 and the faces plan up to
+the wall candidates, was
 reviewed against the GNS literature review (`temp/gns_review/`) on 2026-10-02
 and is ready to build once the lead settles the step test (Next, 1). The
-second part, the failure polygons, steps 8 and 9 and the anchoring skeleton,
+second part, the failure polygons, landslide steps 5 and 6 and the anchoring skeleton,
 was reviewed the same day, and so were the large failures; their proposals
 wait on the lead (Next, 3 and 10). The portfolio of large models is proposed,
 not agreed; its Hancox model 3 ran over the pilot on 2026-10-06 and placed no
-large failure there, and from 2026-10-07 it passes its full area to step 1
+large failure there, and from 2026-10-07 it passes its full area to landslide step 3
 (`URBAN_AREA_SHARE` 0). The
 slope elements and polygons library passed its toy-terrain
 proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
-2026-10-03; the pipeline step (stage D3, step 12) ran over the pilot on
+2026-10-03; the pipeline step (stage D3, then step 12, now ground step 4) ran over the pilot on
 2026-10-04, and its wall units, their probability and a draw per exposure
-world on 2026-10-05; the per-zone fragility is next.
+world on 2026-10-05 (now exposure rw step 6); the per-zone fragility is next.
 
 **Updated:** 2026-10-08
 
@@ -27,15 +28,43 @@ method file under `steps/`, then the code. Detail that used to sit here (the
 three routes, the historical accounts, the open questions about the supplied
 grid) is in `landslide-notes.md` beside this file.
 
+**Where the steps are now (2026-10-08).** The static per-extent ground work left
+this module for the new `ground` module, and the landslide steps were
+renumbered in run order. The pipeline runs ground, exposure, hazard, then vul
+(`gen_all.py`), and the hazard module runs once, after exposure. Landslide keeps
+six steps run by `gen_hazard.py` and two alternative coverage models run by
+hand:
+
+- Landslide step 1, slope units; step 2, Hancox 1997 coverage; step 3, the
+  large-model landslide realisations; step 4, the zones of each exposure world's
+  walls (`s4_wall_zones`); step 5, the urban slope fragility; step 6, the urban
+  slope realisations.
+- Landslide step 7, slope failure susceptibility (the GWRC rebuild), and step 8,
+  Kritikos 2015, are not run by `gen_hazard.py`.
+- Ground step 1, terrain derivatives (was landslide step 3); ground step 2,
+  ground map (was step 4); ground step 3, instability zones (was step 14);
+  ground step 4, slope faces and the siz table (was the faces part of step 12);
+  ground step 5, pif cut and fill (was step 13).
+- Exposure rw step 6 now also builds the wall units and each world's wall draw
+  (was the wall units part of step 12).
+
+The dated entries below keep the step numbers of their day, with a pointer to
+the new number where a reader would otherwise be lost. Old to new: step 1 is
+landslide step 3; step 2 is landslide step 7; step 3 is ground step 1; step 4
+is ground step 2; step 5 is landslide step 1; steps 6 and 7 were deleted; step
+8 is landslide step 5; step 9 is landslide step 6; step 10 is landslide step 2;
+step 11 is landslide step 8; step 12 is split into ground step 4, exposure rw
+step 6 and landslide step 4; step 13 is ground step 5; step 14 is ground step 3.
+
 ## Approach
 
 Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 **Large failures**, above the urban size range (700 m² of source area as built):
 
-- [x] Place large failures in the step 5 slope units on the supplied ESNZ 32 m
+- [x] Place large failures in the landslide step 1 slope units on the supplied ESNZ 32 m
   probability grid, sized by the Kaikōura law [massey_2020], none starting on
-  NLM flatland (step 1, the extend-ESNZ route).
+  NLM flatland (landslide step 3, the extend-ESNZ route).
 - The route beyond that is not chosen, so it carries no mark: extend ESNZ,
   build a new model, or a portfolio of Nowicki Jessee (2018)
   [nowicki_jessee_2018], Kritikos et al. (2015) [kritikos_2015], Hancox et al.
@@ -60,8 +89,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   by volume and failure style [de_vilder_2022].
 - [ ] Add spatial correlation beyond one slope unit.
 
-**Urban failures**, below the split, on the faces step 12 finds in the 1 m DEM
-(the old 100 m building buffer went with step 6 on 2026-10-08) (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`):
+**Urban failures**, below the split, on the faces ground step 4 finds in the 1 m DEM
+(the old 100 m building buffer went with the old step 6 on 2026-10-08) (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`):
 
 - [x] Couple the urban model to the walls: sloping land fails in a large
   landslide, through its wall, or by localised failure; a polygon with a wall
@@ -69,14 +98,14 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   Walls are drawn per exposure world, failures per world and earthquake, each
   polygon on a lognormal fragility on PGV with a low, medium or high rate
   setting.
-- [x] Build the terrain derivatives at 1 to 100 m (step 3), the ground map
-  (step 4) and the slope units (step 5).
-- [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
+- [x] Build the terrain derivatives at 1 to 100 m (ground step 1), the ground map
+  (ground step 2) and the slope units (landslide step 1).
+- [x] Delineate polygons from banded slope and aspect patches (the old steps 6 and 7);
   superseded, because no published method supports it, and removed
   2026-10-08.
 - [~] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
-  static layer, each with its height and overall angle. **Built as step 12
-  (stage D3, 2026-10-04)**, over the pilot. **Seeding revised
+  static layer, each with its height and overall angle. **Built as the old step 12, now
+  ground step 3 (stage D3, 2026-10-04)**, over the pilot. **Seeding revised
   2026-10-04** (the lead rejected the bank seeds): pips (cells that drop
   0.7 m per metre of distance at 1, 3 and 5 cells in one of eight directions,
   from the DEM alone), joined within 2 m into pifs, each tested over all
@@ -94,7 +123,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   [hancox_2013_slope_types]
   (`.agents/plans/building-face-based-urban-slope-polygons.md`).
 - [x] **Class every pif as cut, fill, cut and fill, uncertain or natural
-  ground (step 13, 2026-10-05)**, before the wall probability reads the pifs.
+  ground (now ground step 5, 2026-10-05)**, before the wall probability reads the pifs.
   Each pip is walked down its fall direction to the foot of its face. The
   crest and the foot are then compared against a robust quadratic fitted only
   to the ground off the faces (`landloss.hazard.landslide.pif_cut_fill`).
@@ -104,24 +133,25 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   - Faces within the fit's own scatter are `uncertain`.
   - The method was chosen over a 30 m rolling mean and a plain quadratic in
     `research/cut_fill/pif_cut_fill.md`.
-- [x] **Place the retaining walls on the pifs (step 12, 2026-10-05)**: make
+- [x] **Place the retaining walls on the pifs (ground step 4 and exposure rw step 6, 2026-10-05)**: make
   each wall candidate (a siz or `low_height` pif piece, or a GNS-only piece)
   its own wall unit (the lead, 2026-10-07; joined until then), put a
   points-based prior (the lead, 2026-10-07: verticality, height, length,
-  building distance, setting, step 13 class, rock or soil cut, wall age, the
+  building distance, setting, ground step 5 class, rock or soil cut, wall age, the
   NHC flag; `.agents/plans/wall-probability-points.md`) and the GNS floor on
   each (0.95, GNS-only 0.70), update on the claim reports per property
   (pilot 2026-10-07, after the review: base 0.458 solved for 3,357 expected
   walls, 40% above the interim 2,398), and draw each unit walled
   per exposure world, so the hazard and the exposure share one draw
   (`.agents/plans/placing-retaining-walls-on-pifs.md`). The every-siz-walled
-  and none-walled runs stay as bounds; `gen_hazard.main` runs it.
-- [~] Attach a fragility per polygon (step 8), on step 12's zones of each
+  and none-walled runs stay as bounds; `gen_exposure.main` runs the wall units and draws, and
+  `gen_hazard.main` the zones of each world's walls (landslide step 4).
+- [~] Attach a fragility per polygon (landslide step 5), on landslide step 4's zones of each
   world's wall draw (2026-10-06); built, with placeholder medians,
   dispersion and rate factors until the anchoring
   (`.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, a
   skeleton for the reviewer to develop).
-- [x] Draw the urban failures per world and earthquake (step 9).
+- [x] Draw the urban failures per world and earthquake (landslide step 6).
 - [ ] Run per territorial authority, tiled, with the static layers built once
   (`.agents/plans/running-per-territorial-authority.md`).
 
@@ -136,44 +166,44 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 
 - **The whole chain ran over the pilot on 2026-10-02**, in 67 minutes, 49 of
   them in the old steps 6 and 7 (removed 2026-10-08).
-- **Step 1, large failures:** 7 failures, 0.95 ha, 0.14% coverage of the slope
+- **Landslide step 3, large failures (then step 1):** 7 failures, 0.95 ha, 0.14% coverage of the slope
   units. It rests on placeholders: `BETA_SOURCE_AREA_FRACTION` 0.252,
   `URBAN_AREA_SHARE` 0.25, an ellipse aspect ratio of 2, and sizes from 700 to
   3,000 m². The flat-land mask was added after the run.
-- **Steps 3 to 5:** terrain derivatives, a ground map of 19,275 pieces and 41
+- **Ground steps 1 and 2 and landslide step 1 (then steps 3 to 5):** terrain derivatives, a ground map of 19,275 pieces and 41
   slope units over the pilot. The ground map stops short of the extent the
   other steps use, which left 9,144 candidates without a material; the fix is
   phase 0 of the faces plan.
-- **Steps 6 and 7:** 59,132 candidates and 89,808 polygons, superseded and
+- **The old steps 6 and 7:** 59,132 candidates and 89,808 polygons, superseded and
   removed 2026-10-08.
-- **Steps 8 and 9:** 44% of polygons failed and 36% of the urban domain was
+- **Landslide steps 5 and 6 (then steps 8 and 9):** 44% of polygons failed and 36% of the urban domain was
   evacuated, against the order of 1% the literature gives. Causes: placeholder
   medians below the demand, walls grouped through shared polygons, and the
-  delineation. The wall rule and the step 9 counts by cause were added after
+  delineation. The wall rule and the landslide step 6 counts by cause were added after
   the run; grouping by face waits on the faces.
-- **Changed since the run, and needing a rerun of the pilot from step 3:**
-  step 3 now writes only the two cut-and-fill residuals and the 100 m
+- **Changed since the run, and needing a rerun of the pilot from ground step 1:**
+  ground step 1 now writes only the two cut-and-fill residuals and the 100 m
   topographic position; the face heights, profile curvature, 20 m topographic
-  position and vegetation height went with steps 6 and 7 on 2026-10-08. The
+  position and vegetation height went with the old steps 6 and 7 on 2026-10-08. The
   ground map's two fill changes are built: SLIDE's
   mixed fill classes read their natural material with fill as the
-  modification, and fill reads the GNS modelling set S52 (step 4 plan,
-  phase 2); step 4 needs a rerun to see the fill share fall from 71%. The old
+  modification, and fill reads the GNS modelling set S52 (ground step 2 plan,
+  phase 2); ground step 2 needs a rerun to see the fill share fall from 71%. The old
   `evacuated_depth_m` in `landloss.hazard.landslide.urban.geometry`, which read
   the fill thickness only where the material is a fill material, was removed
-  with steps 6 and 7 on 2026-10-08; the face polygons should read the
+  with the old steps 6 and 7 on 2026-10-08; the face polygons should read the
   modification, not the material.
 - **Literature models:** Nowicki Jessee (2018) is rebuilt and reproduces the
   USGS at Loma Prieta (`validations/nowicki_2018/`); Marc et al. (2016)
   reproduces the paper's fit (`validations/calibration/`); the Hancox
-  relationships, model 3 and the step 10 Wellington coverage run are built.
-  Step 1 is configured to place that coverage directly. None has been run over
-  Wellington. Step 10 already takes each realisation's MM threshold from the
+  relationships, model 3 and the landslide step 2 Wellington coverage run are built.
+  Landslide step 3 is configured to place that coverage directly. None has been run over
+  Wellington. Landslide step 2 already takes each realisation's MM threshold from the
   TS1170.5-derived PGV; its separate Marc amount uses the plan's central
   interface sensitivity rather than final NSHM source geometry.
 - **Kritikos model 2** (`.agents/plans/building-kritikos-2015-landslide-model.md`)
-  is built end to end: step 11 has run over `wlg-pilot` with the real AF250
-  traces and writes H and a coverage raster per realisation, and step 1 reads
+  is built end to end: landslide step 8 (then step 11) has run over `wlg-pilot` with the real AF250
+  traces and writes H and a coverage raster per realisation, and landslide step 3 reads
   it with `COVERAGE_MODEL = "kritikos_2015"`. The paper's
   average memberships are digitised from Figure 5 to about 0.02
   (`context/lit/landslide/kritikos_2015/figures/`); the fuzzy gamma model, the
@@ -195,11 +225,11 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   window and class thresholds are judgements, though the AUC does not depend on
   the window. The fault term lowers Wenchuan's AUC with the GEM faults, which
   bears on the `FAULT_TERM` choice, which the lead has settled as `"mapped"`
-  (2026-10-05); the limitation is in the step 11 method file.
-- **Literature review of the first part, 2026-10-02.** Steps 3 to 5 and the
-  faces plan's phases 0 to 2 were read against the 991 findings of
+  (2026-10-05); the limitation is in the landslide step 8 method file.
+- **Literature review of the first part, 2026-10-02.** Ground steps 1 and 2, landslide step 1 and the
+  faces plan's phases 0 to 2 (then steps 3 to 5) were read against the 991 findings of
   `temp/gns_review/`, and the plans edited in place with citations: the faces
-  plan, the step 3 and step 4 plans, and exposure rw step 6. What it changed:
+  plan, the ground step 1 and ground step 2 plans, and exposure rw step 6. What it changed:
   - the step test now has a published basis, NZGS Figure 35 for rock
     [nzgs_2025_torlesse], checked against the page image; the faces carry an
     overall angle crest to toe, the quantity every Wellington cut criterion is
@@ -209,19 +239,19 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     strength from the GNS analysis set rather than one densifying sample
     [monteith_2020; lyndsell_2019], and the sheared zone west of the
     Wellington Fault as crushed rock [grant_taylor_1964];
-  - faces only on LiDAR, with a source mask from step 3 [de_vilder_2024;
+  - faces only on LiDAR, with a source mask from ground step 1 [de_vilder_2024;
     nzgs_2025_recognition].
 
-  Step 5, the slope units, feeds only the large failures and the review found
+  Landslide step 1, the slope units, feeds only the large failures and the review found
   nothing that moves it. Findings from the first review batch, the SR reports,
   had no independent check, so their numbers are read off the page before
   adoption.
 - **Literature review of the urban polygons, fragility and draw, 2026-10-02**
   (part A of `temp/handoff-remaining-review.md`). Read: faces plan phase 3,
-  steps 8 and 9, the anchoring skeleton, and A-03, A-07, A-08, A-10, A-14 and
+  landslide steps 5 and 6, the anchoring skeleton, and A-03, A-07, A-08, A-10, A-14 and
   A-15. Edited in place: the faces plan (phase 3 rewritten, new phase 4
-  checks), the anchoring skeleton (the reviewer's answers), and the step 8 and
-  9 plans. Every number it relies on from a first-batch report was checked
+  checks), the anchoring skeleton (the reviewer's answers), and the landslide step 5 and
+  6 plans. Every number it relies on from a first-batch report was checked
   against the page, including both de Vilder et al. reach-angle fits against
   the figure images. What it proposes, all for the lead:
   - **long faces cut into segments** of about 1,000 m³ along the contour,
@@ -254,9 +284,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 
   A-07, the circular footprint, is retired for the urban population.
 - **Literature review of the large failures, 2026-10-02** (part B of the
-  handoff). Read: step 1 and its placeholders, the rebuild note's portfolio,
+  handoff). Read: landslide step 3 and its placeholders, the rebuild note's portfolio,
   the Kritikos and Hancox plans, and A-01, A-02, A-04, A-05, A-06, A-09, A-11
-  and A-12. Edited in place: the step 1 plan ("Literature review of the
+  and A-12. Edited in place: the landslide step 3 plan ("Literature review of the
   placeholders"), the rebuild note ("What the literature review says about
   the route"), and the risks of the Kritikos and Hancox plans. Proposals, all
   for the lead:
@@ -274,7 +304,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   - **`BETA_SOURCE_AREA_FRACTION` of about 0.4 to 1.0, not 0.252**, if the
     ESNZ grid keeps the Kaikōura model's definition (a cell fails where its
     centroid lies in a source), which makes its mean probability the
-    coverage. The loss from step 1 would rise by up to four times;
+    coverage. The loss from landslide step 3 would rise by up to four times;
   - **ESNZ as one member, not the base**: GNS's own assessment is that its
     EIL model under-estimates Wellington [lin_2025];
   - **Kaikōura is a low case for the amount**, so it is reported as a test
@@ -320,7 +350,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   sea gave seawalls; the lead confirmed that run-out over flat ground fans
   out. The sites also show very large polygons on weak-rock and fill
   hillsides. The ground map still reads about 74% of the pilot as fill until
-  step 4 is rerun, which inflates the fill results. GNS holds no wall height,
+  ground step 2 is rerun, which inflates the fill results. GNS holds no wall height,
   so wall heights are the DEM's. Figures are in
   `report/hazard/landslide/slope-elements/fig/`; findings and the points for
   the lead are in `research/slope_elements/pilot_example_slope_elements.md`.
@@ -360,9 +390,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
   deprecated and is to be retired; the shared slope table is now the two-band
   one, so the old pilot and toy figure scripts read it too.
-- **Step 12, urban slope faces (stage D3, 2026-10-04).**
-  `steps/s12_urban_slope_faces/gen_urban_slope_faces.py` runs the pipeline over
-  an extent and writes the siz table, the elements and the evacuated,
+- **Step 12, urban slope faces (stage D3, 2026-10-04; since 2026-10-08 split into
+  ground step 4, exposure rw step 6 and landslide step 4).**
+  `ground/steps/s4_slope_faces/gen_slope_faces.py` (then
+  `steps/s12_urban_slope_faces/`) runs the pipeline over
+  an extent and writes the siz table and the elements to `temp/ground/`;
+  `s4_wall_zones/gen_wall_zones.py` writes the evacuated,
   imminent and inundated zones for the two wall scenarios to
   `temp/hazard/landslide/`. It also reads the evidence for a wall onto every
   pif (`landloss.hazard.landslide.wall_candidates`): a mapped GNS wall, cut/fill
@@ -371,36 +404,36 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   candidates of class `low_height`; the whole run takes about 40 s. Against the GNS
   mapping, 63% of mapped wall length has a siz pip within 2 m (67% a pip of any
   pif) and 59% of sharp breaks in slope within 3 m. The checks are in
-  `table_urban_slope_face_checks.py`. Every pif is also tied to its LINZ
+  `table_slope_face_checks.py`. Every pif is also tied to its LINZ
   property (2026-10-05; 2,440 straddle two or more properties, 832 are on road
   parcels), and the 979 stretches of GNS mapped wall with no pip near them
   (8.9 km of 30.7 km) are written as `gns_only` line candidates. The wall
-  placement (2026-10-05; step 12 method file) made 7,248 wall
+  placement (2026-10-05; step 12 method file, now ground step 4 and exposure rw step 6) made 7,248 wall
   units with 3,458 expected walls (3,336 before the claim and NZMM update);
   97% of the mapped wall length is within 2 m of a unit member. In world 0,
   47% of the sizs are walled and the evacuated area is 631,176 m², between
-  the all-walled 640,878 m² and the bare 612,654 m². Since 2026-10-06 steps
-  8 and 9 read each world's zones in place of step 7's polygons, which the
+  the all-walled 640,878 m² and the bare 612,654 m². Since 2026-10-06 landslide
+  steps 5 and 6 (then 8 and 9) read each world's zones in place of the old step 7's polygons, which the
   pipeline no longer builds: a polygon's wall is its element's wall unit, the
-  wall exposure rw step 6 exposes, and step 8 stops if the zones and the
+  wall exposure rw step 6 exposes, and landslide step 5 stops if the zones and the
   drawn walls are not one draw. Not yet run over the pilot; the fragility is
   still the old placeholder, not the per-element one. These counts
   predate the review fixes of 2026-10-05 (spine, corner rule, GNS-only and
-  stacked title property, NZMM weight); step 12 must be rerun.
+  stacked title property, NZMM weight); ground step 4 must be rerun.
   - **Every wall on a siz has a polygon (the lead, 2026-10-06).** A pif needs
     at least three pips (`BETA_MIN_PIF_PIPS`); every element a siz grows is
     kept even where the element keep rule would drop it; the width behind
     every polygon's crest is at least half its height and 1 m
     (`BETA_MIN_EVACUATED_WIDTH_H`, `BETA_MIN_EVACUATED_WIDTH_M`), walled or
-    not. Rerun over the pilot through step 9:
+    not. Rerun over the pilot through landslide step 6 (then step 9):
     6,892 pifs (was 12,015), 4,953 sizs (8,223), 8,729 elements (9,204;
     164 kept only by the siz rule), 5,002 wall units (7,333), 2,609
     expected walls, evacuated 681,973 m² walled, 666,087 m² bare and
     679,143 m² in world 0 (640,878, 612,654 and 632,018 m² before). The
     floor sets every polygon's width on the pilot, so the walled and bare
     widths are now the same. 185 of world 0's 1,570 insured sloping walls
-    have no polygon in step 9 (573 of 2,004 before): 175 GNS-only, 4 on
-    `low_height` pifs and 6 at the DEM margin step 8 leaves out.
+    have no polygon in landslide step 6 (573 of 2,004 before): 175 GNS-only, 4 on
+    `low_height` pifs and 6 at the DEM margin landslide step 5 leaves out.
   - **Buildings, wall lines and boundaries (the lead, 2026-10-06).** Pifs
     with most of their pips in a LINZ building outline are dropped (334 on
     the pilot); each wall unit is one line of at most 3 bends and no
@@ -412,14 +445,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     GNS-only).
   - **Long walls, GNS-only polygons, setting and tall faces (the lead,
     2026-10-06).** A GNS-only unit gets an element and the minimum polygon on its line
-    (`add_line_elements`, in `gen_urban_slope_wall_zones.py`, which now also
+    (`add_line_elements`, in `gen_wall_zones.py`, which now also
     builds the walled and bare bounds); the prior takes 2.0 on a road
     frontage and 1.5 on a property boundary, and tapers from 5 m to 0.1 at
     8 m of face. Pilot: 4,647 units, 2,639 expected walls (2,752 without the
     taper), 99% of pif spine points within 2 m of a wall line, 15 of 1,668
     insured walls with no polygon, 32% of walled units under 1.5 m.
   - **Pif pieces and low-height pifs (the lead, 2026-10-06).** The siz table,
-    step 13 and the wall units use the 20 m pif pieces the growth uses
+    ground step 5 and the wall units use the 20 m pif pieces the growth uses
     (`parent_pif_id` kept; each piece takes its whole pif's siz test), and
     the units of `low_height` pifs get a line element as the GNS-only ones do.
     Pilot: 10,379 pieces of 6,558 pifs, 6,713 units (417 with more than one
@@ -430,8 +463,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     2026-10-06).** The pifs are cut along their spines by the walls' bends
     rule (one implementation, `bend_split`) with a 50 m cap in place of the
     20 m split, and a wall's height is the 80th percentile of its pips' near
-    drops (the lowest cell within 3 m below), read in step 12, not step
-    13's walk to the foot. Pilot: 7,762 pieces, 5,540 units (241 with more
+    drops (the lowest cell within 3 m below), read in ground step 4, not ground step
+    5's walk to the foot. Pilot: 7,762 pieces, 5,540 units (241 with more
     than one line), 3,462 expected walls, 9 units over 5 m (2,013 before),
     23 of 1,963 insured walls with no polygon (22 in the DEM margin), 18% of
     walled units under 1.5 m against 54%; elements over 50 m long rose from
@@ -465,7 +498,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     whose line finds no free cell gets the band `max(0.5 H, 1 m)` behind its
     line drawn as geometry, overlapping if it must (`forced_polygons`): 5 on
     the pilot (1 with the uphill side unknown, 4 overlapping). No candidate
-    is left without a polygon; the 21 insured walls with none in step 9 lie
+    is left without a polygon; the 21 insured walls with none in landslide step 6 lie
     outside the shaking extent.
   - **Contained runout and imminent ground (the lead, 2026-10-07).** The fill
     flow slide line ran 724 of the pilot's polygons more than 20 m (to 266 m),
@@ -489,7 +522,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     steep ground (median runout 6.0 m), 77% still at the 1 m strip (faces
     onto level ground), 13% at the 3 H cap, the longest 36 m; inundated
     ground below the toe 284,081 m² (125,000 before), 43% of the inundated
-    area on the scar. Step 9 world 0: 210,173 m² of inundated land
+    area on the scar. Landslide step 6 world 0: 210,173 m² of inundated land
     dissolved.
   - **Fill bank depth, runout caps and the DEM's face angle (the lead,
     2026-10-08).** A fill bank takes the slip plane from its toe, no deeper
@@ -500,26 +533,26 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     out from the face. World 0: 5,848 polygons, 60% at the 1 m strip, 13% at
     the cap; 35% of the inundated area on the scar (43% before), 74
     polygons over their whole scar (966); 175,995 m² of inundated land
-    dissolved in step 9.
+    dissolved in landslide step 6.
   - **Seismic distance by Kingsbury zone (the lead, 2026-10-08).** Added to
     the travel run in place of the 1 m strip, then capped: 0.5 m very low
     and low, 1 m moderate, 2 m high, 3 m very high, for a Mw 7.5, 0.7 g
-    earthquake. The zone is now scored in step 12 before the runout (it
-    agrees with step 8's on 99.9% of the pilot's polygons). World 0: median
+    earthquake. The zone is now scored in landslide step 4 before the runout (it
+    agrees with landslide step 5's on 99.9% of the pilot's polygons). World 0: median
     runout 1.9 m (90th percentile 4.5 m), 18% of polygons at their height
     cap (57% of those under 1 m high; 34% of those on 20° to 35° ground), 20%
     of the inundated area on the scar; 185,012 m² of inundated land
-    dissolved in step 9.
+    dissolved in landslide step 6.
   - **Smoothed zone outlines (the lead, 2026-10-08).** Every zone is drawn
     through the midpoints between cell centres and rounded, not along the
     cell edges, and its area is the drawn area: evacuated −0.5%, inundated
-    −1.6%, imminent −12.5% on the pilot. Step 9 world 0 dissolves 303,203 m²
+    −1.6%, imminent −12.5% on the pilot. Landslide step 6 world 0 dissolves 303,203 m²
     evacuated, 53,620 m² imminent and 183,300 m² inundated land. The
     imminent zone now takes the evacuated outline as its inner edge, which
     closes the gaps between them (+0.4% against its cells on the world 0
     cells); the pilot has not been rerun with it.
-- **Step 13, pif cut and fill (2026-10-05).**
-  `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
+- **Step 13, pif cut and fill (2026-10-05; now ground step 5).**
+  `ground/steps/s5_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of ground step 4.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
   table on `pif_id`, and the pips with their feet.
   - **Pilot classes (all 12,015 pifs):** 2,198 cut, 1,472 cut and fill, 768
@@ -534,42 +567,42 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
       SLIDE and WCC polygons stay the source for those.
   - **By ground:** weak rock pifs are 31% cut against 37% in soil-like
     ground.
-  - **For the wall probability (2026-10-06):** step 12's wall units read
+  - **For the wall probability (2026-10-06):** exposure rw step 6's wall units read
     each unit's class into the prior (fill and cut and fill raised, a cut in
     rock over 2.5 m and natural ground lowered, uncertain and unknown
     neutral) in place of the ground map's fill, and each pif's wall height
     as the 80th percentile of its pips' drops to the foot of the face, which
     also sets the prior's height band (the siz table's band is unchanged). Not
-    yet rerun over the pilot. `gen_hazard.main` runs step 13 between step
-    12's faces and wall units.
+    yet rerun over the pilot. `gen_ground.main` runs ground step 5 between ground step 4's faces and
+    exposure rw step 6's wall units.
 
 ## Next
 
 1. **Settled 2026-10-02:** the lead confirmed the step test as written (faces
    plan, phase 1: the eight height bands and the 24-entry angle lookup, the
-   soil-like 35° included) and accepted the three ground map changes (step 4
+   soil-like 35° included) and accepted the three ground map changes (ground step 2
    plan, phase 2).
 2. **Rebuild the first part**, in this order, each on the pilot:
    1. one extent for every step and the vectorised zonal statistics (faces
       plan, phase 0);
-   2. step 3's DEM source mask and survey year (step 3 plan, phase 5), then
-      rerun step 3 (the vegetation height it once rewrote with the
+   2. ground step 1's DEM source mask and survey year (ground step 1 plan, phase 5), then
+      rerun ground step 1 (the vegetation height it once rewrote with the
       building mask was removed 2026-10-08);
    3. the ground map changes the lead accepts (the two fill changes built
       2026-10-02; the Wellington Fault sheared zone not yet, **T-89**), then rerun
-      step 4 over the common extent and review its area shares and strength
+      ground step 2 over the common extent and review its area shares and strength
       picks;
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
       (done, stage D1), run over pilot examples (done, stage D2) and built as
-      step 12 (done, stage D3); next, the lead reviews the 20 m pif split and
-      the old seeding and bank code is retired (step 12 plan, phase 5);
-   5. the wall probability on the candidates (step 12 plan, phase 4; exposure
-      rw step 6, phase 2e; built 2026-10-05 with its checks, the height shape
-      against Anderson et al. [anderson_2015] included), and reading step
-      13's cut and fill class and face drops into the prior and the wall
+      ground steps 3 and 4 (done, stage D3, then step 12); next, the lead reviews the 20 m pif split and
+      the old seeding and bank code is retired (ground step 3 plan, phase 3);
+   5. the wall probability on the candidates (exposure rw step 6 plan, phases 2e
+      and 2f; built 2026-10-05 with its checks, the height shape
+      against Anderson et al. [anderson_2015] included), and reading ground
+      step 5's cut and fill class and face drops into the prior and the wall
       height (2026-10-06); next, the pilot rerun (Next, 11).
 
-   Step 5 needs a rerun only for the common extent.
+   Landslide step 1 needs a rerun only for the common extent.
 3. **The lead decides the phase 3 proposals** (faces plan, phase 3, and its
    open decisions): the segment volume, the fill bank width, the failure
    style per face, the repose angle and the amplification rule. Then build
@@ -581,7 +614,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 5. Run per territorial authority (per-TA plan).
 6. Ask the supplier what an ESNZ cell's probability is a probability of, and
    what shaking it is conditioned on, and in particular whether it keeps the
-   Kaikōura model's centroid definition (step 1 plan, "Literature review of
+   Kaikōura model's centroid definition (landslide step 3 plan, "Literature review of
    the placeholders"). Download GNS SR2018/08 and SR2023/04, the forecast
    tool reports, which may answer it first.
 7. Choose the large-model route. Run Hancox model 3 over the pilot and review
@@ -595,29 +628,29 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    angles; the urban rule is in the faces plan, phase 3.
 9. Add imminent-risk land to each large landslide (**T-45**), with the same
    repose-line rule proposed for the urban faces.
-10. Measure step 1's placeholders from the Kaikōura inventory (step 1 plan,
+10. Measure landslide step 3's placeholders from the Kaikōura inventory (landslide step 3 plan,
     phase 3), after the lead decides the review's proposals for the exponent,
     the cap, the urban share and the source fraction.
 11. Recheck the height shape against Anderson et al. [anderson_2015]: the
-    pilot rerun of 2026-10-06 (step 12's faces, step 13, wall units, zones
-    and checks, through steps 8 and 9) puts 31% of the walled units under
+    pilot rerun of 2026-10-06 (the faces, pif cut and fill, wall units, zones
+    and checks, through landslide steps 5 and 6) puts 31% of the walled units under
     1.5 m, against 54%.
-12. Run `gen_all.py` over the pilot, so steps 8 and 9 run on step 12's
-    zones, review their counts, (steps 6 and 7 were removed 2026-10-08;
-    step 12 plan, phase 5).
+12. Run `gen_all.py` over the pilot, so landslide steps 5 and 6 run on landslide step 4's
+    zones, review their counts, (the old steps 6 and 7 were removed 2026-10-08;
+    landslide step 4 plan, phase 2).
 13. Add walls on the flat land, where no wall unit is today. (A wall on a
     property boundary is one unit counted on each property it enters,
     2026-10-06; the loss side's use of it is a vul rw Next item.)
-14. **Evaluate the wall curves in PGA in step 9** (a potential future step,
-    the lead, 2026-10-06; step 9 plan, "Potential future improvements"): the
-    wall curves are published in PGA [koutsoupaki_2023] and step 8 converts
+14. **Evaluate the wall curves in PGA in landslide step 6** (a potential future step,
+    the lead, 2026-10-06; landslide step 6 plan, "Potential future improvements"): the
+    wall curves are published in PGA [koutsoupaki_2023] and landslide step 5 converts
     their medians to PGV with the TS1170.5 PGV/PGA ratio. That is exact
-    while shaking steps 4 and 5 scale PGA and PGV by one draw, but step 9
+    while shaking steps 4 and 5 scale PGA and PGV by one draw, but landslide step 6
     could sample the realised PGA field at the walled polygons and evaluate
     the curves in PGA directly, removing the ratio and the site class from
     the wall median.
 15. **Stop urban runout at building outlines** (the lead, 2026-10-07, not
-    yet built): pass the LINZ building outlines step 12 already rasterises
+    yet built): pass the LINZ building outlines ground step 3 already rasterises
     (`building_mask()`) as the `barriers` grid of `build_slope_polygons`, so
     a small failure's debris stops at the house below it. Urban model only:
     a large landslide destroys the building, so its runout is not stopped.
@@ -629,7 +662,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 - Total failed area, urban plus large, against Marc et al. (2016) and Nowicki
   Jessee et al. (2018) at the demand.
 - Hancox slope-class shares, MM and extent masks, Marc apportionment and the
-  step 1 handoff in `tests/landloss/hazard/landslide/`.
+  landslide step 3 handoff in `tests/landloss/hazard/landslide/`.
 - Kritikos memberships, fuzzy gamma, inputs, AUC and transfer fit in
   `tests/landloss/hazard/landslide/models/test_kritikos_2015.py`; the coverage
   footprints in `test_kritikos_2015_fit.py`; the paper's
@@ -661,7 +694,7 @@ otherwise.
 - **The large/small split**: 500 m² agreed as the working threshold, 700 m² as
   built (`LARGE_MIN_SOURCE_AREA_M2`). The review proposes keeping it as the
   large model's lower bound only, with the urban population defined by
-  ground and free to run past it (step 1 plan).
+  ground and free to run past it (landslide step 3 plan).
 - **The largest credible single failure**: the cap was raised to 35,000 m²
   (the lead, 2026-10-02), about Gold's slide.
 - **How much spatial correlation** to add.
@@ -699,7 +732,7 @@ otherwise.
   mapped to uncontrolled fill (`landloss.hazard.landslide.ground_map`), which
   makes 71% of the pilot fill and puts Kingsbury's geology factor at its top.
   **Accepted by the lead on 2026-10-02 and built in code the same day, not yet
-  rerun** (step 4 plan, phase 2): the natural material as the material and fill as the
+  rerun** (ground step 2 plan, phase 2): the natural material as the material and fill as the
   modification, colluvium ahead of rock where both are named, because
   Wellington fills fail on the buried colluvium at their base
   [brown_larkin_2005; lyndsell_2019; monteith_2020]. It also gives the wall
@@ -717,4 +750,5 @@ otherwise.
   data.
 
 Step-level detail lives in each step's implementation plan and method file under
-`steps/`.
+`steps/`; the ground steps' are under `src/scripts/landloss/ground/steps/`, and the
+wall units' under `src/scripts/landloss/exposure/rw/steps/s6_wall_population/`.

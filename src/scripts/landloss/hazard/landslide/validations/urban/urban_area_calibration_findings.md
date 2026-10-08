@@ -47,8 +47,8 @@ check and the wall comparison go here after that run, and only then into
 
 Run on 2026-10-07 on the `wlg-pilot` extent with `table_urban_area_calibration.py`
 and `fig_urban_area_calibration.py`, which read the bare zones of landslide step
-12, the step 4 ground map, the step 3 topographic position, the shaking step 2
-and 3 grids, the TS1170.5 2500-year PGA grids and the step 8 world 0 model.
+12, the ground step 2 ground map, the ground step 1 topographic position, the shaking step 2
+and 3 grids, the TS1170.5 2500-year PGA grids and the landslide step 5 world 0 model.
 The tables are in `report/hazard/landslide/urban-fragility/tab/urban-area-calibration-*.csv`
 and the figure is `report/hazard/landslide/urban-fragility/fig/urban-area-calibration.png`.
 
@@ -62,7 +62,7 @@ with the record and anchors that were not fitted?
 ### Method
 
 1. The polygons are the 5,503 bare polygons inside the pilot box (of 6,441 in
-   the zones file). They are built from step 12's `bare` zones the way step 8
+   the zones file). They are built from landslide step 4's `bare` zones the way landslide step 5
    builds a world's polygons (`face_polygons` and `with_amplification`), and
    each one uses the localised curve. Step 8's world 0 model was not used,
    because it holds the walled zones of one wall draw: 5,072 polygons with
@@ -90,7 +90,7 @@ with the record and anchors that were not fitted?
      Cut or fill is the polygon's wall-unit position, and the slope is the
      element's overall angle. A17 uses the site PGV/PGA ratio with no
      amplification.
-   - Walls: step 8's walled polygons, comparing each wall type's base median
+   - Walls: landslide step 5's walled polygons, comparing each wall type's base median
      with the no-wall median at the same polygon's rating.
 6. An alternative fit, which was not agreed, uses only the non-flat cells
    under a footprint as the reference. It tests whether the wide reference is
@@ -193,11 +193,11 @@ and 0.08.
    of the elements as fill, the units mark 23%. Natural-slope units count as
    cut.
 3. The polygons whose representative point lies outside the pilot box (938 of
-   them, in step 12's DEM margin) are left out, as in step 8. Their runout
+   them, in ground step 3's DEM margin) are left out, as in landslide step 5. Their runout
    near the edge is lost.
 4. Footprints are counted on 2 m cell centres, so very narrow zones are
    under-counted.
-5. The wall comparison uses step 8's world 0 walled polygons, whose geometry
+5. The wall comparison uses landslide step 5's world 0 walled polygons, whose geometry
    differs from the bare ones. Both medians are taken before the
    amplification factor.
 

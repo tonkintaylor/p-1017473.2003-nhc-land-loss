@@ -73,7 +73,7 @@ def tile_grid(
         align_cells: The core and the margin are rounded up to a multiple of
             this many cells, so every tile's outer window starts on the same
             blocks of cells as the whole grid does. A step that averages
-            blocks of cells from the window's corner (step 12's 3 m
+            blocks of cells from the window's corner (ground step 3's 3 m
             catchment grid) needs its block size here.
 
     Returns:

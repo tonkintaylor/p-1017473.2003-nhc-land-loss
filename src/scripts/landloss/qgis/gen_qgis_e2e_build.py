@@ -9,12 +9,13 @@ derived for QGIS to draw them:
 - the cost layers: the loss module's settlement table per claim, joined to the
   claim's insured land, one file per cost and only the claims with that cost;
 - every urban slope polygon's potential evacuated ground, coloured by its
-  probability of triggering in this earthquake. Step 9 keeps ``p_fail`` only
-  for the polygons it draws as failed, so it is evaluated here for all of
-  them with step 9's own functions (``sample_pgv`` at the representative point
-  and ``lognormal_failure_probability`` on the step 8 ``theta`` and ``beta``);
-- the step 8 polygons with one geometry column (QGIS takes the first of the
-  model file's five, which is points);
+  probability of triggering in this earthquake. Landslide step 6 keeps
+  ``p_fail`` only for the polygons it draws as failed, so it is evaluated here
+  for all of them with that step's own functions (``sample_pgv`` at the
+  representative point and ``lognormal_failure_probability`` on the landslide
+  step 5 ``theta`` and ``beta``);
+- the landslide step 5 polygons with one geometry column (QGIS takes the first
+  of the model file's five, which is points);
 - the vul land table split to the properties with evacuated or inundated
   ground, so its bands spread over the damaged ones;
 - 5 m contours of the 3 m DEM.
@@ -43,21 +44,21 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population i
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_probability import (
     wall_probability_path,
 )
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     dem_path,
     slope_path,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
+from scripts.landloss.hazard.landslide.steps.s2_hancox_1997.gen_hancox_1997_coverage import (
+    coverage_path as hancox_coverage_path,
+)
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
     urban_slope_model_path,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
     combined_realisation_path,
-)
-from scripts.landloss.hazard.landslide.steps.s10_hancox_1997.gen_hancox_1997_coverage import (
-    coverage_path as hancox_coverage_path,
 )
 from scripts.landloss.hazard.landslide.validations.qgis import (
     gen_landslide_qgis_project as landslide,
@@ -183,10 +184,10 @@ def gen_claim_costs(settlement, insured_land):
 
 
 def gen_trigger_probability(model, pgv_file):
-    """Each step 8 polygon's evacuated ground with its probability of triggering.
+    """Each landslide step 5 polygon's evacuated ground with its trigger probability.
 
-    The same evaluation step 9 makes before it draws: PGV at the polygon's
-    representative point, through the polygon's lognormal curve.
+    The same evaluation landslide step 6 makes before it draws: PGV at the
+    polygon's representative point, through the polygon's lognormal curve.
     """
     pgv = urban.sample_pgv(gpd.GeoSeries(model[urban.REP_POINT_COLUMN]), pgv_file)
     p_fail = lognormal_failure_probability(

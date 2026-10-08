@@ -1,7 +1,7 @@
 # Plan: placing retaining walls on the potential instability faces
 
 Written 2026-10-05 for whoever implements it. Self-contained: read this, then the
-files under "Read first". The step plans (landslide step 12 phase 4, retaining
+files under "Read first". The step plans (ground step 4 phase 4, retaining
 wall step 6 phase 2e) carry the checklist and point here.
 
 ## Purpose
@@ -21,8 +21,8 @@ size. Keep every weight as a named `BETA_` constant in
 ## Built already (commit `b59bfe7`, 2026-10-05)
 
 - **Pifs and sizs:** the siz table, one row per pif, is
-  `temp/hazard/landslide/urban-slope-sizs{suffix}.parquet`
-  (`gen_urban_slope_faces.py`). Index `pif_id`; pips as a MultiPoint; columns
+  `temp/ground/urban-slope-sizs{suffix}.parquet`
+  (`gen_slope_faces.py`). Index `pif_id`; pips as a MultiPoint; columns
   include `is_siz`, `max_delta_h_m`, `height_band`, `ground_group`,
   `ground_material`, `ground_modification`, `gns_wall` (a GNS mapped wall within
   2 m of a pip), `gns_wall_m`, `building_m`, `candidate_class`
@@ -36,13 +36,14 @@ size. Keep every weight as a named `BETA_` constant in
   lines of 3 to 20 m, class `gns_only`, with `property_id`, ground material and
   `building_m`. These are mapped walls with no pip within 2 m (979 pieces, 8.9 km
   of 30.7 km mapped, over the pilot), indexed by `gns_only_id`.
-- **Cut and fill per pif** (landslide step 13, 2026-10-05):
+- **Cut and fill per pif** (ground step 5, built 2026-10-05 as step 13):
   `urban-slope-pif-cut-fill{suffix}.parquet`, one row per pif with
   `cut_fill_class` (`cut`, `cut_and_fill`, `fill`, `natural`, `uncertain` or
   `unknown`), and `urban-slope-pif-cut-fill-pips{suffix}.parquet`, each pip
-  with the foot of its face. The order is step 12's faces, step 13, then step
-  12's wall units and wall zones (`gen_hazard.main`); the wall units script
-  stops if step 13's tables are missing or older than the siz table.
+  with the foot of its face. The order is ground step 4's faces, ground step 5, then exposure rw step 6's
+  wall units and landslide step 4's wall zones (`gen_ground.main`, `gen_exposure.main`,
+  `gen_hazard.main`); the wall units script
+  stops if ground step 5's tables are missing or older than the siz table.
 - **Elements** (`urban-slope-elements{suffix}.parquet`) carry `siz_id`, which is
   a `pif_id` in the siz table (checked over the pilot: all 9,204 elements map,
   to 5,441 distinct pifs, because a pif cut into pieces grows several
@@ -153,7 +154,7 @@ Everything is per property. A property is a LINZ NZ Property Boundaries polygon
    that is exposed.
 6. **Output.** A wall-unit table (id, member pif ids, property, geometry,
    probability and its parts: prior, GNS floor, update), written under
-   `temp/hazard/landslide/`, and the per-realisation draws.
+   `temp/exposure/`, and the per-world draws.
 
 ## Checks
 
@@ -170,7 +171,7 @@ One-sided, because a dataset with no wall is not evidence of no wall.
 - **Every wall on a siz has a polygon** (2026-10-06): a pif needs at least
   three pips (`BETA_MIN_PIF_PIPS`), and every siz pif grows an element kept
   whatever the element keep rule says, so a wall drawn on a siz pif always
-  has an evacuated polygon in landslide step 9 (before, 2,782 of 8,223 pilot
+  has an evacuated polygon in landslide step 6 (before, 2,782 of 8,223 pilot
   siz pifs grew no element and 573 walls had no polygon). A `low_height` pif (a
   GNS wall with no siz) and a GNS-only unit still grow none.
 - **Pilot counts:** expected walls, units, walled share of sizs and the change in
@@ -182,18 +183,19 @@ One-sided, because a dataset with no wall is not evidence of no wall.
 - Library: `landloss/hazard/landslide/wall_units.py` (units and the Poisson-
   binomial update, pure functions, unit tested on small synthetic frames) beside
   `wall_candidates.py`. Name functions `gen_` for what derives data.
-- Landslide step 12 (`steps/s12_urban_slope_faces/`): the wall-unit table and the
+- Exposure rw step 6 (`exposure/rw/steps/s6_wall_population/gen_wall_units.py`,
+  built as part of the old landslide step 12): the wall-unit table and the
   draw into `with_walls`; its plan phase 4 ticks as each piece lands. Settings
   (the line rules, hold-out share, seed) go in its `config.py`; no argparse.
-- Retaining wall step 6 (`exposure/rw/steps/s6_wall_population/`): reads the unit
-  table instead of building lines; phase 2e of its plan.
+- Retaining wall step 6 (`exposure/rw/steps/s6_wall_population/`): the population
+  reads the unit table instead of building lines; phase 2e of its plan.
 - Update the step method files, both `status.md` files and add a
   `doc/whatsnew/{initials}.feature.{yymmddhhmm}.md` fragment for each change.
 
 ## Read first
 
 - `src/landloss/hazard/landslide/wall_candidates.py` and its tests.
-- `src/scripts/landloss/hazard/landslide/steps/s12_urban_slope_faces/` (method
+- `src/scripts/landloss/ground/steps/s4_slope_faces/` (method
   and plan).
 - `src/scripts/landloss/exposure/rw/status.md`, "Wall datasets", and
   `exposure/rw/validations/rw_dataset_comparison.md`.

@@ -1,4 +1,4 @@
-"""Landslide step 3 on synthetic terrain, with no network.
+"""Ground step 1 on synthetic terrain, with no network.
 
 ``gen_multiscale_slope.py`` normally fetches the 1 m DEM from LINZ and
 ``gen_terrain_derivatives.py`` the 1 m surface model. Here both fetches are
@@ -15,10 +15,10 @@ import xarray as xr
 
 from landloss.common.utils.terrain import block_mean, write_raster
 from landloss.domain import constants
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain import (
     gen_multiscale_slope as slope_step,
 )
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain import (
     gen_terrain_derivatives as terrain_step,
 )
 
@@ -199,8 +199,8 @@ def test_the_aspect_points_downhill_and_the_grids_nest(
 
 
 @pytest.fixture
-def step3_dems(work_dir):
-    """The DEMs step 3 writes, built from one synthetic 1 m grid."""
+def terrain_dems(work_dir):
+    """The DEMs ground step 1 writes, built from one synthetic 1 m grid."""
     cells = int(SIDE_M)
     dem_1m = make_dem(hillside(cells, cells, 1.0), 1.0)
     for resolution in RESOLUTIONS_M:
@@ -218,7 +218,7 @@ def run_terrain_step():
 
 
 @ignore_affine_matmul
-def test_the_terrain_step_writes_every_layer_with_its_band_name(step3_dems):
+def test_the_terrain_step_writes_every_layer_with_its_band_name(terrain_dems):
     run_terrain_step()
 
     for key, band in terrain_step.TERRAIN_LAYERS.items():
@@ -228,7 +228,7 @@ def test_the_terrain_step_writes_every_layer_with_its_band_name(step3_dems):
 
 
 @ignore_affine_matmul
-def test_the_layers_sit_on_the_grids_the_contract_gives_them(step3_dems):
+def test_the_layers_sit_on_the_grids_the_contract_gives_them(terrain_dems):
     run_terrain_step()
 
     def cell_size_of(key):

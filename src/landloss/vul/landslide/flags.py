@@ -71,7 +71,7 @@ FLAG_COLUMNS = {
 # whose polygon failed through it is written off by the shaking; one whose
 # polygon was taken by a larger failure, urban or large, sits on evacuated
 # ground. A standing wall sets none, and no outcome sets the inundated flag:
-# that comes from geometry alone. The vocabulary is landslide step 9's
+# that comes from geometry alone. The vocabulary is landslide step 6's
 # (``landloss.hazard.landslide.urban.realisation.OUTCOMES``).
 OUTCOME_FLAGS = {
     FAILED_WITH_POLYGON: IS_DAMAGED_BY_SHAKING_COLUMN,
@@ -245,7 +245,7 @@ def outcome_flags(outcomes: pd.DataFrame, *, id_column: str) -> pd.DataFrame:
     """Return the contract flags each urban wall outcome sets.
 
     Args:
-        outcomes: Landslide step 9's wall outcome table, one row per wall on
+        outcomes: Landslide step 6's wall outcome table, one row per wall on
             sloping ground, carrying ``id_column``, :data:`SLOPE_ID_COLUMN` and
             :data:`OUTCOME_COLUMN`.
         id_column: The wall identifier, unique per row.

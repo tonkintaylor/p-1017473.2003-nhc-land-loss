@@ -1,24 +1,24 @@
-"""Landslide step 12's zones of one world, as the polygons step 8 gives a fragility.
+"""Landslide step 4's zones of one world, as the polygons step 5 gives a fragility.
 
 What belongs here: turning the evacuated, imminent and inundated zones that
-landslide step 12 builds for one exposure world's wall draw
-(``gen_urban_slope_wall_zones.py``, one row per polygon and zone) into one row
+landslide step 4 builds for one exposure world's wall draw
+(``gen_wall_zones.py``, one row per polygon and zone) into one row
 per polygon in the shape
 :func:`landloss.hazard.landslide.urban.fragility.assign_fragility` reads, and
 the check that those zones and the walls exposure rw step 6 drew for the same
-world come from one draw. Used by landslide step 8
-(``s8_urban_slope_fragility``).
+world come from one draw. Used by landslide step 5
+(``s5_urban_slope_fragility``).
 
-The face polygons replaced step 7's polygons (removed 2026-10-08). Step 7 built
-every wall state's geometry for each polygon and let step 8 pick one; step 12
-has already built each world's zones with the walls that world drew (an
-element is walled where its pif belongs to a walled wall unit), so a polygon
-carries one geometry per kind, the world's. Its wall is the wall unit its
-element's pif belongs to: ``wall_line_id`` is the unit's id (``WU...``), the
-id exposure rw step 6 writes as a drawn wall's ``wall_line_id``, and
-``wall_line_ids`` lists that one unit, so the fragility join and step 9's
-wall groups read the unit as they read a wall line. A polygon whose pif is in
-no unit has no wall to draw.
+The face polygons replaced the old step 7 polygons (removed 2026-10-08). That step
+built every wall state's geometry for each polygon and let the fragility step pick
+one; landslide step 4 has already built each world's zones with the walls that
+world drew (an element is walled where its pif belongs to a walled wall
+unit), so a polygon carries one geometry per kind, the world's. Its wall is the
+wall unit its element's pif belongs to: ``wall_line_id`` is the unit's id
+(``WU...``), the id exposure rw step 6 writes as a drawn wall's ``wall_line_id``, and
+``wall_line_ids`` lists that one unit, so the fragility join and landslide
+step 6's wall groups read the unit as they read a wall line. A polygon whose
+pif is in no unit has no wall to draw.
 
 The Kingsbury rating is scored from the polygon's element and the ground map
 piece under most of it: the slope is the element's overall angle, the height
@@ -40,8 +40,8 @@ from landloss.hazard.landslide.slope_elements import FREE_FACE
 from landloss.hazard.landslide.urban import geometry
 from landloss.hazard.landslide.urban.fragility import continuous_rating, sloping_walls
 
-# The columns of step 12's zones file this module reads (one row per polygon
-# and zone, ``gen_urban_slope_faces.zone_polygons``).
+# The columns of landslide step 4's zones file this module reads (one row per polygon
+# and zone, ``gen_wall_zones.zone_polygons``).
 POLYGON_COLUMN = "polygon"
 ZONE_COLUMN = "zone"
 ELEMENT_COLUMN = "element"
@@ -58,13 +58,13 @@ ZONE_COLUMNS = (
     "geometry",
 )
 
-# The columns of step 12's elements file it reads, indexed by element label.
+# The columns of ground step 3's elements file it reads, indexed by element label.
 ELEMENT_COLUMNS = ("siz_id", "majority_ground_row", "overall_angle_deg")
 
-# The columns of step 12's wall units it reads, indexed by ``wall_unit_id``.
+# The columns of exposure rw step 6's wall units it reads, indexed by ``wall_unit_id``.
 UNIT_COLUMNS = ("member_pif_ids", "is_fill")
 
-# The columns of the step 4 ground map it reads, by position.
+# The columns of the ground step 2 ground map it reads, by position.
 GROUND_COLUMNS = (
     "material",
     "modification",
@@ -80,10 +80,10 @@ IS_WALLED_COLUMN = "is_walled"
 # the cell.
 FACE_SCALE_M = 1
 
-# The ground an element off the step 4 ground map (or on a piece whose
+# The ground an element off the ground step 2 ground map (or on a piece whose
 # material is unknown) is scored on: natural, highly weathered rock (the
 # ground map's value for Wellington greywacke), no prior failure, and the
-# groundwater depth step 4 assumes off the NLM flat-land footprint, which puts
+# groundwater depth ground step 2 assumes off the NLM flat-land footprint, which puts
 # hill country in the well drained class. Judgement until the ground map
 # covers the whole extent.
 BETA_OFF_MAP_GROUND = {
@@ -106,7 +106,7 @@ def unit_of_pifs(units: pd.DataFrame) -> pd.Series:
     """Map each pif to the wall unit it is a member of.
 
     Args:
-        units: Step 12's wall units, indexed by ``wall_unit_id``, carrying
+        units: Exposure rw step 6's wall units, indexed by ``wall_unit_id``, carrying
             ``member_pif_ids``.
 
     Returns:
@@ -173,19 +173,19 @@ def face_polygons(
 ) -> gpd.GeoDataFrame:
     """One row per polygon of one world's zones, as the fragility reads it.
 
-    Step 12 grows its elements on a DEM read wider than the extent, so a face
+    Ground step 3 grows its elements on a DEM read wider than the extent, so a face
     at the edge grows whole, but the shaking grids stop at the extent. A
     polygon whose representative point lies outside ``bbox`` has no demand to
     read and is left out, before the slope ids are minted.
 
     Args:
-        zones: Step 12's zones of one world (or one scenario), one row per
+        zones: Landslide step 4's zones of one world (or one scenario), one row per
             polygon and zone, carrying :data:`ZONE_COLUMNS`.
-        elements: Step 12's elements, indexed by element label, carrying
+        elements: Ground step 3's elements, indexed by element label, carrying
             :data:`ELEMENT_COLUMNS`.
-        units: Step 12's wall units, indexed by ``wall_unit_id``, carrying
+        units: Exposure rw step 6's wall units, indexed by ``wall_unit_id``, carrying
             :data:`UNIT_COLUMNS`.
-        ground_map: The step 4 ground map, carrying :data:`GROUND_COLUMNS`,
+        ground_map: The ground step 2 ground map, carrying :data:`GROUND_COLUMNS`,
             in the row order the elements' ``majority_ground_row`` reads.
         bbox: The extent the model runs over, (minx, miny, maxx, maxy) in the
             zones' CRS; None keeps every polygon (the full extent, whose DEM
@@ -193,7 +193,8 @@ def face_polygons(
 
     Returns:
         One row per polygon inside ``bbox``, sorted by location, with a
-        ``slope_id`` minted in that order, the step 12 ``polygon`` and ``element``,
+        ``slope_id`` minted in that order, the landslide step 4 ``polygon`` and
+        ``element``,
         ``wall_line_id`` (the element's wall unit: its pif's, or, for an
         element built on a GNS-only unit's line, the ``wall_unit_id`` it
         carries; None where it has none), ``wall_line_ids`` (that unit, or
@@ -371,10 +372,10 @@ def with_amplification(
 def check_zones_match_walls(polygons: pd.DataFrame, walls: pd.DataFrame) -> None:
     """Refuse zones and drawn walls that do not come from one wall draw.
 
-    Step 12 builds a world's zones from its wall unit draw and exposure rw
+    Landslide step 4 builds a world's zones from its wall unit draw and exposure rw
     step 6 writes the walls of the same draw, so a polygon is walled in the
     zones exactly where its unit is among the world's drawn sloping-land
-    walls. Where the two disagree, one file is stale (a rerun of step 12's
+    walls. Where the two disagree, one file is stale (a rerun of exposure rw step 6's
     wall units, or of rw step 6, without the other) or names other ids (the
     old wall line ids), and the fragility would give walled ground a
     localised median or bare ground a wall curve without an error.
@@ -410,8 +411,8 @@ def check_zones_match_walls(polygons: pd.DataFrame, walls: pd.DataFrame) -> None
         msg = (
             "the zones and the drawn walls are not one wall draw: "
             + "; ".join(problems)
-            + ". Rerun step 12's gen_urban_slope_wall_zones.py and exposure rw "
-            "step 6's gen_wall_population.py for this world, after the same "
-            "gen_urban_slope_wall_units.py run."
+            + ". Rerun landslide step 4 (gen_wall_zones.py) and exposure rw "
+            "step 6 (gen_wall_population.py) for this world, after the same "
+            "gen_wall_units.py run."
         )
         raise ValueError(msg)

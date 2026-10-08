@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from landloss.common.utils.terrain import sample_at_points
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     dem_path,
 )
 from scripts.landloss.post_processing.sme_validations import config, sme_data

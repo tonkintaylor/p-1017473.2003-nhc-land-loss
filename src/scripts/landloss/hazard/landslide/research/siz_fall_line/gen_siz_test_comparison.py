@@ -1,20 +1,20 @@
-"""Compare step 12's old siz test with the per-piece fall-line test on the pilots.
+"""Compare ground step 3's old siz test with the per-piece fall-line test on the pilots.
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/research/siz_fall_line/gen_siz_test_comparison.py
 
-Until 2026-10-08 step 12 decided whether a pif is a siz by comparing every pair
+Until 2026-10-08 ground step 3 (then landslide step 12) decided whether a pif is a siz by comparing every pair
 of its points up to 30 m apart (``instability_zones.PAIRS_TEST``) on the whole
 pif, and every piece :func:`split_pifs` cut from it took that verdict. Now each
 piece is tested on its own pips with the fall-line test
 (``FALL_LINE_TEST``), which reads each pip's drop down its true downhill line
 to the toe of its face. This script finds the pips, pifs and pieces over each
-pilot as step 12 does and puts each piece to three tests:
+pilot as ground step 3 does and puts each piece to three tests:
 
 - ``old``: the pair test on the whole pif, inherited by the piece;
 - ``d8``: the fall-line test on the piece, each pip falling along the nearest
   of the eight directions;
 - ``new``: the fall-line test on the piece along the true downhill direction,
-  what step 12 now runs.
+  what ground step 3 now runs.
 
 It writes, per extent, under ``temp/hazard/landslide/research/siz-fall-line/``:
 
@@ -41,10 +41,8 @@ from landloss.hazard.landslide import instability_zones as zones
 from landloss.hazard.landslide.slope_elements import terrain_layers
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_building_outlines
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
-    config as faces_config,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
+from scripts.landloss.ground.steps.s3_instability_zones import config as faces_config
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
     CRS,
     building_mask,
     get_inputs,
@@ -60,7 +58,12 @@ USE_CACHED_LAYERS = True
 
 OUT_DIR = TEMP_DIR / "hazard" / "landslide" / "research" / "siz-fall-line"
 TABLE_PATH = (
-    REPORT_DIR / "hazard" / "landslide" / "siz-fall-line" / "tab" / "siz-test-comparison.csv"
+    REPORT_DIR
+    / "hazard"
+    / "landslide"
+    / "siz-fall-line"
+    / "tab"
+    / "siz-test-comparison.csv"
 )
 
 VARIANTS = ("old", "d8", "new")
@@ -76,7 +79,7 @@ STAT_COLUMNS = (
 
 
 def find_pieces(extent):
-    """The grids, pips, whole pifs and their pieces, as step 12 finds them."""
+    """The grids, pips, whole pifs and their pieces, as ground step 3 finds them."""
     dem, transform, bbox, _, group, _ = get_inputs(
         extent=extent, use_cached_layers=USE_CACHED_LAYERS
     )
@@ -113,7 +116,9 @@ def assess_variants(dem, group, transform, pips, whole, pieces, parent):
     )
     seconds["old"] = time.perf_counter() - start
     start = time.perf_counter()
-    d8 = zones.assess_pifs(dem, pips, pieces, group, transform, test=zones.FALL_LINE_TEST)
+    d8 = zones.assess_pifs(
+        dem, pips, pieces, group, transform, test=zones.FALL_LINE_TEST
+    )
     seconds["d8"] = time.perf_counter() - start
     start = time.perf_counter()
     layers = terrain_layers(dem, abs(transform.a))
@@ -160,7 +165,8 @@ def pip_points(pips, pieces, transform, table):
         piece, ["parent_pif_id", *(f"{v}_is_siz" for v in VARIANTS), "agreement"]
     ].reset_index(drop=True)
     return gpd.GeoDataFrame(
-        {"pif_id": piece} | {column: verdicts[column].to_numpy() for column in verdicts},
+        {"pif_id": piece}
+        | {column: verdicts[column].to_numpy() for column in verdicts},
         geometry=gpd.points_from_xy(x, y),
         crs=CRS,
     )
@@ -208,7 +214,9 @@ def main(*, extents):
     for extent in extents:
         print(f"\n=== {extent}", flush=True)
         dem, group, transform, pips, whole, pieces, parent = find_pieces(extent)
-        table, seconds = assess_variants(dem, group, transform, pips, whole, pieces, parent)
+        table, seconds = assess_variants(
+            dem, group, transform, pips, whole, pieces, parent
+        )
         points = pip_points(pips, pieces, transform, table)
         suffix = extent_suffix(extent)
         points.to_parquet(OUT_DIR / f"siz-test-pips{suffix}.geoparquet")

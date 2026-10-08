@@ -233,7 +233,7 @@ before making decisions about methodology, outputs, or what belongs in the tool:
   obtainable.
 - `.agents/context/nhc-natural-hazards-portal.md` — why the public Natural Hazards
   Portal must not be scraped, and what to ask NHC for instead.
-- `.agents/context/code-structure.md` — the four analysis modules, the library and
+- `.agents/context/code-structure.md` — the five analysis modules, the library and
   scripts split, and the causes of financial land loss the model represents.
 
 The live register of tasks, limitations and future improvements is
@@ -243,12 +243,20 @@ regenerate; see the `recording-project-context` skill.
 
 ## Module structure
 
+The pipeline has five modules, run in the order `ground`, `exposure`, `hazard`,
+`vul`, `loss`. `ground` is what the ground is, built once per extent (terrain,
+ground map, instability zones, slope faces, pif cut and fill); `exposure` reads
+it to build the retaining wall units and draw each world's walls; `hazard` runs
+after `exposure` because the landslide urban zones are built from each world's
+drawn walls; `vul` reads all of them. `gen_all.py` runs the first four and `loss`
+is run on its own.
+
 `exposure`, `hazard` and `vul` are each split into submodules, in both
 `src/landloss/` and `src/scripts/landloss/`: `exposure` by insured asset type
 (`land`, `rw`, `culverts_bridges`), `hazard` by hazard (`liquefaction`,
 `landslide`,
 `shaking`), and `vul` by hazard and then asset type (`vul/liquefaction/land`).
-`loss` is flat.
+`ground` and `loss` are flat: `ground` has no submodules, only its `steps/`.
 
 `steps/`, `validations/`, `report/` and `research/` are submodules of whichever
 level the work belongs to. Work specific to one asset or one hazard goes in that
@@ -259,7 +267,7 @@ speculatively either.
 
 Every submodule of `exposure`, `hazard` and `vul` carries a brief `status.md`
 at its own level — `exposure/<asset>/`, `hazard/<hazard>/`,
-`vul/<hazard>/<asset>/` — with the sections `## Approach`, `## Where it is now`,
+`vul/<hazard>/<asset>/` — and `ground` carries one, `ground/status.md`, with the sections `## Approach`, `## Where it is now`,
 `## Next`, then `## Validation` and `## Open decisions`. It is the submodule's
 orientation page, distinct from the per-step plan and method files, and it points
 at those for detail rather than restating them. Where nothing is implemented yet
@@ -294,7 +302,10 @@ alongside its scripts, an implementation plan written in phases and a method fil
 describing the methodology as currently implemented. Any change to a step's
 scripts must update that step's method file in the same change. Step numbers run
 across the module, so a step keeps its number when it sits in a submodule's
-`steps/`.
+`steps/`. The landslide steps are numbered in run order after the ground work
+moved out (`ground` steps 1-5, `hazard/landslide` steps 1-8); name a step with its
+module, as in "ground step 4" or "exposure rw step 6", because bare numbers repeat
+across modules.
 
 Use the `adding-steps-scripts` skill whenever you add a step, change one, or
 wonder where a piece of methodology should be written down.

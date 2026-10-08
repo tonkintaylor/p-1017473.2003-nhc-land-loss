@@ -1,4 +1,4 @@
-"""Tests for how step 12's tiles agree on which pifs are whose."""
+"""Tests for how ground step 3's tiles agree on which pifs are whose."""
 
 import geopandas as gpd
 import pandas as pd
@@ -8,7 +8,7 @@ from rasterio.transform import Affine
 
 from landloss.common.utils import tiles
 from landloss.domain import constants
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import tiled
+from scripts.landloss.ground.steps.s3_instability_zones import tiled
 
 
 def pifs(parents, pips):

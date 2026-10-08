@@ -22,7 +22,7 @@ How an element is found, all of it whole-array numpy and scipy:
 1. **Slopes and the fall line.** The 1 m slope is Horn's 3x3 slope on the DEM
    as it is. The 3 m slope is Horn's slope with its neighbours three cells
    away, on the DEM averaged over 3x3 cells, which is the slope of the 3 m
-   grid landslide step 3 writes, evaluated at every 1 m cell. The downhill
+   grid ground step 1 writes, evaluated at every 1 m cell. The downhill
    direction (the fall line) is read off the 3 m gradient, which is steadier
    on noisy LiDAR, and off the 1 m gradient where the 3 m one has none.
 2. **Step height.** At every cell, the drop across 3 m along the fall line

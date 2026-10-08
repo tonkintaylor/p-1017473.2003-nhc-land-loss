@@ -30,5 +30,5 @@ REALISATION_IDS = [0]
 # converting a published PGA-based wall curve to PGV is taken at: step 3's PGV
 # grid over the unscaled TS1170.5 PGA grid, both at this return period. Change
 # it in shaking step 3's config.py; this step follows, as shaking step 5 and
-# landslide step 8 do.
+# landslide step 5 do.
 RETURN_PERIOD_YR = pgv_config.RETURN_PERIOD_YR

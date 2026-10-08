@@ -38,7 +38,7 @@
   set it back to 200 m in favour of the ground map default below.
 - **Cells still unclassed take a default Vs30 for their ground**, by
   `landloss.hazard.shaking.site_class.fill_site_class_from_ground_map`: the
-  material covering most of the 100 m cell on landslide step 4's ground map
+  material covering most of the 100 m cell on ground step 2's ground map
   (`ground_map_path()`; pieces of `unknown` material are left out of the
   count), its Vs30 from `BETA_GROUND_MAP_DEFAULT_VS30_M_S` in
   `landloss.domain.constants`, and the class of that Vs30 by the same Table
@@ -60,10 +60,10 @@
   pilot 8 cells are classed this way, all on uncontrolled fill on the
   reclaimed harbour edge, Class VI; they carry the 42 urban slope polygons
   that had no site class before.
-- **Landslide step 4 has to have run first, over the same extent.** Step 2
-  stops with a message naming `s4_ground_map/gen_ground_map.py` when the
-  ground map is missing, and `gen_hazard.main` runs landslide steps 3 and 4
-  before the shaking steps.
+- **Ground step 2 has to have run first, over the same extent.** Step 2
+  stops with a message naming `ground/steps/s2_ground_map/gen_ground_map.py`
+  when the ground map is missing, and `gen_all.py` runs the ground module
+  before the hazard module.
 - Where each cell's class came from is written to
   `temp/hazard/shaking/site-class-source-100m[-pilot].tif`, from
   `source_path()`, as uint8 codes (`SITE_CLASS_SOURCES`): 0 none, 1 Foster

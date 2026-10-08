@@ -1,14 +1,15 @@
-"""Tests for the urban failure fragility and landslide step 8.
+"""Tests for the urban failure fragility and landslide step 5.
 
 The library is checked on the contract's unit cases (section 7.7 of
 ``.agents/plans/urban-slope-build-contract.md``), the packaged anchor table is
 read and validated, the wall type curves are joined with the wall's own fill or
-cut shift, step 12's zones are turned into the polygons step 8 reads
+cut shift, landslide step 4's zones are turned into the polygons step 5 reads
 (``face_polygons``) and checked against the drawn walls, and the step's three
 scripts and the two urban validation scripts are run end to end on synthetic
-step 12 zones, elements and wall units, walls and 100 m grids written where
-each step looks for them, with the TS1170.5 reader and the
-basemap tiles faked, so nothing here touches a network drive or a real run.
+landslide step 4 zones, ground step 3 elements and exposure rw step 6 wall
+units, walls and 100 m grids written where each step looks for them, with the
+TS1170.5 reader and the basemap tiles faked, so nothing here touches a network drive
+or a real run.
 """
 
 import geopandas as gpd
@@ -28,21 +29,21 @@ from landloss.hazard.landslide.urban import (
     geometry,
     wall_type_fragility,
 )
-from scripts.landloss.exposure.rw.steps.s6_wall_population import gen_wall_population
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
+from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_population,
+    gen_wall_units,
+)
+from scripts.landloss.ground.steps.s1_terrain import (
     gen_terrain_derivatives,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map import gen_ground_map
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
+from scripts.landloss.ground.steps.s2_ground_map import gen_ground_map
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones import gen_wall_zones
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import (
     fig_urban_slope_model,
     table_urban_slope_model,
 )
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import (
     gen_urban_slope_fragility as step,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
-    gen_urban_slope_faces,
-    gen_urban_slope_wall_units,
 )
 from scripts.landloss.hazard.landslide.validations.urban import (
     fig_urban_fragility_anchors,
@@ -57,7 +58,7 @@ ignore_affine_matmul = pytest.mark.filterwarnings(
     "ignore:Use `@` matmul:PendingDeprecationWarning"
 )
 
-# An arbitrary but realistic corner in NZTM, inside the wlg-pilot box (step 8
+# An arbitrary but realistic corner in NZTM, inside the wlg-pilot box (landslide step 5
 # leaves out polygons outside the extent), so the grids and the polygons sit
 # where a Wellington run would put them.
 X0 = 1_748_400.0
@@ -182,7 +183,7 @@ def polygons(
 
 
 def wall_population(rw_ids, wall_line_ids, size_classes, wall_types, positions=None):
-    """Synthetic exposure step 6 walls, one per rw_id.
+    """Synthetic exposure rw step 6 walls, one per rw_id.
 
     The walls' own positions are unknown (null) unless ``positions`` is given,
     so their curves are the table's unshifted.
@@ -241,15 +242,16 @@ def one_uninsured_wall():
     return walls
 
 
-# Step 12's files for one world: three polygons in the three 100 m cells left
-# to right. Polygon 1 grew from pif 11, a member of the fill unit WU0000001;
+# The zone, element, wall unit and ground map files for one world: three
+# polygons in the three 100 m cells left to right. Polygon 1 grew from pif 11,
+# a member of the fill unit WU0000001;
 # polygon 2 from pif 12, the cut unit WU0000002; polygon 3 from pif 13, in no
 # unit and off the ground map. The world walled both units.
 FACE_XS = (10, 110, 210)
 
 
-def step12_zones(*, walled=(True, True, False)):
-    """Step 12's zones of one world, one row per polygon and zone."""
+def zones_frame(*, walled=(True, True, False)):
+    """Landslide step 4's zones of one world, one row per polygon and zone."""
     rows = []
     for polygon, (x, is_walled) in enumerate(zip(FACE_XS, walled, strict=True), 1):
         evacuated = square(x, 10, 20)
@@ -277,7 +279,7 @@ def step12_zones(*, walled=(True, True, False)):
     return gpd.GeoDataFrame(rows, geometry="geometry", crs=constants.DEFAULT_CRS)
 
 
-def step12_elements():
+def elements_frame():
     return pd.DataFrame(
         {
             "siz_id": [11, 12, 13],
@@ -288,7 +290,7 @@ def step12_elements():
     )
 
 
-def step12_units():
+def units_frame():
     return gpd.GeoDataFrame(
         {
             "member_pif_ids": [[11], [12]],
@@ -300,7 +302,7 @@ def step12_units():
     )
 
 
-def step12_ground_map():
+def ground_map_frame():
     return gpd.GeoDataFrame(
         {
             "material": ["colluvium"],
@@ -331,7 +333,7 @@ def unit_walls():
 
 def three_face_polygons(**kwargs):
     return face_polygons.face_polygons(
-        step12_zones(**kwargs), step12_elements(), step12_units(), step12_ground_map()
+        zones_frame(**kwargs), elements_frame(), units_frame(), ground_map_frame()
     )
 
 
@@ -920,7 +922,7 @@ def test_too_few_anchors_are_refused():
         )
 
 
-# --- step 12's zones as polygons ------------------------------------------------------
+# --- landslide step 4's zones as polygons ---------------------------------------
 
 
 def test_face_polygons_take_their_wall_from_their_elements_unit():
@@ -939,10 +941,10 @@ def test_face_polygons_take_their_wall_from_their_elements_unit():
 
 
 def test_a_face_on_a_gns_only_units_line_takes_that_unit():
-    elements = step12_elements().assign(wall_unit_id=[None, None, "WU0000009"])
+    elements = elements_frame().assign(wall_unit_id=[None, None, "WU0000009"])
     units = pd.concat(
         [
-            step12_units(),
+            units_frame(),
             gpd.GeoDataFrame(
                 {"member_pif_ids": [[]], "is_fill": [False]},
                 geometry=[square(FACE_XS[2], 10, 20).boundary],
@@ -952,7 +954,7 @@ def test_a_face_on_a_gns_only_units_line_takes_that_unit():
         ]
     )
     frame = face_polygons.face_polygons(
-        step12_zones(), elements, units, step12_ground_map()
+        zones_frame(), elements, units, ground_map_frame()
     )
     assert list(frame["wall_line_id"]) == ["WU0000001", "WU0000002", "WU0000009"]
     assert list(frame["wall_position"]) == ["fill", "cut", "cut"]
@@ -961,10 +963,10 @@ def test_a_face_on_a_gns_only_units_line_takes_that_unit():
 def test_face_polygons_outside_the_extent_are_left_out_before_the_ids():
     # The box ends at x = 150 m: the third face (x 210 to 230 m) is outside.
     frame = face_polygons.face_polygons(
-        step12_zones(),
-        step12_elements(),
-        step12_units(),
-        step12_ground_map(),
+        zones_frame(),
+        elements_frame(),
+        units_frame(),
+        ground_map_frame(),
         bbox=(X0, Y0, X0 + 150.0, Y0 + 100.0),
     )
     assert list(frame["polygon"]) == [1, 2]
@@ -1004,11 +1006,11 @@ def test_the_amplification_reads_the_topographic_position():
 
 
 def test_a_pif_in_two_units_is_refused():
-    units = step12_units()
+    units = units_frame()
     units["member_pif_ids"] = [[11], [11, 12]]
     with pytest.raises(ValueError, match="pifs in two wall units"):
         face_polygons.face_polygons(
-            step12_zones(), step12_elements(), units, step12_ground_map()
+            zones_frame(), elements_frame(), units, ground_map_frame()
         )
 
 
@@ -1071,8 +1073,8 @@ def work_dirs(tmp_path, monkeypatch):
     exposure = tmp_path / "exposure"
     for path in (landslide, shaking, exposure):
         path.mkdir()
-    monkeypatch.setattr(gen_urban_slope_faces, "WORK_DIR", landslide)
-    monkeypatch.setattr(gen_urban_slope_wall_units, "WORK_DIR", landslide)
+    monkeypatch.setattr(gen_wall_zones, "WORK_DIR", landslide)
+    monkeypatch.setattr(gen_wall_units, "WORK_DIR", landslide)
     monkeypatch.setattr(gen_ground_map, "WORK_DIR", landslide)
     monkeypatch.setattr(gen_terrain_derivatives, "TERRAIN_DIR", landslide / "terrain")
     monkeypatch.setattr(step, "WORK_DIR", landslide)
@@ -1087,16 +1089,14 @@ def work_dirs(tmp_path, monkeypatch):
 
 
 def write_inputs(monkeypatch):
-    """Write step 12's files, the walls and the four grids where the step reads them."""
+    """Write the zone, element, unit and ground map files, the walls and grids."""
     extent = "wlg-pilot"
-    step12_zones().to_parquet(
-        gen_urban_slope_faces.zones_path(f"w{WORLD:03d}", extent=extent)
+    zones_frame().to_parquet(gen_wall_zones.zones_path(f"w{WORLD:03d}", extent=extent))
+    elements_frame().assign(wall_unit_id=None).to_parquet(
+        gen_wall_zones.wall_elements_path(extent=extent)
     )
-    step12_elements().assign(wall_unit_id=None).to_parquet(
-        gen_urban_slope_faces.wall_elements_path(extent=extent)
-    )
-    step12_units().to_parquet(gen_urban_slope_wall_units.wall_units_path(extent=extent))
-    step12_ground_map().to_parquet(gen_ground_map.ground_map_path(extent=extent))
+    units_frame().to_parquet(gen_wall_units.wall_units_path(extent=extent))
+    ground_map_frame().to_parquet(gen_ground_map.ground_map_path(extent=extent))
     tpi_path = gen_terrain_derivatives.terrain_path(
         "topographic-position-100m", extent=extent
     )
@@ -1187,7 +1187,7 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
     assert by_id.loc["SP0000003", "wall_state"] == "no_wall"
     assert set(written["rate_setting"]) == {"medium"}
     assert written["evacuated"].notna().all()
-    # The polygons are step 12's zones of the world: their geometry is the
+    # The polygons are landslide step 4's zones of the world: their geometry is the
     # zones' and their wall is their element's wall unit.
     assert by_id.loc["SP0000001", "evacuated"].equals(square(10, 10, 20))
     assert list(written["wall_line_id"].iloc[:2]) == ["WU0000001", "WU0000002"]
@@ -1320,7 +1320,7 @@ def test_the_validation_figure_draws_without_a_fit():
 @ignore_affine_matmul
 def test_the_step_stops_on_zones_and_walls_from_different_draws(work_dirs, monkeypatch):
     write_inputs(monkeypatch)
-    # Step 7's wall line ids, as rw step 6 wrote them before the wall units.
+    # The old step 7's wall line ids, as rw step 6 wrote them before the wall units.
     old = unit_walls()
     old["wall_line_id"] = ["WL0000001", "WL0000002"]
     old.to_parquet(gen_wall_population.drawn_walls_path(WORLD, extent="wlg-pilot"))
@@ -1337,7 +1337,7 @@ def test_the_step_stops_on_zones_and_walls_from_different_draws(work_dirs, monke
 def test_a_world_without_zones_is_refused(work_dirs, monkeypatch):
     write_inputs(monkeypatch)
     elements, units, ground_map = step.read_step12_inputs(extent="wlg-pilot")
-    with pytest.raises(FileNotFoundError, match="gen_urban_slope_wall_zones"):
+    with pytest.raises(FileNotFoundError, match="gen_wall_zones"):
         step.read_polygons(
             7,
             extent="wlg-pilot",

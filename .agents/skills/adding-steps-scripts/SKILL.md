@@ -118,7 +118,7 @@ SEED = 1017473
 
 ```python
 # s1_simulate_landslides.py
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import config
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import config
 
 
 def main(*, pilot, seed):

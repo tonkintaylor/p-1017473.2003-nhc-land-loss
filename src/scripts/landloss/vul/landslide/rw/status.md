@@ -14,7 +14,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   or inundated polygons for more than `WALL_INSIDE_TOLERANCE_M` (0.01 m), and
   flag the two kinds of ground separately because the policy settles them
   differently. A line that only touches a polygon's edge is not flagged.
-- [x] Map each sloping wall's outcome from landslide step 9 onto the flags,
+- [x] Map each sloping wall's outcome from landslide step 6 onto the flags,
   failed with its polygon as damaged by shaking and absorbed or superseded as
   evacuated, OR-ed with the line flags, because the wall fails with the
   polygon on whose edge it stands.
@@ -35,13 +35,13 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 ## Where it is now
 
 - `steps/s11_wall_landslide_damage/` reads the world's wall population, the
-  combined large and urban realisation of landslide step 9 and its urban wall
+  combined large and urban realisation of landslide step 6 and its urban wall
   outcome table, and writes
   `temp/vul/wall-landslide-damage-wNNN-rNNN[-pilot].parquet`, one row per wall,
   flat-land and sloping alike, with `slope_id`, `outcome` and the three flags
   (`landloss.vul.landslide.flags.wall_flags`). It is tested end to end on
   synthetic inputs and has not been run on the pilot.
-- Landslide step 9 supersedes failed urban polygons only, and only where they
+- Landslide step 6 supersedes failed urban polygons only, and only where they
   share more than `SHARED_GROUND_TOLERANCE_M2` of ground with a large slide
   (`supersede_by_large`, contract decision 35, built). A sloping wall whose
   polygon did not fail is not marked superseded; where a large slide reaches it,
@@ -51,15 +51,15 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 ## Next
 
-1. Run the step over the pilot after exposure step 6 and landslide steps 8, 1
-   and 9.
+1. Run the step over the pilot after exposure step 6 and landslide steps 5, 3
+   and 6.
 2. In the loss calculation, a wall that crosses property boundaries counts
    as a wall on each property it enters by at least 1 m, with the length of
    wall inside that property (2 m of wall in a property means that property
    has a wall 2 m long), not once on its primary property at its whole
    length (the lead, 2026-10-06). Exposure rw step 6's drawn walls and wall
    population carry `property_lengths_m` (each property's id and length,
-   from landslide step 12's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
+   from exposure rw step 6's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
    and `n_properties` for this; today each wall is one row on its primary
    property with `length_m` its whole simplified line. The loss module is
    not changed yet.

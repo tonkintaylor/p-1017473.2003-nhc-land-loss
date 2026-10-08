@@ -1,4 +1,4 @@
-"""Landslide step 1, the large-model placement, on a synthetic unit set and grid.
+"""Landslide step 3, the large-model placement, on a synthetic unit set and grid.
 
 The ground is a plane rising to the west, so every cell drains east, cut into
 three slope units: a west block, a narrow strip three cells wide, and an east
@@ -26,7 +26,7 @@ from landloss.common.utils.terrain import (
 from landloss.domain import constants
 from landloss.hazard.landslide.land_class import EVACUATED, INUNDATED
 from landloss.hazard.realisation import realisation_seed
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
     s1_simulate_landslides as step,
 )
 

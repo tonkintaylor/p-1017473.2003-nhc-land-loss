@@ -23,7 +23,7 @@ Two fragilities live here.
   saw, with no topographic amplification and no rate factor (contract section
   6 of ``.agents/plans/urban-slope-build-contract.md``). Walls on sloping land
   are not drawn here: they belong to the urban failure polygon on whose edge
-  they stand, and landslide step 9 decides their fate.
+  they stand, and landslide step 6 decides their fate.
 - **Culverts and bridges** still take :data:`BETA_FAILURE_PROBABILITY`, one
   flat probability for every structure whatever its size, condition or the
   ground motion it saw -- a fragility curve flattened to a constant, not a

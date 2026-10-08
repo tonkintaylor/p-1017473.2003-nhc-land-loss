@@ -1,11 +1,11 @@
-"""Tests for step 12's wall units script: the claim layer it reads."""
+"""Tests for exposure rw step 6's wall units script: the claim layer it reads."""
 
 import os
 
 import pytest
 
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
-    gen_urban_slope_wall_units as script,
+from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_units as script,
 )
 
 

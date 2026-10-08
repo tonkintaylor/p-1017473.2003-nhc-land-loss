@@ -85,7 +85,7 @@ to the rupture. The scenario enters model 2 only through the calibration.
       (2013), as the paper does. The paper does not state its TPI neighbourhood;
       choose one, record it as a judgement, and test a smaller and a larger
       radius. Built with the window as an argument (600 m in the step's
-      `config.py`); the class thresholds are from the Weiss (2001) scheme, written from memory and marked `verify`; the sensitivity runs are open (step 11 plan).
+      `config.py`); the class thresholds are from the Weiss (2001) scheme, written from memory and marked `verify`; the sensitivity runs are open (landslide step 8 plan).
 - [x] Distance to mapped active faults: a reader in `landloss.io` for the NZ
       Active Faults Database in the data library
       (`210.20_active_faults_NZ_NZAFD_AF250`, V1), following `landloss.io.gfdb`,
@@ -93,7 +93,7 @@ to the rupture. The scenario enters model 2 only through the calibration.
       delivery holds the 9,978 traces as `NZAFD_AF250.geojson` (EPSG:2193) and a
       zipped shapefile; the reader takes the GeoJSON through
       `tdrive_sync.get_cached`, from the local copy in `.tdrivecache`, and is
-      tested on a temporary file. Confirmed against the real file, and step 11
+      tested on a temporary file. Confirmed against the real file, and landslide step 8
       has run over `wlg-pilot` with it.
 - [x] MM intensity: convert the study's PGV to MM with Worden et al. (2012),
       PGV form (`landloss.hazard.shaking` gains a `mmi_from_pgv`). For the validation events, read MM directly from the
@@ -161,7 +161,7 @@ from Kaikōura, so that model 2 stays an independent estimate.
       coverage in each bin, and fit a monotone curve
       (`fit_transfer_function`), as Nowicki Jessee fitted their equation 9.
       Each event is fitted alone and the two are pooled with each event's cells
-      weighted 1/n. Done by `steps/s11_kritikos_2015/
+      weighted 1/n. Done by `hazard/landslide/steps/s8_kritikos_2015/
       gen_kritikos_2015_transfer_function.py`; the pooled curve is the io asset
       `kritikos-2015-transfer-function.csv`. Result: mean observed coverage
       0.39% (Northridge) and 1.29% (Wenchuan); pooled curve 0.005%, 0.36%,
@@ -179,12 +179,12 @@ from Kaikōura, so that model 2 stays an independent estimate.
 
 ### Phase 7 — Wellington forward run
 
-- [x] Built as step 11 (`steps/s11_kritikos_2015/`), writing the relative hazard H and
-      the coverage on the 60 m grid, which step 1 reads with
+- [x] Built as landslide step 8 (`hazard/landslide/steps/s8_kritikos_2015/`), writing the relative hazard H and
+      the coverage on the 60 m grid, which landslide step 3 reads with
       `COVERAGE_MODEL = "kritikos_2015"`. Run over `wlg-pilot`: mean coverage
       1.47%.
-      A step under `src/scripts/landloss/hazard/landslide/steps/` (next free
-      number), following the `adding-steps-scripts` skill: coverage on the 60 m
+      A step under `src/scripts/landloss/hazard/landslide/steps/` (it was
+      built as the next free number, 11, and is now step 8), following the `adding-steps-scripts` skill: coverage on the 60 m
       grid over the study area, from the study's MM, then handed to the
       realisation machinery with the size distribution truncated below at the
       split.
@@ -199,7 +199,7 @@ from Kaikōura, so that model 2 stays an independent estimate.
 | `src/landloss/hazard/landslide/models/kritikos_2015/model.py` | Fuzzy gamma aggregation |
 | `src/landloss/io/active_faults.py` | NZ Active Faults Database reader |
 | `src/scripts/landloss/hazard/landslide/validations/kritikos_2015/` | Reproduction of the paper, the Kaikōura check, findings |
-| `src/scripts/landloss/hazard/landslide/steps/s<n>_kritikos_2015/` | Wellington forward run |
+| `src/scripts/landloss/hazard/landslide/steps/s8_kritikos_2015/` | Wellington forward run |
 | `context/lit/landslide/kritikos_2015/figures/` | Rendered Figure 5 and the digitised points |
 | `tests/landloss/hazard/landslide/models/test_kritikos_2015.py` | Unit tests |
 

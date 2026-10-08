@@ -27,7 +27,7 @@ on synthetic inputs; not yet run on the pilot since the change.
   and a cut wall's 15% stronger (the lead, 2026-10-06;
   `.agents/plans/assigning-retaining-wall-types.md`).
 - Draw **flat-land walls only**. A wall on sloping land fails with the urban
-  failure polygon on whose edge it stands, drawn by landslide step 9; see
+  failure polygon on whose edge it stands, drawn by landslide step 6; see
   `hazard/landslide/status.md`.
 - Evaluate every curve on **PGV**, converting a curve published on PGA at the
   wall's own PGV/PGA ratio, so walls and urban slopes share one intensity
@@ -84,7 +84,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    has a wall 2 m long), not once on its primary property at its whole
    length (the lead, 2026-10-06). Exposure rw step 6's drawn walls and wall
    population carry `property_lengths_m` (each property's id and length,
-   from landslide step 12's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
+   from exposure rw step 6's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
    and `n_properties` for this; today each wall is one row on its primary
    property with `length_m` its whole simplified line. The loss module is
    not changed yet.

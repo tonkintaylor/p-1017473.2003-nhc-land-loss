@@ -17,7 +17,7 @@ one line, one probability, one draw. This module:
    (:func:`gen_unit_properties`).
 2. **Prior.** Scores each unit in points (the lead, 2026-10-07): its
    verticality, wall height, length, distance to a building, road frontage or
-   property boundary, landslide step 13 class, a cut in rock or in soil, the
+   property boundary, ground step 5 class, a cut in rock or in soil, the
    wall age shares of its property and NHC's land attributes flag, each from
    the points table ``wall-probability-points.csv`` in
    :mod:`landloss.io.assets`. The points set the odds on a logistic scale,
@@ -51,14 +51,14 @@ and 5 m (``PIP_DROP_M`` and ``PIP_OFFSETS_M`` in
 :mod:`landloss.hazard.landslide.instability_zones`); such a wall is a
 candidate only where GNS maps it. No prior is lowered for it.
 
-**Height from the siz table, class from landslide step 13.** A pif's
+**Height from the siz table, class from ground step 5.** A pif's
 wall height is the siz table's ``near_drop_p80_m`` (since 2026-10-06): a
 quantile over its pips of the drop to the lowest cell within 3 m below each
 pip along its fall
 (:func:`~landloss.hazard.landslide.instability_zones.gen_pif_near_drops`).
-Neither its largest pip drop ``max_delta_h_m`` nor step 13's walk to the
+Neither its largest pip drop ``max_delta_h_m`` nor ground step 5's walk to the
 foot of the face, which runs on down a long batter or hillside, is used:
-both overstated the retained height. Step 13 classes every pif
+both overstated the retained height. Ground step 5 classes every pif
 (``urban-slope-pif-cut-fill{suffix}``), and its ``cut_fill_class`` sets the
 fill, natural and cut points; the ground map's material says only whether a
 cut is in rock or in soil. Fill on the ground map (its fill materials and its
@@ -139,11 +139,11 @@ AGE_BINS = ("pre_1970", "1970_1991", "1992_2004", "2005_on")
 # The stream each exposure world's wall unit draw comes from.
 DRAW_STREAM = "wall_units"
 
-# The landslide step 13 classes that take the fill factor: the front of a
+# The ground step 5 classes that take the fill factor: the front of a
 # platform and a benched face with fill at its crest.
 FILL_CLASSES = (pif_cut_fill.FILL, pif_cut_fill.CUT_AND_FILL)
 
-# The landslide step 13 column a pif member reads, per pif: its class.
+# The ground step 5 column a pif member reads, per pif: its class.
 CUT_FILL_COLUMNS = ("cut_fill_class",)
 
 # The siz table columns a pif member reads, and the GNS-only columns.
@@ -208,7 +208,7 @@ def gen_wall_members(
     """One row per candidate pif and per GNS-only piece, in one shape.
 
     Args:
-        sizs: The siz table from landslide step 12 (pif_id index, the spine
+        sizs: The siz table from ground step 4 (pif_id index, the spine
             columns of
             :func:`~landloss.hazard.landslide.instability_zones.gen_pif_spines`,
             the evidence of
@@ -221,7 +221,7 @@ def gen_wall_members(
             (:func:`~landloss.hazard.landslide.wall_candidates.gen_gns_only_candidates`,
             gns_only_id index) with ``step_height_m``, the step the DEM shows
             across each piece.
-        cut_fill: Landslide step 13 per pif, indexed by ``pif_id``, with
+        cut_fill: Ground step 5 per pif, indexed by ``pif_id``, with
             :data:`CUT_FILL_COLUMNS`: ``cut_fill_class`` (one of
             :data:`~landloss.hazard.landslide.pif_cut_fill.CLASSES`). Every candidate
             pif must be in it.
@@ -244,7 +244,7 @@ def gen_wall_members(
 
     Raises:
         ValueError: If a frame is missing a column it needs, or a candidate
-            pif has no row in ``cut_fill`` (step 13 predates the siz table).
+            pif has no row in ``cut_fill`` (ground step 5 predates the siz table).
     """
     _require(sizs, PIF_COLUMNS, "sizs")
     _require(gns_only, GNS_ONLY_COLUMNS, "gns_only")
@@ -255,7 +255,7 @@ def gen_wall_members(
     if len(absent):
         msg = (
             f"{len(absent)} candidate pifs have no cut and fill class (first: "
-            f"{absent[:5].tolist()}): rerun landslide step 13 on this siz table"
+            f"{absent[:5].tolist()}): rerun ground step 5 on this siz table"
         )
         raise ValueError(msg)
     step13 = cut_fill.loc[pifs.index]
@@ -723,8 +723,8 @@ def gen_wall_points(
       as the furthest bin);
     - ``setting``: road frontage, else property boundary
       (:func:`gen_unit_boundary_flags`);
-    - ``class``: landslide step 13's class (fill, cut and fill, natural);
-    - ``rock_cut``: a step 13 ``cut`` on a rock material other than highly or
+    - ``class``: ground step 5's class (fill, cut and fill, natural);
+    - ``rock_cut``: a ground step 5 ``cut`` on a rock material other than highly or
       completely weathered or crushed rock, deeper than the bin's lower bound;
     - ``soil_cut``: a ``cut`` on one of :data:`SOIL_CUT_MATERIALS`;
     - ``age``: the share-weighted points of the primary property's wall age

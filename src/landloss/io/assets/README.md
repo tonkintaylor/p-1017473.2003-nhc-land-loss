@@ -16,7 +16,7 @@ committed. Nothing here is large enough to belong in a cache.
 | `wellington-greywacke-strength.csv` | Effective strength (c′, φ′), unit weight and undrained strength of Wellington greywacke, its soil mantle and fill by weathering grade, one row per value set, from published sources and T+T Wellington projects | Compiled from T+T Site Search excerpts of project reports, and from GNS SLIDE reports SR2019/40 and SR2019/51, 1 October 2026 — see below | `landloss.hazard.landslide.ground_map.strength_from_material` |
 | `wellington-greywacke-depth-to-rock.csv` | Observed depths to weathered greywacke rock, and thicknesses of the colluvium and residual soil mantle, at Wellington-region T+T sites | As above | Not yet read; for landslide model 7 |
 | `hancox-1997-figure-19-area-affected.csv` | Hancox et al. (1997) Figure 19: area affected by landsliding against magnitude for the report's 22 earthquakes, numbered and named as in its Table 2 | Digitised from `context/lit/landslide/hancox_1997/figures/page-075.png` by detecting each filled dot's pixel position and converting it against the axis ticks (a one-off, not kept) | `landloss.hazard.landslide.models.hancox_1997.relationships.get_figure_19` |
-| `retaining-wall-type-fragility.csv` | Fragility per retaining wall type and height class (under 2 m, 2 m and over), on the moderate damage state, stored as the PGA at which 15% and 50% of walls are replaced; confirmed by the lead; read by `assign_fragility` (landslide step 8) and `wall_failure_probability` (vul shaking step 9) | Converted from Koutsoupaki et al. (2023) Tables A1 to A5, 6 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility` |
+| `retaining-wall-type-fragility.csv` | Fragility per retaining wall type and height class (under 2 m, 2 m and over), on the moderate damage state, stored as the PGA at which 15% and 50% of walls are replaced; confirmed by the lead; read by `assign_fragility` (landslide step 5) and `wall_failure_probability` (vul shaking step 9) | Converted from Koutsoupaki et al. (2023) Tables A1 to A5, 6 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility` |
 | `retaining-wall-types.csv` | Each retaining wall type's Python name, readable label, the NHC costing tool rate row it is priced at, and what it covers | Set by the project lead, 8 October 2026 — see below | `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_types` |
 | `beta-retaining-wall-type-shares.csv` | The share of each retaining wall type by age bin and height band, which each wall's type is drawn from; judgement placeholders | Set by the project lead, 6 October 2026, for Nick Peters to revise — see below | `landloss.exposure.rw.wall_type.load_beta_wall_type_shares` |
 | `beta-retaining-wall-frontage-multipliers.csv` | The multiplier each retaining wall type's share takes where the wall stands on a road frontage; judgement placeholders | As above | `landloss.exposure.rw.wall_type.load_beta_frontage_multipliers` |
@@ -296,7 +296,7 @@ Two of its readings carry over to the type table:
 ## `retaining-wall-type-fragility.csv`
 
 Confirmed by the project lead (6 October 2026), and read by
-`landloss.hazard.landslide.urban.fragility.assign_fragility` (landslide step 8) and
+`landloss.hazard.landslide.urban.fragility.assign_fragility` (landslide step 5) and
 `landloss.vul.shaking.fragility.wall_failure_probability` (vul shaking step 9). One row per
 `(wall_type, height_class)`, every pair present (14 rows). Each curve is stored as two
 points on it: `p15` and `p50`, the free-field PGA (`im = pga_g`) at which 15%
@@ -405,7 +405,7 @@ finding id.
 
 The rows are the anchors of section 6 of
 `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`,
-revised with the project lead on 2026-10-07. Step 8 does not read this file.
+revised with the project lead on 2026-10-07. Landslide step 5 does not read this file.
 The urban validation
 (`src/scripts/landloss/hazard/landslide/validations/urban/`) draws the curves
 against it and fits the localised median to it.
@@ -557,13 +557,13 @@ constants in `slope_elements.py`.
 
 ## `wall-probability-points.csv`
 
-The points that set the probability that a landslide step 12 wall candidate is
+The points that set the probability that a ground step 4 wall candidate is
 a retaining wall (`wall_units.gen_wall_points`; the lead, 2026-10-07; the plan
 is `.agents/plans/wall-probability-points.md`). One row per bin:
 
 - `attribute`: what is scored. `verticality`, `height` (`height_m`), `length`
   (`length_m`) and `building` (`building_m`) are numeric; `setting`
-  (`road_frontage`, else `property_boundary`), `class` (landslide step 13's
+  (`road_frontage`, else `property_boundary`), `class` (ground step 5's
   `fill`, `cut_and_fill`, `natural`), `rock_cut`, `soil_cut`, `age` and
   `nhc_land_attrs` are categories.
 - `bin`: the bin's name, shown in each candidate's `wall_points_explain`. For

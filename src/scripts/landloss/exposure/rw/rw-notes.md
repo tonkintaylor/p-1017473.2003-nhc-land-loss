@@ -8,9 +8,10 @@ is not kept up to date.
 Removed 2026-10-08: the candidate wall lines (`gen_wall_lines.py`,
 `fig_wall_lines.py`, the line builders in `landloss.exposure.rw.lines`,
 `wall-lines*.geoparquet`) and the per-line probability, along with landslide
-steps 6 and 7 that they read and fed. The candidates are now landslide step
-12's wall units, and exposure rw step 6 gives them a probability and draws the
-population (`gen_wall_probability.py`, `gen_wall_population.py`). The
+steps 6 and 7 that they read and fed. The candidates are now the wall units
+exposure rw step 6 builds on ground step 4's pifs (`gen_wall_units.py`;
+landslide step 12 built them until 2026-10-08), and step 6 gives them a
+probability and draws the population (`gen_wall_probability.py`, `gen_wall_population.py`). The
 paragraphs below describing lines are the 2026-10-02 state, not the current
 method.
 
@@ -71,7 +72,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [~] **Set a wall's probability of failure from its condition and its size from its
   height**, and cost on size: initial condition changes the probability of
   failure only, not the cost. The size comes from the line's DEM face height,
-  and the fragility by size and condition is in hazard landslide step 8 and
+  and the fragility by size and condition is in hazard landslide step 5 and
   `vul/shaking/rw` step 9.
 - [ ] **Set the initial state from the age of the dwelling**, as the available proxy
   for whether a wall is modern or poor, read from a building construction age
@@ -84,7 +85,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   mapping study, the remote sensing detection and the ICNZ database will not be
   obtained (decided 2026-10-01). The scaling once written for this was
   removed on 2026-10-05: the claim counts now update the wall units'
-  probabilities in landslide step 12.
+  probabilities in exposure rw step 6(`gen_wall_units.py`).
+
 - [x] **Draw the wall population per exposure realisation**, on its own stream,
   separate from the hazard realisations: a few exposure realisations against
   many hazard ones, because whether a wall exists is not something the
@@ -202,10 +204,12 @@ position from the cut-and-fill residual, the ground map's material and flat
 land, and its claim (the uphill owner for a fill wall on a boundary, the
 downhill owner for a cut wall). Mapped walls under 0.5 m are kept and classed
 small. `fig_wall_lines.py` draws the lines by source. It was exercised end to
-end on synthetic inputs only; it read landslide steps 3, 4 and 6.
+end on synthetic inputs only; it read landslide steps 3, 4 and 6 (now ground
+steps 1 and 2; step 6 was removed).
 
 **The probability per line and the draw per world existed** (the per-line
-probability was removed 2026-10-08; the draw now runs on step 12's wall units).
+probability was removed 2026-10-08; the draw now runs on the wall units of
+`gen_wall_units.py`).
 `gen_wall_probability.py` reads only the lines and writes
 `temp/exposure/wall-probability[-pilot].geoparquet`, putting on each line
 `p_wall`, from its source's prior, lowered on a rock cut, capped on flat land
@@ -220,7 +224,7 @@ poor or not, so a property can have several walls. Claimless lines are dropped
 `temp/exposure/wall-population-wNNN[-pilot].geoparquet`. Every wall the
 world drew, before the claim and coverage filters, is also written to
 `temp/exposure/drawn-walls-wNNN[-pilot].geoparquet` with `rw_id` null where
-the wall is not insured; landslide step 8 reads it, so road and
+the wall is not insured; landslide step 5 reads it, so road and
 back-of-section walls shape the urban slope model. `gen_exposure.py`
 runs the three scripts in order over `WORLD_IDS`.
 
@@ -237,7 +241,7 @@ rules were set against Christchurch's open valuation roll
 Every number is `BETA_` judgement, not evidence about Wellington. The step 8
 age is not yet read onto the lines, so the age rule never fires. (The count
 bounds hook was removed on 2026-10-05; the claim counts update the wall units
-in landslide step 12.) Both scripts are exercised end to end on
+in exposure rw step 6.) Both scripts are exercised end to end on
 synthetic inputs only; neither has been run over the pilot. The interim
 per-property probability and the slope-driven stand-in are deleted;
 `landloss.exposure.rw.beta_population` keeps the size and condition classes,
@@ -257,7 +261,8 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
 
 1. Rebuild the wall candidates on the faces layer (`.agents/plans/building-face-based-urban-slope-polygons.md`, phase 2), then
    rerun the pilot and record the counts in the method file. Done: the wall
-   units of landslide step 12 are the candidates (the lines were removed
+   units of `gen_wall_units.py` (landslide step 12 until 2026-10-08) are the
+   candidates (the lines were removed
    2026-10-08).
 2. Name the six wall classes, so a published fragility curve can attach to
    each cell of the class, size and condition grid.
@@ -265,8 +270,9 @@ The size thresholds are settled: small below 1 m, medium 1 to 2.5 m, large above
    are held and how they are read, so the inputs are reproducible.
 4. Read the claim report extraction (**T-50**) when it lands, in a later phase,
    and raise the wall units' probabilities per property on the walls it lists
-   (built 2026-10-05 in landslide step 12, on the claim layer held now).
-5. Read step 8's age bin per property onto the lines, in place of the empty
+   (built 2026-10-05 in `gen_wall_units.py`, then landslide step 12, on the
+   claim layer held now).
+5. Read exposure step 8's age bin per property onto the lines, in place of the empty
    `dwelling_age_decade`, and set the condition probability from the four bins.
 6. Train the predictive model, bringing slope, height, wall position and
    subdivision age into `p_wall` and wall type into `p_poor`.

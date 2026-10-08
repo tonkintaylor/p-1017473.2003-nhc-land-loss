@@ -4,7 +4,8 @@ The world is built here by hand, so every outcome can be worked out on paper:
 
 - two claims: claim 1 holds a face and the terrace above it, claim 2 the
   ground to the east, insured only on its lower flat land;
-- landslide step 12's files for one exposure world: three failure polygons
+- landslide step 4's zones, ground step 3's elements and exposure rw step 6's
+  wall units for one exposure world: three failure polygons
   with their evacuated, imminent and inundated zones (the face of claim 1, a
   smaller polygon inside it, and a face on claim 2), the elements they grew
   from, and three wall units: a cut wall along the toe of claim 1's face, a
@@ -17,19 +18,19 @@ The world is built here by hand, so every outcome can be worked out on paper:
 The stages run in the order the step scripts run them, and each hand-over goes
 through the file the step's own path function names, with every step's
 ``WORK_DIR`` pointed at ``tmp_path``: exposure rw step 6's wall probability on
-its library function and its ``main`` (draw from step 12's draw, the wall
+its library function and its ``main`` (draw from its wall unit draw, the wall
 type draw from a hand-built property age file, claim and coverage filters,
-``rw_id``, the drawn walls), landslide step 8 on its
+``rw_id``, the drawn walls), landslide step 5 on its
 script's ``read_step12_inputs``, ``read_polygons``, ``build_model`` and
 ``add_world_id`` (the zones of the world as polygons, checked against the drawn
-walls), landslide step 9's ``main`` (draw, supersession, absorption, combined
+walls), landslide step 6's ``main`` (draw, supersession, absorption, combined
 realisation, wall outcomes), vul shaking rw step 9 on its script's helpers
 (flat-land walls), vul landslide rw step 11's ``main`` (flags), vul landslide
 land step 3's ``main`` (damaged area) and vul step 10's land and retaining
 wall tables, written through ``world_loss_input_path``. The world and the
 earthquake carry different ids, 1 and 2, so a swap of the two anywhere in the
-chain shows in a file name or an id column. Step 12's files are built by hand
-and checked against the columns step 8 and the wall probability read.
+chain shows in a file name or an id column. Those files are built by hand
+and checked against the columns landslide step 5 and the wall probability read.
 
 The draws are forced so the assertions are deterministic whatever the seed:
 every wall unit is walled in the world and every unit is made a wall
@@ -39,8 +40,8 @@ units, 1.8 m) and far above it for walls 2 m and over (the flat unit, 3 m),
 whatever type and fill or cut shift a wall draws, and the PGV is far above
 every localised median, so every polygon fails and the tall flat-land wall
 stands. The wall units are all on sloping ground
-as step 12 builds them; the flat one is flagged ``is_flatland`` by hand so the
-flat-land path of vul shaking rw step 9 stays covered.
+as the ground and exposure steps build them; the flat one is flagged
+``is_flatland`` by hand so the flat-land path of vul shaking rw step 9 stays covered.
 """
 
 import geopandas as gpd
@@ -96,23 +97,21 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     gen_wall_age,
     gen_wall_population,
     gen_wall_probability,
+    gen_wall_units,
 )
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
-    s1_simulate_landslides,
-)
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain import (
     gen_terrain_derivatives,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map import gen_ground_map
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
+from scripts.landloss.ground.steps.s2_ground_map import gen_ground_map
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
+    s1_simulate_landslides,
+)
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones import gen_wall_zones
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import (
     gen_urban_slope_fragility,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
-    gen_urban_slope_faces,
-    gen_urban_slope_wall_units,
 )
 from scripts.landloss.hazard.shaking.steps.s2_site_class import gen_site_class
 from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation import (
@@ -161,7 +160,7 @@ SOUTH = 180.0
 # at most before amplification) and every median under 2 m, far below the
 # median of 2 m and over.
 PGV_M_S = 100.0
-# Step 3's PGV at the return period over the unscaled PGA: the ratio a PGA wall
+# Shaking step 3's PGV at the return period over the unscaled PGA: the ratio a PGA wall
 # median is converted at.
 RATIO_M_S_PER_G = 1.2
 SITE_CLASS = 3
@@ -180,7 +179,7 @@ FACE_ANGLE_DEG = 45.0
 CLAIM_1 = "CLM0000001"
 CLAIM_2 = "CLM0000002"
 
-# The columns landslide step 1 writes, which the large rows below carry.
+# The columns landslide step 3 writes, which the large rows below carry.
 LARGE_COLUMNS = s1_simulate_landslides.OUTPUT_COLUMNS
 
 
@@ -213,7 +212,7 @@ def constant_grid(value, resolution):
 
 # --- the synthetic inputs ------------------------------------------------------
 
-# Step 12's polygons of the world: the step 12 polygon number, the element it
+# Landslide step 4's polygons of the world: the polygon number, the element it
 # grew from, that element's pif, whether the world walled it, and its
 # evacuated, imminent and inundated zones (None where it has none). The nested
 # polygon sits inside the face's evacuated ground and its pif is in no unit.
@@ -239,7 +238,7 @@ POLYGONS = {
     ),
 }
 
-# Step 12's wall units: the id, the member pifs, whether on fill, the
+# Exposure rw step 6's wall units: the id, the member pifs, whether on fill, the
 # property, the source and the geometry.
 UNITS = {
     "toe": ("WU0000001", [11], False, "P1", "pif", segment(0, 0, 30, 0)),
@@ -258,7 +257,7 @@ LARGE_INUNDATED = rect(55, -12, 95, -5)
 
 
 def make_zones():
-    """Step 12's zones of the world, one row per polygon and zone."""
+    """Landslide step 4's zones of the world, one row per polygon and zone."""
     rows = []
     for label, (polygon, element, _, walled, *zones) in POLYGONS.items():
         evacuated = zones[0]
@@ -281,7 +280,7 @@ def make_zones():
 
 
 def make_elements():
-    """Step 12's elements, indexed by label, all on the one ground map piece."""
+    """Ground step 3's elements, indexed by label, all on the one ground map piece."""
     values = list(POLYGONS.values())
     return pd.DataFrame(
         {
@@ -294,7 +293,7 @@ def make_elements():
 
 
 def make_ground_map():
-    """The step 4 ground map: one colluvium piece over the whole world."""
+    """The ground step 2 ground map: one colluvium piece over the whole world."""
     return gpd.GeoDataFrame(
         {
             "ground_id": ["GM0000001"],
@@ -310,7 +309,7 @@ def make_ground_map():
 
 
 def make_units():
-    """Step 12's wall units, indexed by ``wall_unit_id``."""
+    """Exposure rw step 6's wall units, indexed by ``wall_unit_id``."""
     labels = list(UNITS)
     values = [UNITS[k] for k in labels]
     geometries = [v[5] for v in values]
@@ -394,7 +393,7 @@ def make_wall_ages():
 
 
 def make_large_rows():
-    """Landslide step 1's large-model realisation: one evacuated and inundated pair."""
+    """Landslide step 3's large-model realisation: one evacuated and inundated pair."""
     base = {
         column: [np.nan, np.nan] for column in LARGE_COLUMNS if column != "geometry"
     }
@@ -422,8 +421,8 @@ def make_large_rows():
 # Every step module whose path functions the chain writes or reads through, and
 # the folder under the chain's root its WORK_DIR is pointed at.
 WORK_DIRS = (
-    (gen_urban_slope_faces, "landslide"),
-    (gen_urban_slope_wall_units, "landslide"),
+    (gen_wall_zones, "landslide"),
+    (gen_wall_units, "landslide"),
     (gen_ground_map, "landslide"),
     (s1_simulate_landslides, "landslide"),
     (gen_urban_slope_fragility, "landslide"),
@@ -550,15 +549,16 @@ def run_chain(root):
         ),
     )
 
-    # Landslide step 12: the elements, the ground map, the wall units, the
+    # Ground step 3, exposure rw step 6 and landslide step 4: the elements, the
+    # ground map, the wall units, the
     # world's draw (every unit walled) and the world's zones.
     write(make_ground_map(), gen_ground_map.ground_map_path(extent=extent))
     elements = make_elements().assign(wall_unit_id=None)
-    path = gen_urban_slope_faces.wall_elements_path(extent=extent)
+    path = gen_wall_zones.wall_elements_path(extent=extent)
     path.parent.mkdir(parents=True, exist_ok=True)
     elements.to_parquet(path)
     units = make_units()
-    units.to_parquet(gen_urban_slope_wall_units.wall_units_path(extent=extent))
+    units.to_parquet(gen_wall_units.wall_units_path(extent=extent))
     write(
         pd.DataFrame(
             {
@@ -567,11 +567,11 @@ def run_chain(root):
                 "walled": True,
             }
         ),
-        gen_urban_slope_wall_units.wall_draws_path(extent=extent),
+        gen_wall_units.wall_draws_path(extent=extent),
     )
     zones = write(
         make_zones(),
-        gen_urban_slope_faces.zones_path(f"w{WORLD:03d}", extent=extent),
+        gen_wall_zones.zones_path(f"w{WORLD:03d}", extent=extent),
     )
     unit_ids = {label: UNITS[label][0] for label in UNITS}
 
@@ -594,10 +594,12 @@ def run_chain(root):
     )
     drawn = gpd.read_parquet(gen_wall_population.drawn_walls_path(WORLD, extent=extent))
 
-    # Landslide step 8, on the forced wall table rather than the packaged one.
-    step8 = gen_urban_slope_fragility
-    read_elements, read_units, ground_map = step8.read_step12_inputs(extent=extent)
-    polygons = step8.read_polygons(
+    # Landslide step 5, on the forced wall table rather than the packaged one.
+    fragility_step = gen_urban_slope_fragility
+    read_elements, read_units, ground_map = fragility_step.read_step12_inputs(
+        extent=extent
+    )
+    polygons = fragility_step.read_polygons(
         WORLD,
         extent=extent,
         elements=read_elements,
@@ -612,7 +614,7 @@ def run_chain(root):
         )
     )
     slope_of = {label: slope_of[POLYGONS[label][0]] for label in POLYGONS}
-    model = step8.build_model(
+    model = fragility_step.build_model(
         polygons,
         drawn,
         wall_table=wall_table,
@@ -621,24 +623,28 @@ def run_chain(root):
         pga=pga,
         extent=extent,
     )
-    model = step8.add_world_id(model, WORLD)
-    model = write(model, step8.urban_slope_model_path(WORLD, extent=extent))
+    model = fragility_step.add_world_id(model, WORLD)
+    model = write(model, fragility_step.urban_slope_model_path(WORLD, extent=extent))
 
-    # Landslide step 9: the run itself, then its draw again on the same inputs
+    # Landslide step 6: the run itself, then its draw again on the same inputs
     # for the assertions on each row.
-    step9 = gen_urban_slope_realisation
-    step9.main(extent=extent, world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
+    realisation_step = gen_urban_slope_realisation
+    realisation_step.main(
+        extent=extent, world_ids=[WORLD], realisation_ids=[EARTHQUAKE]
+    )
     combined = gpd.read_parquet(
-        step9.combined_realisation_path(WORLD, EARTHQUAKE, extent=extent)
+        realisation_step.combined_realisation_path(WORLD, EARTHQUAKE, extent=extent)
     )
     outcomes = pd.read_parquet(
-        step9.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent=extent)
+        realisation_step.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent=extent)
     )
-    read_model, _, pgv, read_large = step9.read_inputs(WORLD, EARTHQUAKE, extent=extent)
+    read_model, _, pgv, read_large = realisation_step.read_inputs(
+        WORLD, EARTHQUAKE, extent=extent
+    )
     rng = realisation_seed(
         constants.BASE_SEED, EARTHQUAKE, urban.URBAN_STREAM, world_id=WORLD
     )
-    realised = step9.realise(read_model, pgv, read_large, rng)
+    realised = realisation_step.realise(read_model, pgv, read_large, rng)
 
     # Vul shaking rw step 9, flat-land walls only.
     states = write(
@@ -763,17 +769,17 @@ def test_every_output_is_named_and_stamped_with_the_world_and_earthquake(
 # stage: (the frame it reads, the columns it reads from it), the columns taken
 # from the reading module's own constants where it names them.
 READS = {
-    "landslide step 8 reads the zones": ("zones", face_polygons.ZONE_COLUMNS),
-    "landslide step 8 reads the elements": (
+    "landslide step 5 reads the zones": ("zones", face_polygons.ZONE_COLUMNS),
+    "landslide step 5 reads the elements": (
         "elements",
         face_polygons.ELEMENT_COLUMNS,
     ),
-    "landslide step 8 reads the wall units": ("units", face_polygons.UNIT_COLUMNS),
-    "landslide step 8 reads the ground map": (
+    "landslide step 5 reads the wall units": ("units", face_polygons.UNIT_COLUMNS),
+    "landslide step 5 reads the ground map": (
         "ground_map",
         face_polygons.GROUND_COLUMNS,
     ),
-    "landslide step 8's polygons carry what the fragility reads": (
+    "landslide step 5's polygons carry what the fragility reads": (
         "polygons",
         (
             geometry.SLOPE_ID_COLUMN,
@@ -805,7 +811,7 @@ READS = {
         "probabilities",
         population.REQUIRED_COLUMNS,
     ),
-    "landslide step 8 reads the drawn walls": (
+    "landslide step 5 reads the drawn walls": (
         "drawn",
         (
             RW_ID_COLUMN,
@@ -816,7 +822,7 @@ READS = {
             fragility.IS_FLATLAND_COLUMN,
         ),
     ),
-    "landslide step 9 reads the model": (
+    "landslide step 6 reads the model": (
         "model",
         (
             urban.SLOPE_ID_COLUMN,
@@ -834,7 +840,7 @@ READS = {
             urban.DEPTH_INUNDATED_COLUMN,
         ),
     ),
-    "landslide step 9 reads the wall population": (
+    "landslide step 6 reads the wall population": (
         "walls",
         (
             urban.RW_ID_COLUMN,
@@ -843,7 +849,7 @@ READS = {
             urban.IS_FLATLAND_COLUMN,
         ),
     ),
-    "landslide step 9 reads the large realisation": (
+    "landslide step 6 reads the large realisation": (
         "large",
         (
             urban.LANDSLIDE_ID_COLUMN,

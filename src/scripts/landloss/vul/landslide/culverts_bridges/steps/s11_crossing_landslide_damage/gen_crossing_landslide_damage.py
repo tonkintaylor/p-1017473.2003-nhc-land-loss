@@ -37,7 +37,7 @@ from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population.gen_crossing_population import (
     crossing_population_path,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
     combined_realisation_path,
 )
 from scripts.landloss.paths import TEMP_DIR

@@ -21,10 +21,10 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population i
 from scripts.landloss.exposure.steps.s3_dwellings_per_property.gen_dwellings_per_property import (
     address_to_claim_path,
 )
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     dem_path,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
     combined_realisation_path,
 )
 

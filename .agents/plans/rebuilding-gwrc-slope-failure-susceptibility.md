@@ -299,7 +299,7 @@ presented as doing so.
 
 Option 3 below was taken and built. The scheme is
 `landloss.hazard.landslide.susceptibility`, and the step that runs it is
-`src/scripts/landloss/hazard/landslide/steps/s2_slope_failure_susceptibility/`.
+`src/scripts/landloss/hazard/landslide/steps/s7_slope_failure_susceptibility/`.
 That step's own method file describes what is implemented and its implementation
 plan carries the phases still open, including the first comparison against the
 published layer. This document stays as the method extraction and the record of

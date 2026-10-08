@@ -4,9 +4,9 @@ What belongs here: the wall states and zone kinds a polygon carries, the
 column names the urban slope modules share, the headscarp band and colluvium
 depth the polygon builder (:mod:`landloss.hazard.landslide.slope_polygons`)
 reads, and the Kingsbury factors and topographic amplification landslide
-step 8 scores a polygon's fragility from. The polygons themselves are step 12's
-zones (``s12_urban_slope_faces``); the older candidate reconciliation of
-landslide steps 6 and 7 was removed on 2026-10-08.
+step 5 scores a polygon's fragility from. The polygons themselves are landslide step 4's
+zones (``s4_wall_zones``); the older candidate reconciliation of
+the old steps 6 and 7 was removed on 2026-10-08.
 
 The rules are the starting points of plan section 7
 (``.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md``),

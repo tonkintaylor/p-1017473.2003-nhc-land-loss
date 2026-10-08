@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 
 from landloss.domain import constants
-from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+from scripts.landloss.hazard.landslide.steps.s2_hancox_1997 import (
     gen_hancox_1997_coverage as step,
 )
 

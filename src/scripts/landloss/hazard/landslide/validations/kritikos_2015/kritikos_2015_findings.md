@@ -91,7 +91,7 @@ pandas. Rerunning the script as committed, from the cache, gives the same table.
 
 ## The transfer function from H to coverage
 
-`steps/s11_kritikos_2015/gen_kritikos_2015_transfer_function.py` fits it on
+`steps/s8_kritikos_2015/gen_kritikos_2015_transfer_function.py` fits it on
 the same two events, over the inventory bounding box, with the step's settings
 (γ 0.9, TPI 600 m, mapped faults). Tables: `report/hazard/landslide/
 kritikos-2015-validation/tab/kritikos_2015_transfer_function*.csv`.

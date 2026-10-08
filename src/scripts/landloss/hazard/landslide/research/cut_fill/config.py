@@ -5,14 +5,14 @@ Everything that changes between one run of ``gen_pif_cut_fill.py`` or
 these as arguments and hold no defaults of their own.
 """
 
-# The extent the pifs come from: the one landslide step 12 was last run over.
+# The extent the pifs come from: the one ground step 4 was last run over.
 EXTENT = "wlg-pilot"
 
 # Whether to reuse the cached LINZ and GNS layers.
 USE_CACHED_LAYERS = True
 
 # ---------------------------------------------------------------------------
-# The two simpler natural surfaces compared with step 13's anchor surface
+# The two simpler natural surfaces compared with ground step 5's anchor surface
 # ---------------------------------------------------------------------------
 
 # The rolling mean: the 1 m DEM averaged over a square window this many metres
@@ -25,7 +25,7 @@ ROLLING_WINDOW_M = 30.0
 FIT_RADIUS_M = 15.0
 
 # The anchor surface, the walk to the foot of each face and the class
-# thresholds are step 13's, fixed in landloss.hazard.landslide.pif_cut_fill
+# thresholds are ground step 5's, fixed in landloss.hazard.landslide.pif_cut_fill
 # (FIT_RADIUS_M, FACE_BUFFER_M, ROBUST_ITERATIONS, SCALE_K, FOOT_SLOPE_DEG,
 # FOOT_MAX_M, EXCESS_DROP_M, POSITION_SPLIT), so the research and the step
 # cannot drift apart.

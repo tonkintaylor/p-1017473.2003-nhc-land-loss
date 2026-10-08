@@ -32,7 +32,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 ## Where it is now
 
 - `steps/s11_crossing_landslide_damage/` reads the crossing population per
-  earthquake and landslide step 9's combined realisation per exposure world and
+  earthquake and landslide step 6's combined realisation per exposure world and
   earthquake, and writes both flags for every crossing to
   `temp/vul/crossing-landslide-damage-wNNN-rNNN[-pilot].parquet`. The crossing
   population stays keyed on the earthquake in this build. It has not been run
@@ -41,7 +41,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 ## Next
 
-1. Rerun exposure steps 5 and 7, then this step after landslide step 9.
+1. Rerun exposure steps 5 and 7, then this step after landslide step 6.
 2. Move the crossing population onto exposure worlds, a later item of the urban
    build.
 

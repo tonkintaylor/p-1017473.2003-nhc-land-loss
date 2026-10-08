@@ -17,8 +17,8 @@ QGIS opens each the way it is meant to be drawn):
   a 1 m hillshade.
 
 Replaces the hand-run ``prep_qgis.py`` and spec the project was first built
-from. Rerun it after landslide step 12 or exposure rw step 6 reruns. The
-project itself is built by the ``making-qgis-projects`` skill's builder.
+from. Rerun it after ground steps 3 to 5, exposure rw step 6 or landslide step 4
+reruns. The project itself is built by the ``making-qgis-projects`` skill's builder.
 """
 
 import geopandas as gpd
@@ -31,33 +31,35 @@ from landloss.io.readers import get_gns_slide_morphology, get_nz_property_bounda
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     drawn_walls_path,
 )
-from scripts.landloss.exposure.rw.validations.qgis import config
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
-    dem_path,
-)
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
-    ground_map_path,
-)
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
-    urban_slope_model_path,
-)
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
-    combined_realisation_path,
-    urban_wall_outcome_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    gns_only_path,
-    siz_table_path,
-    wall_elements_path,
-    zones_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
     wall_draws_path,
     wall_units_path,
 )
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
+from scripts.landloss.exposure.rw.validations.qgis import config
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
+    dem_path,
+)
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
+    ground_map_path,
+)
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import (
+    gns_only_path,
+    siz_table_path,
+)
+from scripts.landloss.ground.steps.s5_pif_cut_fill.gen_pif_cut_fill import (
     pif_cut_fill_path,
     pif_cut_fill_pips_path,
+)
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import (
+    wall_elements_path,
+    zones_path,
+)
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
+    urban_slope_model_path,
+)
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
+    combined_realisation_path,
+    urban_wall_outcome_path,
 )
 from scripts.landloss.hazard.landslide.validations.qgis import (
     gen_landslide_qgis_project as landslide,
@@ -325,7 +327,7 @@ def main(
         ),
         layer(
             spines_file,
-            name="Intermediate | pif spines by cut/fill class (step 13)",
+            name="Intermediate | pif spines by cut/fill class (ground step 5)",
             geometry="line",
             width=0.6,
             field="cut_fill_class",
@@ -334,7 +336,7 @@ def main(
         ),
         layer(
             pips_file,
-            name="Intermediate | pips by pif cut/fill class (step 13)",
+            name="Intermediate | pips by pif cut/fill class (ground step 5)",
             geometry="point",
             size=0.6,
             field="cut_fill_class",

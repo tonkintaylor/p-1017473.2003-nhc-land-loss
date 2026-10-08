@@ -23,7 +23,7 @@ from landloss.common.utils.terrain import (
 )
 from landloss.domain import constants
 from landloss.hazard.landslide import slope_units
-from scripts.landloss.hazard.landslide.steps.s5_slope_units import (
+from scripts.landloss.hazard.landslide.steps.s1_slope_units import (
     gen_slope_units as step,
 )
 
@@ -386,7 +386,7 @@ STEP_COLUMNS = [
 
 @pytest.fixture
 def step_inputs(tmp_path, monkeypatch):
-    """Step 3's rasters and step 4's ground map, synthetic, where the step looks."""
+    """Ground steps 1 and 2's rasters and ground map, synthetic, for the step."""
     dem, slope, aspect = grids(valley_elevation())
     paths = {
         "dem": write_raster(dem.rename("dem"), tmp_path / "dem-10m-pilot.tif"),

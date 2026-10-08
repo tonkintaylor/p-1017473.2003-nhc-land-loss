@@ -27,7 +27,7 @@ The GNS mapped wall has no height attribute, so a wall "of known height" here
 is a wall under a free-face whose height the DEM gives. Phase 2 has not decided
 which free-faces carry a wall, so the polygons are drawn with every free-face
 taking a wall's wedge, as in D1. The ground map's fill share is still the one
-from before the step 4 fill changes, so most elements here are treated as fill
+from before the ground step 2 fill changes, so most elements here are treated as fill
 (see ``pilot_example_slope_elements.md``).
 
 Run from the repository root::
@@ -37,7 +37,7 @@ Run from the repository root::
 
 Writes one PNG per site and an overview map to
 ``report/hazard/landslide/slope-elements/fig/``. Needs the 1 m pilot DEM
-(landslide step 3) and the pilot ground map (step 4) in the cache, and the GNS
+(ground step 1) and the pilot ground map (ground step 2) in the cache, and the GNS
 layers through the Koordinates readers.
 """
 
@@ -96,10 +96,10 @@ from landloss.io.readers import (
     get_slide_genesis,
 )
 from scripts.landloss.hazard.landslide.research.slope_elements import config
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     dem_path,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
 from scripts.landloss.paths import REPORT_DIR

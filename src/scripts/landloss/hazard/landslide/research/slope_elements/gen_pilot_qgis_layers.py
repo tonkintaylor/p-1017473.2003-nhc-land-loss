@@ -38,7 +38,7 @@ from scripts.landloss.hazard.landslide.research.slope_elements import (
     fig_pilot_example_slope_elements as old,
 )
 from scripts.landloss.hazard.landslide.research.slope_elements import config
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
 from scripts.landloss.paths import TEMP_DIR

@@ -19,9 +19,9 @@ population or the combined realisation.
 
 Contract `.agents/plans/urban-slope-build-contract.md` section 3.14.
 
-- [x] Read landslide step 9's combined realisation
+- [x] Read landslide step 6's combined realisation
       (`combined_realisation_path(world_id, realisation_id, extent=...)`) in
-      place of step 1's large-model file, so urban failures reach crossings
+      place of landslide step 3's large-model file, so urban failures reach crossings
       too.
 - [x] Keep the crossing population keyed on the earthquake alone
       (`crossing_population_path(realisation_id, extent=...)`); moving it to
@@ -34,7 +34,7 @@ Contract `.agents/plans/urban-slope-build-contract.md` section 3.14.
 
 ## Phase 2 — Run on regenerated inputs
 
-- [ ] Rerun exposure steps 5 and 7 and landslide steps 1 to 9, then this step,
+- [ ] Rerun exposure steps 5 and 7 and landslide steps 1 to 6, then this step,
       and record the counts flagged over the pilot and the full extent.
 - [ ] Settle **Q-09**: whether culverts leaving out `is_evacuated` is
       deliberate, and so whether `is_evacuated` stays on the culvert table.

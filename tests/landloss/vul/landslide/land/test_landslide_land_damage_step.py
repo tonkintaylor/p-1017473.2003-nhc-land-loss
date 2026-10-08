@@ -19,7 +19,7 @@ from landloss.hazard.landslide.urban.realisation import COMBINED_COLUMNS
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent import (
     gen_insured_land,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation,
 )
 from scripts.landloss.vul.landslide.land.steps.s3_landslide_land_damage import (

@@ -25,7 +25,7 @@ from landloss.hazard.landslide.urban.realisation import (
     SUPERSEDED,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import gen_wall_population
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation,
 )
 from scripts.landloss.vul.landslide.rw.steps.s11_wall_landslide_damage import (
@@ -126,7 +126,7 @@ def combined_realisation(world_id=0, realisation_id=0):
 
 
 def wall_outcomes(world_id=0, realisation_id=0):
-    """One row per sloping wall, as landslide step 9 writes it."""
+    """One row per sloping wall, as landslide step 6 writes it."""
     rows = [
         (rw_id, f"WL{i + 1:07d}", rw_id.split("-")[0], slope_id, outcome)
         for i, (rw_id, is_flatland, _, row) in enumerate(WALLS)

@@ -46,7 +46,7 @@ families. Ours would have to borrow from three of them.
 ### Qualitative and semi-quantitative scoring
 
 Expert weightings summed into a rating. **This is exactly what Kingsbury (1995)
-is**, and what `s2_slope_failure_susceptibility` now reimplements. Cheap,
+is**, and what `s7_slope_failure_susceptibility` now reimplements. Cheap,
 transparent, and calibrated to nothing — it produces a relative ranking and
 cannot produce a rate, a probability or a polygon. Useful as a sanity check on
 pattern, useless as a model.
@@ -152,7 +152,7 @@ The intensity measure the model is conditioned on.
 
 The single strongest conditioning factor in every study in every family.
 
-- **In the repo now:** `s3_multiscale_slope` builds DEM and slope at 10, 30 and
+- **In the repo now:** ground step 1 (`ground/steps/s1_terrain`) builds DEM and slope at 10, 30 and
   100 m; `landloss.common.utils.terrain.slope_degrees` computes Horn slope at any
   resolution; `landloss.io.elevation` fetches LINZ 1 m tiles.
 - **Constrain by choosing the support length deliberately and reporting the
@@ -165,7 +165,7 @@ The single strongest conditioning factor in every study in every family.
   argument.
 - **A modified slope needs a finer scale than a natural one.** A 10 m-high cut
   face is invisible at 10 m and resolves at 1 m — already demonstrated in
-  `s2_slope_failure_susceptibility`.
+  `s7_slope_failure_susceptibility`.
 
 ### 3. Anthropogenic modification — cut, fill and retaining
 
@@ -490,7 +490,7 @@ in `context/lit/landslide/`.
    refitted on New Zealand data (route 3 below), using modern and local inputs
    at their proper resolution. That means the 1 m LiDAR slope stack, a geology
    split with real strength contrast, distance to rupture, and the
-   `s3_multiscale_slope` terrain metrics. It is calibrated to the ~20 km²
+   the ground step 1 (`ground/steps/s1_terrain`) terrain metrics. It is calibrated to the ~20 km²
    Kaikōura total, with its footprint checked against model 3's envelope. The
    training data would be the GNS Kaikōura inventory, plus selected events from
    the USGS Ground Failure Database (Schmitt et al. 2017, below; read by
@@ -506,7 +506,7 @@ in `context/lit/landslide/`.
      about 16,000 — for trigger-independent predictors only (see "What the
      rainfall inventory can and cannot do here").
    - Placement, sizing and runout through the existing
-     `s1_landslide_realisation` machinery, with its size distribution capped
+     `s3_landslide_realisation` machinery, with its size distribution capped
      at the threshold.
 
 7. **Large, proposed — strength-based coverage after Godt et al. (2008).**
@@ -533,7 +533,7 @@ in `context/lit/landslide/`.
      greywacke (item 4), and slide thickness by material or weathering depth
      rather than a flat 2.4 m.
    - **With our data.** Take the slope distribution inside each model cell from
-     the 1–10 m LiDAR stack (`s3_multiscale_slope`) rather than seven quantiles
+     the 1–10 m LiDAR stack (ground step 1, `ground/steps/s1_terrain`) rather than seven quantiles
      of 90 m slope, and the material from the SLIDE interpreted materials and
      the GNS geological map. At 1 m the distribution includes cut faces, so
      the same construction could reach towards the small modified-slope
@@ -624,7 +624,7 @@ their structure, and the portfolio would measure nothing. So:
 - **Models 1–5 and 7 are alternatives** for the large population, carried as
   weighted branches of a logic tree.
 - **Model 6 complements whichever large model is used.** The loss per
-  realisation is the large-model loss plus the model 6 loss, and step 9
+  realisation is the large-model loss plus the model 6 loss, and landslide step 6
   removes the overlap.
 - The same PGV realisations and spatial correlation (item 12) drive every
   model in a realisation, so the populations are shaken by the same
@@ -632,7 +632,7 @@ their structure, and the portfolio would measure nothing. So:
 
 **Each model's own calibration, and how it becomes polygons.** Every model's
 output is an expected landslide area per cell (a coverage). The shared
-realisation machinery of landslide step 1 turns it into polygons in the same
+realisation machinery of landslide step 3 turns it into polygons in the same
 way for all of them. It sums coverage × cell area over each slope unit, less
 the urban share, draws a Poisson count for the unit with mean that area over
 the mean size, draws each size from the bounded power law (700 to 35,000 m²),
@@ -641,7 +641,7 @@ emits polygons itself, and no model's cells are failures in themselves.
 
 | Model | What it outputs | Where its amount comes from (its own calibration) | Tests reported beside it |
 | --- | --- | --- | --- |
-| 4. ESNZ grid (step 1) | A probability per 32 m cell, already conditioned on one shaking level (the file's, read from its name as 2 g) | The file itself: triggering and amount are in it. The only open step is what a probability means: if a cell fails where its centroid lies in a source, as in GNS's Kaikōura model (`massey2018-F29`), the probability is the coverage and the source fraction is 1. It is an interpretation for the supplier to confirm, not a calibration | Kaikōura, Marc, Hancox extent |
+| 4. ESNZ grid (landslide step 3) | A probability per 32 m cell, already conditioned on one shaking level (the file's, read from its name as 2 g) | The file itself: triggering and amount are in it. The only open step is what a probability means: if a cell fails where its centroid lies in a source, as in GNS's Kaikōura model (`massey2018-F29`), the probability is the coverage and the source fraction is 1. It is an interpretation for the supplier to confirm, not a calibration | Kaikōura, Marc, Hancox extent |
 | 1. Nowicki Jessee (2018) | A probability per ~250 m cell, turned to coverage by the paper's equation 9 | The published global fit (23 inventories), as the USGS runs it in its Ground Failure product: slopes below 5° excluded, probabilities below 0.002 dropped, the adjusted coefficients for unconsolidated sediments and mixed sedimentary rock. No rescaling. Allstadt et al. found it overpredicted Kaikōura; that is reported as its test result, not removed | Kaikōura, Marc, Hancox extent |
 | 2. Kritikos et al. (2015) | A relative hazard H, 0 to 1, per 60 m cell, from the published average memberships and γ = 0.9; fully specified by the paper | H is relative ("an order-of-magnitude estimate only"), so it needs a map from H to coverage, which the paper does not give. Take that map from **its own training events**, the Northridge and Wenchuan inventories (binned observed coverage against H on each event), not from Kaikōura | Kaikōura, Marc, Hancox extent |
 | 3. Hancox et al. (1997) | Coverage spread over the slope classes of Hancox (2010) Table 2, inside the MM threshold and the extent | **Marc et al. (2016)** (the lead, 2026-10-02): Marc's total for the scenario earthquake, apportioned over the Hancox area affected, and the study area takes its share. Under the Hikurangi interface scenario Marc depends almost wholly on the interface depth (model 3 plan), so it uses the real depth (option A of that plan) | Kaikōura |
@@ -669,8 +669,8 @@ for the lead**.
      the report reproduces none of its inputs.
    - The Kaikōura model it grew from counts a 32 m cell as failed where its
      centroid lies in a source area (`massey2018-F29`). Read that way, a
-     cell's probability is already a coverage. This bears directly on step
-     1's `BETA_SOURCE_AREA_FRACTION` (step 1 plan, "Literature review of the
+     cell's probability is already a coverage. This bears directly on landslide
+     step 3's `BETA_SOURCE_AREA_FRACTION` (landslide step 3 plan, "Literature review of the
      placeholders").
 
    **Proposal:** keep ESNZ as one member of the portfolio, not as the base,
@@ -994,7 +994,7 @@ Three things follow.
 1. **As an independent check on total landslide area (do this regardless).**
    Run it at its native ~250 m over the study area for the scenario PGV and sum
    `LP × cell area`. This replaces the "order of 1%" figure in
-   `s1_landslide_realisation_method.md` with a number computed for
+   `s3_landslide_realisation_method.md` with a number computed for
    Wellington's actual slopes and shaking. Treat the result as an upper bound:
    the model overpredicted Kaikōura, and its coverage includes runout, so it
    should be compared with our source plus runout area, not source alone.
@@ -1028,7 +1028,7 @@ Three things follow.
    biggest coefficient and the interaction term as well, so the conversion is
    still the most influential single input assumption.
 2. **Slope at the model's own resolution.** The multiscale stack
-   (`s3_multiscale_slope`) stops at 100 m. It needs a ~250 m level computed the
+   (ground step 1, `ground/steps/s1_terrain`) stops at 100 m. It needs a ~250 m level computed the
    way the paper did — slope of the *median* elevation in each 7.5 arc-second
    cell, not a mean of fine slopes, which would come out much steeper.
 3. **CTI at ~1 km**, computed from a DEM coarsened to 30 arc-seconds. Computed

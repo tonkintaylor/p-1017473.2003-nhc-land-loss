@@ -8,12 +8,12 @@ The fitted numbers are not here: they are the model, and live in
 
 from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
 
-# The extent whose landslide step 12 bare zones, step 4 ground map, step 3
+# The extent whose landslide step 4 bare zones, ground step 2 ground map, ground step 1
 # topographic position and shaking steps 2 and 3 grids are read. Name outputs
 # with extent_suffix(EXTENT); see landloss.io.area_of_interest.
 EXTENT = "wlg-pilot"
 
-# The exposure world whose step 8 model gives the walled polygons the wall
+# The exposure world whose landslide step 5 model gives the walled polygons the wall
 # curves are compared on (check iv). Step 8 must have written it.
 WORLD_ID = 0
 

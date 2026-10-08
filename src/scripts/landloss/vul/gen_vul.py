@@ -2,9 +2,9 @@
 
     uv run --frozen python src/scripts/landloss/vul/gen_vul.py
 
-Reads what the exposure and hazard modules wrote, so both run first, including
-the hazard module's urban pass (``gen_hazard.main_urban``), which reads the
-exposure module's wall population. The damage steps per hazard and asset come
+Reads what the exposure and hazard modules wrote, so both run first (the
+pipeline order is ground, exposure, hazard, vul; the hazard module's landslide
+wall zones read the exposure module's wall population). The damage steps per hazard and asset come
 first, in any order, since none reads another; step 10 then assembles them into
 the four tables the loss module reads,
 ``temp/vul/loss-input-<table>-w<nnn>-r<nnn><suffix>.geoparquet``, with the

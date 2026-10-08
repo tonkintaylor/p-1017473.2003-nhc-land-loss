@@ -5,12 +5,28 @@ was condensed for review, so that nothing it recorded is lost. `status.md` is
 the current page and points into this one by section; where the two disagree,
 `status.md` is current. This file is not kept up to date.
 
+**Renumbered 2026-10-08.** The step numbers and folder names below are those of
+2026-10-02 and have not been rewritten. The static per-extent ground work moved
+to the new `ground` module and the landslide steps were renumbered in run order.
+Old to new: step 1 (`s1_landslide_realisation`) is landslide step 3
+(`s3_landslide_realisation`); step 2 (susceptibility) is landslide step 7; step 3
+(`s3_multiscale_slope`) is ground step 1 (`ground/steps/s1_terrain`); step 4
+(`s4_ground_map`) is ground step 2 (`ground/steps/s2_ground_map`); step 5
+(`s5_slope_units`) is landslide step 1; step 8 (`s8_urban_slope_fragility`) is
+landslide step 5; step 9 (`s9_urban_slope_realisation`) is landslide step 6; step
+10 (Hancox) is landslide step 2; step 11 (Kritikos) is landslide step 8; step 12
+(urban slope faces) is split into ground step 4 (the faces and siz table),
+exposure rw step 6 (the wall units and draws) and landslide step 4 (the zones of
+each world's walls); step 13 (pif cut and fill) is ground step 5; step 14
+(instability zones) is ground step 3. `gen_hazard.py` now runs once, after
+exposure; `main_urban()` no longer exists.
+
 Removed 2026-10-08: landslide steps 6 and 7 (the urban slope candidates and
 polygons, `landloss.hazard.landslide.urban.delineation` and the reconcile, split
 and snap code in `urban.geometry`), the step 3 layers only they read (face
 heights, profile curvature, 20 m topographic position, vegetation height) and
-the exposure candidate wall lines. The urban polygons are step 12's zones, read
-by step 8 through `urban.face_polygons`. Everything below that describes those
+the exposure candidate wall lines. The urban polygons are the zones of step 12 (now landslide step 4), read
+by step 8 (now landslide step 5) through `urban.face_polygons`. Everything below that describes those
 steps is the 2026-10-02 state, not the current method.
 
 **Status:** A first cut of the extend-ESNZ route ran over the pilot and the
@@ -107,13 +123,13 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 - [x] Extend step 3 to 1 m, write the aspect per scale, and derive face height,
   cut-and-fill residual, profile curvature, topographic position and
-  vegetation height (`s3_multiscale_slope`; all but the cut-and-fill residuals
+  vegetation height (`s3_multiscale_slope`, now `ground/steps/s1_terrain`; all but the cut-and-fill residuals
   and the 100 m topographic position removed 2026-10-08).
 - [x] Build the ground map, one planar partition carrying material,
   modification, prior failure, groundwater and a strength set per piece
-  (`s4_ground_map`); QMAP and the NZGD boreholes are not read.
+  (`s4_ground_map`, now `ground/steps/s2_ground_map`); QMAP and the NZGD boreholes are not read.
 - [x] Cut slope units on the 10 m grid for the large models, after
-  `r.slopeunits`, on the repository's own flow routing (`s5_slope_units`).
+  `r.slopeunits`, on the repository's own flow routing (`s5_slope_units`, now `s1_slope_units`).
 - [x] Delineate the urban failure candidates at 1, 3, 10 and 30 m by banded
   connected components within 100 m of a building (`s6_urban_slope_candidates`);
   superseded by the faces below, removed 2026-10-08.
@@ -131,12 +147,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   Replaces the banded patches, the splitting and snapping, and the wall
   grouping through shared polygons (`.agents/plans/building-face-based-urban-slope-polygons.md`).
 - [~] Attach a fragility per polygon and wall state, anchored to the rate
-  setting (`s8_urban_slope_fragility`, phase 3); the step and the anchoring
+  setting (`s8_urban_slope_fragility`, now `s5_urban_slope_fragility`, phase 3); the step and the anchoring
   validation (`validations/urban/`) are built, the anchoring is not run, so the
   localised medians and dispersion and the low and high rate factors are
   placeholders.
 - [x] Rework step 1 onto the slope units with ellipse sources and draw the
-  urban failures per world and earthquake (`s9_urban_slope_realisation`,
+  urban failures per world and earthquake (`s9_urban_slope_realisation`, now `s6_urban_slope_realisation`,
   phase 4).
 - [ ] Run steps 8, 1 and 9 over the pilot after the exposure wall population,
   with the lead's review of the step 8 model file before any earthquake is
@@ -241,7 +257,7 @@ A first end-to-end run is being assembled that produces the right data
 structures rather than the right numbers; see
 `.agents/plans/beta-build.md` for the whole chain.
 
-Landslide is the module the beta needs least from: `steps/s1_landslide_realisation/`
+Landslide is the module the beta needs least from: `steps/s3_landslide_realisation/`
 already emits the structure the chain expects — **polygons of evacuated ground
 and polygons of inundated ground**, one set per realisation. The two types may
 overlap each other.
@@ -280,7 +296,7 @@ summed.
 
 ## Where it is now
 
-`steps/s1_landslide_realisation/` holds the large model of the extend-ESNZ
+`steps/s3_landslide_realisation/` holds the large model of the extend-ESNZ
 route, reworked onto the slope units in phase 4 of the urban build. It
 resamples the supplied 32 m probability grid onto step 3's 10 m DEM grid, sums
 the expected failed area per step 5 slope unit net of a 25% urban share, draws
@@ -305,7 +321,7 @@ Valley and around Porirua are dense and the valley floors are clear -- and the
 figure under `report/hazard/landslide/landslide-realisation/fig/` is how that
 was checked. Its areal coverage calibration is restated in the rework as the
 placeholder `BETA_SOURCE_AREA_FRACTION` (0.252), recorded with the size law in
-`steps/s1_landslide_realisation/s1_landslide_realisation_implementation_plan.md`.
+`steps/s3_landslide_realisation/s3_landslide_realisation_implementation_plan.md`.
 The reworked step is tested end to end on a synthetic three-unit plane and has
 not been run; the questions it raises are under `## Open decisions`.
 
@@ -326,23 +342,23 @@ fetched to T: by `static_data_gen/` and checked against the USGS in
 method and plan under `steps/`, every library function tested on synthetic
 inputs, and only the step 3 DEM, slope and aspect run over the pilot:
 
-- `steps/s3_multiscale_slope/` builds the DEM, slope and aspect at 1, 3, 10,
+- `ground/steps/s1_terrain/` (then `steps/s3_multiscale_slope/`) builds the DEM, slope and aspect at 1, 3, 10,
   30, 50 and 100 m from one 1 m LINZ fetch, and `gen_terrain_derivatives.py`
   wrote face height, cut-and-fill residual, profile curvature, topographic
   position and vegetation height (only the cut-and-fill residuals and the 100 m
   topographic position remain since 2026-10-08; the rest came from a new LINZ 1 m surface model reader,
   `landloss.io.readers.get_dsm`). `gen_multiscale_slope.py` is run over the
   pilot (the DEM, slope and aspect at all six cell sizes are in
-  `temp/hazard/landslide/`); `gen_terrain_derivatives.py` and the two figure
+  `temp/hazard/landslide/`, now `temp/ground/terrain/`); `gen_terrain_derivatives.py` and the two figure
   scripts are not yet run over the pilot.
-- `steps/s4_ground_map/` writes `ground-map[-pilot].geoparquet` from the SLIDE
+- `ground/steps/s2_ground_map/` (then `steps/s4_ground_map/`) writes `ground-map[-pilot].geoparquet` from the SLIDE
   materials, the 1:50,000 geology, the NLM `l3_yp`, the SLIDE genesis, the WCC
   earthworks, the thresholded residual and the NLM groundwater over the flat
   land, by precedence in `landloss.hazard.landslide.ground_map`; the strength
   set per material is one row of `wellington-greywacke-strength.csv` per
   grade, chosen by a rule the tests pin. Material is `unknown` outside the
   three material sources because QMAP has no reader.
-- `steps/s5_slope_units/` writes `slope-units[-pilot].geoparquet`, half-basins
+- `steps/s1_slope_units/` (then `s5_slope_units`) writes `slope-units[-pilot].geoparquet`, half-basins
   of each channel link merged by aspect and split over 50 ha
   (`landloss.hazard.landslide.slope_units`, on `hydrology.route_grid`; pysheds
   is not used), with the unit count's sensitivity to the channel threshold
@@ -357,7 +373,7 @@ inputs, and only the step 3 DEM, slope and aspect run over the pilot:
   parent, the Kingsbury rating and zone, the amplification factor and the
   fixed state geometries and depths (`landloss.hazard.landslide.urban.geometry`,
   one named function per rule with its source cited).
-- `steps/s8_urban_slope_fragility/` writes
+- `steps/s5_urban_slope_fragility/` (then `s8_urban_slope_fragility`) writes
   `urban-slope-model-wNNN[-pilot].geoparquet` per exposure world, a lognormal
   on PGV per polygon: the Koutsoupaki et al. (2023) wall curve by size and
   condition, converted from PGA at the polygon's own PGV/PGA ratio, where a
@@ -369,7 +385,7 @@ inputs, and only the step 3 DEM, slope and aspect run over the pilot:
 - `validations/urban/` draws the low, medium and high curves per zone against
   `urban-fragility-anchors.csv` and fits the localised constants and a
   dispersion; it reads the TS1170.5 grids and has not been run.
-- `steps/s9_urban_slope_realisation/` draws each polygon per world and
+- `steps/s6_urban_slope_realisation/` (then `s9_urban_slope_realisation`) draws each polygon per world and
   earthquake on the urban stream, one uniform per wall line, and if any
   polygon on a wall fails the wall has failed and every polygon on it fails
   (the lead's rule, 2026-10-02); it prints the rate setting, supersedes the
@@ -379,9 +395,10 @@ inputs, and only the step 3 DEM, slope and aspect run over the pilot:
   `landslide-realisation-wNNN-rNNN[-pilot].geoparquet`, with
   `urban-wall-outcome-wNNN-rNNN[-pilot].parquet` naming each sloping-land
   wall's outcome (`landloss.hazard.landslide.urban.realisation`).
-- `gen_hazard.py` runs in two passes: `main()` for shaking, liquefaction and
+- `gen_hazard.py` ran in two passes: `main()` for shaking, liquefaction and
   landslide steps 3 to 6 then 1, and `main_urban()` for steps 7 to 9 after the
-  exposure module.
+  exposure module. Since 2026-10-08 it runs once after exposure: shaking,
+  liquefaction, then landslide steps 1 to 6.
 
 Steps 3 to 6 hold whole grids in memory, so the full extent at 1 m needs
 tiling before they can run, and each of their plans names that as its phase 2.
@@ -671,7 +688,7 @@ cannot be signed off while they are open.
   places an ellipse that crosses unit boundaries, with region growing along
   the facet as a later phase of step 1.
 - **Two step 9 rules the build chose where the contract was silent**
-  (`s9_urban_slope_realisation_implementation_plan.md`): a wall on polygons at
+  (`s6_urban_slope_realisation_implementation_plan.md`, then step 9): a wall on polygons at
   several scales takes one outcome by rank (superseded, failed, absorbed,
   standing), and where several large-model polygons reach an urban one the one
   sharing the most ground takes it. Both for the project lead to confirm. That

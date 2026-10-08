@@ -1,5 +1,20 @@
 # Plan: building the urban slope failure model and the retaining wall model together
 
+> **Step numbers.** This plan was written under the landslide step numbers of
+> before 2026-10-08, and its dated history keeps them. Read old step 1 as
+> landslide step 3 (realisation), old step 2 as landslide step 7
+> (susceptibility), old step 3 as ground step 1 (terrain), old step 4 as ground
+> step 2 (ground map), old step 5 as landslide step 1 (slope units), old step 8
+> as landslide step 5 (fragility), old step 9 as landslide step 6 (urban
+> realisation), old step 10 as landslide step 2 (Hancox), old step 11 as
+> landslide step 8 (Kritikos), old step 13 as ground step 5 (pif cut and fill)
+> and old step 14 as ground step 3 (instability zones). Old step 12 is now three
+> steps: ground step 4 (faces, siz table, GNS-only candidates), exposure rw step
+> 6 (wall units and wall draws) and landslide step 4 (wall zones). Old steps 6
+> and 7 are deleted. Exposure, shaking, liquefaction and vul step numbers are
+> unchanged. File and folder paths are given by their current names where a
+> rename could resolve them; a path to a deleted step stays as it was.
+
 ## Context
 
 Model 6 of the landslide portfolio (`src/scripts/landloss/hazard/landslide/
@@ -172,15 +187,15 @@ the pilot.
 
 ### 3.1 Ground work, non-probabilistic, world independent
 
-**`hazard/landslide/steps/s3_multiscale_slope/gen_multiscale_slope.py`** (exists; extended)
+**`ground/steps/s1_terrain/gen_multiscale_slope.py`** (exists; extended)
 
 - Input: the LINZ 1 m DEM over the extent.
 - Method: block-mean the DEM to 3, 10, 30 and 50 m and compute Horn slope and
   aspect at every scale, as now with 1 and 3 m added.
-- Output: `temp/hazard/landslide/dem-<n>m.tif` and `slope-<n>m.tif`, plus
+- Output: `temp/ground/dem-<n>m.tif` and `slope-<n>m.tif`, plus
   `aspect-<n>m.tif`, per scale.
 
-**`hazard/landslide/steps/s3_multiscale_slope/gen_terrain_derivatives.py`** (new)
+**`ground/steps/s1_terrain/gen_terrain_derivatives.py`** (new)
 
 - Input: the 1 m DEM, the coarser DEMs from the script above, the LINZ 1 m DSM
   where flown.
@@ -188,9 +203,9 @@ the pilot.
   fill residual, the 1 m surface minus the 30 m and 100 m surfaces, negative
   for cut and positive for fill; profile curvature; topographic position at
   two windows; vegetation height as DSM minus DEM.
-- Output: one raster per derivative under `temp/hazard/landslide/terrain/`.
+- Output: one raster per derivative under `temp/ground/terrain/`.
 
-**`hazard/landslide/steps/s4_ground_map/gen_ground_map.py`** (new)
+**`ground/steps/s2_ground_map/gen_ground_map.py`** (new)
 
 - Input: the 1:50,000 geology (`get_wellington_urban_geology`), the SLIDE
   interpreted materials and genesis layers, the WCC earthworks polygons, the NLM
@@ -198,10 +213,10 @@ the pilot.
   strength table in `src/landloss/io/assets/`, and later NZGD boreholes.
 - Method: reconcile the sources by precedence into one polygon map and attach
   the attributes in section 9; no probability anywhere.
-- Output: `temp/hazard/landslide/ground-map[-pilot].geoparquet`, one row per
+- Output: `temp/ground/ground-map[-pilot].geoparquet`, one row per
   `ground_id`.
 
-**`hazard/landslide/steps/s5_slope_units/gen_slope_units.py`** (new)
+**`hazard/landslide/steps/s1_slope_units/gen_slope_units.py`** (new)
 
 - Input: the 10 m DEM and aspect, the ground map's flatland flag.
 - Method: flow routing on pysheds, a channel network at a tried threshold,
@@ -282,7 +297,7 @@ the pilot.
 
 ### 3.3 The urban model, probabilistic, per exposure world
 
-**`hazard/landslide/steps/s8_urban_slope_fragility/gen_urban_slope_fragility.py`** (new)
+**`hazard/landslide/steps/s5_urban_slope_fragility/gen_urban_slope_fragility.py`** (new)
 
 - Input: the failure polygons, every wall drawn in world `w`, insured or
   not, the wall fragility table and the anchor table in `src/landloss/io/assets/`, the PGV to
@@ -307,7 +322,7 @@ the pilot.
 
 ### 3.5 The draws per earthquake
 
-**`hazard/landslide/steps/s1_landslide_realisation/s1_simulate_landslides.py`** (reworked)
+**`hazard/landslide/steps/s3_landslide_realisation/s1_simulate_landslides.py`** (reworked)
 
 - Input: the large-model coverage raster, the slope units, the size
   distribution above the urban range.
@@ -319,7 +334,7 @@ the pilot.
 - Output: `temp/hazard/landslide/landslide-realisation-r<NNN>[-pilot].geoparquet`,
   `population` of `large`.
 
-**`hazard/landslide/steps/s9_urban_slope_realisation/gen_urban_slope_realisation.py`** (new)
+**`hazard/landslide/steps/s6_urban_slope_realisation/gen_urban_slope_realisation.py`** (new)
 
 - Input: the model for world `w`, the PGV field for earthquake `r`, the
   large-model realisation for `r`.
@@ -768,7 +783,7 @@ boundary of the range is reported.
       carrying `wall_line_id`.
 - Superseded 2026-10-05, not to be built: `gen_wall_count_bounds.py` and the
       constrained draw. The claim report counts update the wall units per
-      property in landslide step 12 instead
+      property in landslide step 12 (now exposure rw step 6) instead
       (`.agents/plans/placing-retaining-walls-on-pifs.md`, Method 4), and the
       scaling, `wall_probability.apply_count_bounds`, is removed.
 
@@ -816,7 +831,7 @@ boundary of the range is reported.
 **New library code** (`src/landloss/`): `exposure/rw/lines.py`,
 `exposure/rw/population.py` (the per-world draw; the count bounds scaling,
 `apply_count_bounds` in `exposure/rw/wall_probability.py`, was removed on
-2026-10-05, superseded by the wall unit claim update in landslide step 12,
+2026-10-05, superseded by the wall unit claim update in landslide step 12 (now exposure rw step 6),
 `.agents/plans/placing-retaining-walls-on-pifs.md`);
 `hazard/landslide/ground_map.py`, `slope_units.py`; `hazard/landslide/urban/`
 with `delineation.py`, `geometry.py`, `fragility.py`, `realisation.py`;
@@ -828,12 +843,12 @@ gains the two CSVs and their readers.
 
 **Changed:** `exposure/rw/wall_probability.py` (lines),
 `exposure/rw/beta_population.py` (size and condition classes only),
-`hazard/landslide/steps/s1_landslide_realisation/` (onto slope units),
+`hazard/landslide/steps/s3_landslide_realisation/` (onto slope units),
 `vul/shaking/fragility.py`, `vul/landslide/flags.py`, `vul/loss_input.py`,
 `vul/shaking/rw` step 9, `vul/landslide/rw` step 11, `vul/landslide/land`
 step 3, `vul/landslide/culverts_bridges` step 11 and
 `vul/steps/s10_property_damage` (file names and ids), and the runners
-`gen_hazard.py` (with `main_urban`), `gen_exposure.py`, `gen_vul.py` and
+`gen_hazard.py` (which then had a second pass, `main_urban`, since removed), `gen_exposure.py`, `gen_vul.py` and
 `gen_all.py`. The wall population is now
 `temp/exposure/wall-population-wNNN[-pilot].geoparquet` (was
 `beta-wall-population-rNNN`).
@@ -841,9 +856,9 @@ step 3, `vul/landslide/culverts_bridges` step 11 and
 **Reference:** Koutsoupaki et al. (2023), the source of the wall curves, in
 `context/lit/landslide/koutsoupaki_2023/`.
 
-**New step folders:** `hazard/landslide/steps/s4_ground_map/`, `s5_slope_units/`,
-`s6_urban_slope_candidates/`, `s7_urban_slope_polygons/`,
-`s8_urban_slope_fragility/`, `s9_urban_slope_realisation/`;
+**New step folders:** `ground/steps/s2_ground_map/`, `hazard/landslide/steps/s1_slope_units/`,
+`s6_urban_slope_candidates/` (deleted), `s7_urban_slope_polygons/` (deleted),
+`s5_urban_slope_fragility/`, `s6_urban_slope_realisation/`;
 `hazard/shaking/steps/s5_pgv_realisation/`; `hazard/landslide/validations/urban/`.
 
 **Tests** under `tests/landloss/` mirroring the library: the lognormal and its

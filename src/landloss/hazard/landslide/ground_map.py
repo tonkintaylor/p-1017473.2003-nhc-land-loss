@@ -6,7 +6,7 @@ source layer's values onto that vocabulary and the precedence between sources,
 the union overlay that builds the partition, the representative-point lookup
 that attributes each polygon, and :func:`strength_from_material`, which reads
 the Wellington greywacke strength table packaged in :mod:`landloss.io.assets`.
-The layer is built by landslide step 4 (``s4_ground_map``).
+The layer is built by ground step 2 (``s2_ground_map``).
 
 The map is non-probabilistic and world independent. Every source is a polygon
 layer whose boundaries are unioned into one planar partition, and each piece of
@@ -166,7 +166,7 @@ STRENGTH_VALUE_COLUMNS = ("c_eff_kpa", "phi_eff_deg", "unit_weight_kn_m3")
 # (SLIDE_FILL_TYPES), and where it names colluvium and rock, colluvium wins:
 # Wellington fills fail on the buried colluvium at their base, which is weaker
 # than the fill above it [brown_larkin_2005; lyndsell_2019; monteith_2020].
-# Accepted by the lead on 2026-10-02 (step 4 plan, phase 2).
+# Accepted by the lead on 2026-10-02 (ground step 2 plan, phase 2).
 SLIDE_MATERIALS: dict[str, str] = {
     "Rock at/near surface": "rock",
     "Colluvium (anything that has moved downslope)": "colluvium",

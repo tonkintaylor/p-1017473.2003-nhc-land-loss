@@ -1,6 +1,6 @@
 """Compare three natural surfaces for classing the pifs as cut or fill.
 
-The research behind landslide step 13. Step 13 classes every pif against its
+The research behind ground step 5. Ground step 5 classes every pif against its
 **anchor** surface, a robust quadratic fitted to the ground off the faces
 (:mod:`landloss.hazard.landslide.pif_cut_fill`, where the method, its walk to
 the foot of each face and its thresholds are written out). This script runs
@@ -18,13 +18,13 @@ class, as neither has a scatter to set one. The share of a pif's pips above the
 rolling mean (the first idea tried) is kept too, as
 ``share_pips_above_rolling``.
 
-Run from the repository root, after landslide step 12::
+Run from the repository root, after ground step 4::
 
     uv run --frozen python \
         src/scripts/landloss/hazard/landslide/research/cut_fill/gen_pif_cut_fill.py
 
 Settings are in ``config.py``. Writes the pif and pip tables and the rolling
-mean under ``temp/hazard/landslide/``, and the class counts and their agreement
+mean under ``temp/ground/``, and the class counts and their agreement
 with the GNS SLIDE cut slope and fill body polygons under
 ``research/hazard/landslide/pif_cut_fill/tab/``.
 """
@@ -47,12 +47,9 @@ from landloss.hazard.landslide.pif_cut_fill import (
 )
 from landloss.io.area_of_interest import extent_suffix
 from scripts.landloss.hazard.landslide.research.cut_fill import config
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    WORK_DIR,
-    get_dem,
-    siz_table_path,
-)
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import WORK_DIR, get_dem
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import siz_table_path
+from scripts.landloss.ground.steps.s5_pif_cut_fill.gen_pif_cut_fill import (
     pip_cells,
 )
 from scripts.landloss.paths import RESEARCH_DIR
@@ -209,7 +206,7 @@ def main(*, extent, use_cached_layers, rolling_window_m, fit_radius_m):
     """Class every pif by all three methods and write the tables and the mean.
 
     Args:
-        extent: The extent landslide step 12 was run over.
+        extent: The extent ground step 4 was run over.
         use_cached_layers: Whether to reuse the cached LINZ coastline.
         rolling_window_m: The side of the rolling mean's window, in metres.
         fit_radius_m: The plain quadratic is fitted to cells this close to

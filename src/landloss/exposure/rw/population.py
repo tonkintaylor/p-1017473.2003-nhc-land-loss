@@ -20,10 +20,10 @@ Those two filters decide what is insured, not whether a wall stands: a road
 wall above a property still holds the slope. So the script also writes every
 wall the world drew, with the minted ``rw_id`` joined back on
 ``wall_line_id`` where the wall survived both filters and null where it did
-not (:func:`attach_rw_ids`); landslide step 8 builds the urban slope model on
+not (:func:`attach_rw_ids`); landslide step 5 builds the urban slope model on
 that table (decision 36 of the build contract).
 
-Whether a wall unit exists is drawn once per world in landslide step 12
+Whether a wall unit exists is drawn once per world in exposure rw step 6
 (:func:`landloss.hazard.landslide.wall_units.gen_wall_draws`), so the walls
 that shape the hazard are the walls that are exposed; that draw is passed in
 as ``walled``. The claim reports (**T-50**) enter before either draw, as the
@@ -58,7 +58,7 @@ POPULATION_COLUMNS = (
 )
 
 # Line columns carried over where the line table has them: the wall's length
-# in every property it enters (landslide step 12's wall units, 2026-10-06),
+# in every property it enters (exposure rw step 6's wall units, 2026-10-06),
 # for the loss side to count a wall on each property it crosses, and the
 # primary property it is drawn on.
 OPTIONAL_COLUMNS = ("property_id", "property_lengths_m", "n_properties")

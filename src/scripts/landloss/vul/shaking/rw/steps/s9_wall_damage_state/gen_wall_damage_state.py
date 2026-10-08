@@ -12,7 +12,7 @@ over the same extent.
 
 **Flat-land walls only.** A wall on sloping land stands on the edge of an urban
 failure polygon, and whether it fails is decided with that polygon by landslide
-step 9 (``s9_urban_slope_realisation``); drawing it here as well would fail it
+step 6 (``s6_urban_slope_realisation``); drawing it here as well would fail it
 twice. A wall on NLM flat land has no polygon, so it is drawn here, on its
 wall type curve, and nowhere else.
 
@@ -240,7 +240,7 @@ def describe_population(walls, flat):
     print(
         f"Walls in the population: {len(walls):,}; on flat land {len(flat):,} "
         f"({share:.1%}), drawn here. The rest are drawn with their polygon by "
-        "landslide step 9."
+        "landslide step 6."
     )
 
 
@@ -350,7 +350,7 @@ def main(*, extent, world_ids, realisation_ids, return_period_yr):
     print(RULE)
     print(
         "States only, for walls on flat land. Walls on sloping land are drawn "
-        "with their polygon by landslide step 9, and a written-off wall is "
+        "with their polygon by landslide step 6, and a written-off wall is "
         "priced from its undepreciated value in the loss module."
     )
 

@@ -1,11 +1,11 @@
 # Are the pifs in cut, fill or natural ground?
 
 Findings from `gen_pif_cut_fill.py` and `fig_pif_cross_sections.py`, run 5 October
-2026 over the Wellington pilot (`wlg-pilot`), on the pifs landslide step 12 wrote
+2026 over the Wellington pilot (`wlg-pilot`), on the pifs ground step 4 wrote
 the same day.
 
 **Adopted 5 October 2026.** The lead accepted the anchor method, which is now
-landslide step 13 (`steps/s13_pif_cut_fill/`). Its code is in
+ground step 5 (`ground/steps/s5_pif_cut_fill/`). Its code is in
 `landloss.hazard.landslide.pif_cut_fill`, where the walk, the fit and the
 thresholds below now live as named constants. This script runs the same code
 for the anchor surface, beside the two simpler surfaces it was compared with.
@@ -26,7 +26,7 @@ read from the DEM alone.
      (`config.ROLLING_WINDOW_M`). This was the lead's first idea. The
      repository already had a close relative:
      `landloss.common.utils.terrain.cut_fill_residual`, the DEM minus a 30 m or
-     100 m block mean, which step 3 writes and the ground map uses to class
+     100 m block mean, which ground step 1 writes and the ground map uses to class
      cells where no mapping reaches.
   2. **poly** (`pif_cut_fill.fit_quadratic`, unweighted): a quadratic surface fitted by least squares to
      every DEM cell within 15 m of the pif's points (`config.FIT_RADIUS_M`). It
@@ -72,7 +72,7 @@ read from the DEM alone.
 
 Tables in `research/hazard/landslide/pif_cut_fill/tab/` (`pif-classes.csv`,
 `pif-classes-vs-slide.csv`); the per-pif table, the per-pip table and the rolling
-mean surface in `temp/hazard/landslide/pif-cut-fill*-pilot.*`; the sections in
+mean surface in `temp/ground/urban-slope-pif-cut-fill*-pilot.*`; the sections in
 `research/hazard/landslide/pif_cut_fill/fig/pif-8220-cross-sections.png`.
 
 All 12,015 pifs of the pilot:

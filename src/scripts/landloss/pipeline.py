@@ -34,9 +34,10 @@ def starting_from(start: dict[str, str] | None) -> Iterator[None]:
 
     Args:
         start: ``{"module": ..., "step": ...}``: the module as its runner
-            names it (``hazard``, ``exposure``, ``hazard urban``, ``vul``) and
+            names it (``ground``, ``exposure``, ``hazard``, ``vul``) and
             the start of the step's name as the run prints it, for example
-            ``{"module": "hazard", "step": "landslide s13"}``. None runs
+            ``{"module": "ground", "step": "s4"}`` or
+            ``{"module": "hazard", "step": "landslide s4"}``. None runs
             everything.
 
     Raises:

@@ -1,18 +1,17 @@
 """Put the wall units' probability and a claim on each candidate wall.
 
-Reads the wall units landslide step 12 wrote (``gen_urban_slope_wall_units.py``)
+Reads the wall units ``gen_wall_units.py`` wrote
 and writes one row per unit in the shape the population draw reads: its
-``p_wall`` as step 12 set it (prior, GNS floor and the claim report update),
+``p_wall`` as ``gen_wall_units.py`` set it (prior, GNS floor and the claim report update),
 with the rule that set it, and the claim it belongs to. The wall type is drawn
 per world by ``gen_wall_population.py``.
 
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s6_wall_population/gen_wall_probability.py
 
-Run landslide step 12 first, ``gen_urban_slope_faces.py``, then step 13's
-``gen_pif_cut_fill.py``, then ``gen_urban_slope_wall_units.py``
-(``gen_hazard.main`` runs them in that order). The LINZ
-property boundaries are read on the bbox of that step's DEM, so the cache is
-shared.
+Run ground steps 4 and 5 first (``gen_slope_faces.py``, then
+``gen_pif_cut_fill.py``), then ``gen_wall_units.py``; ``gen_ground.py`` and
+``gen_exposure.py`` run them in that order. The LINZ property boundaries are
+read on the bbox of the ground DEM, so the cache is shared.
 
 **Every number is judgement and none of it is evidence about Wellington.** The
 GNS mapping is one-sided: it covers Wellington City only and shows only the
@@ -22,7 +21,7 @@ and never lowers one where none is. The reasoning behind every number is in
 `landloss.exposure.rw.wall_probability`.
 
 This is run once. ``gen_wall_population.py`` draws each world from the file it
-writes, with the walls step 12 drew for that world.
+writes, with the walls ``gen_wall_units.py`` drew for that world.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -42,12 +41,12 @@ from landloss.hazard.landslide.wall_units import P_WALL_BASES, UNIT_SOURCES
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.rw.steps.s6_wall_population import config
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
+    wall_units_path,
+)
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
     CRS,
     dem_bbox,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
-    wall_units_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 
@@ -59,10 +58,10 @@ if hasattr(sys.stdout, "reconfigure"):
 WORK_DIR = TEMP_DIR / "exposure"
 OUT_STEM = "wall-probability"
 
-# Said wherever the step 12 wall units are missing.
-RUN_STEP_12_FIRST = (
-    "run landslide step 12 gen_urban_slope_faces.py then "
-    "gen_urban_slope_wall_units.py first"
+# Said wherever the wall units are missing.
+RUN_WALL_UNITS_FIRST = (
+    "run ground step 4 (gen_slope_faces.py) and step 5 (gen_pif_cut_fill.py), then "
+    "exposure rw step 6 (gen_wall_units.py) first"
 )
 
 RULE = "-" * 72
@@ -83,14 +82,14 @@ def wall_probability_path(*, extent):
 
 
 def read_wall_units(*, extent):
-    """The step 12 wall units, refused loudly if that step has not been run.
+    """The wall units, refused loudly if ``gen_wall_units.py`` has not been run.
 
     Raises:
         FileNotFoundError: If the wall unit table is not written.
     """
     path = wall_units_path(extent=extent)
     if not path.exists():
-        msg = f"no wall units at {path}: {RUN_STEP_12_FIRST}"
+        msg = f"no wall units at {path}: {RUN_WALL_UNITS_FIRST}"
         raise FileNotFoundError(msg)
     return gpd.read_parquet(path)
 

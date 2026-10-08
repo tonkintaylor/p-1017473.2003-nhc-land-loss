@@ -10,7 +10,7 @@
   so every row arrives with its `rw_id`.
 - **Only walls with `is_flatland` true are drawn here** (`flat_land_walls()`).
   A wall on sloping land stands on the edge of an urban failure polygon and is
-  drawn with that polygon by landslide step 9 (`s9_urban_slope_realisation`),
+  drawn with that polygon by landslide step 6 (`s6_urban_slope_realisation`),
   so drawing it here too would fail it twice; a flat-land wall has no polygon
   and is drawn here and nowhere else. The run prints the flat-land share of the
   population.

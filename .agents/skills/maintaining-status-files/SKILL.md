@@ -157,7 +157,7 @@ The weekly update is assembled from the status files, not written from scratch.
    progress. That transition is the unit of progress; a rewritten `Approach`
    bullet is a change of plan and is worth reporting as one.
 3. Write one short paragraph per submodule that moved, grouped by module so the
-   update reads in pipeline order — hazard, exposure, vul, loss. Say what moved,
+   update reads in pipeline order — ground, exposure, hazard, vul, loss. Say what moved,
    what is next, and anything blocked, naming the blocker by its register ID
    where there is one.
 4. Carry the `Open decisions` entries up into the update. A decision the team is

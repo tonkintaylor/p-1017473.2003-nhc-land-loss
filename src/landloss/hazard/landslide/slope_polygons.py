@@ -40,7 +40,7 @@ run only over elements and polygons. The rules, each where the plan sets it:
 3. **Retrogression.** Past the end of its polygon, each ray looks on uphill,
    up to :data:`~landloss.hazard.landslide.slope_elements.BETA_STACK_SEARCH_M`
    past the last element it was in, for the first element above that it did
-   not take; that element is linked to the polygon, below to above, and step 9
+   not take; that element is linked to the polygon, below to above, and landslide step 6
    raises its failure probability when the polygon fails, by
    :func:`conditional_failure_probability` with
    :data:`BETA_RETROGRESSION_P` [de_vilder_2024; hancox_perrin_2010].
@@ -201,7 +201,7 @@ BETA_SEGMENT_VOLUME_M3 = 1000.0
 
 # Judgement, a proposal for the lead: the chance that an element fails when
 # the polygon below it, linked by retrogression, fails, added to its own as
-# ``1 - (1 - p_above) x (1 - BETA_RETROGRESSION_P)`` in step 9. The literature
+# ``1 - (1 - p_above) x (1 - BETA_RETROGRESSION_P)`` in landslide step 6. The literature
 # gives the direction and no size [de_vilder_2024; hancox_perrin_2010;
 # anderson_2015; kingsbury_1995]; an even chance is a placeholder.
 BETA_RETROGRESSION_P = 0.5
@@ -1655,7 +1655,7 @@ def kingsbury_of_polygons(
 ) -> tuple[NDArray[np.float64], pd.Series]:
     """Each polygon's Kingsbury rating and zone, NaN and NA where not scored.
 
-    Scored as step 8 scores it (``urban.face_polygons``): the slope is the
+    Scored as landslide step 5 scores it (``urban.face_polygons``): the slope is the
     element's overall angle, the height the polygon's and the rest the ground
     under the element
     (:func:`landloss.hazard.landslide.urban.geometry.kingsbury_score`).

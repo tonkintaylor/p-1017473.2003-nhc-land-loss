@@ -1,4 +1,4 @@
-"""Tests for the reconciled ground map and landslide step 4.
+"""Tests for the reconciled ground map and ground step 2.
 
 The library is exercised on synthetic overlapping sources carrying every
 vocabulary value, and the step's chain is run end to end through its
@@ -18,7 +18,7 @@ from landloss.common.utils.terrain import write_raster
 from landloss.domain import constants
 from landloss.hazard.landslide import ground_map as gm
 from landloss.hazard.landslide.ground_map import GroundSource, build_ground_map
-from scripts.landloss.hazard.landslide.steps.s4_ground_map import gen_ground_map as step
+from scripts.landloss.ground.steps.s2_ground_map import gen_ground_map as step
 
 # rioxarray recomputes the transform through affine's ``*`` operator, which
 # affine 3.0.1 has begun warning about; nothing to fix on this side.
@@ -57,7 +57,7 @@ def at(ground, x, y):
 
 
 def make_grid(values, resolution: float = 1.0, *, x0=X0, y0=Y0):
-    """Wrap an array as a north-up raster in NZTM, as step 3 writes one."""
+    """Wrap an array as a north-up raster in NZTM, as ground step 1 writes one."""
     values = np.asarray(values, dtype=float)
     rows, columns = values.shape
     eastings = x0 + resolution * (np.arange(columns) + 0.5)

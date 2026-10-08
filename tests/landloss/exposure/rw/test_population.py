@@ -375,7 +375,7 @@ def redirected_script(tmp_path, monkeypatch):
 
 
 def every_wall_walled(table, *, world_ids, walled=True):
-    """A landslide step 12 draws table with every candidate walled per world."""
+    """An exposure rw step 6 draws table with every candidate walled per world."""
     return pd.DataFrame(
         {
             "world_id": np.repeat(np.asarray(world_ids, dtype=np.int64), len(table)),
@@ -456,16 +456,20 @@ def test_the_type_draw_does_not_depend_on_which_walls_are_walled(
     assert joined["age_bin"].tolist() == joined["age_bin_every"].tolist()
 
 
-def test_a_world_step_12_did_not_draw_is_refused(redirected_script):
+def test_a_world_the_wall_units_did_not_draw_is_refused(redirected_script):
     with pytest.raises(ValueError, match="world 2 not drawn"):
         script.main(extent="wlg-pilot", world_ids=[2])
 
 
-def test_missing_draws_say_to_run_step_12(tmp_path, redirected_script, monkeypatch):
+def test_missing_draws_say_to_run_exposure_rw_step_6(
+    tmp_path, redirected_script, monkeypatch
+):
     monkeypatch.setattr(
         script, "wall_draws_path", lambda *, extent: tmp_path / "missing.parquet"
     )
-    with pytest.raises(FileNotFoundError, match=r"gen_urban_slope_wall_units\.py"):
+    with pytest.raises(
+        FileNotFoundError, match=r"exposure rw step 6 \(gen_wall_units\.py\)"
+    ):
         script.main(extent="wlg-pilot", world_ids=[0])
 
 
@@ -479,13 +483,15 @@ def test_missing_age_shares_say_to_run_gen_wall_age(
         script.main(extent="wlg-pilot", world_ids=[0])
 
 
-def test_missing_wall_units_say_to_run_step_12(
+def test_missing_wall_units_say_to_run_exposure_rw_step_6(
     tmp_path, redirected_script, monkeypatch
 ):
     monkeypatch.setattr(
         script, "wall_units_path", lambda *, extent: tmp_path / "missing.parquet"
     )
-    with pytest.raises(FileNotFoundError, match=r"gen_urban_slope_wall_units\.py"):
+    with pytest.raises(
+        FileNotFoundError, match=r"exposure rw step 6 \(gen_wall_units\.py\)"
+    ):
         script.main(extent="wlg-pilot", world_ids=[0])
 
 
@@ -554,7 +560,7 @@ def test_type_candidates_read_the_property_frontage_and_height():
 
     assert candidates.index.tolist() == table["wall_line_id"].tolist()
     assert candidates["height_m"].tolist() == [2.2] * 3
-    # A unit the step 12 table does not carry is off a road frontage.
+    # A unit the wall unit table does not carry is off a road frontage.
     assert candidates["on_road_frontage"].tolist() == [True, False, False]
     assert candidates.loc["WL0000001", list(AGE_SHARE_COLUMNS)].tolist() == (
         pytest.approx([0.1, 0.2, 0.3, 0.4])

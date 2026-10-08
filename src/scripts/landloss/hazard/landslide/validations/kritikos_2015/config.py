@@ -4,7 +4,7 @@
 # GFDB holds only its liquefaction, not the Dadson et al. landslide inventory.
 EVENTS = ["northridge", "wenchuan"]
 
-# The base case is the step 11 setting, so the paper's numbers are reproduced by
+# The base case is the landslide step 8 setting, so the paper's numbers are reproduced by
 # the model the Wellington run uses.
 GAMMA = 0.9
 TPI_WINDOW_M = 600.0

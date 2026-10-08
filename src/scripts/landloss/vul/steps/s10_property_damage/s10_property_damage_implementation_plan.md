@@ -55,10 +55,10 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.15 and 7.14.
       `loss-input-<table>-w<NNN>-r<NNN>[-pilot].geoparquet`, and insert
       `world_id` after `realisation_id` on every table; `vul/config.py`,
       `gen_vul.py`, `scripts/landloss/config.py` and `gen_all.py` carry
-      `WORLD_IDS` and run the modules hazard, exposure, hazard urban, vul.
+      `WORLD_IDS` and run the modules ground, exposure, hazard, vul (the earlier hazard urban pass is gone).
 - [x] Run the step end to end on synthetic inputs in
       `tests/landloss/vul/test_property_damage_step.py`.
-- [ ] Run on the pilot once exposure steps 5 to 7, landslide steps 1 to 9 and
+- [ ] Run on the pilot once the ground module, exposure steps 5 to 7, landslide steps 1 to 6 and
       the vul steps it reads are run for world 0, and record the counts in the
       method document.
 

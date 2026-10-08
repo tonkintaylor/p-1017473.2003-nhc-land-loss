@@ -8,10 +8,10 @@ from shapely.geometry import LineString
 
 from landloss.domain import constants
 from landloss.hazard.landslide.models.kritikos_2015 import evaluation
-from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015 import (
+from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015 import (
     config,
 )
-from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015 import (
+from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015 import (
     gen_kritikos_2015_hazard as step,
 )
 

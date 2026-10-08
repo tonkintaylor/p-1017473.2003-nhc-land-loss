@@ -15,7 +15,7 @@ region wide rather than four.
 
 This module holds the scoring only. Where each factor's input comes from, and
 which of them this study can actually supply, belongs to the step that runs it:
-``src/scripts/landloss/hazard/landslide/steps/s2_slope_failure_susceptibility/``.
+``src/scripts/landloss/hazard/landslide/steps/s7_slope_failure_susceptibility/``.
 
 The published layer built from this scheme is CC BY-ND, which is why the scheme
 is reimplemented here rather than the layer being derived from. A method is not
