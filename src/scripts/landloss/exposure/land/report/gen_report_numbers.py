@@ -32,16 +32,9 @@ import pandas as pd
 import yaml
 
 from landloss.domain.gst import GST_RATE
-from landloss.exposure.land.driveways import (
-    DRIVEWAY_HALF_WIDTH_M,
-    MAX_DRIVEWAY_LENGTH_M,
-    MAX_INSURED_ACCESS_M,
-)
+from landloss.exposure.land.driveways import MAX_INSURED_ACCESS_M
 from landloss.exposure.land.extent import (
     INSURED_LAND_BUFFER_M,
-    MAX_DWELLING_FOOTPRINT_M2,
-    MIN_CROSSING_AREA_M2,
-    MIN_CROSSING_SHARE,
 )
 from landloss.exposure.land.land_value import (
     COMMON_VALUATION_DATE,
@@ -113,11 +106,12 @@ def settings():
     return {
         "buffer_m": INSURED_LAND_BUFFER_M,
         "insured_access_m": MAX_INSURED_ACCESS_M,
-        "max_driveway_m": MAX_DRIVEWAY_LENGTH_M,
-        "driveway_width_m": 2 * DRIVEWAY_HALF_WIDTH_M,
-        "max_dwelling_footprint_m2": MAX_DWELLING_FOOTPRINT_M2,
-        "min_crossing_area_m2": MIN_CROSSING_AREA_M2,
-        "min_crossing_share": MIN_CROSSING_SHARE,
+        "max_driveway_m": insured_config.MAX_DRIVEWAY_LENGTH_M,
+        "driveway_width_m": 2 * insured_config.DRIVEWAY_HALF_WIDTH_M,
+        "max_dwelling_footprint_m2": insured_config.MAX_DWELLING_FOOTPRINT_M2,
+        "min_crossing_area_m2": insured_config.MIN_CROSSING_AREA_M2,
+        "min_crossing_share": insured_config.MIN_CROSSING_SHARE,
+        "residential_rule": insured_config.RESIDENTIAL_RULE,
         "gst_rate": GST_RATE,
         "valuation_date": COMMON_VALUATION_DATE,
         "factors": {name: float(factors[name]) for name in QUOTED_FACTORS},

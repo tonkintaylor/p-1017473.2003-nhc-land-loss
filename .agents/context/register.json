@@ -498,11 +498,11 @@
     },
     {
       "ID": "T-63",
-      "Task": "Find a land use layer, such as Landcare Research's national land use map, that excludes non-residential sites like the zoo's animal houses next to Yabby Creek, rather than filtering them out by hand.",
+      "Task": "Find a land use layer, such as Landcare Research's national land use map, that excludes non-residential sites like the zoo's animal houses next to Yabby Creek, rather than filtering them out by hand. 2026-10-08: the QV rating roll's property category is the layer, and step 5 now keeps a building only where the roll uses its land for homes (RESIDENTIAL_RULE = \"qv\", the default, on Maxim Millen's ask), falling back on the footprint where the roll is silent; to be run over the pilot and the full extent, which needs T:.",
       "Owner": "Unassigned",
       "Phase": "2",
       "Source": "Wgtn Land Model 2026-10-01",
-      "Status": "Open"
+      "Status": "In progress"
     },
     {
       "ID": "T-64",

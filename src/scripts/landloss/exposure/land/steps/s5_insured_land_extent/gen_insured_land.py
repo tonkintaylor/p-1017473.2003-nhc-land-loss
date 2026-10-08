@@ -22,10 +22,14 @@ Four things are worth watching in the run output.
   follows a residential building. A bare section belongs in that group; a
   property whose address point LINZ placed outside its own boundary does not,
   and only the count makes the second case visible.
-- **Buildings that cannot be a home.** Two tests run before anything is
-  buffered, because cover follows a residential building: LINZ's ``use`` column
+- **Buildings that cannot be a home.** Under ``config.RESIDENTIAL_RULE = "qv"``,
+  the default, a building is a dwelling where the QV rating roll uses the
+  property it stands on residentially, whatever its size, and the run prints
+  how that differs from the footprint rule below. Under ``"footprint"`` two
+  tests run before anything is buffered, because cover follows a residential
+  building: LINZ's ``use`` column
   names schools, hospitals, supermarkets, huts and shelters, and a footprint
-  over ``MAX_DWELLING_FOOTPRINT_M2`` is a warehouse, a mall or an office block.
+  over ``config.MAX_DWELLING_FOOTPRINT_M2`` is a warehouse, a mall or an office block.
   The run prints how many went under each test. Two things to watch: if the
   named share ever became large it would mean LINZ had started populating the
   ``use`` column properly and the filter would need rewriting the other way
@@ -44,6 +48,7 @@ Four things are worth watching in the run output.
 import sys
 
 import geopandas as gpd
+import pandas as pd
 
 from landloss.domain import constants
 from landloss.domain.gst import add_gst
@@ -63,9 +68,6 @@ from landloss.exposure.land.extent import (
     DWELLING_COUNT_COLUMN,
     LAND_RATE_EXCL_GST_COLUMN,
     LAND_RATE_INCL_GST_COLUMN,
-    MAX_DWELLING_FOOTPRINT_M2,
-    MIN_CROSSING_AREA_M2,
-    MIN_CROSSING_SHARE,
     OUTLINE_ID_COLUMN,
     PROPERTY_AREA_COLUMN,
     TITLE_TYPE_COLUMN,
@@ -76,7 +78,15 @@ from landloss.exposure.land.extent import (
     count_dwellings,
     drop_non_residential_buildings,
 )
+from landloss.exposure.land.residential_use import (
+    DWELLING_USES,
+    PROPERTY_CATEGORY_COLUMN,
+    VALUATION_REFERENCE_COLUMN,
+    drop_buildings_by_property_use,
+    property_use,
+)
 from landloss.io.area_of_interest import extent_suffix
+from landloss.io.qv_rating_roll import get_qv_rating_roll, linz_valuation_reference
 from landloss.io.readers import (
     get_nz_address_roads,
     get_nz_building_outlines,
@@ -101,16 +111,15 @@ WORK_DIR = TEMP_DIR / "exposure"
 LAND_VALUE_STEM = "land-value-by-address"
 OUT_STEM = "insured-land"
 
+# How a building is judged a dwelling; see config.RESIDENTIAL_RULE.
+QV_RULE = "qv"
+FOOTPRINT_RULE = "footprint"
+RESIDENTIAL_RULES = (QV_RULE, FOOTPRINT_RULE)
+
 # Step 2's rate per address, which the extent carries forward, and the lot size assumption it is there
 # to be checked against.
 RATE_COLUMN = "land_rate_nzd_per_m2"
 ASSUMED_LOT_SIZE_COLUMN = "assumed_lot_size_m2"
-
-# The LINZ layers are fetched over the addresses' own bounding box grown by this
-# much, so a property or a building belonging to an address just inside the box
-# is still in the read. A property boundary is the widest of the three, and a
-# rural rating unit can run a long way back from the address point on it.
-FETCH_MARGIN_M = 500.0
 
 # The quantiles the area distributions are described at.
 DECILES = [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0]
@@ -167,23 +176,20 @@ def insured_land_path(*, extent):
     return WORK_DIR / f"{OUT_STEM}{extent_suffix(extent)}.geoparquet"
 
 
-def fetch_extent(addresses):
+def fetch_extent(addresses, margin_m=config.FETCH_MARGIN_M):
     """Return the bounding box to fetch the LINZ layers over.
 
     Args:
         addresses: The valued addresses.
+        margin_m: How far to grow their bounding box, ``config.FETCH_MARGIN_M``
+            unless a caller says otherwise.
 
     Returns:
         ``(minx, miny, maxx, maxy)`` in the study's own projection, grown by
-        :data:`FETCH_MARGIN_M`.
+        ``margin_m``.
     """
     minx, miny, maxx, maxy = (float(value) for value in addresses.total_bounds)
-    return (
-        minx - FETCH_MARGIN_M,
-        miny - FETCH_MARGIN_M,
-        maxx + FETCH_MARGIN_M,
-        maxy + FETCH_MARGIN_M,
-    )
+    return (minx - margin_m, miny - margin_m, maxx + margin_m, maxy + margin_m)
 
 
 def describe_properties(boundaries, properties):
@@ -241,17 +247,77 @@ def describe_dwellings(addresses, dwellings, properties):
     )
 
 
-def describe_building_filter(outlines, buildings):
+def property_uses(boundaries):
+    """Return each claim property's use on the QV rating roll, read from T:.
+
+    Only the broad use leaves here; the roll itself is sensitive and is not
+    kept (landloss.io.qv_rating_roll).
+    """
+    print("Reading the QV rating roll from T: ...", flush=True)
+    roll = get_qv_rating_roll()
+    units = pd.DataFrame(
+        {
+            VALUATION_REFERENCE_COLUMN: linz_valuation_reference(roll),
+            PROPERTY_CATEGORY_COLUMN: roll["property_category"],
+        }
+    )
+    return property_use(boundaries, units)
+
+
+def describe_use_filter(
+    outlines, buildings, footprint_kept, properties, uses, *, max_area_m2
+):
+    """Print what the roll makes of the properties, and how it differs from size.
+
+    Args:
+        outlines: The building outlines as LINZ served them.
+        buildings: What :func:`drop_buildings_by_property_use` kept.
+        footprint_kept: What the footprint rule would have kept.
+        properties: The claim properties.
+        uses: The use per claim id on the roll.
+        max_area_m2: The footprint rule's size limit.
+    """
+    print(RULE)
+    matched = properties[CLAIM_ID_COLUMN].isin(uses.index)
+    share = 100 * matched.mean() if len(properties) else 0.0
+    print(
+        f"Claim properties on the QV rating roll: {int(matched.sum()):,} of "
+        f"{len(properties):,} ({share:.1f}%); the rest fall back on the footprint"
+    )
+    print(
+        "  by use: "
+        + ", ".join(f"{use} {count:,}" for use, count in uses.value_counts().items())
+    )
+    kept = set(buildings.index)
+    by_size = set(footprint_kept.index)
+    dropped = len(outlines) - len(buildings)
+    print(
+        f"Building outlines that cannot be a home: {dropped:,} of {len(outlines):,} "
+        f"({100 * dropped / max(1, len(outlines)):.1f}%); kept {len(buildings):,}"
+    )
+    print(
+        f"  kept by the roll that the footprint rule drops (over "
+        f"{max_area_m2:,.0f} m2 on {'/'.join(DWELLING_USES)} land): "
+        f"{len(kept - by_size):,}"
+    )
+    print(
+        f"  dropped by the roll that the footprint rule keeps (on non-residential "
+        f"land): {len(by_size - kept):,}"
+    )
+
+
+def describe_building_filter(outlines, buildings, *, max_area_m2):
     """Print the outlines that cannot be a home, under each of the two tests.
 
     Args:
         outlines: The building outlines as LINZ served them.
         buildings: What is left after :func:`drop_non_residential_buildings`.
+        max_area_m2: The size limit it was run at.
     """
     print(RULE)
     uses = outlines[BUILDING_USE_COLUMN].fillna(UNNAMED_BUILDING_USE)
     named = uses != UNNAMED_BUILDING_USE
-    oversized = outlines.geometry.area > MAX_DWELLING_FOOTPRINT_M2
+    oversized = outlines.geometry.area > max_area_m2
     dropped = len(outlines) - len(buildings)
     share = 100 * dropped / len(outlines) if len(outlines) else 0.0
     print(
@@ -264,7 +330,7 @@ def describe_building_filter(outlines, buildings):
             + ", ".join(f"{k} {v:,}" for k, v in uses[named].value_counts().items())
         )
     print(
-        f"  over {MAX_DWELLING_FOOTPRINT_M2:,.0f} m2: {int(oversized.sum()):,}, of "
+        f"  over {max_area_m2:,.0f} m2: {int(oversized.sum()):,}, of "
         f"which {int((oversized & named).sum()):,} were already named"
     )
     print(
@@ -277,7 +343,7 @@ def describe_building_filter(outlines, buildings):
     )
 
 
-def describe_buildings(buildings, parts):
+def describe_buildings(buildings, parts, *, min_crossing_area_m2, min_crossing_share):
     """Print how the building outlines were cut to the properties."""
     print(RULE)
     print(f"Building outlines: {len(buildings):,}")
@@ -287,8 +353,8 @@ def describe_buildings(buildings, parts):
     print(f"  {len(per_outline):,} stand on an occupied claim property")
     print(
         f"  {len(split):,} of those were split across {int(split.sum()):,} "
-        f"properties, being at least {MIN_CROSSING_AREA_M2:,.0f} m2 and "
-        f"{MIN_CROSSING_SHARE:.0%} on each -- semi detached and terraced houses "
+        f"properties, being at least {min_crossing_area_m2:,.0f} m2 and "
+        f"{min_crossing_share:.0%} on each -- semi detached and terraced houses "
         "captured as one outline"
     )
     print(
@@ -358,14 +424,43 @@ def describe_extent(extent, occupied, addresses, dwellings):
     )
 
 
-def main(*, extent, use_cached_extent):
+def main(
+    *,
+    extent,
+    use_cached_extent,
+    residential_rule,
+    max_dwelling_footprint_m2,
+    min_crossing_area_m2,
+    min_crossing_share,
+    driveway_half_width_m,
+    max_driveway_length_m,
+):
     """Build the insured land extent per claim and write it out.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_extent: Whether to reuse already-fetched LINZ layers.
+        residential_rule: How a building is judged a dwelling, one of
+            :data:`RESIDENTIAL_RULES`; see ``config.RESIDENTIAL_RULE``.
+        max_dwelling_footprint_m2: The footprint rule's size limit.
+        min_crossing_area_m2: The least area of a building on a second
+            property for it to be split onto it.
+        min_crossing_share: The least share of a building on a second
+            property for it to be split onto it.
+        driveway_half_width_m: Half the driveway corridor's width.
+        max_driveway_length_m: The longest route to a road taken as a
+            driveway.
+
+    Raises:
+        ValueError: If ``residential_rule`` is not one of them.
     """
+    if residential_rule not in RESIDENTIAL_RULES:
+        msg = (
+            f"residential_rule {residential_rule!r} is not one of "
+            f"{', '.join(RESIDENTIAL_RULES)}"
+        )
+        raise ValueError(msg)
     out_path = insured_land_path(extent=extent)
     value_path = land_value_path(extent=extent)
     print(f"Reading the valued addresses from {value_path} ...", flush=True)
@@ -382,16 +477,34 @@ def main(*, extent, use_cached_extent):
         bbox=bbox, crs=constants.DEFAULT_CRS, use_cache=use_cached_extent
     )
     outlines = outlines.set_geometry(outlines.geometry.make_valid())
-    # Cover follows a residential building, so the schools, hospitals,
-    # supermarkets, huts and shelters LINZ has named go before anything is
-    # buffered. A property left with no building carries no insured land, which
-    # is how a school site drops out of the portfolio altogether.
-    buildings = drop_non_residential_buildings(outlines)
-
-    describe_building_filter(outlines, buildings)
-
     properties = build_claim_properties(boundaries)
     describe_properties(boundaries, properties)
+
+    # Cover follows a residential building, so the buildings that are not
+    # dwellings go before anything is buffered. A property left with no
+    # building carries no insured land, which is how a school site or a shop
+    # drops out of the portfolio altogether.
+    footprint_kept = drop_non_residential_buildings(
+        outlines, max_area_m2=max_dwelling_footprint_m2
+    )
+    if residential_rule == QV_RULE:
+        uses = property_uses(boundaries)
+        buildings = drop_buildings_by_property_use(
+            outlines, properties, uses, max_area_m2=max_dwelling_footprint_m2
+        )
+        describe_use_filter(
+            outlines,
+            buildings,
+            footprint_kept,
+            properties,
+            uses,
+            max_area_m2=max_dwelling_footprint_m2,
+        )
+    else:
+        buildings = footprint_kept
+        describe_building_filter(
+            outlines, buildings, max_area_m2=max_dwelling_footprint_m2
+        )
 
     dwellings = count_dwellings(properties, addresses)
     describe_dwellings(addresses, dwellings, properties)
@@ -399,8 +512,18 @@ def main(*, extent, use_cached_extent):
     occupied = properties[
         properties[CLAIM_ID_COLUMN].isin(set(dwellings[CLAIM_ID_COLUMN]))
     ]
-    parts = assign_buildings_to_properties(buildings, occupied)
-    describe_buildings(buildings, parts)
+    parts = assign_buildings_to_properties(
+        buildings,
+        occupied,
+        min_crossing_area_m2=min_crossing_area_m2,
+        min_crossing_share=min_crossing_share,
+    )
+    describe_buildings(
+        buildings,
+        parts,
+        min_crossing_area_m2=min_crossing_area_m2,
+        min_crossing_share=min_crossing_share,
+    )
 
     # The insured land is the ground around the dwelling AND the driveway, so an
     # extent of building buffers alone is short of NHC's own definition. Routed
@@ -409,7 +532,12 @@ def main(*, extent, use_cached_extent):
     roads = get_nz_address_roads(
         bbox=bbox, crs=constants.DEFAULT_CRS, use_cache=use_cached_extent
     )
-    driveways = generate_driveways(parts, roads)
+    driveways = generate_driveways(
+        parts,
+        roads,
+        half_width_m=driveway_half_width_m,
+        max_length_m=max_driveway_length_m,
+    )
 
     land_extent = build_insured_land_extent(
         properties, buildings, dwellings, driveways=driveways
@@ -473,4 +601,13 @@ def main(*, extent, use_cached_extent):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, use_cached_extent=config.USE_CACHED_EXTENT)
+    main(
+        extent=config.EXTENT,
+        use_cached_extent=config.USE_CACHED_EXTENT,
+        residential_rule=config.RESIDENTIAL_RULE,
+        max_dwelling_footprint_m2=config.MAX_DWELLING_FOOTPRINT_M2,
+        min_crossing_area_m2=config.MIN_CROSSING_AREA_M2,
+        min_crossing_share=config.MIN_CROSSING_SHARE,
+        driveway_half_width_m=config.DRIVEWAY_HALF_WIDTH_M,
+        max_driveway_length_m=config.MAX_DRIVEWAY_LENGTH_M,
+    )
