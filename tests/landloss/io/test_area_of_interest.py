@@ -249,3 +249,12 @@ def test_the_porirua_box_covers_porirua_city() -> None:
     extent = get_area_of_interest("porirua").polygon(constants.DEFAULT_CRS)
 
     assert extent.contains(porirua)
+
+
+def test_the_lower_hutt_box_covers_lower_hutt_city() -> None:
+    """The Lower Hutt extent holds the whole of the Lower Hutt City boundary."""
+    lower_hutt = get_study_area("Lower Hutt City").geometry.iloc[0]
+    extent = get_area_of_interest("lower-hutt").polygon(constants.DEFAULT_CRS)
+
+    assert extent.contains(lower_hutt)
+    assert extent_suffix("lower-hutt") == "-lower-hutt"

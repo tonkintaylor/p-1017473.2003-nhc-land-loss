@@ -141,6 +141,22 @@ PORIRUA = AreaOfInterest(
     north=-40.999,
 )
 
+# The bounding box of Lower Hutt City, from the Territorial Authority 2025
+# boundary in get_study_areas(), widened by about 500 m as PORIRUA is. Lower
+# Hutt runs from Petone and the harbour to Wainuiomata and the south coast at
+# Pencarrow, so the box is about 20 by 34 km and also takes in the eastern
+# suburbs of Wellington City, a stretch of the harbour, and the hill country
+# on the Upper Hutt edge, whose outputs are not Lower Hutt's until the steps
+# clip to the outline (Phase 0 of
+# .agents/plans/running-per-territorial-authority.md).
+LOWER_HUTT = AreaOfInterest(
+    name="Lower Hutt City",
+    west=174.842,
+    south=-41.442,
+    east=175.093,
+    north=-41.127,
+)
+
 # The Canterbury earthquake sequence study area, covering Christchurch city and
 # the flat land around it. This is the extent the observed land damage evidence
 # is drawn from -- the only New Zealand dataset holding both settled land claims
@@ -174,6 +190,7 @@ EXTENTS = {
     "wellington-city": WELLINGTON_CITY,
     "porirua-pilot": PORIRUA_PILOT,
     "porirua": PORIRUA,
+    "lower-hutt": LOWER_HUTT,
 }
 
 # The file name suffix of an extent whose outputs predate the extent names. The

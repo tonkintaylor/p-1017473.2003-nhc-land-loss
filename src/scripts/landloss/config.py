@@ -11,7 +11,7 @@ worlds and one set of realisations and ends at the tables the loss module reads.
 # landloss.io.area_of_interest.EXTENTS. Each extent's outputs carry it in their
 # file names, so a pilot build and a full build sit side by side.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
-EXTENT = "wlg-pilot"
+EXTENT = "lower-hutt"
 
 # Which exposure worlds to run. A world is one draw of the wall population,
 # seeded apart from the earthquakes because whether a wall exists is not
