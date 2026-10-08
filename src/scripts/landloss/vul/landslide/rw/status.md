@@ -4,7 +4,7 @@
 and earthquake, from the urban wall outcome and the landslide polygons. Not yet
 run on the pilot.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-08
 
 ## Approach
 
@@ -63,6 +63,13 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    and `n_properties` for this; today each wall is one row on its primary
    property with `length_m` its whole simplified line. The loss module is
    not changed yet.
+3. Pass the loss module which landslide polygons are retaining wall
+   failures, and which polygons on one property are separate failures
+   needing separate walls (**T-124**, 2026-10-07).
+
+A failed wall is replaced over its whole length, up to 50 m a segment, with
+no partly failed state. This was accepted on 2026-10-07 as an assumption
+justified by the size of the earthquake (**L-64**).
 
 ## Validation
 

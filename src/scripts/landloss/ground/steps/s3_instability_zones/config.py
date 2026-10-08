@@ -21,6 +21,12 @@ USE_CACHED_LAYERS = True
 # Leave False; the step skips itself in seconds when nothing has changed.
 REBUILD = False
 
+# The urban model runs within this many metres of a LINZ building outline (the
+# lead, 2026-10-01, building-urban-slope-failure-and-retaining-wall-models.md;
+# restored 2026-10-08): a pif most of whose pips are further than this from
+# every building is dropped, and a tile with no cell within reach is skipped.
+BUILDING_REACH_M = 100.0
+
 # A 1 m DEM holding more cells than this is searched tile by tile (tiled.py
 # beside this) rather than whole: 50 million cells is about 7 by 7 km at 1 m, so
 # every pilot runs whole, and over Porirua the whole grid would need about

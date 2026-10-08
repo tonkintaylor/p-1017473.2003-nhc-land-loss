@@ -6,7 +6,7 @@ run only in its tests, on synthetic inputs; no real combined realisation exists
 yet for it to run against. Nothing is priced here: the flags are what the loss
 module prices.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-08
 
 ## Approach
 
@@ -44,10 +44,6 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 1. Rerun exposure steps 5 and 7, then this step after landslide step 6.
 2. Move the crossing population onto exposure worlds, a later item of the urban
    build.
-
-## Validation
-
-Not yet defined.
 
 ## Open decisions
 

@@ -210,7 +210,8 @@ def test_a_switched_type_is_weaker_when_tall(wall_type) -> None:
 
 
 @pytest.mark.parametrize(
-    "wall_type", ["crib_gabion", "timber_pole_post_1992", "engineered"]
+    "wall_type",
+    ["crib_gabion", "timber_pole_post_1992", "reinforced_concrete_post_1992"],
 )
 def test_a_type_with_no_height_effect_has_one_curve(wall_type) -> None:
     # Arrange

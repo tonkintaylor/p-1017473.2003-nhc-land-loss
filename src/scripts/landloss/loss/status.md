@@ -5,7 +5,7 @@ prices the repair and pays `min(repair, cap)` less the excess — $13.7 m over
 2,031 claims. Every repair cost rests on a named placeholder: the wall rate, the
 three site ratings, and the wall invented to reinstate landslide ground.
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-08
 
 ## Approach
 
@@ -148,6 +148,25 @@ The settlement core is built and is the only part that needed no upstream data.
    the pilot's cached `vul` outputs (**T-51**).
 10. Settle the land excess rule with NHC (**Q-14**): the module defaults to the
     explainer's $500 per dwelling and can run the 10% rule.
+11. From the 2026-10-07 session with John Leeves and Nick Peters (owner Perrie
+    Gilbert unless noted):
+    - Price a failed wall's replacement as timber pole whatever failed, except
+      block, which may go back as block, and anchored sprayed concrete, which
+      is replaced in kind (**T-122**).
+    - Split each claim's damaged land into inundated and evacuated in the
+      viewer, and label its damage as liquefaction, wall failure, landslide or
+      a combination (**T-123**).
+    - Show the wall repair cost apart from inundation removal (**T-125**), and
+      retitle professional fees as including consents (**T-126**).
+    - Carry imminent risk through to the outputs, with a switch to exclude it
+      (**T-127**).
+    - Check the largest claims for what drives them (**T-129**) and the pilot
+      total of $163 million under the current Act (**T-130**).
+    - Add the percentage change against the current Act per land cap, with
+      the millions rounded to whole numbers (**T-131**), and a headline of
+      how much properties miss out on under a cap (**T-132**, unassigned).
+    - The wall rates and professional fees are probably too low (**L-62**),
+      and the fixed costs of a job underprice small walls (**L-63**, **T-32**).
 
 ## Validation
 

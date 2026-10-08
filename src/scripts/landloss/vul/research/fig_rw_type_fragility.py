@@ -9,12 +9,12 @@ the PGA at which 15% and 50% of walls are replaced. Each sits on one of the
 five initial-condition rungs of Koutsoupaki et al. (2023) [koutsoupaki_2023],
 Fs = 1.5 to 1.1 (Tables A1 to A5), on the moderate damage state (DS2, 5% of
 H), since moderate damage usually leads to replacement in a claim (the lead,
-2026-10-06). New timber pole walls take that rung times 1.3 and engineered
-modern walls times 1.5. Each type has one curve per height class, under 2 m
+2026-10-06). New timber pole walls take that rung times 1.3 and reinforced concrete from July 1992
+walls times 1.5. Each type has one curve per height class, under 2 m
 and 2 m and over (the lead, 2026-10-07): gravity masonry, old timber pole,
 block or RC cantilever and landscaper timber take the published height effect
 switched (the 6 m curve under 2 m, the 3 m curve at 2 m and over), and crib,
-new timber pole and engineered modern take the 3 m curve for both. The figure
+new timber pole and reinforced concrete from July 1992 take the 3 m curve for both. The figure
 sets those choices beside the other evidence, each on its moderate state too:
 
 - the same curve for a wall retaining fill and a wall retaining a cut, scaled
@@ -101,7 +101,7 @@ DE_SILVA_YIELD_ACCELERATION_G = 0.5
 PORT_HILLS_PGA_G = (1.0, 1.7)
 
 # The height class each panel of the main figure draws: under 2 m for every
-# type but engineered modern, which is drawn 2 m and over.
+# type but reinforced concrete from July 1992, which is drawn 2 m and over.
 SHORT_HEIGHT_CLASS, TALL_HEIGHT_CLASS = wtf.HEIGHT_CLASSES
 PANEL_HEIGHT_CLASS = SHORT_HEIGHT_CLASS
 HEIGHT_CLASS_LABELS = {
@@ -187,7 +187,7 @@ LI_2024 = comparator(
 PANELS = (
     Panel(
         "brick_rock",
-        "Gravity masonry\n(stone, brick, mass concrete)",
+        "Brick or rock masonry\n(stone and brick gravity walls)",
         comparators=(
             comparator(
                 "Cosentini et al. 2019, gravity\nroad wall ~3.6 m, moderate 5% H",
@@ -195,29 +195,33 @@ PANELS = (
                 1.195,
             ),
             DE_SILVA,
-            LI_2024,
         ),
         anderson=("stone masonry", 0.18),
         stone=(("stone facing", 0.35),),
     ),
     Panel(
+        "reinforced_concrete_pre_1992",
+        "Reinforced concrete, before July 1992\n(mass concrete gravity, RC cantilever)",
+        comparators=(
+            comparator(
+                "SYNER-G D3.7, RC cantilever\n6 m, soil C, moderate", 0.60, 0.70
+            ),
+            LI_2024,
+        ),
+        stone=(("reinforced concrete", 0.22),),
+    ),
+    Panel(
         "crib_gabion",
-        "Crib",
+        "Crib or gabion",
         anderson=("crib", 0.13),
         stone=(("concrete crib", 0.30), ("timber crib", 0.28)),
     ),
     Panel("timber_pole_pre_1992", "Timber pole, old\n(pre July 1992)"),
     Panel(
         "concrete_block",
-        "Concrete block / RC cantilever",
-        comparators=(
-            comparator(
-                "SYNER-G D3.7, RC cantilever\n6 m, soil C, moderate", 0.60, 0.70
-            ),
-            DE_SILVA,
-        ),
+        "Concrete block\n(block masonry cantilever)",
+        comparators=(DE_SILVA,),
         anderson=("concrete masonry", 0.055),
-        stone=(("reinforced concrete", 0.22),),
     ),
     Panel(
         "timber_pole_post_1992",
@@ -227,8 +231,8 @@ PANELS = (
     ),
     Panel("garden_timber", "Landscaper timber\n(unconsented, <1.5 m)"),
     Panel(
-        "engineered",
-        "Engineered modern, 2 m and over\n(MSE, soil nail, RC)",
+        "reinforced_concrete_post_1992",
+        "Reinforced concrete, July 1992 on,\n2 m and over (MSE, soil nail, RC)",
         height_class=TALL_HEIGHT_CLASS,
         anderson=("MSE, 18 walls", 0.0),
     ),
@@ -475,7 +479,7 @@ def plot_wall_type(
 
 def plot_type_fragility(table: pd.DataFrame) -> plt.Figure:
     """Lay out the ladder and one panel per proposed wall type."""
-    fig, axes = plt.subplots(2, 4, figsize=(16, 8.5), sharex=True, sharey=True)
+    fig, axes = plt.subplots(3, 3, figsize=(14, 12.5), sharex=True, sharey=True)
     flat = axes.ravel()
     plot_ladder(flat[0])
     no_wall = no_wall_curves()
@@ -491,7 +495,7 @@ def plot_type_fragility(table: pd.DataFrame) -> plt.Figure:
             ax.spines[side].set_visible(False)
         ax.tick_params(labelsize=8, colors=INK)
         ax.axvspan(*PORT_HILLS_PGA_G, color="#f3f1ea", zorder=0)
-    for ax in axes[1]:
+    for ax in axes[-1]:
         ax.set_xlabel("Free-field PGA (g)", fontsize=9)
     for ax in axes[:, 0]:
         ax.set_ylabel("P(wall replaced | PGA)", fontsize=9)
@@ -569,7 +573,7 @@ def plot_variants(table: pd.DataFrame) -> plt.Figure:
         "Switched (gravity masonry, old timber pole, block or RC\n"
         "cantilever, landscaper timber): under 2 m takes the 6 m curve\n"
         "and 2 m and over the 3 m curve, taller walls being the worse.\n"
-        "None (crib, new timber pole, engineered modern): the 3 m\n"
+        "None (crib, new timber pole, RC from July 1992): the 3 m\n"
         "curve for both, so the dashed line lies on the solid one.\n"
         "Within a height class the curve does not change with height.\n\n"
         "Koutsoupaki et al. 2023 DS2 (moderate, 5% of H), free-field PGA.\n"

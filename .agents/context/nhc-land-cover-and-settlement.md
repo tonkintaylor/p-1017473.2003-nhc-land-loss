@@ -59,6 +59,20 @@ council walls supporting roads inundated private property below. That damage is
 driven by the cost of clean-up and remediation rather than by land value, which
 does not fit the value-based cost logic used elsewhere in the tool.
 
+Added from the "Wgtn Land Model" meeting, 7 October 2026:
+
+- **Who owns the wall decides whether the wall sub-cap applies.** A wall
+  outside the property boundary gets no wall sub-cap; the claim settles only
+  the damaged land inside the boundary. A wall on the property but beyond the
+  8 metre line gets the sub-cap if it supports insured land, because the owner
+  owns it. Perrie Gilbert relayed this from how claims are handled now; it
+  is not a ruling from NHC.
+- **A wall across two properties is split between their sub-caps** (John
+  Leeves).
+- Councils sometimes rebuild a wall at a road edge and ask the owner to put
+  their NHC payment towards it. Nick Peters raised this as a grey area to
+  state as an assumption, not to model.
+
 ## Settling damaged land: value or repair, not both
 
 Added from the "Wgtn Land Model" meeting, 21 September 2026.

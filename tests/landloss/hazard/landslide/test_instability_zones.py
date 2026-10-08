@@ -157,6 +157,34 @@ def test_a_wall_under_a_building_outline_is_no_pif_siz_or_element():
     assert zones.gen_siz_table(result, TRANSFORM, crs=2193).empty
 
 
+def test_beyond_reach_measures_centre_to_centre_in_metres():
+    building = np.zeros((1, 12), dtype=bool)
+    building[0, 0] = True
+    far = zones.beyond_reach(building, cell_size_m=2.0, reach_m=10.0)
+    # Column 5 is 10 m from the building's cell, column 6 is 12 m.
+    assert not far[0, :6].any()
+    assert far[0, 6:].all()
+
+
+def test_with_no_building_every_cell_is_beyond_reach():
+    far = zones.beyond_reach(np.zeros((3, 4), dtype=bool), 1.0, 100.0)
+    assert far.all()
+
+
+def test_a_wall_beyond_reach_of_every_building_is_no_pif():
+    dem = _wall(1.0)
+    building = np.zeros(dem.shape, dtype=bool)
+    building[0, SHAPE[1] - 1] = True
+    ground = np.full(dem.shape, GROUND_GROUPS.index("soil_like"), dtype=np.int8)
+    near = building | zones.beyond_reach(building, 1.0, 100.0)
+    far = building | zones.beyond_reach(building, 1.0, 30.0)
+    kept = zones.find_instability_zones(dem, ground, TRANSFORM, exclude=near)
+    dropped = zones.find_instability_zones(dem, ground, TRANSFORM, exclude=far)
+    assert (kept.n_pifs_excluded, len(kept.sizs)) == (0, 1)
+    assert dropped.n_pifs_excluded == 1
+    assert dropped.sizs.empty
+
+
 def _zigzag_pif(n_turns, leg=10):
     """A one-cell-wide pif of square steps: east, south, east, south, ..."""
     labels = np.zeros((80, 80), dtype=np.int32)

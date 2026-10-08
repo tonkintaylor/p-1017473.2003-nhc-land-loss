@@ -51,6 +51,10 @@ per-extent work.
       have been looked at in the comparison's QGIS projects.
 - [ ] Rerun the pilots and Porirua through ground steps 3 and 4 with the new
       siz test, and record the counts in the method file.
+- [x] Search only within 100 m of a building outline
+      (`config.BUILDING_REACH_M`, the 2026-10-01 domain), and skip a tile with
+      no land within reach, so bush and farmland tiles cost next to nothing
+      (2026-10-08).
 - [ ] Own pieces rather than parent pifs in the tiles, now that each piece is
       tested on its own, and bring `TILE_MARGIN_M` down from 750 m towards
       100 m.

@@ -42,6 +42,7 @@ from rasterio import features
 from landloss.common.utils import tiles
 from landloss.hazard.landslide import bend_split, instability_zones, slope_elements
 from landloss.hazard.landslide.instability_zones import (
+    beyond_reach,
     find_instability_zones,
     gen_pif_near_drops,
     gen_pif_spines,
@@ -193,7 +194,14 @@ def tile_found_path(tile, *, extent):
 
 
 def find_tiled(
-    *, extent, use_cached_layers, core_m, margin_m, find_settings, table_settings
+    *,
+    extent,
+    use_cached_layers,
+    core_m,
+    margin_m,
+    building_reach_m,
+    find_settings,
+    table_settings,
 ):
     """Find the pifs and elements tile by tile and stitch them (:mod:`tiled`).
 
@@ -221,11 +229,17 @@ def find_tiled(
     print(f"{len(grid)} tiles of {core_m:,.0f} m with a {margin_m:,.0f} m margin")
     start = time.perf_counter()
     records = []
+    n_skipped = 0
     for tile in grid:
         found = tiled.find_tile(
-            dem_file, tile, inputs=inputs, find_settings=find_settings
+            dem_file,
+            tile,
+            inputs=inputs,
+            find_settings=find_settings,
+            building_reach_m=building_reach_m,
         )
         if found is None:
+            n_skipped += 1
             continue
         zones, dem, transform = found
         table = grid_table(zones, dem, transform, **table_settings)
@@ -246,6 +260,10 @@ def find_tiled(
             f"({time.perf_counter() - start:,.0f} s)",
             flush=True,
         )
+    print(
+        f"{n_skipped} of {len(grid)} tiles skipped: no land within "
+        f"{building_reach_m:,.0f} m of a building"
+    )
     found, table, elements = tiled.globalise_found(records, transform)
     with found_path(extent=extent).open("wb") as file:
         pickle.dump(found, file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -285,12 +303,13 @@ def building_mask(buildings, transform, shape):
     ).astype(bool)
 
 
-def describe(zones, elapsed):
+def describe(zones, elapsed, *, building_reach_m):
     """Print the counts and timings of the run."""
     sizs = zones.sizs
     print(
         f"{zones.n_pifs_excluded:,} pifs dropped with most of their pips in a "
-        f"building outline, {zones.n_pifs_short:,} with a spine under 3 m"
+        f"building outline or over {building_reach_m:,.0f} m from one, "
+        f"{zones.n_pifs_short:,} with a spine under 3 m"
     )
     print(f"{int(zones.pips.mask.sum()):,} pips, {len(sizs):,} pifs, ", end="")
     print(f"{int(sizs['is_siz'].sum()):,} sizs, {len(zones.found.elements):,} elements")
@@ -360,7 +379,9 @@ def is_current(*, extent, record):
     return json.loads(path.read_text(encoding="utf-8")) == record
 
 
-def search_whole(*, extent, use_cached_layers, find_settings, table_settings):
+def search_whole(
+    *, extent, use_cached_layers, building_reach_m, find_settings, table_settings
+):
     """Search the whole DEM at once; write the found elements; return the tables."""
     dem, transform, bbox, _, group, position = get_inputs(
         extent=extent, use_cached_layers=use_cached_layers
@@ -369,16 +390,18 @@ def search_whole(*, extent, use_cached_layers, find_settings, table_settings):
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     start = time.perf_counter()
+    on_building = building_mask(buildings, transform, dem.shape)
     zones = find_instability_zones(
         dem,
         group,
         transform,
         categories={"ground_row": position},
-        exclude=building_mask(buildings, transform, dem.shape),
+        exclude=on_building
+        | beyond_reach(on_building, abs(transform.a), building_reach_m),
         **find_settings,
     )
     write_found(zones.found, extent=extent)
-    describe(zones, time.perf_counter() - start)
+    describe(zones, time.perf_counter() - start, building_reach_m=building_reach_m)
     table = grid_table(zones, dem, transform, **table_settings)
     return table, element_polygons(zones.found, transform)
 
@@ -395,6 +418,7 @@ def main(
     end_window_m,
     wall_height_reach_m,
     wall_height_quantile,
+    building_reach_m,
     max_untiled_cells,
     tile_core_m,
     tile_margin_m,
@@ -414,6 +438,8 @@ def main(
         wall_height_reach_m: A pip's near drop is read this far below it.
         wall_height_quantile: A pif's wall height is this quantile of its
             pips' near drops.
+        building_reach_m: A pif most of whose pips are further than this
+            from every building outline is dropped.
         max_untiled_cells: A 1 m DEM larger than this, in cells, is searched
             tile by tile.
         tile_core_m: The side of a tile's core, in metres.
@@ -431,6 +457,7 @@ def main(
         "wall_height_quantile": wall_height_quantile,
     }
     tile_settings = {
+        "building_reach_m": building_reach_m,
         "max_untiled_cells": max_untiled_cells,
         "tile_core_m": tile_core_m,
         "tile_margin_m": tile_margin_m,
@@ -453,6 +480,7 @@ def main(
             use_cached_layers=use_cached_layers,
             core_m=tile_core_m,
             margin_m=tile_margin_m,
+            building_reach_m=building_reach_m,
             find_settings=find_settings,
             table_settings=table_settings,
         )
@@ -460,6 +488,7 @@ def main(
         table, elements = search_whole(
             extent=extent,
             use_cached_layers=use_cached_layers,
+            building_reach_m=building_reach_m,
             find_settings=find_settings,
             table_settings=table_settings,
         )
@@ -486,6 +515,7 @@ if __name__ == "__main__":
         end_window_m=config.PIF_END_WINDOW_M,
         wall_height_reach_m=config.WALL_HEIGHT_REACH_M,
         wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
+        building_reach_m=config.BUILDING_REACH_M,
         max_untiled_cells=config.MAX_UNTILED_CELLS,
         tile_core_m=config.TILE_CORE_M,
         tile_margin_m=config.TILE_MARGIN_M,

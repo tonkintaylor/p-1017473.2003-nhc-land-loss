@@ -77,3 +77,22 @@ Added following the Wgtn land model sense check on 5 October 2026:
   to receive much larger payments, so the report has to show the spread
   between suburbs as well as totals (**T-94**). The relative outcome for
   property owners matters more than the total.
+
+Added following the Wgtn Land Model session on 7 October 2026:
+
+- **Friday 9 October gives Bridget Attwood the viewer and placeholder
+  numbers** for the whole study area (or Wellington City if the full run does
+  not fit), not a report. The report follows on Wednesday 14 October for her
+  ELT paper, and the numbers can change up to that morning. The board paper is
+  finalised a week or two later, so ELT questions may bring further runs.
+  John Leeves offered to write the first cut of the report (**T-134**).
+- **The work was checked against the board's questions**:
+  - Covered, or covered once wired into the outputs: imminent risk in or out
+    (**T-127**); land structure sub-caps in or out of the land cap, and
+    changing the sub-caps; keeping the scheme cost neutral; and costing the
+    scheme against the Wellington earthquake.
+  - Still needed as a headline output: the adequacy of the repair amount,
+    meaning how much each property misses out on under a cap (**T-132**).
+  - Left to NHC: the reduction in claims handling cost.
+  - Out of scope as too complicated: complex claims, shared land and
+    diminution of value.

@@ -8,7 +8,7 @@ exposure and vul, and `scripts.landloss.loss.config` for loss.
 
 # The extent to show: a name in landloss.io.area_of_interest.EXTENTS, or "full".
 # The project opens on this extent's box.
-EXTENT = "porirua-pilot"
+EXTENT = "wlg-pilot"
 
 # The exposure world and earthquake realisation the project shows.
 WORLD_ID = 0

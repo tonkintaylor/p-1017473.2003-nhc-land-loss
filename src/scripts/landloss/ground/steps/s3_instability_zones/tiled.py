@@ -37,6 +37,7 @@ from landloss.common.utils import tiles
 from landloss.hazard.landslide.forced_polygons import gen_forced_elements
 from landloss.hazard.landslide.instability_zones import (
     add_line_elements,
+    beyond_reach,
     find_instability_zones,
     with_walls,
 )
@@ -254,17 +255,25 @@ def write_tile_found(found, path):
         pickle.dump(found, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def find_tile(dem_file, tile, *, inputs, find_settings):
-    """Find one tile's pips, pifs, sizs and elements."""
+def find_tile(dem_file, tile, *, inputs, find_settings, building_reach_m):
+    """Find one tile's pips, pifs, sizs and elements.
+
+    Returns:
+        ``(zones, dem, transform)``, or None for a tile with no land within
+        ``building_reach_m`` of a building outline.
+    """
     dem, transform, group, position, on_building = tile_inputs(dem_file, tile, **inputs)
-    if not np.isfinite(dem).any():
+    exclude = on_building | beyond_reach(
+        on_building, abs(transform.a), building_reach_m
+    )
+    if not np.isfinite(dem[~exclude]).any():
         return None
     zones = find_instability_zones(
         dem,
         group,
         transform,
         categories={"ground_row": position},
-        exclude=on_building,
+        exclude=exclude,
         **find_settings,
     )
     return zones, dem, transform

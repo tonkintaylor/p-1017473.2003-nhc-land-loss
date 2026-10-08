@@ -10,7 +10,9 @@ A **pif** (potential instability face) joins the pips within :data:`PIF_JOIN_M`
 of each other, and holds at least :data:`BETA_MIN_PIF_PIPS` of them; a smaller
 cluster is not a pif (its pips stay pips, with no pif), nor is a cluster most
 of whose pips lie in a building outline (:func:`exclude_pifs`): a roof's
-edge or a building's wall is not ground. It is tested over
+edge or a building's wall is not ground. The step also excludes the cells
+beyond reach of every building (:func:`beyond_reach`), so no pif stands more
+than 100 m from one. It is tested over
 every pair of its *points*, which are its pips and the cells each pip falls
 to (so a vertical wall, whose pips all sit at the same height, still has a
 crest and a foot to measure between). Pairs under
@@ -317,6 +319,31 @@ def exclude_pifs(
     out = np.zeros_like(labels)
     out[rows, cols] = number[pif]
     return out, int(keep.sum()), int(drop.sum())
+
+
+def beyond_reach(
+    mask: ArrayLike, cell_size_m: float, reach_m: float
+) -> NDArray[np.bool_]:
+    """True on the cells further than ``reach_m`` from every masked cell.
+
+    The step passes the LINZ building outlines as the mask, so that with
+    :func:`exclude_pifs` the urban model runs only within reach of a building
+    (the lead, 2026-10-01: within 100 m of a building outline). Distances are
+    centre to centre; a grid with no masked cell is beyond reach everywhere.
+
+    Args:
+        mask: True on the cells to measure from.
+        cell_size_m: The side of a cell, in metres.
+        reach_m: How far from a masked cell a cell is still within reach.
+
+    Returns:
+        A boolean grid of the shape of ``mask``.
+    """
+    source = np.asarray(mask, dtype=bool)
+    if not source.any():
+        return np.ones(source.shape, dtype=bool)
+    distance_m = ndimage.distance_transform_edt(~source, sampling=cell_size_m)
+    return distance_m > reach_m
 
 
 def _pif_paths(

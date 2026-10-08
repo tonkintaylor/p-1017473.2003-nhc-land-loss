@@ -128,13 +128,16 @@ LANDSLIDE_COSTS = ["land_repair_cost_incl_gst_nzd", "spoil_removal_cost_incl_gst
 
 WALL_TYPE_COLOUR = {
     "brick_rock": ["#6d4c41", "Brick or rock masonry"],
-    "reinforced_concrete": ["#546e7a", "Reinforced concrete"],
+    "reinforced_concrete_pre_1992": [
+        "#546e7a",
+        "Reinforced concrete, before July 1992",
+    ],
     "crib_gabion": ["#ef6c00", "Crib or gabion"],
     "timber_pole_pre_1992": ["#c62828", "Timber pole, before July 1992"],
     "concrete_block": ["#1565c0", "Concrete block"],
     "timber_pole_post_1992": ["#2e7d32", "Timber pole, July 1992 on"],
     "garden_timber": ["#f9a825", "Garden timber"],
-    "engineered": ["#6a1b9a", "Engineered"],
+    "reinforced_concrete_post_1992": ["#6a1b9a", "Reinforced concrete, July 1992 on"],
 }
 LD_STATE_CLASSES = {
     "1": ["#3AB04A", "1 None observed"],
@@ -540,7 +543,7 @@ def main(*, extent, world_id, realisation_id, contour_step_m, contour_index_m):
     w, r = world_id, realisation_id
 
     layers = []
-    settlement_file = settlement_path(r, extent=extent)
+    settlement_file = settlement_path(w, r, extent=extent)
     land_file = insured_land_path(extent=extent)
     if present(settlement_file) and present(land_file):
         claims = gen_claim_costs(

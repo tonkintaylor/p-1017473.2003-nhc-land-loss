@@ -77,6 +77,18 @@
   half its pips on it (`instability_zones.exclude_pifs`) right after
   `cluster_pifs` and renumbers the rest; the library stays on rasters. The
   count is printed by `describe()`.
+- The search runs only within `config.BUILDING_REACH_M` (100 m) of a LINZ
+  building outline, the domain the lead set for the urban model on 2026-10-01
+  (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`)
+  and restored on 2026-10-08 after the face-based search had dropped it. The
+  cells further than that from every outline, centre to centre
+  (`instability_zones.beyond_reach`, a Euclidean distance transform), are
+  added to the `exclude` grid, so a pif most of whose pips are out of reach is
+  dropped as one on a roof is; its pips stay pips, and the DEM, the growth and
+  the drops still read every cell. A tile with no land within reach is skipped
+  before its search (`tiled.find_tile`), and `find_tiled` prints how many.
+  The NLM flatland half of that domain is not applied: flat-land walls are
+  found here too.
 - Every siz is a wall candidate and a wall must have a polygon (the lead,
   2026-10-06), so every region a siz pif piece grows is kept as an element
   (`_assemble_elements(..., keep_all=True)`), even where the keep rule of
@@ -146,7 +158,8 @@ stitched tables:
 - Tiles are `config.TILE_CORE_M` (3 km) cores read with a `config.TILE_MARGIN_M`
   (750 m) margin, rounded to whole 3 m blocks so each tile's catchment grid
   sits on the whole grid's. Each tile masks the sea, burns the ground map and
-  the building outlines on its own window and runs `find_instability_zones` and
+  the building outlines on its own window, is skipped if no land on it is within
+  `BUILDING_REACH_M` of a building, and runs `find_instability_zones` and
   the grid columns of the siz table (`grid_table()`); its elements are pickled
   per tile under `urban-slope-found{suffix}-tiles/`, and
   `urban-slope-found{suffix}.pkl` holds a `tiled.TiledFound` index instead of

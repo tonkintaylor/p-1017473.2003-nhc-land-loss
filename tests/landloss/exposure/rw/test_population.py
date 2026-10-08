@@ -146,7 +146,12 @@ def test_each_wall_takes_its_own_type_and_age_bin_by_line_id():
     # join is by id, not by position.
     types = pd.DataFrame(
         {
-            "wall_type": ["engineered", "crib_gabion", "brick_rock", "crib_gabion"],
+            "wall_type": [
+                "reinforced_concrete_post_1992",
+                "crib_gabion",
+                "brick_rock",
+                "crib_gabion",
+            ],
             "age_bin": ["2005_on", "1970_1991", "pre_1970", "pre_1970"],
         },
         index=pd.Index(["WL0000003", "WL0000002", "WL0000001", "WL0000099"]),
@@ -155,7 +160,7 @@ def test_each_wall_takes_its_own_type_and_age_bin_by_line_id():
     assert walls["wall_type"].tolist() == [
         "brick_rock",
         "crib_gabion",
-        "engineered",
+        "reinforced_concrete_post_1992",
     ]
     assert walls["age_bin"].tolist() == ["pre_1970", "1970_1991", "2005_on"]
 

@@ -551,6 +551,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     imminent zone now takes the evacuated outline as its inner edge, which
     closes the gaps between them (+0.4% against its cells on the world 0
     cells); the pilot has not been rerun with it.
+  - **Specks dropped (the lead, 2026-10-08).** A piece of a polygon's
+    inundated strip of under three cells, apart from the rest of it, is
+    dropped and its volume spreads back over the scar. The same goes for the
+    evacuated ground, before its area and volume are read: 275 pieces in 203
+    of world 0's 5,766 polygons, 224 m². The pilot has not been rerun with
+    either.
 - **Step 13, pif cut and fill (2026-10-05; now ground step 5).**
   `ground/steps/s5_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of ground step 4.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz

@@ -1,0 +1,1 @@
+Added `fig_urban_fragility_curves.py` to landslide step 5, which draws the urban slope model's fragility curves on PGV for review: the no-wall curve at each Kingsbury zone's mid rating, each wall type's curve per height class, and every curve's failure probability across the study's 2,500-year PGV range.

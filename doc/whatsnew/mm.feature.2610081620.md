@@ -1,0 +1,1 @@
+Revise the 2005-on retaining wall type shares for walls of 1.5 to 2.5 m from the 2026-10-07 review by Nick Peters and John Leeves: 10% anchored sprayed concrete (still named engineered) and 5% garden timber walls built without a consent.

@@ -55,7 +55,10 @@ then the code. The landslide chain that reads it is in
 - **Step 3** was split out of the old step 12 on 2026-10-08. The fall-line siz
   test (2 to 8 s on the pilots against 18 to 83 s) is built; on 2026-10-08 it
   gave the Wellington pilot 6,220 pif pieces and 4,790 sizs (353,740 pips). The Porirua pilot with 1 km tiles matched the
-  whole grid's siz table.
+  whole grid's siz table. Since 2026-10-08 it searches only within 100 m of a
+  building outline (the 2026-10-01 domain) and skips tiles with no land within
+  reach. On the Wellington pilot that took the 6,220 pif pieces to 5,865 and
+  the 4,790 sizs to 4,657, and the step ran in 44 s.
 - **Step 4** reads T+T's 71 manually mapped walls beside the GNS mapped walls
   (2026-10-08). On 2026-10-08 the pilot had 4,790 sizs, 98 `low_height` and
   1,332 other pieces, and 859 GNS-only pieces (4,884 sizs and 91 `low_height`
