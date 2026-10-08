@@ -1,0 +1,1 @@
+The address spine is now clipped to the four study territorial authorities over every extent, not only the full one. A box extent that reaches past the study boundary, such as `"porirua"` into the Kapiti Coast, no longer carries addresses the land value step has no base rate for, which stopped the run.
