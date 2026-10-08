@@ -77,6 +77,7 @@ def liq_land_damage(realisation_id=0):
             "claim_id": ["C01", "C02"],
             "ld_state": [3, None],
             "cost_nzd": [12_000.0, 0.0],
+            "area_cost_nzd": [1_500.0, 0.0],
             "damaged_area_m2": [180.0, 0.0],
         }
     )
@@ -332,6 +333,16 @@ def test_the_land_table_is_spined_on_the_insured_land(synthetic_run):
     assert pd.isna(unreached["Liq_LD_state"])
     assert unreached["land_slide_total_insured_land_area"] == 0.0
     assert np.isnan(unreached["inundated_mean_depth"])
+
+
+def test_the_liquefaction_cost_handed_on_is_priced_from_the_ground_lost(
+    synthetic_run,
+):
+    """Loss settles the per-m2 cost, not the per-state percentile lookup."""
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
+    land = read_table("land", 0, 0).set_index("land_id")
+
+    assert land.loc["C01-L01", "Liq_LD_cost_excl_gst_nzd"] == pytest.approx(1_500.0)
 
 
 def test_the_crossings_split_into_culverts_and_bridges(synthetic_run):

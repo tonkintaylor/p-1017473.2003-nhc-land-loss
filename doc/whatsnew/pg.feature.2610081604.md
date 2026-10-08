@@ -1,0 +1,1 @@
+The multiplier on the liquefaction inundated repair rate for clearing ejecta without volunteers (`NO_SVA_INUNDATED_MULTIPLIER`) is set to 2.9, from the share of February 2011 ejecta the Student Volunteer Army cleared. `NO_SVA` stays off, so runs are unchanged unless it is switched on.

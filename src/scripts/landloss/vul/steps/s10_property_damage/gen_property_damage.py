@@ -86,6 +86,7 @@ from scripts.landloss.vul.landslide.rw.steps.s11_wall_landslide_damage.gen_wall_
     wall_landslide_damage_path,
 )
 from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage.gen_liq_land_damage import (
+    AREA_COST_COLUMN,
     liq_land_damage_path,
 )
 from scripts.landloss.vul.shaking.culverts_bridges.steps.s9_structure_damage_state.gen_structure_damage_state import (
@@ -245,6 +246,10 @@ def main(*, extent, world_ids, realisation_ids):
                 pd.read_parquet(
                     landslide_land_damage_path(world_id, realisation_id, extent=extent)
                 ),
+                # The liquefaction cost settled is the one priced from the ground
+                # each claim lost, at rates fitted to the Canterbury claimant-only
+                # means (T-57, T-65), not the per-state percentile lookup.
+                ld_cost_column=AREA_COST_COLUMN,
             )
             states = pd.read_parquet(
                 wall_damage_state_path(world_id, realisation_id, extent=extent),

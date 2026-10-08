@@ -33,11 +33,10 @@ the loss module settles, is null for a property that drops out, and its cost is
 zero, so the loss module reads it exactly as it reads land off the grid: no
 liquefaction claim. `liq_claimed` records the draw.
 
-**The draw is off while the packaged costs already carry the drop-out.** They
-average over every damaged property, non-claimants at $0, which
-`COSTS_INCLUDE_NON_CLAIMANTS` records; drawing claims against them as well would
-count the drop-out twice. So every property on the grid claims, at the diluted
-cost, until claimant-only rates replace them (T-65, L-43).
+**The draw is on** because the settled cost is fitted to claimant-only means
+(T-65), which `COSTS_INCLUDE_NON_CLAIMANTS` records as False. Were it set True
+the draw would go off, every property on the grid claiming at a cost diluted
+with non-claimants' $0s (L-43).
 
 **Each claim carries the ground it lost** (T-55): an evacuated area in m² and an
 inundated area, drawn uniformly within its state's ranges in
@@ -49,13 +48,17 @@ of the evacuated land, an assumption to be verified (L-44) -- capped at the
 insured area, is `damaged_area_m2`, which the loss module values the land cover
 cap over (T-56).
 
-**The cost is priced two ways, and the loss module settles the first.**
-`cost_nzd` is the Canterbury lookup per state. `area_cost_nzd` prices the same
-claim from its ground lost -- ``config.REPAIR_RATES`` per m² of inundated and
-evacuated land plus a fixed cost per claim, fitted to the Canterbury means by
-step 3 (T-57) -- with the inundated rate raised by
-``config.NO_SVA_INUNDATED_MULTIPLIER`` when ``config.NO_SVA`` is set (L-40). It
-rides beside the lookup until it is chosen to replace it.
+**The cost is priced two ways, and the loss module settles the second.**
+`area_cost_nzd` prices each claim from its ground lost --
+``config.REPAIR_RATES`` per m² of inundated and evacuated land plus a fixed
+cost per claim, fitted by step 3 to the Canterbury claimant-only means (T-57,
+T-65) -- with the fixed cost drawn per claim around its mean, at the spread
+step 3 fits to the Canterbury quartiles, and the inundated rate raised by
+``config.NO_SVA_INUNDATED_MULTIPLIER`` when ``config.NO_SVA`` is set (L-40).
+Vul step 10 hands it to loss (since 2026-10-08). `cost_nzd`, the Canterbury
+percentile lookup per state, is written beside it for reference only; its table
+averages over non-claimants, so with the drop-out on it is no longer on the
+settled cost's basis.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -118,6 +121,8 @@ AREA_COST_COLUMN = "area_cost_nzd"
 RNG_STREAM = "liquefaction_claims"
 # And the areas their own, so the drop-out going on does not reshuffle them.
 AREA_RNG_STREAM = "liquefaction_areas"
+# And the spread of the per-claim cost its own, so refitting it moves no area.
+COST_RNG_STREAM = "liquefaction_claim_costs"
 # The state name a property off the liquefaction grid is written with. Its
 # ld_state is null, so the loss module reads it as not liquefied.
 OFF_GRID_STATE_NAME = "N/A"
@@ -261,6 +266,7 @@ def main(
             claimed,
             rates,
             inundated_multiplier=inundated_multiplier,
+            rng=realisation_seed(constants.BASE_SEED, realisation_id, COST_RNG_STREAM),
         )
         hazard_states = pd.Series(sampled).astype("Int64")
         states = hazard_states.where(claimed)

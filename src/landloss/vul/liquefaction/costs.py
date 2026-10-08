@@ -28,10 +28,17 @@ is thinner evidence than the file's six rows suggest.
 
 **The rates include properties that never claimed, at $0.** They average over
 every damaged property in a state, not just those that lodged a claim (Q-17), so
-the drop-out is already inside them. :data:`COSTS_INCLUDE_NON_CLAIMANTS` records
-that, and the liquefaction land damage step reads it to leave its own drop-out
-draw off rather than count it twice. Claimant-only rates are to replace these
-(T-65).
+the drop-out is already inside them.
+
+**What the model settles is not this table.** Since 2026-10-08 a claim is
+priced from the ground it lost, at repair rates fitted to the **claimant-only
+means and quartiles** in ``costs_liq_ld_claimant_costs_2011.csv``
+(:func:`load_claimant_costs`, T-65), which are a calibration target only, never
+an input. Those carry no non-claimants, so the model draws the drop-out itself:
+:data:`COSTS_INCLUDE_NON_CLAIMANTS` records that the settled cost is on a
+claimant-only basis, and the liquefaction land damage step reads it to switch
+its drop-out draw on. The percentile lookup here is still written beside the
+settled cost, for reference.
 
 The rates are 2010/2011 dollars excluding GST (**L-23**, **L-24**), cover
 categories 1 to 7 and so exclude ILV and IFV (**L-25**), and apply to flat land
@@ -45,6 +52,7 @@ import pandas as pd
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 COSTS_PATH = ASSETS_DIR / "costs_liq_ld_refined_states_2011.csv"
+CLAIMANT_COSTS_PATH = ASSETS_DIR / "costs_liq_ld_claimant_costs_2011.csv"
 
 STATE_COLUMN = "LD_refined_state"
 STATE_NAME_COLUMN = "state_name"
@@ -61,11 +69,22 @@ PERCENTILE_COLUMNS = {
 # mixes vintages with nothing to tell them apart is a silent error.
 COST_YEAR = 2011
 
-# Whether the packaged rates average over all damaged properties, non-claimants
-# counted at $0, rather than over claimants only. A fact about the file, not a
-# run choice: set it False only when the CSV is replaced with claimant-only
-# rates (T-65), which is what switches the drop-out draw back on.
-COSTS_INCLUDE_NON_CLAIMANTS = True
+# The columns of the claimant-only costs.
+CLAIMS_COLUMN = "claims"
+MEAN_COST_COLUMN = "mean_cost_nzd"
+# The quartiles they carry, and the column each lives in.
+QUARTILE_COLUMNS = {
+    25: "cost_25th_percentile_nzd",
+    50: "cost_50th_percentile_nzd",
+    75: "cost_75th_percentile_nzd",
+}
+
+# Whether the cost the model settles averages over all damaged properties,
+# non-claimants counted at $0, rather than over claimants only. A fact about the
+# target the settled repair rates are fitted to, not a run choice. False since
+# 2026-10-08, when the rates were refitted to the claimant-only means (T-65),
+# which is what switches the drop-out draw on.
+COSTS_INCLUDE_NON_CLAIMANTS = False
 
 # What the cost is a quantity of. Named so a reader of the vul output can tell
 # it from the per-square-metre rates the landslide work uses.
@@ -107,6 +126,50 @@ def load_ld_costs(path: Path = COSTS_PATH) -> pd.DataFrame:
         )
         raise ValueError(msg)
     return costs.set_index(STATE_COLUMN).sort_index()
+
+
+def load_claimant_costs(path: Path = CLAIMANT_COSTS_PATH) -> pd.DataFrame:
+    """Read the claimant-only cost of a liquefaction land claim per state.
+
+    A calibration target: what the modelled claims are fitted and compared to,
+    never read in as a cost.
+
+    Args:
+        path: The CSV to read, defaulting to the packaged asset.
+
+    Returns:
+        One row per land damage state, indexed by the state number, carrying
+        :data:`CLAIMS_COLUMN`, :data:`MEAN_COST_COLUMN` and the
+        :data:`QUARTILE_COLUMNS`, in 2010/2011 dollars excluding GST, before
+        the excess.
+
+    Raises:
+        ValueError: If the file does not carry all six states, a column is
+            missing, a count or cost is not positive, or the quartiles of a
+            state are out of order.
+    """
+    means = pd.read_csv(path, keep_default_na=False, na_values=[])
+    values = [CLAIMS_COLUMN, MEAN_COST_COLUMN, *QUARTILE_COLUMNS.values()]
+    missing = [
+        column
+        for column in (STATE_COLUMN, STATE_NAME_COLUMN, *values)
+        if column not in means.columns
+    ]
+    if missing:
+        msg = f"{path.name} is missing {missing}"
+        raise ValueError(msg)
+    states = set(means[STATE_COLUMN])
+    if states != set(range(1, 7)):
+        msg = f"{path.name} carries states {sorted(states)}, expected 1 to 6"
+        raise ValueError(msg)
+    if (means[values] <= 0).any().any():
+        msg = f"{path.name} carries a claim count or cost that is not positive"
+        raise ValueError(msg)
+    quartiles = means[list(QUARTILE_COLUMNS.values())].to_numpy()
+    if (np.diff(quartiles, axis=1) < 0).any():
+        msg = f"{path.name} carries quartiles out of order"
+        raise ValueError(msg)
+    return means.set_index(STATE_COLUMN).sort_index()
 
 
 def ld_cost_nzd(

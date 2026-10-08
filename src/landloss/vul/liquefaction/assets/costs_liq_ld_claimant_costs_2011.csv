@@ -1,0 +1,7 @@
+LD_refined_state,state_name,source_code,claims,mean_cost_nzd,cost_25th_percentile_nzd,cost_50th_percentile_nzd,cost_75th_percentile_nzd
+1,None,11,4396,922,468,625,1027
+2,Minor,12,1257,1291,503,748,1377
+3,Moderate,13,11838,1351,497,819,1549
+4,Major,14,1578,2119,642,1222,2507
+5,Severe,15,1235,2135,720,1381,2605
+6,Very Severe,16,43,4473,1135,3488,6374
