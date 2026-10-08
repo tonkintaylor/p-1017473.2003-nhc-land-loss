@@ -23,7 +23,7 @@ fit and are to be refitted and frozen before the full runs (Phase 3).
 - [x] Refit against the claimant-only Canterbury means, all six states weighted
       by claim count, with the drop-out on (**T-65**, 2026-10-08).
 - [ ] Set the no-SVA multiplier on feedback (**Q-18**). It is 2.9 from public
-      figures for now, which barely moves a near-zero inundated rate (**L-62**).
+      figures for now, which barely moves a near-zero inundated rate (**L-69**).
 - [ ] Decide whether None should carry the fixed cost when it claims. It is now
       fitted and anchors the fixed cost, priced at $1,094 on average against a
       Canterbury mean of $922.
@@ -41,15 +41,15 @@ fit and are to be refitted and frozen before the full runs (Phase 3).
 From the review of 2026-10-08; the register carries the detail.
 
 - [ ] Refit over several realisations and a larger extent, then freeze the
-      rates so every region settles on the same ones (**L-63**, **I-25**).
+      rates so every region settles on the same ones (**L-70**, **I-26**).
 - [ ] Revisit the Major, Severe and Very severe area ranges, under-priced at
-      0.71 and 0.76 for Major and Very severe (**L-64**, **I-26**).
+      0.71 and 0.76 for Major and Very severe (**L-71**, **I-27**).
 - [ ] Set the drop-out rates from the source's settlement likelihoods or
-      Virginie Lacrosse's counts (**L-65**, **I-27**, **T-64**).
+      Virginie Lacrosse's counts (**L-72**, **I-28**, **T-64**).
 
 ## Potential future improvements
 
 - Price inundated land in the no-SVA case from a contractor rate for removing
-  ejecta rather than a multiplier on the fitted rate (**L-62**, **I-24**).
+  ejecta rather than a multiplier on the fitted rate (**L-69**, **I-25**).
 - Fit against Canterbury section sizes rather than Wellington's, if the
   observed damage database can supply mean areas per state.
