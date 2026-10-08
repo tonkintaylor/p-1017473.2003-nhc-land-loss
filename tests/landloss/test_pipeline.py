@@ -4,7 +4,7 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from scripts.landloss import config, gen_extents, pipeline
+from scripts.landloss import gen_extents, pipeline
 
 
 def modules(ran):
@@ -88,20 +88,20 @@ def test_the_start_does_not_outlive_its_run():
 def test_extent_batch_runs_model_then_loss_in_configured_order(
     monkeypatch, start_from_by_extent
 ):
+    extents = ["wellington-city", "upper-hutt", "porirua"]
     runner = Mock()
     monkeypatch.setattr(gen_extents.gen_all, "main", runner.model)
     monkeypatch.setattr(gen_extents.gen_loss, "main", runner.loss)
 
     gen_extents.main(
-        extents=config.EXTENTS,
+        extents=extents,
         world_ids=[0, 1],
         realisation_ids=[2],
         start_from_by_extent=start_from_by_extent,
     )
 
     expected = []
-    assert config.EXTENTS == ["wellington-city", "upper-hutt", "porirua"]
-    for extent in config.EXTENTS:
+    for extent in extents:
         ids = {"extent": extent, "world_ids": [0, 1], "realisation_ids": [2]}
         expected.extend(
             [
@@ -132,7 +132,7 @@ def test_extent_batch_rejects_restart_for_an_extent_outside_the_batch(monkeypatc
 
     with pytest.raises(ValueError, match="Restart extents are not in EXTENTS"):
         gen_extents.main(
-            extents=config.EXTENTS,
+            extents=["wellington-city"],
             world_ids=[0],
             realisation_ids=[0],
             start_from_by_extent={"lower-hutt": {"module": "ground", "step": "s2"}},
@@ -149,7 +149,7 @@ def test_extent_batch_stops_at_the_first_failure(monkeypatch, failed_stage):
 
     with pytest.raises(RuntimeError, match="stage failed"):
         gen_extents.main(
-            extents=config.EXTENTS,
+            extents=["wellington-city"],
             world_ids=[0],
             realisation_ids=[0],
             start_from_by_extent={},

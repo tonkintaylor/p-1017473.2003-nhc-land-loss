@@ -10,13 +10,11 @@ chosen per run, so they live with the code that applies them, in
 """
 
 # The extent to run over: "full" for the four territorial authorities, or a
-# name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
-# Wellington pilot box, "wlg-earthworks-pilot" for Johnsonville and Newlands).
-# Must match the run of exposure step 3 whose claim properties and address
-# mapping gen_rwt_age.py reads. "full", because the per-suburb table this step
-# exists for is wanted over the whole study area.
+# name from landloss.io.area_of_interest.EXTENTS. Must match the run of exposure
+# step 3 whose claim properties and address mapping gen_rwt_age.py reads. This
+# Wellington City run uses city-specific property ages and suburb shares.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
-EXTENT = "full"
+EXTENT = "wellington-city"
 
 # Whether to reuse the already-clipped LINZ property boundaries for this
 # extent. Set False to fetch them again. Read by gen_rwt_age.py, and by the
