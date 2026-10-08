@@ -338,6 +338,23 @@ PROFESSIONAL_FEES_EXCL_GST_NZD = {
 }
 PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD = sum(PROFESSIONAL_FEES_EXCL_GST_NZD.values())
 
+# What a Canterbury liquefaction land cost in 2010/2011 dollars is multiplied by
+# to bring it to today's, **a placeholder on instruction** (L-23): the growth in
+# construction labour costs since the February 2011 earthquake.
+#
+# From the Stats NZ Labour Cost Index, salary and ordinary time wage rates for
+# the construction industry (series LCIQ.SG51E9, base June 2009 quarter = 1000):
+# 1,030 in the March 2011 quarter to 1,465 in the December 2025 quarter, the
+# latest published, is 1.422. Taken from the September 2010 or June 2011
+# quarter instead it is 1.438 or 1.413, and all industries combined
+# (LCIQ.SG51Z9) gives 1.400. The index measures pay rates only, so it does not
+# follow the plant and materials a land repair also uses (L-74).
+LIQ_COST_ESCALATION = 1.42
+LIQ_COST_ESCALATION_SOURCE = (
+    "Stats NZ Labour Cost Index, construction salary and ordinary time wage rates "
+    "(LCIQ.SG51E9), March 2011 quarter 1,030 to December 2025 quarter 1,465"
+)
+
 EASY_INUNDATION_MAX_VOLUME_M3 = 20.0
 MODERATE_INUNDATION_MAX_VOLUME_M3 = 200.0
 

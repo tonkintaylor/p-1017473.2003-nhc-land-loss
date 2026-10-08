@@ -23,12 +23,14 @@ from landloss.domain.loss_contract import (
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LIQ_LD_COST_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
 )
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
+    LIQ_COST_ESCALATION,
     beta_wall_height_m,
     beta_wall_rate_excl_gst_nzd_per_m2,
     classify_landslide_wall_size,
@@ -50,6 +52,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     WALL_REPAIR_COLUMN,
     land_repair_by_claim,
     landslide_ground_by_claim,
+    liquefaction_repair_by_claim,
     replacement_wall_shape,
     wall_repair_by_claim,
 )
@@ -258,3 +261,12 @@ def test_a_claim_with_several_walls_reports_a_face_weighted_rate(ratings):
     assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(
         (faces * rates).sum() / faces.sum()
     )
+
+
+def test_the_canterbury_liquefaction_cost_is_brought_to_today_then_taxed() -> None:
+    land = pd.DataFrame(
+        {CLAIM_ID_COLUMN: ["a", "a", "b"], LIQ_LD_COST_COLUMN: [1000.0, 500.0, None]}
+    )
+    cost = liquefaction_repair_by_claim(land)
+    assert cost["a"] == pytest.approx(1500.0 * LIQ_COST_ESCALATION * 1.15)
+    assert cost["b"] == 0.0

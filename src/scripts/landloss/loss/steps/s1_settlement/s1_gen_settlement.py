@@ -49,11 +49,12 @@ driveway length for construction access, ground slope for constructability, and
 the inundated volume for earthworks. See :mod:`landloss.loss.pricing`, where
 every band is defined and marked as invented.
 
-**The Canterbury costs are 2010/2011 dollars and are not inflated**, only
-grossed up for GST. They are compared against land values and wall rates in
-today's dollars, which understates their side of the comparison by however much
-construction has risen since. Nothing in the repository supplies an index to
-correct it with.
+**The Canterbury costs are 2010/2011 dollars**, brought to today's by
+:data:`~landloss.loss.pricing.LIQ_COST_ESCALATION` (1.42) before GST is added,
+so they sit beside land values and wall rates on one basis. The factor is a
+placeholder, on instruction: the growth in the construction Labour Cost Index
+since March 2011 (L-23), which follows pay rates but not plant or materials
+(L-74).
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -81,6 +82,7 @@ from landloss.io.area_of_interest import extent_suffix
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
+    LIQ_COST_ESCALATION,
     SIZE_CLASSES,
     SiteRatings,
     beta_wall_face_area_m2,
@@ -577,11 +579,11 @@ def spoil_by_claim(land: pd.DataFrame) -> pd.Series:
 
 
 def liquefaction_repair_by_claim(land: pd.DataFrame) -> pd.Series:
-    """Return each claim's Canterbury settled cost, on the Act's GST basis.
+    """Return each claim's Canterbury settled cost, in today's dollars with GST.
 
     The contract carries the cost excluding GST, in 2010/2011 dollars. It is
-    grossed up here and **not inflated**, because nothing in the repository
-    supplies an index; see the module docstring.
+    brought to today's by :data:`~landloss.loss.pricing.LIQ_COST_ESCALATION`, a
+    placeholder from construction labour cost growth, and grossed up for GST.
 
     Args:
         land: The contract's land table.
@@ -599,7 +601,7 @@ def liquefaction_repair_by_claim(land: pd.DataFrame) -> pd.Series:
         .groupby(CLAIM_ID_COLUMN)["cost"]
         .sum()
     )
-    return add_gst(costs)
+    return add_gst(costs * LIQ_COST_ESCALATION)
 
 
 def describe_ratings(claims):
@@ -626,7 +628,10 @@ def describe_repair(claims):
         (LAND_REPAIR_COLUMN, "new walls to reinstate landslide ground"),
         (SPOIL_REPAIR_COLUMN, "clearing landslide spoil off the ground"),
         (FEES_COLUMN, "consent, design, engineering, H&S, PM and survey"),
-        (LIQ_REPAIR_COLUMN, "Canterbury liquefaction land costs"),
+        (
+            LIQ_REPAIR_COLUMN,
+            f"Canterbury liquefaction land costs, x{LIQ_COST_ESCALATION} to today",
+        ),
         (CROSSING_REPAIR_COLUMN, "culverts and bridges at their sub-cap"),
     ):
         total = claims[column].sum()

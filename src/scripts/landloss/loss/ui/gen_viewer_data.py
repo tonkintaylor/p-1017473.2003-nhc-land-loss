@@ -47,6 +47,7 @@ from landloss.io.area_of_interest import (
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
+    LIQ_COST_ESCALATION,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
     timber_pole_rate_excl_gst_nzd_per_m2,
@@ -300,7 +301,11 @@ def liquefaction_method(
         .groupby(CLAIM_ID_COLUMN)
         .sum()
     )
-    settled = (claims[LIQ_REPAIR_COLUMN] / 1.15).reindex(priced.index).fillna(0.0)
+    settled = (
+        (claims[LIQ_REPAIR_COLUMN] / (1.15 * LIQ_COST_ESCALATION))
+        .reindex(priced.index)
+        .fillna(0.0)
+    )
     lookup_miss = (settled - priced["cost_nzd"]).abs().sum()
     area_miss = (settled - priced[liq_land.AREA_COST_COLUMN]).abs().sum()
     return AREA_METHOD if area_miss < lookup_miss else LOOKUP_METHOD
@@ -375,8 +380,13 @@ def viewer_rows(
             "new_wall_rate_excl_gst": np.round(new_rate, 6),
             "spoil_m3": claims[SPOIL_VOLUME_COLUMN].round(6),
             # The Canterbury cost is a settled amount, so it arrives whole --
-            # but before GST, which is a control.
-            "liq_cost_excl_gst": (claims[LIQ_REPAIR_COLUMN] / 1.15).round(6),
+            # but in 2010/2011 dollars and before GST, because the page applies
+            # both the escalation to today's and GST itself.
+            "liq_cost_excl_gst": (
+                claims[LIQ_REPAIR_COLUMN] / (1.15 * LIQ_COST_ESCALATION)
+            ).round(6),
+            # The module's escalation, which the page opens on.
+            "liq_escalation": LIQ_COST_ESCALATION,
             "site_multiplier": site_multiplier(claims).round(3),
             "has_damaged_wall": (claims[WALL_REPAIR_COLUMN] > 0).astype(int),
             "has_new_wall": (claims[LAND_REPAIR_COLUMN] > 0).astype(int),
@@ -442,7 +452,8 @@ def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFram
         + np.minimum(udv, policy.retaining_wall_limit_nzd(rows["dwellings"]))
         + crossing_limit
     )
-    repair = wall + new_wall + spoil + fees + rows["liq_cost_excl_gst"] * gst
+    liq = rows["liq_cost_excl_gst"] * LIQ_COST_ESCALATION * gst
+    repair = wall + new_wall + spoil + fees + liq
     repair = repair + crossing_limit
     payable = np.minimum(repair, cap)
     excess = np.minimum(

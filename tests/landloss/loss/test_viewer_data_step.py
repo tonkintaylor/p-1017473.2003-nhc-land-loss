@@ -75,7 +75,11 @@ def test_the_method_is_whichever_cost_was_settled(
         gen_viewer_data.liq_land, "liq_land_damage_path", lambda *_, **__: path
     )
     claims = pd.DataFrame(
-        {gen_viewer_data.LIQ_REPAIR_COLUMN: [v * 1.15 for v in settled_excl_gst]},
+        {
+            gen_viewer_data.LIQ_REPAIR_COLUMN: [
+                v * gen_viewer_data.LIQ_COST_ESCALATION * 1.15 for v in settled_excl_gst
+            ]
+        },
         index=pd.Index(["a", "b"], name="claim_id"),
     )
     assert liquefaction_method(claims, 0, extent="porirua") == method

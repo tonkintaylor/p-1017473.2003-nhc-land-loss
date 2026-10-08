@@ -1215,7 +1215,9 @@ REPAIR_NOTES = [
     ),
     (
         "C1. Canterbury settled costs per property, $200 to $4,000 by damage "
-        "state, in 2010/2011 dollars and NOT yet inflated. They exclude ILV "
+        "state in 2010/2011 dollars, multiplied by 1.42 to today's, a "
+        "placeholder from the construction Labour Cost Index since March 2011 "
+        "(L-23, L-74). They exclude ILV "
         "and IFV, so they are the minor-damage tier only. The cap the state "
         "is compared against is the land rate over the liquefied land: "
         "evacuated plus inundated, less the share of the evacuated assumed "

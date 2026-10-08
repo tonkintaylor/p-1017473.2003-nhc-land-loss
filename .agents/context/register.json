@@ -1474,6 +1474,13 @@
       "Affects": "loss viewer",
       "Source": "Loss viewer review 2026-10-09",
       "Status": "Open"
+    },
+    {
+      "ID": "L-74",
+      "Limitation": "The Canterbury liquefaction costs are brought from 2010/2011 to today's dollars by a placeholder factor of 1.42, on instruction: the Stats NZ construction Labour Cost Index from the March 2011 to the December 2025 quarter (L-23). It follows pay rates only, not the plant and materials a land repair also uses.",
+      "Affects": "loss, loss viewer",
+      "Source": "Liquefaction cost escalation 2026-10-09",
+      "Status": "Open"
     }
   ],
   "Improvements": [
