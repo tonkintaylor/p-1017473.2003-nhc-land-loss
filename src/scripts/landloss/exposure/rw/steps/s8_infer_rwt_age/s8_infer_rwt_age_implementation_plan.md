@@ -67,7 +67,8 @@ Roll giving building age by decade.
 
 ## Phase 5 — Into the wall model
 
-- [ ] Read the per-property bin onto the candidate wall lines in place of the
+- [ ] Read the per-property bin onto the candidate wall lines (since
+      2026-10-08, step 12's wall units) in place of the
       empty `dwelling_age_decade`, and set `p_poor` from four bins rather than
       the single split at `BUILDING_ACT_DECADE`.
 

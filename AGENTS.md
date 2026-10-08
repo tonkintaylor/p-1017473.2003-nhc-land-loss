@@ -43,6 +43,11 @@ refer to any point by its number ("3.4 is wrong", "do 2.1 and 3.5"):
   unnumbered or restart at 1.
 - Never restart numbering at 1 under a new heading.
 
+Ask a question at the point it belongs to, inside the proposal or finding it
+is about ("2.5 ... Use this, or 2.6?"), so the user can answer by replying to
+that number. Do not gather the questions into a closing list that restates
+the proposals, which makes the user read each one twice.
+
 This applies to chat replies only; repository documents keep the conventions
 their skills define.
 

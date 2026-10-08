@@ -1,0 +1,1 @@
+Added a fall-line siz test to step 12 as an option beside the pair test: it reads each pip's drop down its own fall line to the toe of its face, 18 to 27 times faster. Compared on both pilots, it gives the same sizs in soil and about 12 to 16% fewer weak rock sizs, all borderline. The pipeline still runs the pair test.

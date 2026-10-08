@@ -3,8 +3,8 @@
 **Status:** The wall candidates are rebuilt on the landslide model's
 potential instability faces (pifs): wall units, their probability with the
 claim report update, and a draw per exposure world, read by step 6, ran over
-the pilot on 2026-10-05. The candidate wall lines of 2026-10-02 stay for
-landslide step 7. That rebuild was reviewed against the GNS literature review
+the pilot on 2026-10-05. The candidate wall lines of 2026-10-02 were removed on
+2026-10-08, with landslide steps 6 and 7. That rebuild was reviewed against the GNS literature review
 (`temp/gns_review/`) on 2026-10-02: the literature gives each piece of
 evidence on a wall its direction, not its size, so every probability is still
 judgement until the claim report extraction (**T-50**) calibrates it. A second
@@ -29,7 +29,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [~] **Draw a type for every wall from its age, height and road frontage**,
   and give each type its own curve, in place of the condition axis
   (`.agents/plans/assigning-retaining-wall-types.md`). The seven type curves
-  are set (the lead, 2026-10-06); the draw is not built.
+  are set (the lead, 2026-10-06; two height classes from 2026-10-07), and the
+  draw is built in step 6 but not yet run on the pilot (Next, 7); the type
+  shares, revised by the lead on 2026-10-08, await Nick Peters (Next, 8).
 - [~] **Identify where walls are, as lines, with a probability on each**
   (`steps/s6_wall_population/`). No wall dataset exists (**L-04**), so the
   lines are inferred: GNS mapped walls [townsend_2020], SLIDE cut and fill
@@ -117,7 +119,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 ### Engineering review advice (Nick Peters)
 
-Assumptions to shape the priors, not rules; most are not yet built in. The
+Assumptions to shape the priors, not rules; several are now points in the
+wall units' prior (`wall-probability-points.csv`, 2026-10-07), the rest not
+yet built. Advice from the sense check of 2026-10-05 is added at the end. The
 literature each one now rests on is in brackets (review of 2026-10-02). Nick
 is a co-author of NZGS Units 7C.2 and 2, so where those units agree with him
 they are not independent of his advice.
@@ -126,9 +130,10 @@ they are not independent of his advice.
   exposed rock cut, as at Oriental Bay and Evans Bay. Supported: greywacke
   cuts are commonly 55 to 75° and many long-standing ones are unsupported
   [nzgs_2025_torlesse].
-- [ ] **Most walls hold fill and soil, not rock**, at the front of a section or
-  in stepped platforms. Consistent with the thin cover over the rock
-  [nzgs_2025_torlesse; hancox_2013_slope_types] and with cut-and-fill
+- [~] **Most walls hold fill and soil, not rock**, at the front of a section or
+  in stepped platforms. Built as points: fill and cut and fill +5, a cut in
+  soil +10, a cut in rock over 2.0 m −20. Consistent with the thin cover
+  over the rock [nzgs_2025_torlesse; hancox_2013_slope_types] and with cut-and-fill
   platforms that houses straddle [monteith_2020]; the SLIDE reports call walls
   "a typical Wellington construction method" for cuts and fills but give no
   counts [lyndsell_2019; monteith_2020].
@@ -140,13 +145,14 @@ they are not independent of his advice.
   with no surcharge [nz_parliament_2004]; in Canterbury 54% of 2,991 walls
   retained under 1.5 m [anderson_2015], though their classes cannot show a
   cluster within that.
-- [ ] **Read age as a proxy for wall type**: pre-1970 walls mostly gravity
+- [~] **Read age as a proxy for wall type**: pre-1970 walls mostly gravity
   masonry, 1970s and 1980s crib, timber pole and block, later ones engineered.
   In Canterbury wall type tracked era, and stone masonry, the oldest,
   collapsed most (about 18% very poor against under 6% for block, gabion and
   timber pole) [anderson_2015].
-- [ ] **Expect walls in new subdivisions.** Suburb-scale cut and fill followed
-  the earth-moving machinery of the 1950s [lyndsell_2019].
+- [~] **Expect walls in new subdivisions.** Suburb-scale cut and fill followed
+  the earth-moving machinery of the 1950s [lyndsell_2019]. Built as age
+  points, from −10 before 1970 to +10 from 2005.
 - [ ] **Houses across gullies may sit on thicker colluvium or fill**; Nick was
   unsure this is worth using. Supported but hard to map: colluvium is 5 to
   10 m in old gullies that may not show at the surface [nzgs_2025_torlesse],
@@ -159,6 +165,17 @@ they are not independent of his advice.
   neither separates claims listing a wall from those listing none. The NZMM
   flag sits on claimed properties four to six times as often as on others;
   ask NHC how it is populated before using it.
+
+From the sense check of 2026-10-05, tested where a figure exists in
+`post_processing/sme_validations/sme_statements.md` (**T-67**):
+
+- [x] **Make a very tall face unlikely to be walled in full**: points −20 at
+  5 to 8 m and −60 at 8 m and over (**T-75**).
+- [ ] **Expect walls built for rock in unmapped alluvium to fail**, as in
+  Whitby and Porirua, where the maps show greywacke (**T-92**, **L-57**).
+- [ ] **Expect a property with one wall to have several**; the units are
+  drawn independently (**L-56**).
+- [ ] **Treat rock near the active faults as weaker** (**T-89**).
 
 ### Wall age, for the wall type
 
@@ -287,7 +304,7 @@ What this module owes the retaining wall table `loss` reads
   `gen_wall_population.py` takes which units are walls from step 12's draw
   for the world (`draw_wall_population(walled=...)`) and draws each wall's
   age bin and type (2026-10-06, wall types plan).
-- **The pilot run of 2026-10-02**: 8,342 candidate lines, 2,921 walls drawn in
+- **The pilot run of 2026-10-02** (the candidate lines, removed 2026-10-08): 8,342 candidate lines, 2,921 walls drawn in
   world 0, 1,760 of them insured on 1,058 claims. Property boundaries were
   4,540 of the lines, 110 km. With the step test on the boundaries, road
   frontages and SLIDE earthwork edges, each trimmed to its stepped stretches,
@@ -295,11 +312,10 @@ What this module owes the retaining wall table `loss` reads
   in 4,494 shorter lines. Most sloping boundaries step somewhere along their
   length. This was rerun into a scratch folder only; the table is in the step 6
   method file.
-- `gen_wall_lines.py`, `gen_wall_probability.py` and `gen_wall_population.py`
-  are the three scripts of step 6; their method file says what each does.
-  The lines' `p_wall` (from the source, lowered on rock cuts, capped on flat
-  land and raised where a wall is mapped) stays in the library for the chain
-  test. Every number is `BETA_` judgement.
+- `gen_wall_probability.py`, `gen_wall_age.py` (run by `gen_hazard`) and
+  `gen_wall_population.py` are the scripts of step 6; their method file says
+  what each does. The candidate lines and their `p_wall` were removed on
+  2026-10-08. Every number is `BETA_` judgement.
 - Every wall a world drew, insured or not, is written to
   `drawn-walls-wNNN[-pilot].geoparquet` for the urban slope model; the insured
   ones, with their `rw_id`, to `wall-population-wNNN[-pilot].geoparquet`.
@@ -353,31 +369,28 @@ What this module owes the retaining wall table `loss` reads
 
 ## Next
 
-1. **Run `exposure/rw/validations/gen_rw_dataset_properties.py` from the
-   console** (it reads NZMM and QV on T:), so the claim layer takes in the
-   seven claims lists added on 2026-10-06; landslide step 12's wall units
-   now stop until it is newer than every list's extraction. Then rerun
-   landslide step 12's faces, step 13, step 12's wall units, and step 6, for
-   the claims and the T+T manual walls.
+1. Review the pilot rerun of 2026-10-08 (`gen_all.py` over `wlg-pilot`, world
+   0, earthquake 0, with the claim layer rebuilt that morning and the renamed
+   wall types): 3,340 walls drawn on 5,747 candidates, 1,886 kept on insured
+   land; 1,410 of them fail with their polygon and 1,718 carry a damage flag.
 2. **Rerun the pilot chain downstream of exposure step 6** (vul and the loss
    inputs), so they read the wall-unit population of 2026-10-05 rather than
-   the one drawn from the lines; landslide step 8 needs its join repaired (4)
-   first.
+   the one drawn from the lines.
 3. Rerun landslide steps 12 and 13 and then step 6 over the pilot, for the
    new wall height and class prior, and recheck the size classes and the
    share under 1.5 m against Anderson et al. [anderson_2015] (54%).
-4. Repair landslide step 8's edge join: the drawn walls carry wall unit ids,
-   so it matches none of the step 7 lines, and step 8 now stops with an error
-   rather than build every polygon `no_wall`; resolved when steps 8 and 9 read
-   step 12's zones.
+4. Landslide step 8's edge join is repaired: steps 8 and 9 read step 12's
+   zones, which carry the wall unit ids, and the step 7 lines are removed
+   (2026-10-08).
 5. Add walls on the flat land: every wall unit is a face of sloping ground.
 6. Tie a wall on a property boundary, which is one unit on each side, so one
    draw serves both, or count it on both.
 7. **Run `gen_wall_age.py` from the console** (it reads the QV roll on T:),
    then rerun step 6's population and the pilot chain, so the drawn walls
    carry their age bin and wall type (wall types plan, phase 3).
-8. Have Nick Peters review the type shares and frontage multipliers
-   (wall types plan, phase 4).
+8. Have Nick Peters review the type shares, which the lead revised on
+   2026-10-08 for the types renamed that day (`retaining-wall-types.csv`),
+   and the frontage multipliers (wall types plan, phase 4).
 9. Bring subdivision age into `p_wall`.
 10. Calibrate the wall units' weights on the held-out claims, GNS and the
    strata once **T-50** is complete (Wall datasets, above).

@@ -34,6 +34,7 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
+import shapely
 
 from landloss.hazard.landslide import slope_polygons
 from landloss.hazard.landslide.slope_elements import (
@@ -46,7 +47,7 @@ from landloss.hazard.landslide.slope_elements import (
 from landloss.hazard.landslide.slope_polygons import (
     BETA_MAX_DEPOSIT_DEPTH_H,
     BETA_MAX_DEPOSIT_DEPTH_SOURCE,
-    BETA_MAX_RUNOUT_H,
+    BETA_MAX_RUNOUT_H_STEEP,
     BETA_MIN_EVACUATED_WIDTH_H,
     BETA_MIN_EVACUATED_WIDTH_M,
     BETA_REPOSE_ANGLE_DEG,
@@ -66,14 +67,19 @@ from landloss.hazard.landslide.slope_polygons import (
     SlopePolygons,
     build_slope_polygons,
     conditional_failure_probability,
+    cut_reach_past_toe_m,
     deposit_overlap_m2,
     element_depth_m,
     imminent_width_m,
     inundated_length_m,
+    max_runout_h,
     min_evacuated_width_m,
     planar_depth_m,
     polygon_geometries,
     reach_ratio,
+    seismic_runout_m,
+    smooth_cell_outline,
+    source_angle_deg,
     width_behind_crest_m,
 )
 from landloss.hazard.landslide.synthetic_terrain import (
@@ -83,6 +89,7 @@ from landloss.hazard.landslide.synthetic_terrain import (
     ToyTerrain,
     build_toy_case,
 )
+from landloss.hazard.landslide.urban.face_polygons import BETA_OFF_MAP_GROUND
 
 pytestmark = [
     pytest.mark.filterwarnings("ignore:Use `@` matmul:PendingDeprecationWarning"),
@@ -257,9 +264,21 @@ def test_depths_by_element_type():
     # same wedge, 0.5 H w, over its run as well.
     assert depth[0] == pytest.approx(2.0)
     assert depth[1] == pytest.approx(0.5 * 4.0 * 1.8 / (1.8 + 2.3))
-    assert depth[2] == pytest.approx(2.5)
-    assert np.isnan(depth[3])
+    # A fill bank takes the same wedge, no deeper than its fill: thick fill
+    # or unknown, the wedge; thin fill, the fill.
+    wedge = 0.5 * 3.0 * 1.35 / (1.35 + 4.0)
+    assert depth[2] == pytest.approx(wedge)
+    assert depth[3] == pytest.approx(wedge)
     assert depth[4] == pytest.approx(1.5)
+    thin = element_depth_m(
+        [BANK],
+        [3.0],
+        is_fill=[True],
+        fill_thickness_m=[0.2],
+        width_m=[1.35],
+        run_m=[4.0],
+    )
+    assert thin[0] == pytest.approx(0.2)
 
 
 def test_planar_depth_is_the_triangle_toe_crest_back():
@@ -310,27 +329,74 @@ def test_the_downslope_line_is_flatter_than_steep_ground(downslope):
 
 
 @pytest.mark.parametrize(
-    ("reach", "height", "volume", "toe", "expected"),
+    ("reach", "height", "volume", "toe", "seismic", "expected"),
     [
-        # The rays' reach, under the caps.
-        (5.0, 4.0, 400.0, 10.0, 5.0),
-        # No reach past the toe: the debris still lies in a strip at the toe.
-        (0.0, 4.0, 400.0, 10.0, 1.0),
-        # The strip at the toe stands even where the volume cap is shorter.
-        (5.0, 4.0, 1.0, 10.0, 1.0),
-        # A long reach is held to three heights past the toe.
-        (60.0, 2.0, 400.0, 10.0, 6.0),
-        # Or to where the deposit would thin under 0.3 m.
-        (60.0, 10.0, 30.0, 10.0, 10.0),
+        # The rays' reach plus the seismic distance, under the cap.
+        (5.0, 4.0, 400.0, 10.0, 1.0, 6.0),
+        # No reach past the toe: the seismic distance alone.
+        (0.0, 4.0, 400.0, 10.0, 0.5, 0.5),
+        # The deposit depth cap holds the reach, not the seismic distance.
+        (5.0, 4.0, 1.0, 10.0, 2.0, 1.0 / 3.0 + 2.0),
+        # The sum is held to two heights past the toe on flat ground.
+        (60.0, 2.0, 400.0, 10.0, 1.0, 4.0),
+        (3.5, 2.0, 400.0, 10.0, 1.0, 4.0),
+        # A small face's cap holds the seismic distance too.
+        (0.0, 0.5, 400.0, 10.0, 3.0, 1.0),
     ],
 )
-def test_inundated_length_is_the_reach_capped_with_a_strip_at_the_toe(
-    reach, height, volume, toe, expected
+def test_inundated_length_is_the_reach_plus_the_seismic_distance_capped(
+    reach, height, volume, toe, seismic, expected
 ):
     length = inundated_length_m(
-        reach, height_m=height, volume_m3=volume, toe_length_m=toe
+        reach,
+        height_m=height,
+        volume_m3=volume,
+        toe_length_m=toe,
+        downslope_angle_deg=0.0,
+        seismic_m=seismic,
     )
     assert length == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("zone", "metres"),
+    [(1, 0.5), (2, 0.5), (3, 1.0), (4, 2.0), (5, 3.0), (pd.NA, 1.0), (np.nan, 1.0)],
+)
+def test_the_seismic_distance_follows_the_kingsbury_zone(zone, metres):
+    assert seismic_runout_m([zone])[0] == pytest.approx(metres)
+
+
+@pytest.mark.parametrize(
+    ("downslope", "heights"),
+    [(np.nan, 2.0), (0.0, 2.0), (19.9, 2.0), (20.0, 3.0), (34.9, 3.0), (35.0, 4.0)],
+)
+def test_the_runout_cap_rises_with_the_ground_below_the_toe(downslope, heights):
+    assert max_runout_h(downslope) == pytest.approx(heights)
+    length = inundated_length_m(
+        60.0,
+        height_m=2.0,
+        volume_m3=400.0,
+        toe_length_m=10.0,
+        downslope_angle_deg=downslope,
+        seismic_m=0.0,
+    )
+    assert length == pytest.approx(heights * 2.0)
+
+
+@pytest.mark.parametrize(
+    ("height", "run", "expected"),
+    [
+        # A vertical step reads a cell of run: read vertical.
+        (2.0, 1.0, 90.0),
+        (2.0, 0.0, 90.0),
+        # A 45 degree read on 2 m of run is 63 degrees on the 1 m left.
+        (2.0, 2.0, math.degrees(math.atan(2.0))),
+        (3.0, 4.0, 45.0),
+        (3.0, np.nan, 90.0),
+    ],
+)
+def test_the_source_angle_takes_off_the_run_the_dem_adds(height, run, expected):
+    assert source_angle_deg(height, run) == pytest.approx(expected)
 
 
 @pytest.mark.parametrize(
@@ -361,7 +427,7 @@ def test_zones_stay_within_their_caps_of_the_evacuated_ground(name, noise):
     for polygon, row in result.polygons.iterrows():
         own = evacuated[evacuated["polygon"] == polygon][["row", "col"]].to_numpy()
         caps = {
-            INUNDATED: BETA_MAX_RUNOUT_H * row["height_m"],
+            INUNDATED: BETA_MAX_RUNOUT_H_STEEP * row["height_m"],
             IMMINENT: max(row["height_m"] / tan_repose, 1.0),
         }
         for zone, cap in caps.items():
@@ -491,7 +557,7 @@ def test_barriers_stop_the_runout():
 def test_geometries_are_true_to_the_cells():
     _, _, result = run_case("03_excavated_toe_4m", 0.0)
     for zone in (EVACUATED, IMMINENT, INUNDATED):
-        drawn = polygon_geometries(result, zone=zone, crs="EPSG:2193")
+        drawn = polygon_geometries(result, zone=zone, crs="EPSG:2193", smooth=False)
         counts = zone_cells(result, zone).groupby("polygon").size()
         assert drawn.set_index("polygon").area.to_dict() == pytest.approx(
             counts.astype(float).to_dict()
@@ -894,10 +960,10 @@ def test_case_12_weak_rock_banks_take_the_band_or_the_wedge(noise):
     _, found, high = run_case("12_weak_rock_bank_12m", noise)
     assert set(high.polygons["width_rule"]) == {WALL_WEDGE}
     # Onto level ground a 40 degree cut's travel line, 0.78 (tan 40)^0.5,
-    # meets level ground 0.2 heights past its toe: the 3 m bank's debris
-    # reaches under a cell and leaves the one-cell strip, the 12 m bank's
-    # 2.5 m two cells or more.
-    for result, cells in ((low, {1}), (high, {2, 3})):
+    # meets level ground about 0.2 heights past its toe, and the unscored
+    # seismic distance adds 1 m: the 3 m bank's debris runs two cells, the
+    # 12 m bank's three or more.
+    for result, cells in ((low, {2}), (high, {3, 4})):
         assert (result.polygons["style"] == CUT_SLOPE).all()
         runout = zone_cells(result, INUNDATED)
         evac = zone_cells(result, EVACUATED)[["row", "col"]]
@@ -1063,3 +1129,111 @@ def test_no_toe_reads_no_downslope_angle():
         dem, rays, toe_d=np.array([np.nan]), window_m=np.array([2.0]), cell_size_m=1.0
     )
     assert np.isnan(angle[0])
+
+
+@pytest.mark.parametrize("angle", [45.0, 60.0, 70.0, 80.0, 90.0])
+def test_a_cut_runs_under_half_its_height_past_its_toe(angle):
+    hl, _ = reach_ratio([angle], [0.0])
+    past = cut_reach_past_toe_m(2.0, angle, hl)
+    capped = min(angle, 80.0)
+    assert past[0] == pytest.approx(
+        2.0 * (1.0 / hl[0] - 1.0 / math.tan(math.radians(capped)))
+    )
+    assert 0.25 * 2.0 < past[0] < 0.42 * 2.0
+
+
+def test_the_ground_scores_a_zone_whose_distance_the_runout_takes():
+    terrain = build_toy_case("01_wall", noise_sd_m=0.0, seed=0)
+    found = find_slope_elements(terrain.dem, terrain.ground_group, terrain.transform)
+    ground = pd.DataFrame(
+        [BETA_OFF_MAP_GROUND] * len(found.elements), index=found.elements.index
+    )
+    unscored = build_slope_polygons(found, terrain.dem, terrain.transform)
+    scored = build_slope_polygons(
+        found, terrain.dem, terrain.transform, element_ground=ground
+    )
+    assert unscored.polygons["kingsbury_zone"].isna().all()
+    zones = scored.polygons["kingsbury_zone"]
+    assert zones.notna().all()
+    assert scored.polygons["seismic_runout_m"].to_numpy() == pytest.approx(
+        seismic_runout_m(zones)
+    )
+    extra = scored.polygons["seismic_runout_m"] - unscored.polygons["seismic_runout_m"]
+    cap = 2.0 * scored.polygons["height_m"]
+    expected = np.minimum(unscored.polygons["runout_m"] + extra, cap)
+    assert scored.polygons["runout_m"].to_numpy() == pytest.approx(expected.to_numpy())
+
+
+def test_a_staircase_of_cells_is_redrawn_as_its_diagonal():
+    # Single-cell steps: the outline runs through the midpoints between cell
+    # centres, so the stepped edge becomes a straight diagonal and the
+    # smoothed outline has a handful of vertices, not one per step.
+    cells = [shapely.box(i, i, i + 1, i + 1) for i in range(6)] + [
+        shapely.box(i + 1, i, i + 2, i + 1) for i in range(5)
+    ]
+    smooth = smooth_cell_outline(shapely.union_all(cells), 1.0)
+    assert smooth.is_valid
+    assert smooth.area == pytest.approx(11.0, rel=0.1)
+    assert len(shapely.get_coordinates(smooth)) < 30
+    # The middle of the band stays inside, its stepped corners do not.
+    assert smooth.contains(shapely.Point(3.0, 2.5))
+    assert not smooth.contains(shapely.Point(0.05, 0.95))
+
+
+def test_a_straight_run_of_cells_keeps_its_edges():
+    smooth = smooth_cell_outline(shapely.box(0, 0, 10, 1), 1.0)
+    # The long sides stay on the cell edges; only the ends are rounded, by
+    # no more than a quarter cell.
+    minx, miny, maxx, maxy = smooth.bounds
+    assert (miny, maxy) == pytest.approx((0.0, 1.0))
+    assert 0.0 <= minx <= 0.25
+    assert 9.75 <= maxx <= 10.0
+    assert smooth.contains(shapely.LineString([(1.0, 0.01), (9.0, 0.01)]))
+    assert 9.0 < smooth.area < 10.0
+
+
+def test_a_hole_stays_a_hole():
+    cells = shapely.box(0, 0, 5, 5).difference(shapely.box(2, 2, 3, 3))
+    smooth = smooth_cell_outline(cells, 1.0)
+    assert not smooth.contains(shapely.Point(2.5, 2.5))
+    assert len(smooth.interiors) == 1
+
+
+def test_smoothed_zones_lie_on_their_cells():
+    _, _, result = run_case("03_excavated_toe_4m", 0.0)
+    scar = polygon_geometries(
+        result, zone=EVACUATED, crs="EPSG:2193", smooth=False
+    ).set_index("polygon")["geometry"]
+    for zone in (EVACUATED, IMMINENT, INUNDATED):
+        cells = polygon_geometries(result, zone=zone, crs="EPSG:2193", smooth=False)
+        smooth = polygon_geometries(result, zone=zone, crs="EPSG:2193")
+        both = cells.merge(smooth, on="polygon", suffixes=("_cells", "_smooth"))
+        for _, row in both.iterrows():
+            own = row["geometry_cells"]
+            if zone == IMMINENT:
+                # It also takes the corners the evacuated outline cuts off.
+                own = shapely.union(own, scar[row["polygon"]])
+            # Never more than half a cell off the cells' own outline.
+            assert row["geometry_smooth"].buffer(1e-9).within(own.buffer(0.5))
+            if zone != IMMINENT:
+                assert row["geometry_smooth"].area <= row["geometry_cells"].area
+
+
+def test_the_smoothed_imminent_band_lies_against_the_evacuated_outline():
+    _, _, result = run_case("03_excavated_toe_4m", 0.0)
+    evacuated = polygon_geometries(result, zone=EVACUATED, crs=None)
+    imminent = polygon_geometries(result, zone=IMMINENT, crs=None)
+    cells = polygon_geometries(result, zone=IMMINENT, crs=None, smooth=False)
+    both = evacuated.merge(imminent, on="polygon", suffixes=("_evac", "_imm"))
+    assert len(both) > 0
+    for _, row in both.iterrows():
+        evac, imm = row["geometry_evac"], row["geometry_imm"]
+        # No overlap, and no gap: the two meet along the evacuated outline.
+        assert shapely.intersection(evac, imm).area == pytest.approx(0.0, abs=1e-6)
+        assert shapely.union(evac, imm).area == pytest.approx(
+            evac.area + imm.area, abs=1e-6
+        )
+        assert shapely.distance(evac, imm) == pytest.approx(0.0, abs=1e-6)
+    # Within a cell or so of the band's own cells' area, not shaved off.
+    drawn = imminent.set_index("polygon").area.sum()
+    assert drawn == pytest.approx(cells.set_index("polygon").area.sum(), rel=0.1)

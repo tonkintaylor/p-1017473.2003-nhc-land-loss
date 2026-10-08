@@ -13,15 +13,13 @@ import geopandas as gpd
 import numpy as np
 import pytest
 import xarray as xr
-from shapely.geometry import Point, box
+from shapely.geometry import Point
 
 from landloss.common.utils.terrain import (
     CUT_FILL_RESIDUAL_NAME,
     DOWNHILL_AZIMUTH_NAME,
-    PROFILE_CURVATURE_NAME,
     SLOPE_NAME,
     TOPOGRAPHIC_POSITION_NAME,
-    VEGETATION_HEIGHT_NAME,
     azimuth_offsets,
     azimuth_sd_degrees,
     block_mean,
@@ -29,15 +27,11 @@ from landloss.common.utils.terrain import (
     cut_fill_residual,
     downhill_azimuth_degrees,
     mean_azimuth_degrees,
-    profile_curvature,
     sample_at_points,
     slope_degrees,
     topographic_position,
-    vegetation_height,
     window_in_cells,
     write_raster,
-    zonal_azimuth_mean,
-    zonal_statistic,
 )
 from landloss.domain import constants
 
@@ -697,145 +691,6 @@ def test_a_residual_needs_both_grids_to_be_placed() -> None:
         cut_fill_residual(dem, base)
 
 
-# --- profile curvature --------------------------------------------------------
-
-
-def parabolic_ridge(size: int, curvature: float, resolution: float):
-    """Build a ridge whose crest runs north-south: z = -curvature/2 * x**2."""
-    offsets = (np.arange(size) - (size - 1) / 2) * resolution
-    return np.tile(-curvature / 2 * offsets**2, (size, 1))
-
-
-def test_a_ridge_is_convex_along_the_fall_line_and_reads_negative() -> None:
-    """ArcGIS's sign: negative on a crest, which is what the amplification wants."""
-    resolution = 10.0
-    dem = make_dem(parabolic_ridge(9, 0.02, resolution), resolution=resolution)
-
-    curvature = profile_curvature(dem, resolution).to_numpy()
-
-    # Off the crest the fall line runs straight down the parabola, whose second
-    # derivative is -0.02 everywhere.
-    assert curvature[4, 2] == pytest.approx(-0.02)
-    assert curvature[4, 6] == pytest.approx(-0.02)
-
-
-def test_a_gully_is_concave_along_the_fall_line_and_reads_positive() -> None:
-    """The mirror of the ridge, which pins the sign rather than the magnitude."""
-    resolution = 10.0
-    dem = make_dem(-parabolic_ridge(9, 0.02, resolution), resolution=resolution)
-
-    curvature = profile_curvature(dem, resolution).to_numpy()
-
-    assert curvature[4, 2] == pytest.approx(0.02)
-
-
-def test_a_plane_has_no_profile_curvature() -> None:
-    """An even hillside does not bend, and level ground has no fall line at all."""
-    hillside = profile_curvature(make_dem(ramp(9, rise_per_cell=3.0)), 10.0)
-    level = profile_curvature(make_dem(np.full((9, 9), 5.0)), 10.0)
-
-    assert interior(hillside) == pytest.approx(0.0, abs=1e-12)
-    assert interior(level) == pytest.approx(0.0)
-
-
-def test_the_curvature_does_not_depend_on_which_way_the_rows_run() -> None:
-    """Flipping the raster negates two terms together and changes nothing."""
-    resolution = 10.0
-    elevation = parabolic_ridge(9, 0.02, resolution) + ramp(9, 1.0, axis=0)
-    north_up = make_dem(elevation, resolution=resolution)
-    south_up = xr.DataArray(
-        elevation[::-1],
-        dims=("y", "x"),
-        coords={
-            "y": north_up["y"].to_numpy()[::-1],
-            "x": north_up["x"].to_numpy(),
-        },
-    ).rio.write_crs(constants.DEFAULT_CRS)
-
-    assert interior(profile_curvature(south_up, resolution))[::-1] == pytest.approx(
-        interior(profile_curvature(north_up, resolution))
-    )
-
-
-def test_the_curvature_border_and_holes_are_nan() -> None:
-    """No complete window, no curvature; a hole must not read as a bend."""
-    elevation = ramp(9, rise_per_cell=3.0)
-    elevation[4, 4] = np.nan
-    curvature = profile_curvature(make_dem(elevation), 10.0).to_numpy()
-
-    assert np.isnan(curvature[0, :]).all()
-    assert np.isnan(curvature[:, -1]).all()
-    assert np.isnan(curvature[3:6, 3:6]).all()
-    assert np.isfinite(curvature[1, 1])
-
-
-def test_the_curvature_keeps_the_grid_and_the_projection() -> None:
-    """Written beside the slope and sampled, so it stays georeferenced."""
-    dem = make_dem(parabolic_ridge(9, 0.02, 10.0))
-
-    curvature = profile_curvature(dem, 10.0)
-
-    assert curvature.name == PROFILE_CURVATURE_NAME
-    assert curvature.rio.crs == dem.rio.crs
-    assert curvature.shape == dem.shape
-
-
-# --- vegetation height --------------------------------------------------------
-
-
-@ignore_affine_matmul
-def test_a_surface_one_metre_above_the_ground_is_one_metre_of_vegetation() -> None:
-    """DSM minus DEM, on the DEM's grid."""
-    dem = make_dem(ramp(9, rise_per_cell=2.0))
-    dsm = (dem + 1.0).rio.write_crs(constants.DEFAULT_CRS)
-
-    height = vegetation_height(dsm, dem)
-
-    assert height.name == VEGETATION_HEIGHT_NAME
-    assert height.to_numpy() == pytest.approx(1.0)
-
-
-@ignore_affine_matmul
-def test_a_surface_below_the_ground_is_noise_and_reads_zero() -> None:
-    """Nothing stands at negative height; a DSM under the DEM is survey error."""
-    dem = make_dem(np.full((9, 9), 10.0))
-    dsm = (dem - 0.3).rio.write_crs(constants.DEFAULT_CRS)
-
-    height = vegetation_height(dsm, dem).to_numpy()
-
-    assert height == pytest.approx(0.0)
-
-
-@ignore_affine_matmul
-def test_where_no_surface_model_was_flown_the_height_is_nan() -> None:
-    """Outside the surveys there is no answer, and zero would read as bare ground."""
-    dem = make_dem(np.full((9, 9), 10.0))
-    surface = np.full((9, 9), 12.0)
-    surface[:, 5:] = np.nan
-    dsm = make_dem(surface)
-
-    height = vegetation_height(dsm, dem).to_numpy()
-
-    assert height[:, :4] == pytest.approx(2.0)
-    assert np.isnan(height[:, 6:]).all()
-
-
-@ignore_affine_matmul
-def test_a_cell_under_a_building_has_no_vegetation_height() -> None:
-    """A roof is not canopy: cells inside an outline are NaN, the rest kept."""
-    dem = make_dem(np.full((9, 9), 10.0))
-    dsm = (dem + 3.0).rio.write_crs(constants.DEFAULT_CRS)
-    west, south, east, north = dem.rio.bounds()
-    roof = gpd.GeoSeries(
-        [box(west, south, (west + east) / 2, north)], crs=constants.DEFAULT_CRS
-    )
-
-    height = vegetation_height(dsm, dem, roof).to_numpy()
-
-    assert np.isnan(height[:, :4]).all()
-    assert height[:, 5:] == pytest.approx(3.0)
-
-
 # --- circular statistics ------------------------------------------------------
 
 
@@ -864,136 +719,3 @@ def test_agreeing_bearings_have_no_spread_and_opposed_ones_an_unbounded_one() ->
 
 
 # --- zonal statistics ---------------------------------------------------------
-
-
-@pytest.fixture
-def written_grid(tmp_path):
-    """A 7x7 raster of its own row index, on disk, with one NaN cell."""
-    elevation = np.tile(np.arange(7, dtype=float), (7, 1)).T
-    elevation[0, 0] = np.nan
-    dem = make_dem(elevation)
-    return dem, write_raster(dem, tmp_path / "grid.tif")
-
-
-def cell_box(dem, rows, columns):
-    """A polygon covering whole cells, by row and column slices."""
-    resolution = cell_size(dem)
-    x = dem["x"].to_numpy()
-    y = dem["y"].to_numpy()
-    return box(
-        x[columns.start] - resolution / 2,
-        y[rows.stop - 1] - resolution / 2,
-        x[columns.stop - 1] + resolution / 2,
-        y[rows.start] + resolution / 2,
-    )
-
-
-@ignore_affine_matmul
-def test_a_zonal_mean_averages_the_cells_whose_centres_fall_inside(
-    written_grid,
-) -> None:
-    """Rows 2 to 4 inclusive average 3; the polygon's index comes back with it."""
-    dem, path = written_grid
-    polygons = gpd.GeoSeries(
-        [cell_box(dem, slice(2, 5), slice(1, 4))],
-        index=["patch-7"],
-        crs=constants.DEFAULT_CRS,
-    )
-
-    mean = zonal_statistic(path, polygons)
-
-    assert mean.index.tolist() == ["patch-7"]
-    assert mean["patch-7"] == pytest.approx(3.0)
-
-
-@ignore_affine_matmul
-@pytest.mark.parametrize(
-    ("statistic", "expected"),
-    [("mean", 3.0), ("max", 4.0), ("min", 2.0), ("median", 3.0)],
-)
-def test_every_statistic_offered_reduces_the_same_cells(
-    written_grid, statistic: str, expected: float
-) -> None:
-    """One selection of cells, four reductions of it."""
-    dem, path = written_grid
-    polygons = gpd.GeoSeries(
-        [cell_box(dem, slice(2, 5), slice(1, 4))], crs=constants.DEFAULT_CRS
-    )
-
-    assert zonal_statistic(path, polygons, statistic=statistic).iloc[
-        0
-    ] == pytest.approx(expected)
-
-
-@ignore_affine_matmul
-def test_a_sliver_holding_no_cell_centre_is_nan(written_grid) -> None:
-    """Touching a cell is not being in it: a sliver reads as nothing at all."""
-    dem, path = written_grid
-    resolution = cell_size(dem)
-    x = dem["x"].to_numpy()[3]
-    y = dem["y"].to_numpy()[3]
-    # A box in the corner of one cell, well clear of its centre.
-    sliver = box(
-        x + 0.3 * resolution,
-        y + 0.3 * resolution,
-        x + 0.45 * resolution,
-        y + 0.45 * resolution,
-    )
-    polygons = gpd.GeoSeries([sliver, None], crs=constants.DEFAULT_CRS)
-
-    result = zonal_statistic(path, polygons)
-
-    assert np.isnan(result).all()
-
-
-@ignore_affine_matmul
-def test_nan_cells_are_skipped_not_averaged(written_grid) -> None:
-    """A nodata cell inside the polygon does not blank the whole patch."""
-    dem, path = written_grid
-    polygons = gpd.GeoSeries(
-        [cell_box(dem, slice(0, 2), slice(0, 2))], crs=constants.DEFAULT_CRS
-    )
-
-    # Rows 0 and 1 hold 0 and 1; the NaN at [0, 0] is left out of the three.
-    assert zonal_statistic(path, polygons).iloc[0] == pytest.approx(2.0 / 3.0)
-
-
-@ignore_affine_matmul
-def test_polygons_in_another_projection_are_brought_to_the_raster(
-    written_grid,
-) -> None:
-    """A WGS84 polygon over the same cells reads the same cells."""
-    dem, path = written_grid
-    polygons = gpd.GeoSeries(
-        [cell_box(dem, slice(2, 5), slice(1, 4))], crs=constants.DEFAULT_CRS
-    ).to_crs("EPSG:4326")
-
-    assert zonal_statistic(path, polygons).iloc[0] == pytest.approx(3.0, abs=0.01)
-
-
-@ignore_affine_matmul
-def test_an_unknown_statistic_is_refused(written_grid) -> None:
-    """A typo must not quietly fall back to the mean."""
-    dem, path = written_grid
-    polygons = gpd.GeoSeries([cell_box(dem, slice(2, 5), slice(1, 4))], crs=dem.rio.crs)
-
-    with pytest.raises(ValueError, match="Unknown statistic"):
-        zonal_statistic(path, polygons, statistic="mode")  # type: ignore[arg-type]
-
-
-@ignore_affine_matmul
-def test_the_zonal_azimuth_mean_is_circular(tmp_path) -> None:
-    """A patch half facing 350 and half facing 10 faces north, not south."""
-    bearings = np.full((7, 7), 350.0)
-    bearings[:, 4:] = 10.0
-    aspect = make_dem(bearings)
-    path = write_raster(aspect, tmp_path / "aspect.tif")
-    polygons = gpd.GeoSeries(
-        [cell_box(aspect, slice(1, 6), slice(1, 6))], crs=constants.DEFAULT_CRS
-    )
-
-    circular = zonal_azimuth_mean(path, polygons).iloc[0]
-    arithmetic = zonal_statistic(path, polygons).iloc[0]
-
-    assert min(circular, 360.0 - circular) < 10.0
-    assert arithmetic > 100.0

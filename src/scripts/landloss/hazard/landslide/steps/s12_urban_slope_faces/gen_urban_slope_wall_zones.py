@@ -43,6 +43,7 @@ from landloss.hazard.landslide.forced_polygons import (
 )
 from landloss.hazard.landslide.instability_zones import add_line_elements, with_walls
 from landloss.hazard.landslide.slope_polygons import build_slope_polygons
+from landloss.hazard.landslide.urban.face_polygons import ground_of_elements
 from landloss.hazard.landslide.wall_units import gen_element_walls
 from landloss.io.readers import get_nz_building_outlines, get_nz_coastline_polygons
 from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
@@ -110,7 +111,7 @@ def ground_rows(geometries, ground_map):
     return first.fillna(-1).astype(np.int64).to_numpy()
 
 
-def with_forced(result, scenario, forced, walled, is_fill, thickness):
+def with_forced(result, scenario, forced, walled, is_fill, thickness, ground):
     """A scenario's built zones with the forced polygons' zones after them."""
     zones = zone_polygons(result, scenario=scenario)
     zones["forced"] = False
@@ -121,6 +122,7 @@ def with_forced(result, scenario, forced, walled, is_fill, thickness):
         walled,
         is_fill=is_fill,
         fill_thickness_m=thickness,
+        ground=ground,
         first_polygon=first,
         scenario=scenario,
     )
@@ -211,6 +213,7 @@ def build_tiled(found, units, draws, *, extent, use_cached_layers, world_ids):
                 lineless=lineless,
                 flags_by_scenario=flags,
                 fill_by_element=fill_by_element,
+                ground_of_elements=ground_of_elements,
                 ground_rows=ground_rows,
                 zone_frames=with_forced,
                 element_polygons=element_polygons,
@@ -298,6 +301,7 @@ def main(*, extent, use_cached_layers, world_ids):
     )
     forced["majority_ground_row"] = ground_rows(forced.geometry, ground_map)
     forced_fill, forced_thickness = fill_by_element(forced, ground_map)
+    forced_ground = ground_of_elements(forced, ground_map)
     element_frame = element_polygons(found, transform)
     element_frame["forced"] = False
     element_frame = gpd.GeoDataFrame(
@@ -307,6 +311,9 @@ def main(*, extent, use_cached_layers, world_ids):
     )
     element_frame.to_parquet(wall_elements_path(extent=extent))
     is_fill, thickness = fill_by_element(elements, ground_map)
+    # The ground each element's Kingsbury zone, and so its seismic runout, is
+    # scored on (as step 8 scores it).
+    element_ground = ground_of_elements(elements, ground_map)
     in_unit = elements["siz_id"].isin(units["member_pif_ids"].explode().dropna())
     print(
         "Elements of a siz whose pif is in no wall unit: "
@@ -320,6 +327,7 @@ def main(*, extent, use_cached_layers, world_ids):
             transform,
             is_fill=is_fill,
             fill_thickness_m=thickness,
+            element_ground=element_ground,
         )
         zones = with_forced(
             result,
@@ -328,6 +336,7 @@ def main(*, extent, use_cached_layers, world_ids):
             pd.Series(walled, index=forced.index),
             forced_fill,
             forced_thickness,
+            forced_ground,
         )
         zones.to_parquet(zones_path(scenario, extent=extent))
         if scenario == "walled":
@@ -353,6 +362,7 @@ def main(*, extent, use_cached_layers, world_ids):
             transform,
             is_fill=is_fill,
             fill_thickness_m=thickness,
+            element_ground=element_ground,
         )
         scenario = world_scenario(world_id)
         forced_walled = pd.Series(
@@ -360,7 +370,13 @@ def main(*, extent, use_cached_layers, world_ids):
             index=forced.index,
         )
         with_forced(
-            result, scenario, forced, forced_walled, forced_fill, forced_thickness
+            result,
+            scenario,
+            forced,
+            forced_walled,
+            forced_fill,
+            forced_thickness,
+            forced_ground,
         ).to_parquet(zones_path(scenario, extent=extent))
         print(
             f"World {world_id}: {flags.mean():.1%} of elements walled, "

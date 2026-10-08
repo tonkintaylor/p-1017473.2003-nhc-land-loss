@@ -186,7 +186,7 @@ LI_2024 = comparator(
 
 PANELS = (
     Panel(
-        "gravity_masonry",
+        "brick_rock",
         "Gravity masonry\n(stone, brick, mass concrete)",
         comparators=(
             comparator(
@@ -201,14 +201,14 @@ PANELS = (
         stone=(("stone facing", 0.35),),
     ),
     Panel(
-        "crib",
+        "crib_gabion",
         "Crib",
         anderson=("crib", 0.13),
         stone=(("concrete crib", 0.30), ("timber crib", 0.28)),
     ),
-    Panel("timber_pole_old", "Timber pole, old\n(pre July 1992)"),
+    Panel("timber_pole_pre_1992", "Timber pole, old\n(pre July 1992)"),
     Panel(
-        "block_rc_cantilever",
+        "concrete_block",
         "Concrete block / RC cantilever",
         comparators=(
             comparator(
@@ -220,14 +220,14 @@ PANELS = (
         stone=(("reinforced concrete", 0.22),),
     ),
     Panel(
-        "timber_pole_new",
+        "timber_pole_post_1992",
         "Timber pole, new\n(engineered, post 1992)",
         anderson=("timber pole", 0.028),
         stone=(("post and panel", 0.09),),
     ),
-    Panel("landscaper_timber", "Landscaper timber\n(unconsented, <1.5 m)"),
+    Panel("garden_timber", "Landscaper timber\n(unconsented, <1.5 m)"),
     Panel(
-        "engineered_modern",
+        "engineered",
         "Engineered modern, 2 m and over\n(MSE, soil nail, RC)",
         height_class=TALL_HEIGHT_CLASS,
         anderson=("MSE, 18 walls", 0.0),

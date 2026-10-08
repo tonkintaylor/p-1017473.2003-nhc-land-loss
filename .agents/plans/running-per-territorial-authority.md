@@ -78,15 +78,24 @@ about 28 GB.
 
 - [ ] Landslide step 3 fetches and writes the 1 m DEM and derivatives per
       tile; the coarser grids are built from the tiles. Not needed for
-      Porirua (33 GB); likely needed for Wellington City and the Hutt.
-- [x] Step 6's delineation per tile, identical to the whole grid's.
+      Porirua (33 GB); likely needed for Wellington City and the Hutt. Lighter
+      since 2026-10-08: the derivatives step no longer writes the face heights,
+      curvature, 20 m position or vegetation height, nor fetches the 1 m DSM.
+- [x] ~~Step 6's delineation per tile~~: tiled on 2026-10-07, then step 6 was
+      removed on 2026-10-08 with the rest of the old candidate method (steps
+      6 and 7 and the exposure wall lines), which nothing downstream read.
 - [x] Step 12's faces and wall zones per tile (`s12_urban_slope_faces/tiled.py`);
       the zones are close but not yet identical to the whole grid's (see
       that step's plan, phase 6).
-- [ ] Vectorised zonal statistics (faces plan, phase 0) wherever a step reads
-      rasters onto polygons.
+- [ ] ~~Vectorised zonal statistics~~: no longer needed; the per-polygon zonal
+      statistics were step 6's and step 7's.
 
 ### Phase 3 — The split runner
+
+Started 2026-10-08 from the step that needs it most: landslide step 14
+(`s14_instability_zones`) holds the 1 m search that was step 12's, and skips
+itself when its record of settings, inputs and code still holds; and
+`config.START_FROM` in `gen_all.py` starts a run at a named module and step.
 
 - [ ] `gen_static.py`: shaking steps 2 and 3, liquefaction step 2, landslide
       steps 3 to 5 and the faces, and exposure steps 1 to 5 and the wall

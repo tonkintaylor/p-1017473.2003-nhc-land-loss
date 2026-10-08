@@ -30,8 +30,8 @@ def rng(realisation_id=0):
 
 
 # The synthetic wall types: MODERN takes the height class's median, OLD 0.7 of it.
-MODERN = "block_rc_cantilever"
-OLD = "gravity_masonry"
+MODERN = "concrete_block"
+OLD = "brick_rock"
 
 
 def wall_table():

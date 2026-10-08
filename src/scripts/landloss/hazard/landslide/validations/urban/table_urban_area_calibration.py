@@ -133,8 +133,13 @@ ABOUT_EQUAL_FACTOR = 1.25
 
 # Kingsbury section 4.4.2: seismically designed retained slopes are not in the
 # high category, poorly built crib, shotcrete and light walls are.
-ENGINEERED_TYPES = ("engineered_modern", "timber_pole_new", "block_rc_cantilever")
-POOR_TYPES = ("gravity_masonry", "landscaper_timber", "crib")
+ENGINEERED_TYPES = (
+    "engineered",
+    "timber_pole_post_1992",
+    "concrete_block",
+    "reinforced_concrete",
+)
+POOR_TYPES = ("brick_rock", "garden_timber", "crib_gabion")
 
 RULE = "-" * 72
 

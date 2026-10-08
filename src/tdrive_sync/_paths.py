@@ -152,6 +152,52 @@ def _resolve_cached_path(
     return local_path
 
 
+def _resolve_local_mode_cached_path(
+    *, base_path: Path, local_path: Path, copy_to_local: bool
+) -> Path:
+    """Resolve a cached read in local-only working mode, preferring the cache.
+
+    The counterpart of ``local_read``'s local-mode tiers for files outside the
+    DATA_VERSION store: a cached copy is returned as it is, never checked
+    against T: for staleness, so a run whose inputs are all cached never
+    touches the network. Only a file with no cached copy falls back to T:.
+
+    Args:
+        base_path: The T: path.
+        local_path: Its local cache mirror.
+        copy_to_local: Whether the fallback read from T: populates the cache.
+
+    Returns:
+        The cached copy if there is one; otherwise the T: file, copied into the
+        cache first if ``copy_to_local``.
+
+    Raises:
+        ValueError: If the file is cached nowhere and is not on T:.
+    """
+    if local_path.exists():
+        return local_path
+    if not base_path.exists():
+        msg = f"Cannot find file: {base_path}"
+        raise ValueError(msg)
+    if copy_to_local:
+        _copy.copy_to(src_path=base_path, dst_path=local_path)
+        return local_path
+    return base_path
+
+
+def _resolve_unversioned(
+    *, base_path: Path, local_path: Path, copy_to_local: bool
+) -> Path:
+    """Resolve a SourceMaterial or arbitrary T: read, honouring local mode."""
+    if _config.load_local_mode_settings().enabled:
+        return _resolve_local_mode_cached_path(
+            base_path=base_path, local_path=local_path, copy_to_local=copy_to_local
+        )
+    return _resolve_cached_path(
+        base_path=base_path, local_path=local_path, copy_to_local=copy_to_local
+    )
+
+
 def get_path(
     *, fname: str, sub_dirs: list[str] | None = None, copy_to_local: bool = True
 ) -> Path:
@@ -224,9 +270,10 @@ def get_source_mat(relative_path: str | Path, *, copy_to_local: bool = True) -> 
 
     SourceMaterial holds data supplied by someone else -- NHC, another team --
     rather than anything this project generates, so unlike ``get_path`` there
-    is no DATA_VERSION and no save side: this only ever fetches from T: and
-    caches locally, ignoring local-only working mode (there is no local,
-    disposable stand-in for someone else's source data).
+    is no DATA_VERSION and no save side: it fetches from T: and caches
+    locally. In local-only working mode (``TTDRIVE_SYNC_LOCAL_MODE=True``) a
+    cached copy is used as it is, without checking T: for a newer one, and T:
+    is read only for a file not yet cached.
 
     Args:
         relative_path: The file's path, relative to SOURCE_MATERIAL_DIR (e.g.
@@ -243,7 +290,7 @@ def get_source_mat(relative_path: str | Path, *, copy_to_local: bool = True) -> 
     """
     base_path = get_source_mat_base_path(relative_path)
     local_path = get_source_mat_local_path(relative_path)
-    return _resolve_cached_path(
+    return _resolve_unversioned(
         base_path=base_path, local_path=local_path, copy_to_local=copy_to_local
     )
 
@@ -274,8 +321,8 @@ def get_cached(path: Path, *, copy_to_local: bool = True) -> Path:
     versioned release tree -- that wants the same "local cache mirrors T:,
     refresh if stale" behaviour as ``get_path`` and ``get_source_mat``,
     without adding another concept to ``tdrive_sync_config.py``. Like
-    ``get_source_mat``, there is no save side and no local-only working mode
-    fallback: this only ever fetches from T: and caches locally.
+    ``get_source_mat``, there is no save side, and in local-only working mode
+    a cached copy is used without checking T:.
 
     Args:
         path: The absolute path to read, anywhere on T:.
@@ -289,7 +336,7 @@ def get_cached(path: Path, *, copy_to_local: bool = True) -> Path:
     Raises:
         ValueError: If the file exists at neither location.
     """
-    return _resolve_cached_path(
+    return _resolve_unversioned(
         base_path=path,
         local_path=get_cached_local_path(path),
         copy_to_local=copy_to_local,

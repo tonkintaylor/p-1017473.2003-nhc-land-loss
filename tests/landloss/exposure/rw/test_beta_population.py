@@ -48,16 +48,16 @@ def test_describe_population_counts_every_class_and_wall_type():
     walls = pd.DataFrame(
         {
             "size_class": ["small", "small", "large"],
-            "wall_type": ["crib", "landscaper_timber", "crib"],
+            "wall_type": ["crib_gabion", "garden_timber", "crib_gabion"],
             "height_m": [0.6, 0.7, 3.0],
         }
     )
     counts = describe_population(walls)
     assert counts.index.tolist() == list(SIZE_CLASSES)
-    assert counts.loc["small", "crib"] == 1
-    assert counts.loc["small", "landscaper_timber"] == 1
+    assert counts.loc["small", "crib_gabion"] == 1
+    assert counts.loc["small", "garden_timber"] == 1
     assert counts.loc["medium"].sum() == 0
-    assert counts.loc["large", "crib"] == 1
+    assert counts.loc["large", "crib_gabion"] == 1
 
 
 def test_describe_population_on_no_walls_keeps_the_size_classes():

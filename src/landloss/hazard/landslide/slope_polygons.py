@@ -81,9 +81,12 @@ run only over elements and polygons. The rules, each where the plan sets it:
    polygon also takes the reach from its free-face's own crest, so taking
    the slope above never shortens the runout below the toe (stage D1). The
    polygon takes the median of its rays' reach past the toe as one length,
-   held to :data:`BETA_MAX_RUNOUT_H` heights and to the length that holds its
-   volume at :data:`BETA_MIN_DEPOSIT_DEPTH_M`, and never under the one-cell
-   strip of :data:`BETA_MIN_RUNOUT_M` (:func:`inundated_length_m`),
+   no longer than holds its volume at :data:`BETA_MIN_DEPOSIT_DEPTH_M`; the
+   seismic distance of its Kingsbury zone is added
+   (:data:`BETA_SEISMIC_RUNOUT_M`, scored before the runout from the element's
+   angle, the polygon's height and the ground under the element), and the
+   whole is held to :func:`max_runout_h` heights, 2, 3 or 4 by the ground
+   below the toe (:func:`inundated_length_m`),
    and every ray sweeps that length down from its own toe, so the strip is
    even along the toe. Where the strip would carry the volume deeper than
    :data:`BETA_MAX_DEPOSIT_DEPTH_H` heights or
@@ -97,8 +100,8 @@ Depths, for the volume: a free-face's own ground (its face and the width
 behind its crest) is cut by a straight slip plane from its toe to the back of
 the width, so its cross section is the triangle toe, crest, back
 (:func:`planar_depth_m`), ``0.5 H w`` per metre behind a vertical wall
-[nzgs_mbie_2017]; a fill bank takes the fill thickness where it is known,
-otherwise the volume-area relation (A-06) [massey_2020]; a cut or natural bank
+[nzgs_mbie_2017]; a fill bank takes the same plane, no deeper than the fill
+thickness where it is known (the lead, 2026-10-08); a cut or natural bank
 the cover depth the old urban chain used [kingsbury_1995]. A cell takes the
 depth of the element whose ground it is: the element it lies on, or the one
 whose crest it is behind. :func:`element_depth_m` gives each element's mean.
@@ -145,6 +148,7 @@ from landloss.hazard.landslide.slope_elements import (
     WALK_STEP_CELLS,
     SlopeElements,
 )
+from landloss.hazard.landslide.urban import geometry as urban_geometry
 from landloss.hazard.landslide.urban.geometry import (
     BETA_HEADSCARP_BAND_M,
     BETA_HEADSCARP_BAND_STEEP_M,
@@ -238,9 +242,19 @@ BETA_STEEP_DOWNSLOPE_DEG = 20.0
 # step on the DEM (a line element, 90 degrees) would otherwise be.
 BETA_MAX_CUT_ANGLE_DEG = 80.0
 
+# Judgement (the lead asked for the correction, 2026-10-08): how much of a
+# face's run, in metres, the 1 m DEM adds by spreading the face over the cells
+# either side of it. A vertical step between two cell centres reads a run of
+# one cell, so a 2 m wall reads about 45 degrees (the pilot's faces 2 to 3 m
+# high read 44 degrees at the median); the cut relation takes the angle on the
+# run less this, ``atan(H / max(run - 1, 0))``, no steeper than
+# BETA_MAX_CUT_ANGLE_DEG.
+BETA_DEM_RUN_SMEAR_M = 1.0
+
 # Judgement: the ground below the toe is read along the fall line over this
-# many of the polygon's heights, half the furthest runout
-# (BETA_MAX_RUNOUT_H), and never over fewer than this many metres, two cells.
+# many of the polygon's heights, half the furthest runout on moderate ground
+# (BETA_MAX_RUNOUT_H_MODERATE), and never over fewer than this many metres,
+# two cells.
 BETA_DOWNSLOPE_WINDOW_H = 1.5
 BETA_DOWNSLOPE_WINDOW_M = 2.0
 
@@ -248,20 +262,38 @@ BETA_DOWNSLOPE_WINDOW_M = 2.0
 CUT_SLOPE = "cut_slope"
 DOWNSLOPE = "downslope"
 
-# Judgement (the lead, 2026-10-07): the inundated strip runs no further past
-# the toe than this many of the polygon's heights, nor further than holds its
-# evacuated volume at this mean depth, in metres. The reach angle line alone
-# runs on for as long as the ground below stays steeper than it, tens of
-# metres for a small failure on a Wellington hillside.
-BETA_MAX_RUNOUT_H = 3.0
+# Judgement (the lead, 2026-10-08, a single 3 H from 2026-10-07): the
+# inundated strip runs no further past the toe than this many of the
+# polygon's heights, by the ground below the toe: flat (under
+# BETA_MODERATE_DOWNSLOPE_DEG, or not read), moderate (to
+# BETA_STEEP_RUNOUT_DOWNSLOPE_DEG) and steep. Nor does it run further than
+# holds its evacuated volume at BETA_MIN_DEPOSIT_DEPTH_M mean depth, in
+# metres. The travel angle line alone runs on for as long as the ground below
+# stays steeper than it, tens of metres for a small failure on a Wellington
+# hillside.
+BETA_MAX_RUNOUT_H_FLAT = 2.0
+BETA_MAX_RUNOUT_H_MODERATE = 3.0
+BETA_MAX_RUNOUT_H_STEEP = 4.0
+BETA_MODERATE_DOWNSLOPE_DEG = BETA_STEEP_DOWNSLOPE_DEG
+BETA_STEEP_RUNOUT_DOWNSLOPE_DEG = 35.0
 BETA_MIN_DEPOSIT_DEPTH_M = 0.3
 
-# Judgement (the lead, 2026-10-07): every failure leaves a strip of debris at
-# least this long below its toe, in metres, one cell of the 1 m grid, even
-# where the reach angle keeps the debris on its own ground (a sub-metre
-# wall's reaches under a cell) or the volume cap is shorter. It wins over
-# both caps.
-BETA_MIN_RUNOUT_M = 1.0
+# Judgement (the lead, 2026-10-08): how much further, in metres, the shaking
+# carries a failure's debris past its toe, by the Kingsbury susceptibility
+# zone of the polygon (1 very low to 5 very high) [kingsbury_1995]. Added to
+# the travel angle's run (not combined by SRSS), it overrides the deposit
+# depth cap and is itself held to the height cap (max_runout_h). It replaced
+# the 1 m strip every failure left at its toe (2026-10-07). The zones are one
+# geometry per world, not per earthquake, so it is set loosely for a Mw 7.5
+# earthquake at a PGA of 0.7 g and not reported on its own. A Newmark
+# sliding-block displacement [jibson_2007] at that shaking is centimetres to
+# about a metre, so the values are the lead's, not a regression's. Half a
+# metre draws as the one cell at the toe.
+BETA_SEISMIC_RUNOUT_M = {1: 0.5, 2: 0.5, 3: 1.0, 4: 2.0, 5: 3.0}
+
+# Judgement: the seismic distance of a polygon whose zone is not scored (no
+# ground passed, as on the toy cases), the moderate zone's.
+BETA_SEISMIC_RUNOUT_UNRATED_M = BETA_SEISMIC_RUNOUT_M[3]
 
 # Judgement (the lead, 2026-10-07, the limit a proposal): where the strip
 # below the toe would carry the volume deeper than this many of the polygon's
@@ -303,6 +335,18 @@ _TOE_ONLY_HL = 1e9
 # often drain to different cells below and read as disjoint.
 BETA_FACING_APART_DEG = 90.0
 
+# Judgement (the lead, 2026-10-08): the passes of Chaikin's corner cutting
+# that round a zone's outline once it is redrawn through the midpoints
+# between cell centres (smooth_cell_outline). Each pass cuts every corner a
+# quarter of the way along its two edges; two take the steps a staircase of
+# two-cell runs leaves.
+BETA_ZONE_SMOOTHING_PASSES = 2
+
+# Vertices closer than this share of a cell to the line through their
+# neighbours are dropped from a smoothed outline: the straight runs a
+# smoothed outline keeps carry a vertex every half cell otherwise.
+_COLLINEAR_TOLERANCE = 0.01
+
 # Distances are compared with this much slack in metres, so a band whose width
 # is a whole number of cells keeps its last cell whatever the rounding.
 _DISTANCE_SLACK_M = 1e-6
@@ -329,10 +373,14 @@ class SlopePolygons:
             ``height_m`` (the polygon's, toe of the element to the crest of
             the highest element in it, median over its rays), ``length_m``
             (along the contour), ``area_m2``, ``depth_m``, ``volume_m3``,
-            ``source_angle_deg`` (its element's angle),
+            ``source_angle_deg`` (its element's angle less the run the DEM
+            adds, :func:`source_angle_deg`),
             ``downslope_angle_deg`` (the ground's below its toe, median over
             its rays, NaN where none is read), ``reach_hl`` (H/L of the
-            runout, :func:`reach_ratio`), ``imminent_width_m`` (the
+            runout, :func:`reach_ratio`), ``kingsbury_rating`` and
+            ``kingsbury_zone`` (NaN and NA where no
+            ground was passed), ``seismic_runout_m``
+            (:func:`seismic_runout_m`), ``imminent_width_m`` (the
             imminent band's width behind the evacuated ground,
             :func:`imminent_width_m`), ``runout_m`` (the inundated strip's
             length past the toe, :func:`inundated_length_m`),
@@ -471,8 +519,10 @@ def element_depth_m(
         half the height behind a vertical wall [nzgs_mbie_2017], less on a
         face that leans back, whose plan the wedge's area is spread over
         (:func:`planar_depth_m` gives it cell by cell). For a fill bank, the
-        fill thickness, or NaN where it is unknown, meaning the volume-area
-        relation (A-06) [massey_2020]; for a cut or natural bank the cover
+        same wedge, no deeper than the fill thickness where that is known
+        (the lead, 2026-10-08): a slip through the toe takes no ground below
+        it, and the fill thickness alone put 56% of the pilot's fill banks
+        deeper than their height. For a cut or natural bank the cover
         depth :data:`~landloss.hazard.landslide.urban.geometry.COLLUVIUM_DEPTH_M`
         [kingsbury_1995].
     """
@@ -488,7 +538,7 @@ def element_depth_m(
     return np.where(
         types == FREE_FACE,
         wedge,
-        np.where(fill, thickness, COLLUVIUM_DEPTH_M),
+        np.where(fill, np.fmin(thickness, wedge), COLLUVIUM_DEPTH_M),
     ).astype(float)
 
 
@@ -534,6 +584,47 @@ def planar_depth_m(
     return np.maximum(z - plane, 0.0)
 
 
+def source_angle_deg(height_m: ArrayLike, run_m: ArrayLike) -> NDArray[np.float64]:
+    """A face's angle for the cut relation, less the run the DEM adds.
+
+    ``atan(H / max(run - BETA_DEM_RUN_SMEAR_M, 0))``: a face whose run is no
+    more than a cell is read vertical (and the cut relation holds it at
+    :data:`BETA_MAX_CUT_ANGLE_DEG`).
+
+    Args:
+        height_m: The faces' heights.
+        run_m: Their horizontal runs, crest to toe, as the DEM reads them; NaN
+            reads as no run.
+    """
+    run = np.nan_to_num(np.asarray(run_m, dtype=float), nan=0.0)
+    return np.degrees(
+        np.arctan2(
+            np.asarray(height_m, dtype=float),
+            np.maximum(run - BETA_DEM_RUN_SMEAR_M, 0.0),
+        )
+    )
+
+
+def cut_reach_past_toe_m(
+    height_m: ArrayLike, source_angle_deg: ArrayLike, reach_hl: ArrayLike
+) -> NDArray[np.float64]:
+    """How far past its toe a face's debris runs onto level ground, in metres.
+
+    ``H (1 / (H/L) - 1 / tan a)``, the travel line's reach from the crest less
+    the face's own run at ``a`` (no steeper than
+    :data:`BETA_MAX_CUT_ANGLE_DEG`), never under 0.
+    """
+    heights = np.asarray(height_m, dtype=float)
+    angle = np.minimum(
+        np.asarray(source_angle_deg, dtype=float), BETA_MAX_CUT_ANGLE_DEG
+    )
+    with np.errstate(invalid="ignore", divide="ignore"):
+        past = heights * (
+            1.0 / np.asarray(reach_hl, dtype=float) - 1.0 / np.tan(np.radians(angle))
+        )
+    return np.maximum(np.nan_to_num(past, nan=0.0), 0.0)
+
+
 def reach_ratio(
     source_angle_deg: ArrayLike, downslope_angle_deg: ArrayLike
 ) -> tuple[NDArray[np.float64], NDArray[np.str_]]:
@@ -572,38 +663,77 @@ def reach_ratio(
     )
 
 
+def max_runout_h(downslope_angle_deg: ArrayLike) -> NDArray[np.float64]:
+    """The furthest a polygon's runout goes past its toe, in its heights.
+
+    :data:`BETA_MAX_RUNOUT_H_FLAT` where the ground below the toe is flatter
+    than :data:`BETA_MODERATE_DOWNSLOPE_DEG` or not read,
+    :data:`BETA_MAX_RUNOUT_H_STEEP` at or over
+    :data:`BETA_STEEP_RUNOUT_DOWNSLOPE_DEG`, :data:`BETA_MAX_RUNOUT_H_MODERATE`
+    between (the lead, 2026-10-08).
+    """
+    angle = np.asarray(downslope_angle_deg, dtype=float)
+    with np.errstate(invalid="ignore"):
+        return np.where(
+            angle >= BETA_STEEP_RUNOUT_DOWNSLOPE_DEG,
+            BETA_MAX_RUNOUT_H_STEEP,
+            np.where(
+                angle >= BETA_MODERATE_DOWNSLOPE_DEG,
+                BETA_MAX_RUNOUT_H_MODERATE,
+                BETA_MAX_RUNOUT_H_FLAT,
+            ),
+        ).astype(float)
+
+
 def inundated_length_m(
     reach_m: ArrayLike,
     *,
     height_m: ArrayLike,
     volume_m3: ArrayLike,
     toe_length_m: ArrayLike,
+    downslope_angle_deg: ArrayLike,
+    seismic_m: ArrayLike,
 ) -> NDArray[np.float64]:
     """How far past its toe a polygon's debris runs, one length for the polygon.
 
-    The reach angle's run past the toe, never longer than
-    :data:`BETA_MAX_RUNOUT_H` heights nor than holds the evacuated volume at
-    :data:`BETA_MIN_DEPOSIT_DEPTH_M`, and never shorter than
-    :data:`BETA_MIN_RUNOUT_M`, the strip every failure leaves at its toe, which
-    wins over the caps (the lead, 2026-10-07).
+    The travel angle's run past the toe, no longer than holds the evacuated
+    volume at :data:`BETA_MIN_DEPOSIT_DEPTH_M`, plus the seismic distance
+    (:func:`seismic_runout_m`), the whole held to :func:`max_runout_h`
+    heights (the lead, 2026-10-08).
 
     Args:
-        reach_m: The reach angle's run past the toe, the median of the
+        reach_m: The travel angle's run past the toe, the median of the
             polygon's rays.
         height_m: The polygon's height.
         volume_m3: Its evacuated volume.
         toe_length_m: The length of its toe, along the contour.
+        downslope_angle_deg: The ground's angle below its toe, NaN where not
+            read, for the cap.
+        seismic_m: The seismic distance added to the run.
 
     Returns:
         The run past the toe, in metres.
     """
     toe = np.maximum(np.asarray(toe_length_m, dtype=float), 1e-9)
-    cap = np.minimum(
-        BETA_MAX_RUNOUT_H * np.asarray(height_m, dtype=float),
-        np.asarray(volume_m3, dtype=float) / (BETA_MIN_DEPOSIT_DEPTH_M * toe),
-    )
+    thin = np.asarray(volume_m3, dtype=float) / (BETA_MIN_DEPOSIT_DEPTH_M * toe)
     reach = np.nan_to_num(np.asarray(reach_m, dtype=float), nan=0.0)
-    return np.maximum(np.minimum(reach, cap), BETA_MIN_RUNOUT_M)
+    travel = np.minimum(reach, thin)
+    cap = max_runout_h(downslope_angle_deg) * np.asarray(height_m, dtype=float)
+    return np.minimum(travel + np.asarray(seismic_m, dtype=float), cap)
+
+
+def seismic_runout_m(zone: ArrayLike) -> NDArray[np.float64]:
+    """The seismic distance of each Kingsbury zone, :data:`BETA_SEISMIC_RUNOUT_M`.
+
+    NA or NaN (not scored) takes :data:`BETA_SEISMIC_RUNOUT_UNRATED_M`.
+    """
+    zones = pd.Series(zone, dtype="Int64")
+    return (
+        zones.map(BETA_SEISMIC_RUNOUT_M)
+        .astype(float)
+        .fillna(BETA_SEISMIC_RUNOUT_UNRATED_M)
+        .to_numpy()
+    )
 
 
 def deposit_overlap_m2(
@@ -1515,6 +1645,29 @@ def _element_links(
     return links
 
 
+def kingsbury_of_polygons(
+    element_ground: pd.DataFrame | None,
+    labels: NDArray[np.int64],
+    *,
+    slope_deg: NDArray[np.float64],
+    height_m: NDArray[np.float64],
+    index: pd.Index,
+) -> tuple[NDArray[np.float64], pd.Series]:
+    """Each polygon's Kingsbury rating and zone, NaN and NA where not scored.
+
+    Scored as step 8 scores it (``urban.face_polygons``): the slope is the
+    element's overall angle, the height the polygon's and the rest the ground
+    under the element
+    (:func:`landloss.hazard.landslide.urban.geometry.kingsbury_score`).
+    """
+    if element_ground is None:
+        return np.full(len(index), np.nan), pd.Series(pd.NA, index=index, dtype="Int64")
+    frame = element_ground.reindex(labels).set_axis(index)
+    frame[urban_geometry.SLOPE_COLUMN] = slope_deg
+    frame["face_height_10m"] = height_m
+    return urban_geometry.kingsbury_score(frame)
+
+
 def _empty(
     found: SlopeElements, shape: tuple[int, int], transform: Affine
 ) -> SlopePolygons:
@@ -1541,6 +1694,9 @@ def _empty(
         "source_angle_deg",
         "downslope_angle_deg",
         "reach_hl",
+        "kingsbury_rating",
+        "kingsbury_zone",
+        "seismic_runout_m",
         "imminent_width_m",
         "runout_m",
         "imminent_area_m2",
@@ -1636,11 +1792,14 @@ def _set_planar_depths(
     *,
     planar: NDArray[np.bool_],
     width_m: NDArray[np.float64],
+    cap_m: NDArray[np.float64],
     cell_size_m: float,
 ) -> None:
-    """Give a free-face's own claims their depth to its slip plane, in place.
+    """Give a free-face's or fill bank's own claims their slip plane depth, in place.
 
-    ``planar`` and ``width_m`` are indexed by element label. A claim is read on
+    ``planar``, ``width_m`` and ``cap_m`` (the deepest a cell goes, a fill
+    bank's fill thickness, NaN for no limit) are indexed by element label. A
+    claim is read on
     the plane of its ``plane_ray`` where it is the free-face's own ground (its
     own cells and its wedge, not an element its stack took); every other
     claim keeps the depth it has.
@@ -1660,13 +1819,16 @@ def _set_planar_depths(
     )
     back_z = np.where(np.isfinite(back_z), back_z, dem[rays.row, rays.col])
     r = ray[chosen]
-    claims.loc[chosen, "depth"] = planar_depth_m(
-        dem.ravel()[claims.loc[chosen, "cell"].to_numpy(dtype=np.intp)],
-        claims.loc[chosen, "position"].to_numpy(dtype=float),
-        toe_z=rays.toe_z[r],
-        run_m=rays.run_m[r],
-        back_z=back_z[r],
-        width_m=width_m[element[chosen]],
+    claims.loc[chosen, "depth"] = np.fmin(
+        planar_depth_m(
+            dem.ravel()[claims.loc[chosen, "cell"].to_numpy(dtype=np.intp)],
+            claims.loc[chosen, "position"].to_numpy(dtype=float),
+            toe_z=rays.toe_z[r],
+            run_m=rays.run_m[r],
+            back_z=back_z[r],
+            width_m=width_m[element[chosen]],
+        ),
+        cap_m[element[chosen]],
     )
 
 
@@ -1767,6 +1929,7 @@ def build_slope_polygons(
     is_fill: pd.Series | None = None,
     retained_phi_deg: pd.Series | None = None,
     fill_thickness_m: pd.Series | None = None,
+    element_ground: pd.DataFrame | None = None,
     barriers: ArrayLike | None = None,
 ) -> SlopePolygons:
     """Build the failure polygons and their zones from the slope elements.
@@ -1784,7 +1947,13 @@ def build_slope_polygons(
             free-face retains, for its wedge; missing elements take
             :data:`BETA_DEFAULT_RETAINED_PHI_DEG`.
         fill_thickness_m: Per element, the fill thickness, for a fill bank's
-            depth; missing elements are read by area.
+            depth; missing elements take the slip plane alone.
+        element_ground: Per element (indexed by label), the ground the
+            Kingsbury zone is scored on: ``modification``, ``geology_value``,
+            ``prior_failure`` and ``gw_depth_m``
+            (:func:`landloss.hazard.landslide.urban.face_polygons.ground_of_elements`).
+            None scores no zone, and every polygon takes
+            :data:`BETA_SEISMIC_RUNOUT_UNRATED_M`.
         barriers: A boolean grid of the cells debris stops at (building
             outlines, roads); none where not given.
 
@@ -1839,6 +2008,7 @@ def build_slope_polygons(
         width_m=width,
         run_m=elements["run_m"].to_numpy(),
     )
+    fill_bank = (element_type != FREE_FACE) & fill
     climbs = (element_type == FREE_FACE) & elements["stack_dominant_cut"].to_numpy(
         dtype=bool
     )
@@ -1870,8 +2040,9 @@ def build_slope_polygons(
         claims,
         elevation,
         rays,
-        planar=by_label(element_type == FREE_FACE, fill_value=False),
+        planar=by_label((element_type == FREE_FACE) | fill_bank, fill_value=False),
         width_m=width_l,
+        cap_m=by_label(np.where(fill_bank, thickness, np.nan), np.nan),
         cell_size_m=cell_size_m,
     )
     # A ray's cells sit along the contour where its crest cell does.
@@ -2083,7 +2254,9 @@ def build_slope_polygons(
         own_keys=own_keys,
         ray_keys=ray_keys,
     )
-    polygons["source_angle_deg"] = angle[base - 1]
+    polygons["source_angle_deg"] = source_angle_deg(
+        height[base - 1], elements["run_m"].to_numpy()[base - 1]
+    )
     polygons["downslope_angle_deg"] = per_polygon(
         _downslope_angle_deg(
             elevation,
@@ -2120,11 +2293,39 @@ def build_slope_polygons(
         )
     ]
     reach = np.fmax(marches[0][1], marches[1][1])
+    marched = per_polygon(np.where(np.isfinite(toe_d), reach, np.nan)).to_numpy()
+    # The cut relation is for a failure onto near-horizontal ground, so its
+    # run past the toe is also read off the face itself, at the angle the
+    # DEM's spread is taken off (cut_reach_past_toe_m): the march measures
+    # from the DEM's crest and toe, a cell further apart than the face's.
+    cut = polygons["style"].to_numpy() == CUT_SLOPE
+    marched = np.where(
+        cut,
+        np.fmax(
+            marched,
+            cut_reach_past_toe_m(
+                height[base - 1],
+                polygons["source_angle_deg"].to_numpy(),
+                polygons["reach_hl"].to_numpy(),
+            ),
+        ),
+        marched,
+    )
+    polygons["kingsbury_rating"], polygons["kingsbury_zone"] = kingsbury_of_polygons(
+        element_ground,
+        elements.index.to_numpy()[base - 1],
+        slope_deg=angle[base - 1],
+        height_m=polygons["height_m"].to_numpy(),
+        index=polygons.index,
+    )
+    polygons["seismic_runout_m"] = seismic_runout_m(polygons["kingsbury_zone"])
     polygons["runout_m"] = inundated_length_m(
-        per_polygon(np.where(np.isfinite(toe_d), reach, np.nan)).to_numpy(),
+        marched,
         height_m=polygons["height_m"].to_numpy(),
         volume_m3=volume,
         toe_length_m=polygons["length_m"].to_numpy(),
+        downslope_angle_deg=polygons["downslope_angle_deg"].to_numpy(),
+        seismic_m=polygons["seismic_runout_m"].to_numpy(),
     )
     # A cell is a metre of runout: the run's last cell centre lies half a
     # cell short of its end.
@@ -2215,19 +2416,73 @@ def build_slope_polygons(
     )
 
 
+def smooth_cell_outline(geometry: shapely.Geometry, cell_size_m: float) -> object:
+    """Redraw the outline of a set of whole cells through their centres' midpoints.
+
+    Each ring is cut into cell edges, and joined through their midpoints:
+    halfway between a cell centre inside and the one outside, the outline a
+    marching squares contour at one half draws on the cells. A straight run
+    stays where it was, a staircase of single cells becomes its diagonal and
+    every corner is cut at 45 degrees. :data:`BETA_ZONE_SMOOTHING_PASSES`
+    passes of Chaikin's corner cutting then round what is left of the steps.
+    Collinear vertices are dropped.
+
+    Args:
+        geometry: A polygon or multipolygon whose edges are cell edges.
+        cell_size_m: The cell size.
+
+    Returns:
+        The smoothed polygon or multipolygon; empty where nothing is left.
+    """
+
+    def ring(coords: NDArray[np.float64]) -> NDArray[np.float64]:
+        edges = shapely.get_coordinates(
+            shapely.segmentize(shapely.linearrings(coords), cell_size_m)
+        )[:-1]
+        points = 0.5 * (edges + np.roll(edges, -1, axis=0))
+        for _ in range(BETA_ZONE_SMOOTHING_PASSES):
+            following = np.roll(points, -1, axis=0)
+            points = np.stack(
+                [0.75 * points + 0.25 * following, 0.25 * points + 0.75 * following],
+                axis=1,
+            ).reshape(-1, 2)
+        return points
+
+    parts = []
+    for part in shapely.get_parts(geometry):
+        shell = ring(shapely.get_coordinates(part.exterior))
+        holes = [ring(shapely.get_coordinates(hole)) for hole in part.interiors]
+        holes = [hole for hole in holes if len(hole) >= 3]
+        if len(shell) < 3:
+            continue
+        parts.append(shapely.make_valid(shapely.Polygon(shell, holes)))
+    if not parts:
+        return shapely.Polygon()
+    return shapely.simplify(
+        shapely.union_all(parts), _COLLINEAR_TOLERANCE * cell_size_m
+    )
+
+
 def polygon_geometries(
-    result: SlopePolygons, *, zone: str, crs: object
+    result: SlopePolygons, *, zone: str, crs: object, smooth: bool = True
 ) -> gpd.GeoDataFrame:
-    """Draw one zone of every polygon as shapely geometry, cell edges and all.
+    """Draw one zone of every polygon as shapely geometry.
 
     Args:
         result: The polygons, from :func:`build_slope_polygons`.
         zone: One of :data:`ZONES`.
         crs: The grid's coordinate reference system.
+        smooth: Whether to redraw the cell edges through the midpoints between
+            cell centres and round them (:func:`smooth_cell_outline`, the
+            lead, 2026-10-08), so the outline is not saw-toothed; False draws
+            the cell edges. The imminent zone is the evacuated and imminent
+            cells smoothed together less the evacuated smoothed alone, so its
+            inner edge is the evacuated outline; the evacuated and inundated
+            zones are smoothed on their own.
 
     Returns:
         One row per polygon with cells in the zone: ``polygon`` and its
-        ``geometry`` (a polygon or multipolygon), true to the cells.
+        ``geometry`` (a polygon or multipolygon).
 
     Raises:
         ValueError: If the zone is not one of :data:`ZONES`.
@@ -2235,23 +2490,45 @@ def polygon_geometries(
     if zone not in ZONES:
         msg = f"The zone has to be one of {ZONES}, not {zone!r}."
         raise ValueError(msg)
+    cell_size_m = abs(result.transform.a)
     chosen = result.cells[result.cells["zone"] == zone]
+    evacuated = result.cells[result.cells["zone"] == EVACUATED]
+    evacuated_by_polygon = dict(tuple(evacuated.groupby("polygon")))
     names: list[int] = []
     shapes: list[shapely.Geometry] = []
     for polygon, group in chosen.groupby("polygon"):
-        rows = group["row"].to_numpy()
-        cols = group["col"].to_numpy()
-        r0, c0 = int(rows.min()), int(cols.min())
-        grid = np.zeros((rows.max() - r0 + 1, cols.max() - c0 + 1), dtype=np.uint8)
-        grid[rows - r0, cols - c0] = 1
-        window = result.transform * Affine.translation(c0, r0)
-        pieces = [
+        shape = _cell_shape(group, result.transform)
+        if smooth and zone == IMMINENT and polygon in evacuated_by_polygon:
+            # The imminent band lies against the evacuated ground, so its
+            # inner edge is the smoothed evacuated outline: the two smoothed
+            # together, less the evacuated alone. Smoothed on its own, each
+            # outline rounded its corners apart and left gaps between them.
+            scar = _cell_shape(evacuated_by_polygon[polygon], result.transform)
+            shape = shapely.difference(
+                smooth_cell_outline(shapely.union(scar, shape), cell_size_m),
+                smooth_cell_outline(scar, cell_size_m),
+            )
+        elif smooth:
+            shape = smooth_cell_outline(shape, cell_size_m)
+        names.append(int(polygon))
+        shapes.append(shape)
+    return gpd.GeoDataFrame({"polygon": names}, geometry=shapes, crs=crs)
+
+
+def _cell_shape(cells: pd.DataFrame, transform: Affine) -> shapely.Geometry:
+    """The cells' outline along their edges, a polygon or multipolygon."""
+    rows = cells["row"].to_numpy()
+    cols = cells["col"].to_numpy()
+    r0, c0 = int(rows.min()), int(cols.min())
+    grid = np.zeros((rows.max() - r0 + 1, cols.max() - c0 + 1), dtype=np.uint8)
+    grid[rows - r0, cols - c0] = 1
+    window = transform * Affine.translation(c0, r0)
+    return shapely.union_all(
+        [
             to_shape(geometry)
             for geometry, value in features.shapes(
                 grid, mask=grid > 0, transform=window
             )
             if value > 0
         ]
-        names.append(int(polygon))
-        shapes.append(shapely.union_all(pieces))
-    return gpd.GeoDataFrame({"polygon": names}, geometry=shapes, crs=crs)
+    )

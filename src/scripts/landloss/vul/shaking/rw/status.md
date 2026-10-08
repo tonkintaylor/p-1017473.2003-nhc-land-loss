@@ -4,7 +4,7 @@
 published wall curve on PGV, per exposure world and earthquake. Built and tested
 on synthetic inputs; not yet run on the pilot since the change.
 
-**Updated:** 2026-10-06
+**Updated:** 2026-10-08
 
 ## Approach
 
@@ -118,11 +118,16 @@ Canterbury walls of Anderson et al. (2015) [anderson_2015]. The detail is in
 
 ## Open decisions
 
-- **The wall types are set, the draw is not.** Seven types, each with its own
+- **The wall type shares by age and height.** Seven types, each with its own
   curve, stored as the PGA at which 15% and 50% of walls are replaced
   (`landloss.hazard.landslide.urban.wall_type_fragility`; the lead,
-  2026-10-06). Until exposure draws a type for each wall, every wall takes the
-  one `unnamed` class's curve for its size and condition.
+  2026-10-06, two height classes from 2026-10-07). Exposure step 6 now draws
+  the type, but its shares are placeholders for Nick Peters to review; his
+  advice at the sense check of 2026-10-05 bears on them (exposure rw status).
+  The types were renamed after the NHC costing tool's wall rows on 2026-10-08
+  (`retaining-wall-types.csv`), adding `reinforced_concrete`, mostly the old
+  mass concrete walls, on the Fs 1.2 curve with the height effect switched
+  (proposed, for the lead to confirm with the rest of the wall performance).
 - ~~**Whether the Canterbury land damage rates already include retaining wall
   damage** (**T-27**).~~ Settled for walls: the project lead ruled on
   2026-10-02 that a wall replaced by shaking on flat land and the liquefaction

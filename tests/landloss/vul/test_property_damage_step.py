@@ -113,7 +113,7 @@ def wall_population(world_id=0):
             "wall_line_id": [f"WL{i + 1:07d}" for i in range(len(WALLS))],
             "world_id": world_id,
             "size_class": ["small", "large", "medium"],
-            "wall_type": "block_rc_cantilever",
+            "wall_type": "concrete_block",
             "age_bin": "1992_2004",
             "height_m": [0.8, 3.0, 1.5],
             "length_m": [12.0, 30.0, 8.0],

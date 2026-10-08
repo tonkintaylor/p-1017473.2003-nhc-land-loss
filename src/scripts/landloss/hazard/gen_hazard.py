@@ -7,8 +7,9 @@ multiscale slope, terrain derivatives and ground map (shaking step 2 reads the
 ground map's materials for the cells the Foster Vs30 model leaves unclassed),
 then shaking (site class, PGV, then the PGA and PGV realisations), liquefaction
 (free faces, land damage probabilities, then states), then the rest of the
-landslide ground work -- the slope units, the urban slope candidates, step
-12's urban slope faces, step 13's pif cut and fill (which the wall units read), and step 12's wall units (drawn per exposure world) and
+landslide ground work -- the slope units, step 14's instability zones (the
+pips to elements, skipped when its last run still holds), step 12's urban
+slope faces, step 13's pif cut and fill (which the wall units read), and step 12's wall units (drawn per exposure world) and
 per-world zones -- and last the large-model landslide realisations,
 which read only hazard outputs. Exposure rw step 6 reads step 12's wall units,
 so they are built in this pass. The extent, realisations and worlds come from ``config.py``
@@ -24,8 +25,7 @@ runs :func:`main`, then the exposure module (whose wall population reads step
 12's draw), then :func:`main_urban`, then vul. Running this file runs
 :func:`main` only: it redraws the wall units, and step 8 stops on zones and
 drawn walls from different draws, so run ``gen_all.py`` for the whole chain,
-or the exposure module and then :func:`main_urban` by hand. Step 7's
-polygons are no longer built; step 12's zones replace them.
+or the exposure module and then :func:`main_urban` by hand.
 
 The slope failure susceptibility step is not run: nothing downstream reads it
 yet, as it rebuilds the GWRC model for comparison against the supplied grid
@@ -58,12 +58,6 @@ from scripts.landloss.hazard.landslide.steps.s5_slope_units import (
     config as slope_units_config,
 )
 from scripts.landloss.hazard.landslide.steps.s5_slope_units import gen_slope_units
-from scripts.landloss.hazard.landslide.steps.s6_urban_slope_candidates import (
-    config as candidates_config,
-)
-from scripts.landloss.hazard.landslide.steps.s6_urban_slope_candidates import (
-    gen_urban_slope_candidates,
-)
 from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
     config as fragility_config,
 )
@@ -92,6 +86,12 @@ from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill import (
 )
 from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill import (
     gen_pif_cut_fill,
+)
+from scripts.landloss.hazard.landslide.steps.s14_instability_zones import (
+    config as zones_config,
+)
+from scripts.landloss.hazard.landslide.steps.s14_instability_zones import (
+    gen_instability_zones,
 )
 from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
     gen_liq_free_faces,
@@ -149,11 +149,8 @@ def main(*, extent, realisation_ids, world_ids):
                 "landslide s3, terrain derivatives",
                 lambda: gen_terrain_derivatives.main(
                     extent=extent,
-                    use_cached_dsm=slope_config.USE_CACHED_DSM,
-                    face_height_windows_m=slope_config.FACE_HEIGHT_WINDOWS_M,
                     residual_base_resolutions_m=slope_config.RESIDUAL_BASE_RESOLUTIONS_M,
                     topographic_position_windows_m=slope_config.TOPOGRAPHIC_POSITION_WINDOWS_M,
-                    curvature_resolution_m=slope_config.CURVATURE_RESOLUTION_M,
                 ),
             ),
             (
@@ -214,17 +211,21 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
-                "landslide s6, urban slope candidates",
-                lambda: gen_urban_slope_candidates.main(
+                "landslide s14, instability zones",
+                lambda: gen_instability_zones.main(
                     extent=extent,
-                    use_cached_layers=candidates_config.USE_CACHED_LAYERS,
-                    scales_m=candidates_config.SCALES_M,
-                    building_distance_m=candidates_config.BUILDING_DISTANCE_M,
-                    min_patch_cells=candidates_config.MIN_PATCH_CELLS,
-                    max_patch_length_m=candidates_config.MAX_PATCH_LENGTH_M,
-                    max_untiled_cells=candidates_config.MAX_UNTILED_CELLS,
-                    tile_core_m=candidates_config.TILE_CORE_M,
-                    tile_margin_m=candidates_config.TILE_MARGIN_M,
+                    use_cached_layers=zones_config.USE_CACHED_LAYERS,
+                    rebuild=zones_config.REBUILD,
+                    max_bends=faces_config.WALL_MAX_BENDS,
+                    stray_tolerance_m=faces_config.WALL_STRAY_TOLERANCE_M,
+                    min_segment_m=faces_config.WALL_MIN_SEGMENT_M,
+                    max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
+                    end_window_m=faces_config.PIF_END_WINDOW_M,
+                    wall_height_reach_m=faces_config.WALL_HEIGHT_REACH_M,
+                    wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
+                    max_untiled_cells=zones_config.MAX_UNTILED_CELLS,
+                    tile_core_m=zones_config.TILE_CORE_M,
+                    tile_margin_m=zones_config.TILE_MARGIN_M,
                 ),
             ),
             (
@@ -236,17 +237,10 @@ def main(*, extent, realisation_ids, world_ids):
                     manual_wall_duplicate_m=faces_config.MANUAL_WALL_DUPLICATE_M,
                     search_m=faces_config.SEARCH_M,
                     gns_only_min_length_m=faces_config.GNS_ONLY_MIN_LENGTH_M,
-                    end_window_m=faces_config.PIF_END_WINDOW_M,
                     max_bends=faces_config.WALL_MAX_BENDS,
                     stray_tolerance_m=faces_config.WALL_STRAY_TOLERANCE_M,
-                    min_segment_m=faces_config.WALL_MIN_SEGMENT_M,
                     max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
                     wall_max_length_m=faces_config.WALL_MAX_LENGTH_M,
-                    wall_height_reach_m=faces_config.WALL_HEIGHT_REACH_M,
-                    wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
-                    max_untiled_cells=faces_config.MAX_UNTILED_CELLS,
-                    tile_core_m=faces_config.TILE_CORE_M,
-                    tile_margin_m=faces_config.TILE_MARGIN_M,
                 ),
             ),
             (
@@ -322,7 +316,7 @@ def main_urban(*, extent, realisation_ids, world_ids):
 
     Step 8 reads step 12's zones of each world's wall draw (built in
     :func:`main`) and exposure rw step 6's drawn walls of the same draw; step
-    7's polygons are not built, as step 12's zones replace them.
+    12's zones are the polygons (the old steps 6 and 7 were removed 2026-10-08).
 
     Args:
         extent: The extent to run over, a name from

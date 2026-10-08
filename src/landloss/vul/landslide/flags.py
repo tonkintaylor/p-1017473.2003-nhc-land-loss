@@ -88,8 +88,7 @@ WALL_FLAG_COLUMNS = (
 
 # How far inside a landslide polygon a wall's line must lie, and for how long,
 # for the polygon to reach the wall, in m. A numerical tolerance, not a
-# parameter: a hundredth of the finest 1 m candidate cell side
-# (constants.URBAN_SCALES_M), the length analogue of
+# parameter: a hundredth of a 1 m DEM cell side, the length analogue of
 # realisation.SHARED_GROUND_TOLERANCE_M2, so a line along a polygon's edge, or
 # within floating-point noise of it, is not inside the polygon.
 WALL_INSIDE_TOLERANCE_M = 0.01

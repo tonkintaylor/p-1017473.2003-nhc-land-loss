@@ -69,14 +69,13 @@ def test_accessibility_runs_between_terrain_and_land_value(
 
 
 def test_wall_steps_run_in_contract_order(called: list[str]) -> None:
-    """The wall lines, probability and population run after the insured land."""
+    """The wall probability and population run after the insured land."""
     gen_exposure.main(extent="wlg-pilot", realisation_ids=[0], world_ids=[0])
 
     positions = [
         called.index(name)
         for name in (
             "gen_insured_land",
-            "gen_wall_lines",
             "gen_wall_probability",
             "gen_wall_population",
         )

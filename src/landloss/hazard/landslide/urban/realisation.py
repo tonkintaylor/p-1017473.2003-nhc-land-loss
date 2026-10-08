@@ -99,7 +99,7 @@ NONE = -1
 
 # The intersection area above which two polygons share ground, in m2. A
 # numerical tolerance, not a parameter for the anchoring to set: a hundredth of
-# the finest 1 m candidate cell (constants.URBAN_SCALES_M), so the floating-point
+# a 1 m DEM cell, so the floating-point
 # slivers left along an edge two polygons share do not count as shared ground.
 SHARED_GROUND_TOLERANCE_M2 = 0.01
 

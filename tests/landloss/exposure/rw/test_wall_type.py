@@ -58,7 +58,7 @@ def test_the_packaged_shares_cover_every_bin_and_band_and_sum_to_one() -> None:
     assert shares.shape == (len(AGE_BINS) * len(wt.HEIGHT_BANDS), len(WALL_TYPES))
     assert list(shares.columns) == list(WALL_TYPES)
     np.testing.assert_allclose(shares.sum(axis=1), 1.0)
-    assert shares.loc[("pre_1970", "over_2_5_m"), "gravity_masonry"] == 0.75
+    assert shares.loc[("pre_1970", "over_2_5_m"), "reinforced_concrete"] == 0.55
 
 
 def test_the_packaged_multipliers_cover_every_type() -> None:
@@ -67,8 +67,8 @@ def test_the_packaged_multipliers_cover_every_type() -> None:
 
     # Assert
     assert list(multipliers.index) == list(WALL_TYPES)
-    assert multipliers["gravity_masonry"] == 1.5
-    assert multipliers["landscaper_timber"] == 0.3
+    assert multipliers["brick_rock"] == 1.5
+    assert multipliers["garden_timber"] == 0.3
 
 
 def packaged_shares_frame() -> pd.DataFrame:
@@ -78,13 +78,13 @@ def packaged_shares_frame() -> pd.DataFrame:
 @pytest.mark.parametrize(
     ("edit", "match"),
     [
-        (lambda t: t.drop(columns="crib"), "missing the columns"),
+        (lambda t: t.drop(columns="crib_gabion"), "missing the columns"),
         (lambda t: t.assign(extra=0.0), "unknown columns"),
         (lambda t: t.replace({"age_bin": {"pre_1970": "old"}}), "Unknown age bins"),
         (lambda t: t.iloc[1:], "exactly once"),
         (lambda t: pd.concat([t, t.iloc[[0]]]), "exactly once"),
-        (lambda t: t.assign(crib=-0.05), "non-negative"),
-        (lambda t: t.assign(crib=t["crib"] + 0.01), "sum to one"),
+        (lambda t: t.assign(crib_gabion=-0.05), "non-negative"),
+        (lambda t: t.assign(crib_gabion=t["crib_gabion"] + 0.01), "sum to one"),
     ],
     ids=["missing", "extra", "bin", "absent", "doubled", "negative", "sum"],
 )
@@ -104,7 +104,7 @@ def test_a_bad_shares_table_is_refused(tmp_path, edit, match) -> None:
         (lambda t: t.drop(columns="road_frontage_multiplier"), "missing"),
         (lambda t: t.iloc[1:], "exactly once"),
         (lambda t: pd.concat([t, t.iloc[[0]]]), "exactly once"),
-        (lambda t: t.replace({"wall_type": {"crib": "wattle"}}), "exactly once"),
+        (lambda t: t.replace({"wall_type": {"crib_gabion": "wattle"}}), "exactly once"),
         (lambda t: t.assign(road_frontage_multiplier=0.0), "positive"),
     ],
     ids=["missing", "absent", "doubled", "unknown", "zero"],
@@ -203,8 +203,8 @@ def test_a_road_frontage_shifts_the_mix_by_the_multipliers() -> None:
     # Assert
     shifted = shifted.reindex(list(WALL_TYPES), fill_value=0.0)
     np.testing.assert_allclose(shifted, expected, atol=0.015)
-    assert shifted["gravity_masonry"] > plain["gravity_masonry"]
-    assert shifted["landscaper_timber"] < plain["landscaper_timber"]
+    assert shifted["brick_rock"] > plain["brick_rock"]
+    assert shifted["garden_timber"] < plain["garden_timber"]
 
 
 def test_no_rebuild_keeps_every_bin_where_it_was_drawn() -> None:
@@ -251,9 +251,10 @@ def test_a_type_with_no_share_is_never_drawn(on_road_frontage: bool) -> None:
 
     # Assert
     assert set(drawn["wall_type"]) <= {
-        "block_rc_cantilever",
-        "timber_pole_new",
-        "engineered_modern",
+        "crib_gabion",
+        "concrete_block",
+        "timber_pole_post_1992",
+        "engineered",
     }
 
 
@@ -265,8 +266,8 @@ def test_a_wall_of_unknown_height_draws_in_the_lowest_band() -> None:
     drawn = draw(walls, rebuilt_share=0.0)
 
     # Assert
-    assert "landscaper_timber" in set(drawn["wall_type"])
-    assert "engineered_modern" not in set(drawn["wall_type"])
+    assert "garden_timber" in set(drawn["wall_type"])
+    assert "engineered" not in set(drawn["wall_type"])
 
 
 @pytest.mark.parametrize(

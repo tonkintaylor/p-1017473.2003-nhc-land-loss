@@ -6,14 +6,38 @@
   Islands Polygons to no data (step 13 reads the DEM through it too), and
   `get_inputs()` adds the ground map, rasterised to ground groups with fill
   read as soil.
+- The search below (pips to elements, and the grid columns of the siz table)
+  runs in landslide step 14 (`s14_instability_zones/gen_instability_zones.py`,
+  the lead, 2026-10-08), once per extent, which writes the found elements,
+  the element polygons and `urban-slope-grid-sizs{suffix}.parquet`. The faces
+  script (`gen_urban_slope_faces.py`) reads that table and only reads the
+  wall evidence onto it; the search's helpers (`get_dem`, `get_inputs`,
+  `grid_table`, `find_tiled`, `element_polygons`) are still in it.
 - `landloss.hazard.landslide.instability_zones.find_instability_zones` finds the
   pips, pifs and sizs, cuts every pif into pieces by the wall rules, grows the pieces of the sizs into elements with the watershed growth,
   and carries each element's siz and its angles. The rules and thresholds are
   in `.agents/plans/building-pip-pif-siz-slope-polygons.md` and the two CSV
   files `landslide-slope-thresholds.csv` and `landslide-seed-thresholds.csv`
   in `landloss/io/assets/` that the library reads.
-- **The pifs are the pieces** (the lead, 2026-10-06). The siz test is made
-  on the whole pif, then `split_pifs` cuts it along its spine by the rule
+- **The siz test** (the lead, 2026-10-08) is made on each piece, after the
+  split, on its own pips (`assess_pifs` with `FALL_LINE_TEST`). Each pip is
+  read down its true downhill line (`terrain_layers`' `downhill_row` and
+  `downhill_col`, the nearest of the eight directions where the ground is
+  level), one cell length at a time, stopping 5 m past the last cell of its
+  own piece, so the drop is the face's and not the hillside's below it. A
+  piece is a siz when a cell under `NEAR_PAIR_M` (3 m) down is lower by the
+  ground group's `adjacent_step_m`, or a cell 3 to 30 m down is as steep as
+  the group's angle for the drop's band (`landslide-slope-thresholds.csv`);
+  its `max_angle_below_deg`, `max_angle_above_deg` and `max_delta_h_m` are
+  the maxima over its pips. Until 2026-10-08 the test compared every pair of
+  a pif's points up to 30 m apart (`PAIRS_TEST`, still in the library) on the
+  whole pif, and every piece took the whole pif's verdict; that test was 70%
+  of the step's time and let one steep stretch make every piece of a long
+  pif a siz. On the pilots the new test gives the same soil sizs and about
+  10% fewer weak rock ones, all borderline or the gentle ends of rock faces
+  (`research/siz_fall_line/siz_fall_line.md`).
+- **The pifs are the pieces** (the lead, 2026-10-06). `split_pifs` cuts each
+  pif along its spine by the rule
   the walls are cut by, one implementation for both
   (`landloss.hazard.landslide.bend_split.cut_path`): a new piece wherever
   following the spine within `WALL_STRAY_TOLERANCE_M` (2 m) would need more
@@ -43,9 +67,7 @@
   (`drop_short_pifs`, the lead, 2026-10-06). Each piece is a pif of its own: its own
   `pif_id`, pips, spine and end falls, wall evidence, property and step 13
   class (step 13 runs on the siz table, so on the pieces), with
-  `parent_pif_id` and the whole pif's `threshold_angle_deg`,
-  `near_step_pass`, `far_angle_pass` and `is_siz` (`piece_table`); its
-  heights and pair angles are its own. Each siz piece grows one element, so
+  `parent_pif_id` kept for reference. Each siz piece grows one element, so
   an element's `siz_id` is a siz table row, and a long face can be shared
   between walls.
 - A pif holds at least `BETA_MIN_PIF_PIPS` (3) pips (the lead, 2026-10-06,
@@ -86,7 +108,32 @@
   band above 2 m high. `width_rule` stays the
   type's rule and `width_floored` says where the floor set the width.
 - Fill and its thickness are read onto each element by `fill_by_element()` from
-  the element's majority ground map row.
+  the element's majority ground map row. A fill bank (no wall) is cut on the
+  same slip plane as a wall's face, from its toe to the back of its width,
+  each cell no deeper than the fill thickness (`slope_polygons.element_depth_m`
+  and `_set_planar_depths`, the lead, 2026-10-08): with the whole thickness,
+  56% of the pilot's fill banks were deeper than their height and their
+  debris spread back over their scars. A rising back slope deepens the plane
+  through the DEM at the back of the width. Sidelong fill, which can fail on
+  its base [monteith_2020], is not yet flagged.
+- The zones are drawn smoothed (`slope_polygons.polygon_geometries`,
+  `smooth_cell_outline`, the lead, 2026-10-08): each zone's cells are
+  outlined through the midpoints between cell centres (the marching squares
+  outline at one half: straight runs stay on the cell edges, single-cell
+  steps become a diagonal, corners are cut at 45 degrees), then
+  `BETA_ZONE_SMOOTHING_PASSES` (2) passes of Chaikin's corner cutting round
+  the rest. The evacuated and inundated zones are smoothed on their own; the
+  imminent zone is its cells and the evacuated cells smoothed together less
+  the smoothed evacuated zone, so its inner edge is the evacuated outline
+  and the two meet with no gap (the lead, 2026-10-08). `zone_polygons`
+  (`drawn_areas`) sets `area_m2`,
+  `imminent_area_m2` and `inundated_area_m2` to the drawn areas and
+  `depth_m` to the volume (the cells' depths summed) over the drawn
+  evacuated area. Pilot world 0 against the cell outlines: evacuated −0.5%,
+  inundated −1.6%; imminent −12.5% when smoothed on its own (most imminent
+  bands are one cell wide, and 17,998 m² of gaps were left between it and
+  the evacuated outline), +0.4% against the evacuated outline (measured on
+  the world 0 cells; the pilot has not been rerun with it).
 - `build_slope_polygons` builds the evacuated, imminent and inundated zones
   twice, with `with_walls` setting every element walled (`walled`) or none
   (`bare`). `zone_polygons()` writes one row per polygon and zone to
@@ -105,11 +152,26 @@
   `downslope_angle_deg`), is at or steeper than `BETA_STEEP_DOWNSLOPE_DEG`
   (20°), `0.77 tan a2 + 0.087` (`style` `downslope`), flatter than the
   ground, so debris runs on down a steep slope; otherwise `0.78 (tan
-  a_cut)^0.5` on the element's angle, no steeper than 80° (`cut_slope`,
-  `source_angle_deg`). Its runout is held to `BETA_MAX_RUNOUT_H` (3) heights past the toe and
-  to the length that holds its volume at `BETA_MIN_DEPOSIT_DEPTH_M` (0.3 m),
-  and never shorter than the one-cell strip of `BETA_MIN_RUNOUT_M` (1 m) that
-  every failure leaves at its toe (the lead, 2026-10-07); where that strip
+  a_cut)^0.5` (`cut_slope`) on the element's angle with the cell of run the
+  1 m DEM adds taken off, `atan(H / max(run - 1, 0))` and no steeper than 80°
+  (`slope_polygons.source_angle_deg`, the lead, 2026-10-08: the pilot's 2 to
+  3 m faces read 44° at the median). Because the march measures from the
+  DEM's crest and toe, a cell further apart than the face's, a cut polygon's
+  run past its toe is the longer of the march's and `H (1 / (H/L) - 1 / tan
+  a)` read off the face (`cut_reach_past_toe_m`), at most about 0.4 H. Its
+  runout is held to 2, 3 or 4 heights past the toe where the ground below is
+  under 20°, 20° to 35°, or steeper (`max_runout_h`, the lead, 2026-10-08),
+  after the seismic distance of its Kingsbury zone is added to the travel
+  run (`BETA_SEISMIC_RUNOUT_M`: 0.5 m very low and low, 1 m moderate, 2 m
+  high, 3 m very high; the lead, 2026-10-08, set loosely for a Mw 7.5, 0.7 g
+  earthquake, in place of the 1 m strip of 2026-10-07). Only the travel run
+  is held to the length that holds its volume at `BETA_MIN_DEPOSIT_DEPTH_M`
+  (0.3 m). The zone is scored before the runout, as step 8 scores it
+  (`urban.geometry.kingsbury_score` on the element's angle, the polygon's
+  height and `urban.face_polygons.ground_of_elements`), passed to
+  `build_slope_polygons` as `element_ground` and to the forced polygons as
+  `ground`; the zones carry `kingsbury_rating`, `kingsbury_zone` and
+  `seismic_runout_m`. Where that strip
   would carry the volume deeper than `BETA_MAX_DEPOSIT_DEPTH_H` (1) heights
   or `BETA_MAX_DEPOSIT_DEPTH_SOURCE` (2) times the polygon's own evacuated
   depth, whichever is less, the inundated zone spreads back over the polygon's own evacuated ground,
@@ -384,8 +446,8 @@
   and the zones are written to `urban-slope-zones-wNNN.parquet` in the shape
   of the two bounds. It reads the found elements the faces script kept, and
   refuses to run if they or the siz table are newer than the wall units.
-  These per-world zones are what landslide step 8 reads, in place of step 7's
-  polygons (2026-10-06): each polygon's wall is its element's wall unit, the
+  These per-world zones are what landslide step 8 reads, in place of the old
+  step 7 polygons (2026-10-06, removed 2026-10-08): each polygon's wall is its element's wall unit, the
   id exposure rw step 6 writes as the drawn wall's `wall_line_id`, so the
   hazard and the exposure share one draw (step 8 method file). The bounds
   are never read downstream.
@@ -595,13 +657,13 @@
 
 ## Tiles
 
-Over an extent whose 1 m DEM holds more than `config.MAX_UNTILED_CELLS`
-cells (every territorial authority; no pilot) the faces script and the wall
-zones script run their grid work tile by tile (`tiled.py`, on
+Over an extent whose 1 m DEM holds more than step 14's
+`config.MAX_UNTILED_CELLS` cells (every territorial authority; no pilot)
+step 14 and the wall zones script run their grid work tile by tile (`tiled.py`, on
 `landloss.common.utils.tiles`), and everything after it runs once on the
 stitched tables:
 
-- Tiles are `config.TILE_CORE_M` (3 km) cores read with a
+- Tiles are step 14's `config.TILE_CORE_M` (3 km) cores read with a
   `config.TILE_MARGIN_M` (750 m) margin, rounded to whole 3 m blocks so each
   tile's catchment grid sits on the whole grid's. Each tile masks the sea,
   burns the ground map and the building outlines on its own window and runs
@@ -615,6 +677,13 @@ stitched tables:
   ids follow the tiles in order; a pif seen in another tile's margin is
   matched to its global id by its pip cells (`tiled.pip_keys`), and one cut
   short by a margin's edge matches nothing.
+- A parent longer than the margin is seen whole by no tile, and each tile's
+  cut of it can centre in its own core; a piece two tiles both claim is kept
+  from the first (`tiled.globalise_found`). Over Porirua 85 parents are longer
+  than 750 m (the longest 4.5 km, on rural cliffs and the coast), and 31 of
+  their pieces were claimed twice. Where two tiles cut such a parent into
+  different pieces, both are kept, so its pips near the seam can be counted
+  twice.
 - A grown element takes the ownership and the global id of its pif; a line or
   forced element is keyed by its wall unit and belongs to the tile whose core
   holds the unit's line; a zone polygon belongs to its element's tile.

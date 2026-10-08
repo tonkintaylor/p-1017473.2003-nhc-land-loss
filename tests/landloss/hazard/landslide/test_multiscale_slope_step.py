@@ -7,7 +7,6 @@ pointed at ``tmp_path``, so the tests are of what the two scripts write -- the
 files, their band names, their grids -- and not of LINZ.
 """
 
-import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio
@@ -118,27 +117,15 @@ def test_the_path_wrappers_name_the_layer_the_size_and_the_extent():
 
 def test_the_terrain_paths_carry_the_contract_file_names():
     assert (
-        terrain_step.terrain_path("face-height-5m", extent="wlg-pilot").name
-        == "face-height-5m-pilot.tif"
-    )
-    assert (
         terrain_step.terrain_path("cut-fill-residual-100m", extent="full").name
         == "cut-fill-residual-100m.tif"
-    )
-    assert (
-        terrain_step.terrain_path("profile-curvature", extent="wlg-pilot").name
-        == "profile-curvature-3m-pilot.tif"
     )
     assert (
         terrain_step.terrain_path("topographic-position-100m", extent="wlg-pilot").name
         == "topographic-position-100m-pilot.tif"
     )
     assert (
-        terrain_step.terrain_path("vegetation-height", extent="wlg-pilot").name
-        == "vegetation-height-pilot.tif"
-    )
-    assert (
-        terrain_step.terrain_path("vegetation-height", extent="wlg-pilot").parent
+        terrain_step.terrain_path("cut-fill-residual-30m", extent="wlg-pilot").parent
         == terrain_step.TERRAIN_DIR
     )
 
@@ -150,14 +137,9 @@ def test_an_unknown_terrain_layer_is_refused():
 
 def test_every_contract_layer_has_a_band_name():
     assert set(terrain_step.TERRAIN_LAYERS) == {
-        "face-height-5m",
-        "face-height-10m",
         "cut-fill-residual-30m",
         "cut-fill-residual-100m",
-        "profile-curvature",
-        "topographic-position-20m",
         "topographic-position-100m",
-        "vegetation-height",
     }
 
 
@@ -227,40 +209,16 @@ def step3_dems(work_dir):
     return dem_1m
 
 
-@pytest.fixture
-def fake_dsm(work_dir, monkeypatch, step3_dems):
-    """A surface model two metres above the ground over the west half, NaN east."""
-    surface = step3_dems.values + 2.0
-    surface[:, 150:] = np.nan
-    path = write_raster(make_dem(surface, 1.0), work_dir / "dsm.tif")
-    calls = []
-
-    def get_dsm(bbox, resolution=1, crs=constants.DEFAULT_CRS, *, use_cache=True):
-        calls.append((bbox, resolution, use_cache))
-        return path
-
-    monkeypatch.setattr(terrain_step, "get_dsm", get_dsm)
-    monkeypatch.setattr(
-        terrain_step,
-        "get_nz_building_outlines",
-        lambda bbox, crs: gpd.GeoDataFrame(geometry=[], crs=crs),
-    )
-    return calls
-
-
 def run_terrain_step():
     terrain_step.main(
         extent="wlg-pilot",
-        use_cached_dsm=True,
-        face_height_windows_m=(5.0, 10.0),
         residual_base_resolutions_m=(30, 100),
-        topographic_position_windows_m={20.0: 3, 100.0: 10},
-        curvature_resolution_m=3,
+        topographic_position_windows_m={100.0: 10},
     )
 
 
 @ignore_affine_matmul
-def test_the_terrain_step_writes_every_layer_with_its_band_name(fake_dsm):
+def test_the_terrain_step_writes_every_layer_with_its_band_name(step3_dems):
     run_terrain_step()
 
     for key, band in terrain_step.TERRAIN_LAYERS.items():
@@ -270,7 +228,7 @@ def test_the_terrain_step_writes_every_layer_with_its_band_name(fake_dsm):
 
 
 @ignore_affine_matmul
-def test_the_layers_sit_on_the_grids_the_contract_gives_them(fake_dsm):
+def test_the_layers_sit_on_the_grids_the_contract_gives_them(step3_dems):
     run_terrain_step()
 
     def cell_size_of(key):
@@ -279,45 +237,6 @@ def test_the_layers_sit_on_the_grids_the_contract_gives_them(fake_dsm):
         ) as source:
             return source.res[0]
 
-    assert cell_size_of("face-height-5m") == pytest.approx(1.0)
     assert cell_size_of("cut-fill-residual-30m") == pytest.approx(1.0)
-    assert cell_size_of("profile-curvature") == pytest.approx(3.0)
-    assert cell_size_of("topographic-position-20m") == pytest.approx(3.0)
+    assert cell_size_of("cut-fill-residual-100m") == pytest.approx(1.0)
     assert cell_size_of("topographic-position-100m") == pytest.approx(10.0)
-    assert cell_size_of("vegetation-height") == pytest.approx(1.0)
-
-
-@ignore_affine_matmul
-def test_the_vegetation_height_is_nan_where_no_surface_model_covers(fake_dsm):
-    run_terrain_step()
-
-    height = read(
-        terrain_step.terrain_path("vegetation-height", extent="wlg-pilot")
-    ).values
-
-    assert height[:, :150] == pytest.approx(2.0, abs=1e-3)
-    assert np.isnan(height[:, 150:]).all()
-
-
-@ignore_affine_matmul
-def test_the_surface_model_is_fetched_over_the_1m_dem_extent(fake_dsm, step3_dems):
-    run_terrain_step()
-
-    ((bbox, resolution, use_cache),) = fake_dsm
-    assert bbox == pytest.approx(step3_dems.rio.bounds())
-    assert resolution == 1
-    assert use_cache is True
-
-
-@ignore_affine_matmul
-def test_the_face_height_reads_the_knoll_taller_in_the_wider_window(fake_dsm):
-    run_terrain_step()
-
-    narrow = read(
-        terrain_step.terrain_path("face-height-5m", extent="wlg-pilot")
-    ).values
-    wide = read(terrain_step.terrain_path("face-height-10m", extent="wlg-pilot")).values
-
-    inside = np.isfinite(narrow) & np.isfinite(wide)
-    assert (wide[inside] >= narrow[inside] - 1e-6).all()
-    assert (narrow[inside] >= 0).all()

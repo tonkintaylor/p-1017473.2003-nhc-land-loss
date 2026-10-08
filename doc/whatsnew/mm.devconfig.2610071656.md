@@ -1,0 +1,1 @@
+The QGIS project builder now shows two decimals in graduated legend labels for fields under 10, and the making-qgis-projects skill warns about GeoParquet files with more than one geometry column, which QGIS loads as points.

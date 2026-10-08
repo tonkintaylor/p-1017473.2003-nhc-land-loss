@@ -1,0 +1,1 @@
+After the review, the pilot's wall candidates carry about 40% more expected walls (3,357, up from 2,398): the GNS floor on a pif candidate with a GNS mapped wall is back at 0.95 (from 0.80), and the points base `BETA_WALL_BASE_P` is re-solved to 0.458 (from 0.225).

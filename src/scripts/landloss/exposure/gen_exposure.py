@@ -4,19 +4,16 @@
 
 The address spine, the terrain, accessibility and amenity attributes and the land value
 per address, the insured land extent and the dwellings on each claim, then the
-retaining wall population in four steps -- the candidate wall lines, a
-probability on each, the age shares of each property, and one draw per
-exposure world -- and the crossing
+retaining wall population -- a probability on each of landslide step 12's
+wall units and one draw per exposure world -- and the crossing
 population per realisation. The extent, worlds and realisations come from
 ``config.py`` beside this; anything else a step reads, such as whether to reuse
 a cached download, comes from that step's own ``config.py``.
 
-The candidate wall lines read the terrain rasters, ground map and urban slope
-candidates that landslide steps 3, 4 and 6 write, so ``gen_hazard.main`` runs
-before this module; ``gen_all.py`` holds that order. The wall probability and
-population read the wall units and their draws from landslide step 12, which
-``gen_hazard.main`` runs (faces, then step 13's pif cut and fill, then the wall
-units); without it, run ``gen_urban_slope_faces.py``,
+The wall probability and population read the wall units and their draws
+from landslide step 12, so ``gen_hazard.main`` runs before this module;
+``gen_all.py`` holds that order. ``gen_hazard.main`` runs step 12 (faces,
+then step 13's pif cut and fill, then the wall units); without it, run ``gen_urban_slope_faces.py``,
 ``gen_pif_cut_fill.py`` and ``gen_urban_slope_wall_units.py`` by hand first, or
 the wall probability stops and says so. The property age shares read the QV
 rating roll from the T: drive and exposure step 8's property ages, which no
@@ -50,7 +47,6 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     config as wall_config,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
-    gen_wall_lines,
     gen_wall_population,
     gen_wall_probability,
 )
@@ -141,14 +137,6 @@ def main(*, extent, realisation_ids, world_ids):
                 "s3, dwellings per property",
                 lambda: gen_dwellings_per_property.main(
                     extent=extent, use_cached_extent=dwellings_config.USE_CACHED_EXTENT
-                ),
-            ),
-            (
-                "rw s6, candidate wall lines",
-                lambda: gen_wall_lines.main(
-                    extent=extent,
-                    use_cached_layers=wall_config.USE_CACHED_LAYERS,
-                    road_distance_m=wall_config.ROAD_FRONTAGE_DISTANCE_M,
                 ),
             ),
             (

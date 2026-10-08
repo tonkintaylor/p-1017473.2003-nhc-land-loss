@@ -68,6 +68,29 @@ both. `wall_type_curves` and `wall_type_failure_probability` take `height_m`
 in place of `size_class`. The table below gives the 3 m and 6 m readings; the
 height rule picks between them.
 
+**Renamed 2026-10-08 (the lead), to follow the NHC costing tool's wall rows.**
+The names below and in the tables before this date are the old ones.
+`retaining-wall-types.csv` holds each type's Python name, label and NHC rate
+row.
+
+| Old | New | NHC rate row |
+| --- | --- | --- |
+| `gravity_masonry` | `brick_rock` (brick and stone) and `reinforced_concrete` (old mass and precast concrete) | Rock: Mortar Bed; Reinforced Concrete |
+| `crib` | `crib_gabion` | Concrete Crib (Gabion Basket for a gabion) |
+| `timber_pole_old` | `timber_pole_pre_1992` | Timber Pole, pile size by height |
+| `block_rc_cantilever` | `concrete_block`; RC cantilevers go to `reinforced_concrete` | Concrete Block |
+| `timber_pole_new` | `timber_pole_post_1992` | Timber Pole, pile size by height |
+| `landscaper_timber` | `garden_timber` | Timber Pole: 175mm SED (proposed; Sleepers the alternative) |
+| `engineered_modern` | `engineered` | MSE (proposed; Soil Nail the alternative) |
+
+The rename is mechanical: every old type keeps its curve, share and frontage
+multiplier under its new name, so `gravity_masonry`'s whole share sits on
+`brick_rock` and `block_rc_cantilever`'s on `concrete_block`.
+`reinforced_concrete` was added with the `concrete_block` curve as a
+placeholder. The lead then revised every row of the shares the same day, with
+the sense check of 2026-10-05 in hand; the packaged CSV holds them, and the
+Table 2 fractions below are the superseded placeholders.
+
 ## The wall types and their curves
 
 All on DS2, moderate, `Ux = 5% of H`.
@@ -226,5 +249,9 @@ replaces the `(wall_class, size_class, initial_condition)` lookup in:
 
 ## Open decisions
 
-- The Table 2 fractions and the frontage multipliers (Nick Peters).
+- Nick Peters' review of the revised shares (2026-10-08) and of the frontage
+  multipliers.
+- The curve `reinforced_concrete` takes, since it holds both old mass concrete
+  gravity walls and reinforced concrete cantilevers.
+- The NHC rate rows for `garden_timber` and `engineered`.
 - `BETA_WALL_REBUILT_SHARE` and the 20 year gap that marks a rebuild.

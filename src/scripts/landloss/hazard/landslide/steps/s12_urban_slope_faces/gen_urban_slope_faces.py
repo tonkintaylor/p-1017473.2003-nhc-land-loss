@@ -30,11 +30,11 @@ from rasterio import features
 
 from landloss.common.utils import tiles
 from landloss.hazard.landslide.instability_zones import (
-    find_instability_zones,
     gen_pif_near_drops,
     gen_pif_spines,
     gen_pif_verticality,
     gen_siz_table,
+    read_siz_table,
     write_siz_table,
 )
 from landloss.hazard.landslide.slope_elements import (
@@ -88,6 +88,15 @@ FILL_MODIFICATION = "fill"
 def siz_table_path(*, extent):
     """Where the siz table, with its wall evidence, is written."""
     return WORK_DIR / f"urban-slope-sizs{extent_suffix(extent)}.parquet"
+
+
+def grid_sizs_path(*, extent):
+    """Where landslide step 14 writes the siz table's grid columns.
+
+    The faces script reads the wall evidence onto this table and writes the
+    full siz table to :func:`siz_table_path`.
+    """
+    return WORK_DIR / f"urban-slope-grid-sizs{extent_suffix(extent)}.parquet"
 
 
 def elements_path(*, extent):
@@ -328,8 +337,31 @@ def zone_polygons(result, *, scenario):
         parts.append(frame)
     zones = pd.concat(parts, ignore_index=True)
     zones = zones.merge(result.polygons.reset_index(), on="polygon", how="left")
+    zones = drawn_areas(gpd.GeoDataFrame(zones, geometry="geometry", crs=CRS))
     zones["scenario"] = scenario
-    return gpd.GeoDataFrame(zones, geometry="geometry", crs=CRS)
+    return zones
+
+
+def drawn_areas(zones):
+    """Set each polygon's areas to its drawn zones' and its depth to match.
+
+    The zones are drawn smoothed (``polygon_geometries``), so their areas are
+    not the cell counts the builder measured: ``area_m2``,
+    ``imminent_area_m2`` and ``inundated_area_m2`` become the drawn areas
+    (0 where a zone is not drawn), and ``depth_m`` the volume, which stays
+    the cells' depths summed, over the drawn evacuated area.
+    """
+    drawn = zones.geometry.area
+    for zone, column in (
+        ("evacuated", "area_m2"),
+        ("imminent", "imminent_area_m2"),
+        ("inundated", "inundated_area_m2"),
+    ):
+        area = drawn[zones["zone"] == zone].groupby(zones["polygon"]).sum()
+        zones[column] = zones["polygon"].map(area).fillna(0.0).to_numpy()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        zones["depth_m"] = zones["volume_m3"] / zones["area_m2"]
+    return zones
 
 
 def building_mask(buildings, transform, shape):
@@ -389,19 +421,12 @@ def main(
     manual_wall_duplicate_m,
     search_m,
     gns_only_min_length_m,
-    end_window_m,
     max_bends,
     stray_tolerance_m,
-    min_segment_m,
     max_turn_deg,
     wall_max_length_m,
-    wall_height_reach_m,
-    wall_height_quantile,
-    max_untiled_cells,
-    tile_core_m,
-    tile_margin_m,
 ):
-    """Run the pipeline over the extent and write the siz table, elements and zones.
+    """Read the wall evidence onto step 14's pifs and write the siz table.
 
     Args:
         extent: The build extent (``landloss.io.area_of_interest.EXTENTS``).
@@ -412,63 +437,21 @@ def main(
         search_m: Walls, lines and buildings further than this are not recorded.
         gns_only_min_length_m: Mapped wall with no pip near it becomes a candidate
             of its own if at least this long, in metres.
-        end_window_m: The fall direction at each end of a pif's spine is the
-            mean over its pips within this many metres of the end.
-        max_bends: The bends rule the pifs are cut by, as the walls are.
-        stray_tolerance_m: How far a piece may stray from its pif's spine.
-        min_segment_m: The shortest pif piece.
-        max_turn_deg: The most a pif piece's line may turn in all.
+        max_bends: The bends rule the GNS-only candidates are cut by.
+        stray_tolerance_m: How far a piece may stray from its line.
+        max_turn_deg: The most a piece's line may turn in all.
         wall_max_length_m: The longest a GNS-only candidate may be.
-        wall_height_reach_m: A pip's near drop is read this far below it.
-        wall_height_quantile: A pif's wall height is this quantile of its
-            pips' near drops.
-        max_untiled_cells: A 1 m DEM larger than this, in cells, is searched
-            tile by tile (:mod:`tiled`).
-        tile_core_m: The side of a tile's core, in metres.
-        tile_margin_m: The width read around each core, in metres.
     """
-    find_settings = {
-        "max_bends": max_bends,
-        "stray_tolerance_m": stray_tolerance_m,
-        "min_segment_m": min_segment_m,
-        "max_turn_deg": max_turn_deg,
-    }
-    table_settings = {
-        "end_window_m": end_window_m,
-        "wall_height_reach_m": wall_height_reach_m,
-        "wall_height_quantile": wall_height_quantile,
-    }
-    WORK_DIR.mkdir(parents=True, exist_ok=True)
-    if tiles.raster_cells(dem_path(1, extent=extent)) > max_untiled_cells:
-        table, elements, bbox, ground_map, buildings = find_tiled(
-            extent=extent,
-            use_cached_layers=use_cached_layers,
-            core_m=tile_core_m,
-            margin_m=tile_margin_m,
-            find_settings=find_settings,
-            table_settings=table_settings,
-        )
-    else:
-        dem, transform, bbox, ground_map, group, position = get_inputs(
-            extent=extent, use_cached_layers=use_cached_layers
-        )
-        buildings = get_nz_building_outlines(
-            bbox=bbox, crs=CRS, use_cache=use_cached_layers
-        )
-        start = time.perf_counter()
-        zones = find_instability_zones(
-            dem,
-            group,
-            transform,
-            categories={"ground_row": position},
-            exclude=building_mask(buildings, transform, dem.shape),
-            **find_settings,
-        )
-        elapsed = time.perf_counter() - start
-        write_found(zones.found, extent=extent)
-        describe(zones, elapsed)
-        table = grid_table(zones, dem, transform, **table_settings)
-        elements = element_polygons(zones.found, transform)
+    grid = grid_sizs_path(extent=extent)
+    if not grid.exists():
+        msg = f"{grid} not found: run landslide step 14 (gen_instability_zones.py)"
+        raise FileNotFoundError(msg)
+    table = read_siz_table(grid)
+    bbox = dem_bbox(extent=extent)
+    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
+    buildings = get_nz_building_outlines(
+        bbox=bbox, crs=CRS, use_cache=use_cached_layers
+    )
 
     morphology = get_gns_slide_morphology(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
@@ -526,7 +509,6 @@ def main(
         .round(0)
         .to_string()
     )
-    elements.to_parquet(elements_path(extent=extent))
     print(f"Written to {WORK_DIR}")
 
 
@@ -538,15 +520,8 @@ if __name__ == "__main__":
         manual_wall_duplicate_m=config.MANUAL_WALL_DUPLICATE_M,
         search_m=config.SEARCH_M,
         gns_only_min_length_m=config.GNS_ONLY_MIN_LENGTH_M,
-        end_window_m=config.PIF_END_WINDOW_M,
         max_bends=config.WALL_MAX_BENDS,
         stray_tolerance_m=config.WALL_STRAY_TOLERANCE_M,
-        min_segment_m=config.WALL_MIN_SEGMENT_M,
         max_turn_deg=config.MAX_TOTAL_TURN_DEG,
         wall_max_length_m=config.WALL_MAX_LENGTH_M,
-        wall_height_reach_m=config.WALL_HEIGHT_REACH_M,
-        wall_height_quantile=config.WALL_HEIGHT_QUANTILE,
-        max_untiled_cells=config.MAX_UNTILED_CELLS,
-        tile_core_m=config.TILE_CORE_M,
-        tile_margin_m=config.TILE_MARGIN_M,
     )

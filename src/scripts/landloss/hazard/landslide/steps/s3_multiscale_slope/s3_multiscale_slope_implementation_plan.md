@@ -3,9 +3,10 @@
 **Status:** Phase 1 complete over the pilot: `dem-<n>m-pilot.tif`,
 `slope-<n>m-pilot.tif` and `aspect-<n>m-pilot.tif` at every cell size are on
 disk under `temp/hazard/landslide/`. Phase 4 ran over the pilot in the
-whole-chain run of 2026-10-02: the eight layers are under
-`temp/hazard/landslide/terrain/`, but neither figure has been drawn, and the
-vegetation height predates the building mask. Phase 5 is what the faces plan
+whole-chain run of 2026-10-02: the eight layers then written are under
+`temp/hazard/landslide/terrain/`, but neither figure has been drawn. Since
+2026-10-08 the step writes only three of them (phase 4, note); the other five
+went with the old candidate method. Phase 5 is what the faces plan
 needs from this step. The full study area has not been run, and cannot be at
 1 m without tiling (phase 2).
 
@@ -14,13 +15,15 @@ needs from this step. The full study area has not been run, and cannot be at
 Slope is a property of the length it is measured over, and the models the
 landslide hazard draws on were calibrated at different ones: Kingsbury's slope
 classes against a 20 m contour model, the global earthquake-induced landslide
-models against 30 m and coarser grids, and the urban slope failure candidates
-are delineated at 1, 3, 10 and 30 m (`constants.URBAN_SCALES_M`). This step
+models against 30 m and coarser grids, and the old urban slope failure
+candidates were delineated at 1, 3, 10 and 30 m (`constants.URBAN_SCALES_M`,
+removed 2026-10-08 with landslide step 6). This step
 builds the DEM, the slope and the aspect at 1, 3, 10, 30, 50 and 100 m so the
 hazard work can read whichever its calibration needs, and derives from those
-DEMs the terrain layers the urban slope build reads: face height, the cut and
+DEMs the terrain layers the urban slope build read: face height, the cut and
 fill residual, profile curvature, topographic position and vegetation height
-(`.agents/plans/urban-slope-build-contract.md`, section 3.1).
+(`.agents/plans/urban-slope-build-contract.md`, section 3.1). Only the cut
+and fill residuals and the 100 m topographic position are still derived.
 
 The coarse DEMs are block means of the 1 m fetch rather than separate fetches
 from LINZ, because LINZ's elevation loader resamples bilinearly and reads a
@@ -62,11 +65,21 @@ handful of points per 100 m cell rather than the ground under it.
       extent, with the aspects under them.
 - [ ] Decide which cell size each hazard consumer reads — the susceptibility
       step's slope factor, the realisation step's failure probability — and
-      record it in their method documents. The urban slope contract fixes the
+      record it in their method documents. The urban slope contract fixed the
       candidates at 1, 3, 10 and 30 m, the slope units at 10 m, and the wall
-      lines at 3 m with a 10 m sloping-ground test.
+      lines at 3 m with a 10 m sloping-ground test (the candidates and wall
+      lines were removed 2026-10-08).
 
 ## Phase 4 — Terrain derivatives (built; pilot run outstanding)
+
+Removed 2026-10-08 with the old candidate method: `face-height-5m`,
+`face-height-10m`, `profile-curvature`, `topographic-position-20m` and
+`vegetation-height` (and the DSM fetch and building mask behind the last), the
+config `FACE_HEIGHT_WINDOWS_M`, `CURVATURE_RESOLUTION_M` and `USE_CACHED_DSM`,
+and `profile_curvature`, `vegetation_height`, `zonal_statistic` and
+`zonal_azimuth_mean` in `landloss.common.utils.terrain`. Only
+`cut-fill-residual-30m`, `cut-fill-residual-100m` and
+`topographic-position-100m` remain. The items below are history.
 
 - [x] `cut_fill_residual()`, `profile_curvature()`, `vegetation_height()`,
       `mean_azimuth_degrees()`, `azimuth_sd_degrees()`, `zonal_statistic()` and
@@ -115,10 +128,11 @@ from this step's 1 m DEM. Reviewed against `temp/gns_review/` on 2026-10-02.
       approach where LiDAR exists.
 - [ ] **One extent**, from `run_extent(name)` (faces plan, phase 0), so steps
       3 and 4 cover the same ground.
-- [ ] **Retire `face-height-5m` and `face-height-10m`** once the wall lines
-      read the faces: local relief reads high on any hillside, wall or not,
+- [x] **Retire `face-height-5m` and `face-height-10m`** once the wall lines
+      read the faces (done 2026-10-08, with the lines): local relief reads high on any hillside, wall or not,
       and the faces' step height replaces it.
-- [ ] Keep the 20 m and 100 m topographic position: a landform proxy for the
+- [~] Keep the 20 m and 100 m topographic position (only the 100 m one is
+      kept; the 20 m layer was removed 2026-10-08): a landform proxy for the
       weathering grade (step 4 plan, phase 3) would read them
       [nzgs_2025_torlesse] (`nzgs2025-u7c2-F01`).
 

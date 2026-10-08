@@ -56,48 +56,28 @@
 
 ## Terrain derivatives (`gen_terrain_derivatives.py`)
 
-- `gen_terrain_derivatives.py` reads the 1, 3, 10, 30 and 100 m DEMs the script
-  above wrote, through `dem_path()`, and fetches only the LINZ 1 m surface
-  model. It reads the same `config.py`: `USE_CACHED_DSM`,
-  `FACE_HEIGHT_WINDOWS_M`, `RESIDUAL_BASE_RESOLUTIONS_M`,
-  `TOPOGRAPHIC_POSITION_WINDOWS_M` and `CURVATURE_RESOLUTION_M`.
+- `gen_terrain_derivatives.py` reads the 1, 10, 30 and 100 m DEMs the script
+  above wrote, through `dem_path()`, and fetches nothing. It reads the same
+  `config.py`: `RESIDUAL_BASE_RESOLUTIONS_M` and
+  `TOPOGRAPHIC_POSITION_WINDOWS_M`.
 - Every layer, its file and its band name are listed in `TERRAIN_LAYERS`, and
-  `terrain_path(layer, extent=...)` is the one function that names a file; the
-  curvature file carries the cell size it was computed on, from `config.py`.
+  `terrain_path(layer, extent=...)` is the one function that names a file.
   Outputs go under `temp/hazard/landslide/terrain/` with the extent's
   `extent_suffix`, as float32, and are not committed.
-- Face height is the local relief of the 1 m DEM in a 5 m and a 10 m window,
-  `landloss.common.utils.terrain.local_relief()` (`face-height-5m`,
-  `face-height-10m`, band `local_relief_m`).
 - The cut and fill residual is the 1 m DEM minus the 30 m and the 100 m DEM
   resampled bilinearly onto the 1 m grid,
   `landloss.common.utils.terrain.cut_fill_residual()`
   (`cut-fill-residual-30m`, `cut-fill-residual-100m`, band
   `cut_fill_residual_m`): negative where the ground was cut below the smoothed
   surface, positive where it was filled.
-- Profile curvature is Zevenbergen and Thorne's 3×3 fit
-  [zevenbergen_thorne_1987] on the 3 m DEM, not the 1 m one, in 1/m with the
-  ArcGIS sign — negative on convex ground, positive on concave —
-  `landloss.common.utils.terrain.profile_curvature()` (`profile-curvature`,
-  file `profile-curvature-3m`, band `profile_curvature_per_m`). Level ground
-  reads zero.
 - Topographic position is `landloss.common.utils.terrain.topographic_position()`
-  in a 20 m window on the 3 m DEM and a 100 m window on the 10 m DEM, so the
-  wide window is 11 cells rather than 101 (`topographic-position-20m`,
-  `topographic-position-100m`, band `topographic_position_m`).
-- Vegetation height is the LINZ 1 m surface model minus the 1 m DEM, clipped at
-  zero, `landloss.common.utils.terrain.vegetation_height()`
-  (`vegetation-height`, band `vegetation_height_m`), with every cell whose
-  centre lies inside a LINZ building outline set to NaN, so a roof is not read
-  as canopy. The outlines are read over the same bounds with
-  `landloss.io.readers.get_nz_building_outlines`. The surface model comes
-  from `landloss.io.readers.get_dsm()`, fetched over the 1 m DEM's own bounds:
-  it walks the `/dsm_1m/` collections of LINZ's elevation STAC catalogue,
-  mosaics the tiles newest survey first, and caches under
-  `koopcache_dir("dsm")`. There is no contour-derived fallback for a surface
-  model, so where no LiDAR survey covers a cell the vegetation height is NaN.
-  The surface model is CC BY 4.0 and anything published from it credits LINZ
-  and the survey (the `Licence:` section of `get_dsm`).
+  in a 100 m window on the 10 m DEM, so the window is 11 cells rather than 101
+  (`topographic-position-100m`, band `topographic_position_m`).
+- Only these three layers are written. The face heights, profile curvature,
+  20 m topographic position and vegetation height (with the LINZ surface model
+  fetch and the building mask it needed) were read only by the old landslide
+  step 6 and exposure rw step 6's candidate wall lines, and were removed with
+  them on 2026-10-08. `landloss.io.readers.get_dsm()` stays as a general reader.
 - Each derivative carries a NaN border half its window wide inside the extent,
   because the DEMs on disk are already trimmed to the snapped extent when the
   windows are run; the width per layer is listed in the implementation plan.

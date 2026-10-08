@@ -10,8 +10,8 @@ command line.
 Slope is a property of the length it is measured over, and the models this
 study leans on were calibrated at different ones: Kingsbury's slope classes
 against a 20 m contour model, the global earthquake-induced landslide models
-against 30 m and coarser grids, and the urban failure candidates are delineated
-at 1, 3, 10 and 30 m. So the slope is built at each cell size in config.py
+against 30 m and coarser grids, and the urban faces are found on the 1 m DEM.
+So the slope is built at each cell size in config.py
 rather than at one and reused.
 
 Only the finest DEM, 1 m, is fetched from LINZ. Every coarser one is the block

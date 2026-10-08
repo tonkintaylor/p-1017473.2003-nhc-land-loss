@@ -20,7 +20,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05; the per-zone fragility is next.
 
-**Updated:** 2026-10-07
+**Updated:** 2026-10-08
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -60,8 +60,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   by volume and failure style [de_vilder_2022].
 - [ ] Add spatial correlation beyond one slope unit.
 
-**Urban failures**, below the split, on sloping ground within 100 m of a
-building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`):
+**Urban failures**, below the split, on the faces step 12 finds in the 1 m DEM
+(the old 100 m building buffer went with step 6 on 2026-10-08) (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`):
 
 - [x] Couple the urban model to the walls: sloping land fails in a large
   landslide, through its wall, or by localised failure; a polygon with a wall
@@ -72,7 +72,8 @@ building (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.
 - [x] Build the terrain derivatives at 1 to 100 m (step 3), the ground map
   (step 4) and the slope units (step 5).
 - [x] Delineate polygons from banded slope and aspect patches (steps 6 and 7);
-  superseded, because no published method supports it.
+  superseded, because no published method supports it, and removed
+  2026-10-08.
 - [~] Find slope elements, crest to toe, once from the 1 m LiDAR DEM as a
   static layer, each with its height and overall angle. **Built as step 12
   (stage D3, 2026-10-04)**, over the pilot. **Seeding revised
@@ -134,7 +135,7 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 ## Where it is now
 
 - **The whole chain ran over the pilot on 2026-10-02**, in 67 minutes, 49 of
-  them in steps 6 and 7.
+  them in the old steps 6 and 7 (removed 2026-10-08).
 - **Step 1, large failures:** 7 failures, 0.95 ha, 0.14% coverage of the slope
   units. It rests on placeholders: `BETA_SOURCE_AREA_FRACTION` 0.252,
   `URBAN_AREA_SHARE` 0.25, an ellipse aspect ratio of 2, and sizes from 700 to
@@ -143,26 +144,25 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   slope units over the pilot. The ground map stops short of the extent the
   other steps use, which left 9,144 candidates without a material; the fix is
   phase 0 of the faces plan.
-- **Steps 6 and 7:** 59,132 candidates and 89,808 polygons, superseded.
+- **Steps 6 and 7:** 59,132 candidates and 89,808 polygons, superseded and
+  removed 2026-10-08.
 - **Steps 8 and 9:** 44% of polygons failed and 36% of the urban domain was
   evacuated, against the order of 1% the literature gives. Causes: placeholder
   medians below the demand, walls grouped through shared polygons, and the
   delineation. The wall rule and the step 9 counts by cause were added after
   the run; grouping by face waits on the faces.
 - **Changed since the run, and needing a rerun of the pilot from step 3:**
-  vegetation height masks the building outlines, so roofs no longer read as
-  canopy in the step 6 candidates, and the wall lines are step-tested
-  (exposure rw status). The ground map's two fill changes are built: SLIDE's
+  step 3 now writes only the two cut-and-fill residuals and the 100 m
+  topographic position; the face heights, profile curvature, 20 m topographic
+  position and vegetation height went with steps 6 and 7 on 2026-10-08. The
+  ground map's two fill changes are built: SLIDE's
   mixed fill classes read their natural material with fill as the
   modification, and fill reads the GNS modelling set S52 (step 4 plan,
-  phase 2); step 4 needs a rerun to see the fill share fall from 71%. One
-  consequence is left for the rebuild: `evacuated_depth_m` in
-  `landloss.hazard.landslide.urban.geometry` reads the fill thickness only
-  where the material is a fill material, so a mixed fill piece, now rock,
-  colluvium or alluvium with fill as its modification, takes the colluvium
-  depth there. That code belongs to steps 6 to 9, which phase 3 of the faces
-  plan replaces, and a test pins the behaviour, so it was not changed; the
-  face polygons should read the modification, not the material.
+  phase 2); step 4 needs a rerun to see the fill share fall from 71%. The old
+  `evacuated_depth_m` in `landloss.hazard.landslide.urban.geometry`, which read
+  the fill thickness only where the material is a fill material, was removed
+  with steps 6 and 7 on 2026-10-08; the face polygons should read the
+  modification, not the material.
 - **Literature models:** Nowicki Jessee (2018) is rebuilt and reproduces the
   USGS at Loma Prieta (`validations/nowicki_2018/`); Marc et al. (2016)
   reproduces the paper's fit (`validations/calibration/`); the Hancox
@@ -491,6 +491,33 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     ground below the toe 284,081 m² (125,000 before), 43% of the inundated
     area on the scar. Step 9 world 0: 210,173 m² of inundated land
     dissolved.
+  - **Fill bank depth, runout caps and the DEM's face angle (the lead,
+    2026-10-08).** A fill bank takes the slip plane from its toe, no deeper
+    than its fill (median 0.18 m on the pilot, none deeper than its height;
+    before, 56% were); the runout cap is 2, 3 or 4 H by the ground below the
+    toe (under 20°, 20° to 35°, steeper); the cut relation reads the face
+    with the 1 m DEM's cell of run taken off (median 68°) and lays its run
+    out from the face. World 0: 5,848 polygons, 60% at the 1 m strip, 13% at
+    the cap; 35% of the inundated area on the scar (43% before), 74
+    polygons over their whole scar (966); 175,995 m² of inundated land
+    dissolved in step 9.
+  - **Seismic distance by Kingsbury zone (the lead, 2026-10-08).** Added to
+    the travel run in place of the 1 m strip, then capped: 0.5 m very low
+    and low, 1 m moderate, 2 m high, 3 m very high, for a Mw 7.5, 0.7 g
+    earthquake. The zone is now scored in step 12 before the runout (it
+    agrees with step 8's on 99.9% of the pilot's polygons). World 0: median
+    runout 1.9 m (90th percentile 4.5 m), 18% of polygons at their height
+    cap (57% of those under 1 m high; 34% of those on 20° to 35° ground), 20%
+    of the inundated area on the scar; 185,012 m² of inundated land
+    dissolved in step 9.
+  - **Smoothed zone outlines (the lead, 2026-10-08).** Every zone is drawn
+    through the midpoints between cell centres and rounded, not along the
+    cell edges, and its area is the drawn area: evacuated −0.5%, inundated
+    −1.6%, imminent −12.5% on the pilot. Step 9 world 0 dissolves 303,203 m²
+    evacuated, 53,620 m² imminent and 183,300 m² inundated land. The
+    imminent zone now takes the evacuated outline as its inner edge, which
+    closes the gaps between them (+0.4% against its cells on the world 0
+    cells); the pilot has not been rerun with it.
 - **Step 13, pif cut and fill (2026-10-05).**
   `steps/s13_pif_cut_fill/gen_pif_cut_fill.py` classes every pif of step 12.
   It writes `urban-slope-pif-cut-fill.parquet`, one row per pif joining the siz
@@ -526,10 +553,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    1. one extent for every step and the vectorised zonal statistics (faces
       plan, phase 0);
    2. step 3's DEM source mask and survey year (step 3 plan, phase 5), then
-      rerun step 3, which also rewrites the vegetation height with the
-      building mask;
+      rerun step 3 (the vegetation height it once rewrote with the
+      building mask was removed 2026-10-08);
    3. the ground map changes the lead accepts (the two fill changes built
-      2026-10-02; the Wellington Fault sheared zone not yet), then rerun
+      2026-10-02; the Wellington Fault sheared zone not yet, **T-89**), then rerun
       step 4 over the common extent and review its area shares and strength
       picks;
    4. the slope elements layer (faces plan, phase 1), proven on toy terrain
@@ -576,8 +603,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     and checks, through steps 8 and 9) puts 31% of the walled units under
     1.5 m, against 54%.
 12. Run `gen_all.py` over the pilot, so steps 8 and 9 run on step 12's
-    zones, review their counts, then remove steps 6 and 7 (step 12 plan,
-    phase 5).
+    zones, review their counts, (steps 6 and 7 were removed 2026-10-08;
+    step 12 plan, phase 5).
 13. Add walls on the flat land, where no wall unit is today. (A wall on a
     property boundary is one unit counted on each property it enters,
     2026-10-06; the loss side's use of it is a vul rw Next item.)
@@ -638,6 +665,10 @@ otherwise.
 - **The largest credible single failure**: the cap was raised to 35,000 m²
   (the lead, 2026-10-02), about Gold's slide.
 - **How much spatial correlation** to add.
+- **The urban failure rate, with a low and a high estimate** (**T-76**). A
+  first pass failed about 80% of the pifs judged unstable; John Leeves
+  expects far fewer land failures than wall failures (sense check,
+  2026-10-05). Whether NHC wants the range or one estimate is **Q-20**.
 - **Which runout relation** replaces the translation. For the urban faces the
   lead set Hunter and Fell's travel angles from the crest (2026-10-07, in
   place of the de Vilder et al. dry reach angle set earlier that day); the
@@ -646,11 +677,10 @@ otherwise.
   large failures it is part B of the review.
 - **The deposit depth limits.** A deposit deeper than its strip allows
   spreads back over its own scar (the lead, 2026-10-07) until it is no
-  deeper than one height or twice its source depth, both proposals: 4,951
-  of the pilot's 6,110 polygons spread back, 966 over their whole scar
-  (5,841 and 1,510 of 6,203 before the travel angles). Fill banks still
-  cover most of their scar (median 67%, 88% on steep ground): their depth is
-  the fill thickness, often more than their height.
+  deeper than one height or twice its source depth, both proposals: 3,138
+  of the pilot's 5,850 polygons spread back, 72 over their whole scar
+  (5,841 and 1,510 of 6,203 before the travel angles and the fill bank
+  slip plane).
 - **Depth where two runouts overlap**: the deeper or the sum.
 - **The face detection and geometry rules**: the faces plan's open decisions,
   and the headscarp band (**T-44**). Stage D2 leaves one for the lead: whether

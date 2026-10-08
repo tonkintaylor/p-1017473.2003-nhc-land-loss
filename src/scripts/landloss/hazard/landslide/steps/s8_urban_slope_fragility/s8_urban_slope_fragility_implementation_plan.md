@@ -2,7 +2,8 @@
 
 **Status:** Phases 1 and 1b complete in code and tested on synthetic inputs:
 since 2026-10-06 the polygons are landslide step 12's zones of each world's
-wall draw, not step 7's. The pilot run and the anchoring are the project
+wall draw, not step 7's (removed 2026-10-08, with the exposure candidate
+wall lines). The pilot run and the anchoring are the project
 lead's to launch once step 12, exposure step 6 and shaking steps 2 and 3
 have been run.
 

@@ -20,9 +20,8 @@ drawn here as geometry from its line, so it may overlap other polygons:
 - **Depth and volume:** as a line element's
   (:func:`landloss.hazard.landslide.slope_polygons.element_depth_m` with a
   run of 0): walled, the wall's planar slip, ``0.5 H w`` per metre, a mean
-  depth of ``0.5 H``; bare, the bank rule, the fill thickness, the
-  volume-area relation where a fill's thickness is unknown, or the cover
-  depth.
+  depth of ``0.5 H``; bare, the bank rule, the same slip no deeper than the
+  fill thickness on fill, or the cover depth.
 - **Imminent:** behind the evacuated band, to where a line from the toe at
   :data:`~landloss.hazard.landslide.slope_polygons.BETA_REPOSE_ANGLE_DEG`
   meets level ground (``H / tan(35)`` behind the line), never narrower than
@@ -33,7 +32,8 @@ drawn here as geometry from its line, so it may overlap other polygons:
   (:func:`~landloss.hazard.landslide.slope_polygons.reach_ratio` at 90
   degrees, the ground below not read) meets level ground, ``H / (H/L)``,
   as the builder traces
-  a line element's runout down a level fall line, held to the builder's caps
+  a line element's runout down a level fall line, with the seismic distance
+  of its Kingsbury zone added and held to the builder's caps
   (:func:`~landloss.hazard.landslide.slope_polygons.inundated_length_m`);
   where that strip would carry the volume too deep, it spreads back over the
   evacuated band as the builder's does
@@ -67,8 +67,10 @@ from landloss.hazard.landslide.slope_polygons import (
     element_depth_m,
     headscarp_band_width_m,
     inundated_length_m,
+    kingsbury_of_polygons,
     min_evacuated_width_m,
     reach_ratio,
+    seismic_runout_m,
 )
 
 # What a forced polygon's element was grown in.
@@ -195,6 +197,7 @@ def gen_forced_zones(
     *,
     is_fill: pd.Series,
     fill_thickness_m: pd.Series,
+    ground: pd.DataFrame | None,
     first_polygon: int,
     scenario: str,
 ) -> gpd.GeoDataFrame:
@@ -206,6 +209,10 @@ def gen_forced_zones(
             ``forced``.
         is_fill: Whether each is on fill, indexed like ``forced``.
         fill_thickness_m: The fill thickness, NaN where unknown.
+        ground: The ground under each, indexed like ``forced``, for its
+            Kingsbury zone and so its seismic distance
+            (:func:`~landloss.hazard.landslide.slope_polygons.kingsbury_of_polygons`);
+            None scores none.
         first_polygon: The polygon number of the first forced polygon (they
             follow on from the scenario's built polygons).
         scenario: The scenario name written on every row.
@@ -218,6 +225,7 @@ def gen_forced_zones(
         ``width_realised_m``, ``is_stack``, ``base_height_m``, ``height_m``,
         ``length_m``, ``area_m2``, ``depth_m``, ``volume_m3``,
         ``source_angle_deg``, ``downslope_angle_deg`` (NaN), ``reach_hl``,
+        ``kingsbury_rating``, ``kingsbury_zone``, ``seismic_runout_m``,
         ``imminent_width_m``, ``runout_m``, ``imminent_area_m2``,
         ``inundated_area_m2``, ``forced``, ``side_unknown``, ``scenario`` and
         the zone's geometry.
@@ -245,11 +253,21 @@ def gen_forced_zones(
         forced["overall_angle_deg"].to_numpy(dtype=float),
         np.full(len(forced), np.nan),
     )
+    rating, kingsbury_zone = kingsbury_of_polygons(
+        ground,
+        forced.index.to_numpy(),
+        slope_deg=forced["overall_angle_deg"].to_numpy(dtype=float),
+        height_m=height,
+        index=forced.index,
+    )
+    seismic = seismic_runout_m(kingsbury_zone)
     runout = inundated_length_m(
         height / reach,
         height_m=height,
         volume_m3=volume,
         toe_length_m=forced["length_m"].to_numpy(dtype=float),
+        downslope_angle_deg=np.full(len(forced), np.nan),
+        seismic_m=seismic,
     )
     band = headscarp_band_width_m(np.full(len(forced), 90.0))
     behind = np.fmax(
@@ -279,6 +297,9 @@ def gen_forced_zones(
             "source_angle_deg": float(element["overall_angle_deg"]),
             "downslope_angle_deg": np.nan,
             "reach_hl": reach[k],
+            "kingsbury_rating": rating[k],
+            "kingsbury_zone": kingsbury_zone.iloc[k],
+            "seismic_runout_m": seismic[k],
             "imminent_width_m": behind[k] - width[k],
             "runout_m": runout[k],
             "forced": True,

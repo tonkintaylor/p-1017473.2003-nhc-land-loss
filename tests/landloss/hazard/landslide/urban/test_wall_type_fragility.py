@@ -130,12 +130,12 @@ def test_curves_scale_the_median_by_position_and_keep_the_dispersion() -> None:
 def test_curves_refuse_a_pair_missing_from_the_table() -> None:
     # Arrange
     table = wtf.load_wall_type_fragility()
-    table = table[table["wall_type"] != "crib"]
+    table = table[table["wall_type"] != "crib_gabion"]
 
     # Act and Assert
     with pytest.raises(ValueError, match="No wall type curve"):
         wtf.wall_type_curves(
-            pd.Series(["crib"]), pd.Series([1.0]), pd.Series([None]), table
+            pd.Series(["crib_gabion"]), pd.Series([1.0]), pd.Series([None]), table
         )
 
 
@@ -196,7 +196,7 @@ def _medians(table: pd.DataFrame, wall_type: str) -> tuple[float, float]:
 
 @pytest.mark.parametrize(
     "wall_type",
-    ["gravity_masonry", "timber_pole_old", "block_rc_cantilever", "landscaper_timber"],
+    ["brick_rock", "timber_pole_pre_1992", "concrete_block", "garden_timber"],
 )
 def test_a_switched_type_is_weaker_when_tall(wall_type) -> None:
     # Arrange
@@ -209,7 +209,9 @@ def test_a_switched_type_is_weaker_when_tall(wall_type) -> None:
     assert tall < short
 
 
-@pytest.mark.parametrize("wall_type", ["crib", "timber_pole_new", "engineered_modern"])
+@pytest.mark.parametrize(
+    "wall_type", ["crib_gabion", "timber_pole_post_1992", "engineered"]
+)
 def test_a_type_with_no_height_effect_has_one_curve(wall_type) -> None:
     # Arrange
     table = wtf.load_wall_type_fragility()
@@ -248,3 +250,17 @@ def test_a_table_missing_a_height_class_is_refused(tmp_path) -> None:
     # Act and Assert
     with pytest.raises(ValueError, match="exactly once"):
         wtf.load_wall_type_fragility(path)
+
+
+def test_the_packaged_wall_types_table_names_every_type_once() -> None:
+    types = wtf.load_wall_types()
+    assert types["wall_type"].tolist() == list(wtf.WALL_TYPES)
+    assert types["label"].notna().all()
+    assert types["nhc_rate_item"].notna().all()
+
+
+def test_a_wall_types_table_missing_a_type_is_refused(tmp_path) -> None:
+    path = tmp_path / "types.csv"
+    wtf.load_wall_types().iloc[1:].to_csv(path, index=False)
+    with pytest.raises(ValueError, match="not each of"):
+        wtf.load_wall_types(path)

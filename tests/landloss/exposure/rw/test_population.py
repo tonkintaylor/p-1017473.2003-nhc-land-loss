@@ -15,7 +15,6 @@ from landloss.exposure.rw.population import (
     draw_wall_population,
 )
 from landloss.exposure.rw.wall_age import AGE_SHARE_COLUMNS
-from landloss.exposure.rw.wall_probability import PROBABILITY_COLUMNS
 from landloss.hazard.landslide.urban.wall_type_fragility import WALL_TYPES
 from landloss.hazard.realisation import realisation_seed
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
@@ -90,7 +89,7 @@ def probabilities(
     )
 
 
-def types_for(table, *, wall_type="crib", age_bin="1970_1991"):
+def types_for(table, *, wall_type="crib_gabion", age_bin="1970_1991"):
     """A type draw giving every line of the table one type and age bin."""
     return pd.DataFrame(
         {"wall_type": wall_type, "age_bin": age_bin},
@@ -147,16 +146,16 @@ def test_each_wall_takes_its_own_type_and_age_bin_by_line_id():
     # join is by id, not by position.
     types = pd.DataFrame(
         {
-            "wall_type": ["engineered_modern", "crib", "gravity_masonry", "crib"],
+            "wall_type": ["engineered", "crib_gabion", "brick_rock", "crib_gabion"],
             "age_bin": ["2005_on", "1970_1991", "pre_1970", "pre_1970"],
         },
         index=pd.Index(["WL0000003", "WL0000002", "WL0000001", "WL0000099"]),
     )
     walls = draw_wall_population(table, rng(), types=types)
     assert walls["wall_type"].tolist() == [
-        "gravity_masonry",
-        "crib",
-        "engineered_modern",
+        "brick_rock",
+        "crib_gabion",
+        "engineered",
     ]
     assert walls["age_bin"].tolist() == ["pre_1970", "1970_1991", "2005_on"]
 
@@ -259,7 +258,7 @@ def test_a_given_walled_draw_replaces_p_wall():
     walled[::3] = True
     given = drawn(table, walled=walled)
     assert given["wall_line_id"].tolist() == table.loc[walled, "wall_line_id"].tolist()
-    assert (given["wall_type"] == "crib").all()
+    assert (given["wall_type"] == "crib_gabion").all()
 
 
 def test_a_walled_draw_of_the_wrong_length_is_refused():
@@ -268,7 +267,6 @@ def test_a_walled_draw_of_the_wrong_length_is_refused():
 
 
 def test_a_missing_column_is_refused():
-    assert set(PROBABILITY_COLUMNS) & set(REQUIRED_COLUMNS) == {"p_wall"}
     assert "p_poor" not in REQUIRED_COLUMNS
     with pytest.raises(ValueError, match="p_wall"):
         drawn(probabilities().drop(columns=["p_wall"]))

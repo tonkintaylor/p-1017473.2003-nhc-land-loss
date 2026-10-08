@@ -1,0 +1,1 @@
+Step 12 now tests each pif piece on its own pips, after the split, with the fall-line siz test along each pip's true downhill direction. Before, every piece took its whole pif's verdict from the pair test. The test is about 20 times faster in the pipeline. On the pilots soil sizs are unchanged and weak rock sizs about 10% fewer.

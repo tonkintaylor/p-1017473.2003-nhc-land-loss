@@ -56,3 +56,24 @@ Added following the land model catch-up on 30 September 2026:
   roughly three-page executive summary and a technical document of about
   100 pages written in the style of the NLM report, with its content held in
   YAML read into Typst and converted to docx so every statement is traceable.
+
+Added following the Wgtn land model sense check on 5 October 2026:
+
+- **What goes to Bridget Attwood on 14 October is a rough first pass**: a draft
+  of the executive summary of about five pages, not a full draft report. John
+  Leeves had always expected only a five-pager and said the budget does not
+  cover a large report. It informs the paper Bridget writes: what the model
+  does, its assumptions, what it does not do and could do in future, and a
+  table of losses per land cap scenario. Numbers matter more than
+  documentation, and further runs are expected once she has read it. The
+  technical document above (**T-70**) is still built, for internal use and as
+  the appendices (the lead, 2026-10-08).
+- **Model work stops after Friday 9 October**, with the Wednesday 7 October
+  session for John Leeves and Nick Peters to find holes in it; the rest is
+  reporting. The paper goes to NHC's ELT about two weeks before the board,
+  which John Leeves recalled as early November (about 6 November).
+- **NHC wants the total loss under a land cap roughly unchanged from the
+  current Act but more fairly distributed**, since wealthier suburbs are seen
+  to receive much larger payments, so the report has to show the spread
+  between suburbs as well as totals (**T-94**). The relative outcome for
+  property owners matters more than the total.

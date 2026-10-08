@@ -11,12 +11,13 @@ Each wall type has one curve per height class, not per size class (the lead,
 2026-10-07): a wall under 2 m high is ``under_2_m`` and one 2 m or higher is
 ``2_m_and_over`` (:func:`height_class`; a wall whose height is not known is
 ``under_2_m``). Which published wall height each class takes depends on the
-type. For gravity masonry, old timber pole, block or RC cantilever and
-landscaper timber the published height effect is switched: taller walls of
-these types are the worse, so ``under_2_m`` takes the 6 m wall and
-``2_m_and_over`` the 3 m wall. Crib, new timber pole and engineered modern have
-no height effect and take the 3 m wall for both. ``size_class`` stays on every
-wall for pricing; only this lookup uses the height class.
+type. For brick or rock masonry, reinforced concrete, timber pole before July
+1992, concrete block and garden timber the published height effect is
+switched: taller walls of these types are the worse, so ``under_2_m`` takes
+the 6 m wall and ``2_m_and_over`` the 3 m wall. Crib or gabion, timber pole
+from July 1992 and engineered walls have no height effect and take the 3 m
+wall for both. ``size_class`` stays on every wall for pricing; only this
+lookup uses the height class.
 
 Replacement is read at the **moderate** damage state, not the most severe,
 because moderate damage usually leads to a full replacement in a claim (the
@@ -37,7 +38,7 @@ dispersion. A wall whose position is not known keeps the stored curve.
 
 The packaged rows are read out of [koutsoupaki_2023], DS2 (5% of H), each
 type on one initial-condition rung and some then scaled by ``type_factor``
-(1.3 for new timber pole, 1.5 for engineered modern); the README beside the
+(1.3 for timber pole from July 1992, 1.5 for engineered); the README beside the
 CSV says how, and ``src/scripts/landloss/vul/research/fig_rw_type_fragility.md``
 sets them beside the other published curves and the Canterbury failure shares.
 """
@@ -57,16 +58,20 @@ from landloss.hazard.landslide.urban.lognormal import (
 from landloss.io import ASSETS_DIR
 
 WALL_TYPE_FRAGILITY_PATH = ASSETS_DIR / "retaining-wall-type-fragility.csv"
+WALL_TYPES_PATH = ASSETS_DIR / "retaining-wall-types.csv"
 
-# The proposed wall types, oldest-style first, as named in the table.
+# The wall types, oldest-style first, as named in the tables (renamed by the
+# lead on 2026-10-08 to follow the NHC costing tool's wall rows). Each one's
+# readable label and the NHC rate row it is priced at are in WALL_TYPES_PATH.
 WALL_TYPES = (
-    "gravity_masonry",
-    "crib",
-    "timber_pole_old",
-    "block_rc_cantilever",
-    "timber_pole_new",
-    "landscaper_timber",
-    "engineered_modern",
+    "brick_rock",
+    "reinforced_concrete",
+    "crib_gabion",
+    "timber_pole_pre_1992",
+    "concrete_block",
+    "timber_pole_post_1992",
+    "garden_timber",
+    "engineered",
 )
 
 # The two height classes a wall's curve is chosen by (the lead, 2026-10-07),
@@ -320,3 +325,31 @@ def wall_type_failure_probability(
         curves["theta_pga_g"].to_numpy(dtype=float),
         curves["beta"].to_numpy(dtype=float),
     )
+
+
+WALL_TYPES_COLUMNS = ("wall_type", "label", "nhc_rate_item", "covers")
+
+
+def load_wall_types(path: Path = WALL_TYPES_PATH) -> pd.DataFrame:
+    """Read each wall type's label, NHC rate row and what it covers.
+
+    Args:
+        path: The CSV to read; the packaged table by default.
+
+    Returns:
+        One row per wall type, in :data:`WALL_TYPES` order.
+
+    Raises:
+        ValueError: If a column is missing or the wall types are not exactly
+            :data:`WALL_TYPES`, each once.
+    """
+    table = pd.read_csv(path)
+    missing = [column for column in WALL_TYPES_COLUMNS if column not in table.columns]
+    if missing:
+        msg = f"The wall types table is missing the columns {missing}."
+        raise ValueError(msg)
+    held = table["wall_type"].tolist()
+    if sorted(held) != sorted(WALL_TYPES):
+        msg = f"The wall types table holds {held}, not each of {list(WALL_TYPES)} once."
+        raise ValueError(msg)
+    return table.set_index("wall_type").loc[list(WALL_TYPES)].reset_index()

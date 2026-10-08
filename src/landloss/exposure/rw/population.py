@@ -101,10 +101,8 @@ def draw_wall_population(
 
     Args:
         probabilities: The output of
-            :func:`~landloss.exposure.rw.wall_probability.gen_unit_probability_table`
-            or
-            :func:`~landloss.exposure.rw.wall_probability.wall_probability_table`,
-            one row per candidate line carrying :data:`REQUIRED_COLUMNS`.
+            :func:`~landloss.exposure.rw.wall_probability.gen_unit_probability_table`,
+            one row per candidate wall unit carrying :data:`REQUIRED_COLUMNS`.
         rng: The world's generator, so the draw reproduces.
         types: The world's type draw, indexed by ``wall_line_id``, carrying
             :data:`TYPE_COLUMNS`
