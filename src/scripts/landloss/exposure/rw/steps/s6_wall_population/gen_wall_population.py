@@ -1,9 +1,8 @@
 """Draw one exposure world's retaining wall population from the wall units.
 
 Reads the per-unit probabilities ``gen_wall_probability.py`` wrote and the
-walls landslide step 12 drew for each exposure world
-(``gen_urban_slope_wall_units.py``), and builds one population per world:
-which candidate walls exist is step 12's draw, so the walls that shape the
+walls ``gen_wall_units.py`` drew for each exposure world, and builds one
+population per world: which candidate walls exist is that draw, so the walls that shape the
 hazard are the walls that are exposed, and the age bin and type of each are
 drawn here, from its property's age shares (``gen_wall_age.py``), its height
 and whether its unit stands on a road frontage. A wall is the unit that drew
@@ -19,14 +18,14 @@ The two filters decide what is insured, not whether a wall stands: a road
 retaining wall above a property, or a wall at the back of a section beyond
 the buffer, still holds its slope. So the script also writes every wall the
 world drew, before either filter, with the minted ``rw_id`` where the wall was
-kept and null where it was not. Landslide step 8 builds the urban slope model
+kept and null where it was not. Landslide step 5 builds the urban slope model
 on that file, so an uninsured wall shapes the hazard without entering the
 loss tables (decision 36 of the build contract).
 
     uv run --frozen python src/scripts/landloss/exposure/rw/steps/s6_wall_population/gen_wall_population.py
 
-Run ``gen_wall_probability.py`` and ``gen_wall_age.py`` first, landslide step
-12's ``gen_urban_slope_wall_units.py`` for every world in ``WORLD_IDS``, and
+Run ``gen_wall_age.py``, ``gen_wall_units.py`` (for every world in
+``WORLD_IDS``) and ``gen_wall_probability.py`` first, and
 land step 5 for the insured land. This script reads no elevation model and no GNS
 layer, so any number of worlds draw quickly.
 
@@ -82,10 +81,10 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_age import (
     wall_age_path,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_probability import (
-    RUN_STEP_12_FIRST,
+    RUN_WALL_UNITS_FIRST,
     wall_probability_path,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
     wall_draws_path,
     wall_units_path,
 )
@@ -131,7 +130,7 @@ def drawn_walls_path(world_id, *, extent):
     """Return the file a run writes every wall one world drew to.
 
     The walls before the claim and coverage filters, with ``rw_id`` null on
-    the ones those filters dropped. Landslide step 8 reads it; nothing else
+    the ones those filters dropped. Landslide step 5 reads it; nothing else
     does.
 
     Args:
@@ -157,14 +156,14 @@ def insert_world_id(walls, world_id):
 
 
 def read_wall_draws(*, extent):
-    """The walls landslide step 12 drew per world, refused loudly if missing.
+    """The walls ``gen_wall_units.py`` drew per world, refused loudly if missing.
 
     Raises:
         FileNotFoundError: If the draws are not written.
     """
     path = wall_draws_path(extent=extent)
     if not path.exists():
-        msg = f"no wall unit draws at {path}: {RUN_STEP_12_FIRST}"
+        msg = f"no wall unit draws at {path}: {RUN_WALL_UNITS_FIRST}"
         raise FileNotFoundError(msg)
     return pd.read_parquet(path)
 
@@ -183,14 +182,14 @@ def read_wall_ages(*, extent):
 
 
 def read_road_frontage(*, extent):
-    """Whether each step 12 wall unit stands on a road frontage, by its id.
+    """Whether each wall unit stands on a road frontage, by its id.
 
     Raises:
         FileNotFoundError: If the wall units are not written.
     """
     path = wall_units_path(extent=extent)
     if not path.exists():
-        msg = f"no wall units at {path}: {RUN_STEP_12_FIRST}"
+        msg = f"no wall units at {path}: {RUN_WALL_UNITS_FIRST}"
         raise FileNotFoundError(msg)
     units = pd.read_parquet(path, columns=[ROAD_FRONTAGE_COLUMN])
     return units[ROAD_FRONTAGE_COLUMN].astype(bool)
@@ -217,7 +216,7 @@ def type_candidates(probabilities, ages, frontage):
 
     A wall takes its property's age shares; a wall with no property, or on a
     property ``gen_wall_age.py`` did not age, takes the extent default. A unit
-    the step 12 table does not carry is off a road frontage.
+    the wall unit table does not carry is off a road frontage.
 
     Returns:
         Indexed by ``wall_line_id``, ``height_m``, ``on_road_frontage`` and
@@ -266,7 +265,7 @@ def walled_in_world(draws, world_id, wall_line_ids):
     if rows.empty or walled.isna().any():
         msg = (
             f"world {world_id} not drawn for every wall unit; add it to the "
-            "landslide s12 config WORLD_IDS and rerun gen_urban_slope_wall_units.py"
+            "exposure rw step 6 config WORLD_IDS and rerun gen_wall_units.py"
         )
         raise ValueError(msg)
     return walled.to_numpy(dtype=bool)

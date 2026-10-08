@@ -100,7 +100,7 @@ code.
 List the directory to confirm each file is actually there before building.
 
 **Check for more than one geometry column.** Some step outputs carry extra geometry
-columns beside `geometry` (the step 8 urban slope model has `rep_point`, `evacuated`,
+columns beside `geometry` (the landslide step 5 urban slope model has `rep_point`, `evacuated`,
 `inundated` and `imminent`). QGIS's OGR provider takes the *first* one and offers no
 sublayer for the others, so the layer loads as valid points and a polygon renderer
 draws nothing. Read the GeoParquet `geo` metadata (`pq.read_schema(f).metadata[b"geo"]`):
@@ -308,7 +308,7 @@ Set `EXTENT`, `WORLD_ID` and `REALISATION_ID` in `src/scripts/landloss/qgis/conf
 first. It writes `temp/qgis/e2e_build/e2e_build<suffix>.qgs`, with its derived layers
 beside it. Before running it:
 
-1. Check that the run exists: `gen_all.py` for hazard, exposure and vul, and
+1. Check that the run exists: `gen_all.py` for ground, exposure, hazard and vul, and
    `loss/gen_loss.py` for the cost layers. Loss is not run by `gen_all.py`. Run it
    through its own `main(extent=..., realisation_ids=[...])`, never by editing the loss
    module or its config (the loss module belongs to someone else). If a step's output is
@@ -331,9 +331,9 @@ A few of these need explaining to the person reading the map:
 - **Hancox coverage is the probability a point fails.** It is the expected share of
   the cell that fails, so it is drawn on the same probability bands as the ESNZ grid.
   Over most urban ground it sits under 0.5%.
-- **The trigger probability is evaluated, not stored.** Step 9 keeps `p_fail` only for
-  the polygons it draws as failed. The generator evaluates it for every step 8 polygon
-  with step 9's own functions (`sample_pgv` and `lognormal_failure_probability`), and
+- **The trigger probability is evaluated, not stored.** Landslide step 6 keeps `p_fail` only for
+  the polygons it draws as failed. The generator evaluates it for every landslide step 5 polygon
+  with landslide step 6's own functions (`sample_pgv` and `lognormal_failure_probability`), and
   draws it on the polygon's `evacuated` geometry.
 
 Add a layer the user asks for to the generator, in its group. Do not hand-build a

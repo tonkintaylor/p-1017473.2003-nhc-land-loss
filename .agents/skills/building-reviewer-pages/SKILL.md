@@ -127,7 +127,7 @@ for the worked pip rule, `checked` and `narrative`
   test it. Choose an example where a test passes only narrowly, so the
   threshold is visible.
 - **Cross-section:** follow `pif_section()`. Run the line along the direction the
-  step itself measured in (for step 13, the pip's walk to its foot), sample the
+  step itself measured in (for ground step 5, the pip's walk to its foot), sample the
   DEM, evaluate the step's saved surface, and draw both ends of the measurement.
   Draw it at true scale where it fits and label the vertical exaggeration
   otherwise. Say on the page when a class rests on medians over many points and

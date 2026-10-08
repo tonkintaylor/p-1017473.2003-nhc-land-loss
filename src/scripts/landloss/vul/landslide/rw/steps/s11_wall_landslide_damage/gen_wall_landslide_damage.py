@@ -47,7 +47,7 @@ from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     wall_population_path,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
     combined_realisation_path,
     urban_wall_outcome_path,
 )

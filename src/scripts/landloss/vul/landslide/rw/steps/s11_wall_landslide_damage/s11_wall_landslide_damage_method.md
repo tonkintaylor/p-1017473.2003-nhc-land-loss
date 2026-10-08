@@ -9,10 +9,10 @@
   - the world's wall population, exposure rw step 6's
     `wall_population_path(world_id, extent=...)`, which is the spine: every
     wall in it, on flat land or on a slope, gets one row;
-  - the combined landslide realisation of the world and earthquake, landslide
-    step 9's `combined_realisation_path(world_id, realisation_id, extent=...)`,
+  - the combined landslide realisation of the world and earthquake,
+    landslide step 6's `combined_realisation_path(world_id, realisation_id, extent=...)`,
     the large model's polygons and the urban slope model's together;
-  - the urban wall outcome table of the same pair, landslide step 9's
+  - the urban wall outcome table of the same pair, landslide step 6's
     `urban_wall_outcome_path(world_id, realisation_id, extent=...)`, one row
     per wall on sloping ground with its `slope_id` and `outcome`.
 - A sloping wall has **two routes to a flag**, and the two are OR-ed

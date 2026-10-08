@@ -8,7 +8,7 @@ QGIS projects (pips and pieces by verdict, 1 m contours, the 1 m slope):
 
 ## Why
 
-Step 12 decided whether a pif is a siz by comparing every pair of its points
+Ground step 3 (then landslide step 12) decided whether a pif is a siz by comparing every pair of its points
 (its pips and the cells 1, 3 and 5 m down each pip's fall line) up to 30 m
 apart (`instability_zones.PAIRS_TEST`), on the whole pif, and every piece cut
 from it took that verdict. The test was 70% of the step's time (131 of 187 s
@@ -22,7 +22,7 @@ split.
 
 ## The variants compared, on every piece
 
-- **old**: the pair test on the whole pif, inherited by the piece (step 12
+- **old**: the pair test on the whole pif, inherited by the piece (ground step 3
   until 2026-10-08).
 - **d8**: the fall-line test (`FALL_LINE_TEST`) on the piece's own pips, each
   pip read down the nearest of the eight directions, one cell at a time,
@@ -30,7 +30,7 @@ split.
   Pairs under 3 m use the ground group's step; 3 to 30 m its angle for the
   drop's band.
 - **new**: the same along each pip's true downhill direction
-  (`terrain_layers`' `downhill_row`, `downhill_col`), what step 12 now runs.
+  (`terrain_layers`' `downhill_row`, `downhill_col`), what ground step 3 now runs.
 
 An open fall line, running the full 30 m down the hillside, was tried first
 and dropped: its largest drop was a median 3.5 m bigger than the pair test's
@@ -49,7 +49,7 @@ candidates on that drop.
 | Seconds, old / new | 18.4 / 4.0 | 82.6 / 7.9 |
 
 - The new test is 5 to 10 times faster here, where it rebuilds the terrain
-  layers; step 12 already has them, so in the pipeline it is about 20 times
+  layers; ground step 3 already has them, so in the pipeline it is about 20 times
   faster, and the siz test over Porirua costs minutes rather than hours.
 - **Soil is unchanged** (3,913 to 3,914 and 2,157 to 2,159 siz pieces). Every
   difference is in weak rock, which loses about 10% (971 to 876, 1,446 to
@@ -63,6 +63,6 @@ candidates on that drop.
 
 ## Next
 
-- Rerun the pilots and Porirua with the new test (step 12 plan, phase 5b).
+- Rerun the pilots and Porirua with the new test (ground step 4 plan, `s4_slope_faces_implementation_plan.md`, phase 5b).
 - The lead to look at pieces of mixed steepness in the QGIS projects and
   decide whether the split should also cut on steepness.

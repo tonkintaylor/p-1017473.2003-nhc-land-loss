@@ -49,7 +49,7 @@ def test_the_condition_probability_is_retired(name):
 
 
 def units_frame(*, height_m=(2.0,), property_id=("P1",), is_fill=(False,)):
-    """A step 12 wall unit table with the columns the unit table reads."""
+    """A wall unit table with the columns the unit table reads."""
     n = len(height_m)
     return gpd.GeoDataFrame(
         {
@@ -189,9 +189,13 @@ def test_gen_wall_probability_main_writes_one_row_per_unit(tmp_path, redirected_
     assert written.crs == CRS
 
 
-def test_gen_wall_probability_main_says_to_run_step_12_first(tmp_path, monkeypatch):
+def test_gen_wall_probability_main_says_to_run_exposure_rw_step_6_first(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(
         script, "wall_units_path", lambda *, extent: tmp_path / "missing.geoparquet"
     )
-    with pytest.raises(FileNotFoundError, match=r"gen_urban_slope_wall_units\.py"):
+    with pytest.raises(
+        FileNotFoundError, match=r"exposure rw step 6 \(gen_wall_units\.py\)"
+    ):
         script.main(extent="wlg-pilot", use_cached_layers=True)

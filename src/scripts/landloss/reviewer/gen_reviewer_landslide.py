@@ -3,11 +3,12 @@
     uv run --frozen python src/scripts/landloss/reviewer/gen_reviewer_landslide.py
 
 The page walks a reviewer through both landslide populations: the large
-failures (terrain, ground map, slope units, a coverage model and step 1's draw)
-and the urban failures (faces, zones, a fragility per polygon and step 9's
-draw), then the land damage vul takes from them. It shares ``template.html``
-and its helpers with the retaining wall page (``gen_reviewer_rw.py``) and is
-written to ``report/reviewer/landslide/landslide-reviewer<suffix>.html``.
+failures (terrain, ground map, slope units, a coverage model and landslide
+step 3's draw) and the urban failures (ground step 4's faces, landslide step
+4's zones, a fragility per polygon and landslide step 6's draw), then the land
+damage vul takes from them. It shares ``template.html`` and its helpers with the
+retaining wall page (``gen_reviewer_rw.py``) and is written to
+``report/reviewer/landslide/landslide-reviewer<suffix>.html``.
 
 **The page shows what the steps wrote; it recomputes nothing.** Maps are
 cut-outs of current outputs, rasters are coloured as saved, and the charts count
@@ -63,56 +64,60 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population i
     drawn_walls_path,
     wall_population_path,
 )
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
-    config as s1_config,
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
+    wall_draws_path,
+    wall_units_path,
 )
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
-    s1_simulate_landslides,
-)
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation.s1_simulate_landslides import (
-    realisation_path as large_realisation_path,
-)
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     aspect_path,
     dem_path,
     slope_path,
 )
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_terrain_derivatives import (
+from scripts.landloss.ground.steps.s1_terrain.gen_terrain_derivatives import (
     terrain_path,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
-from scripts.landloss.hazard.landslide.steps.s5_slope_units.gen_slope_units import (
-    slope_units_path,
-)
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
-    urban_slope_model_path,
-)
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
-    combined_realisation_path,
-    urban_wall_outcome_path,
-)
-from scripts.landloss.hazard.landslide.steps.s10_hancox_1997.gen_hancox_1997_coverage import (
-    coverage_path as hancox_coverage_path,
-)
-from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015.gen_kritikos_2015_hazard import (
-    coverage_path as kritikos_coverage_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
     elements_path,
+)
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import (
     gns_only_path,
     siz_table_path,
+)
+from scripts.landloss.ground.steps.s5_pif_cut_fill.gen_pif_cut_fill import (
+    pif_cut_fill_path,
+    pif_cut_fill_pips_path,
+)
+from scripts.landloss.hazard.landslide.steps.s1_slope_units.gen_slope_units import (
+    slope_units_path,
+)
+from scripts.landloss.hazard.landslide.steps.s2_hancox_1997.gen_hancox_1997_coverage import (
+    coverage_path as hancox_coverage_path,
+)
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
+    config as s1_config,
+)
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
+    s1_simulate_landslides,
+)
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation.s1_simulate_landslides import (
+    realisation_path as large_realisation_path,
+)
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import (
     wall_elements_path,
     zones_path,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
-    wall_draws_path,
-    wall_units_path,
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
+    urban_slope_model_path,
 )
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
-    pif_cut_fill_path,
-    pif_cut_fill_pips_path,
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
+    combined_realisation_path,
+    urban_wall_outcome_path,
+)
+from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015.gen_kritikos_2015_hazard import (
+    coverage_path as kritikos_coverage_path,
 )
 from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation.gen_pgv_realisations import (
     pgv_path,
@@ -131,7 +136,7 @@ OUT_DIR = REPORT_DIR / "reviewer" / "landslide"
 FIT_TABLE = "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-fit.csv"
 
 # Where a `{NAME}` in the content files is looked up, in this order. The
-# landslide constants are spread over the library and step 1's own modules, so
+# landslide constants are spread over the library and landslide step 3's own modules, so
 # one module is not enough; a name in none of them raises.
 CONSTANT_SOURCES = [
     constants,
@@ -538,7 +543,7 @@ def localised_curves():
 
     Read from the calibration table, which holds each candidate's medians at
     rating 0 and 150 and its dispersion; the median at rating R is the
-    log-linear interpolation step 8 uses. Before amplification and rate.
+    log-linear interpolation landslide step 5 uses. Before amplification and rate.
     """
     path = REPO_ROOT / FIT_TABLE
     if not path.exists():
@@ -572,7 +577,7 @@ def localised_curves():
         "kind": "curves",
         "title": "Unwalled polygon fragility, P(fail | PGV)",
         "note": "Kingsbury rating 0, 75 and 150, before amplification and the rate "
-        "factor. Solid: what step 8 uses; dashed: the adopted fit (LS-A32).",
+        "factor. Solid: what landslide step 5 uses; dashed: the adopted fit (LS-A32).",
         "x_max": 4.0,
         "x_label": "PGV (m/s)",
         "unit": "m/s",
@@ -698,7 +703,7 @@ def pilot_summaries(frames, files):
             median_amp_factor=("amp_factor", "median"),
         )
         charts["theta_by_wall_state"] = table_chart(
-            "Step 8 medians by wall state", by_state.round(3).reset_index()
+            "Landslide step 5 medians by wall state", by_state.round(3).reset_index()
         )
     realisation = frames["realisation"]
     if model is not None and realisation is not None:
@@ -710,7 +715,7 @@ def pilot_summaries(frames, files):
         charts["realisation_tiles"] = {
             "kind": "tiles",
             "data": [
-                ["urban polygons (step 8)", f"{len(model):,}"],
+                ["urban polygons (landslide step 5)", f"{len(model):,}"],
                 ["failed", f"{len(failed_ids):,}"],
                 ["failed share", f"{len(failed_ids) / len(model):.0%}"],
                 ["evacuated (ha)", f"{evacuated.geometry.area.sum() / 1e4:,.1f}"],
@@ -773,7 +778,7 @@ def row_checks(frames):
         checks.append(
             {
                 "ok": not unknown,
-                "text": f"step 9 urban polygons not in the step 8 model: {len(unknown):,}",
+                "text": f"landslide step 6 urban polygons not in the landslide step 5 model: {len(unknown):,}",
             }
         )
     large = frames["large_realisation"]
@@ -782,7 +787,7 @@ def row_checks(frames):
         checks.append(
             {
                 "ok": in_combined == len(large),
-                "text": f"step 1 rows: {len(large):,}; large rows in the "
+                "text": f"landslide step 3 rows: {len(large):,}; large rows in the "
                 f"combined realisation: {in_combined:,}",
             }
         )

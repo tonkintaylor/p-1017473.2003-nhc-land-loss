@@ -6,9 +6,9 @@ Writes ``temp/qgis/landslide-models/landslide-models<suffix>.qgs`` and, beside
 it, the layers QGIS cannot read straight from the step outputs:
 
 - **every urban polygon's evacuated, imminent and inundated ground, failed or
-  not**, from step 8's model (which holds all three geometries per
-  ``slope_id``), each row marked by whether its ``slope_id`` failed in step 9;
-- the **pips coloured by their pif's cut/fill class** (step 13), and the line
+  not**, from landslide step 5's model (which holds all three geometries per
+  ``slope_id``), each row marked by whether its ``slope_id`` failed in landslide step 6;
+- the **pips coloured by their pif's cut/fill class** (ground step 5), and the line
   from each pip to the foot of its face;
 - the pif spines by class, the forced polygons and the flatland, each with one
   geometry column;
@@ -35,43 +35,45 @@ import shapely
 from matplotlib.colors import LightSource
 
 from landloss.io.area_of_interest import extent_suffix
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation.s1_simulate_landslides import (
-    realisation_path as large_realisation_path,
-)
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     dem_path,
     slope_path,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
-from scripts.landloss.hazard.landslide.steps.s5_slope_units.gen_slope_units import (
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
+    elements_path,
+)
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import siz_table_path
+from scripts.landloss.ground.steps.s5_pif_cut_fill.gen_pif_cut_fill import (
+    pif_cut_fill_path,
+    pif_cut_fill_pips_path,
+)
+from scripts.landloss.hazard.landslide.steps.s1_slope_units.gen_slope_units import (
     slope_units_path,
 )
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
-    urban_slope_model_path,
-)
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
-    combined_realisation_path,
-)
-from scripts.landloss.hazard.landslide.steps.s10_hancox_1997.gen_hancox_1997_coverage import (
+from scripts.landloss.hazard.landslide.steps.s2_hancox_1997.gen_hancox_1997_coverage import (
     coverage_path as hancox_coverage_path,
 )
-from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015.gen_kritikos_2015_hazard import (
-    coverage_path as kritikos_coverage_path,
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation.s1_simulate_landslides import (
+    realisation_path as large_realisation_path,
 )
-from scripts.landloss.hazard.landslide.steps.s11_kritikos_2015.gen_kritikos_2015_hazard import (
-    hazard_path as kritikos_hazard_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    elements_path,
-    siz_table_path,
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import (
     wall_elements_path,
     zones_path,
 )
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
-    pif_cut_fill_path,
-    pif_cut_fill_pips_path,
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
+    urban_slope_model_path,
+)
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
+    combined_realisation_path,
+)
+from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015.gen_kritikos_2015_hazard import (
+    coverage_path as kritikos_coverage_path,
+)
+from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015.gen_kritikos_2015_hazard import (
+    hazard_path as kritikos_hazard_path,
 )
 from scripts.landloss.hazard.landslide.validations.qgis import config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
@@ -169,7 +171,7 @@ def write(frame, name):
 def gen_zone_outcomes(model, realisation):
     """Every model polygon's three kinds of ground, each marked failed or stood.
 
-    A polygon failed if step 9 wrote evacuated ground under its ``slope_id``.
+    A polygon failed if landslide step 6 wrote evacuated ground under its ``slope_id``.
     One that failed but was absorbed by a larger failure is not written under
     its own id, so it shows as stood here; its ground is inside the larger
     failure's.
@@ -370,7 +372,7 @@ def main(
         ),
         temp_layer(
             model_copy,
-            name=f"W{w:03d} | step 8 median theta (PGV m/s)",
+            name=f"W{w:03d} | landslide step 5 median theta (PGV m/s)",
             field="theta",
             cmap="RdYlGn",
             bins=8,
@@ -382,7 +384,7 @@ def main(
         ),
         temp_layer(
             model_copy,
-            name=f"W{w:03d} | step 8 wall state",
+            name=f"W{w:03d} | landslide step 5 wall state",
             field="wall_state",
             categories=WALL_STATE_COLOUR,
             outline="match",
@@ -392,7 +394,7 @@ def main(
         ),
         temp_layer(
             zones_path(f"w{w:03d}", extent=extent),
-            name=f"W{w:03d} | step 12 zones (all, by zone)",
+            name=f"W{w:03d} | landslide step 4 zones (all, by zone)",
             field="zone",
             categories=ZONE_COLOUR,
             outline="match",
@@ -401,7 +403,7 @@ def main(
         ),
         temp_layer(
             pips_file,
-            name="Intermediate | pips by pif cut/fill class (step 13)",
+            name="Intermediate | pips by pif cut/fill class (ground step 5)",
             field="cut_fill_class",
             categories=CLASS_COLOUR,
             geometry="point",
@@ -411,7 +413,7 @@ def main(
         ),
         temp_layer(
             feet_file,
-            name="Intermediate | pip to foot of face (step 13 walk)",
+            name="Intermediate | pip to foot of face (ground step 5 walk)",
             field="cut_fill_class",
             categories=CLASS_COLOUR,
             geometry="line",
@@ -465,7 +467,7 @@ def main(
         ),
         temp_layer(
             slope_units_path(extent=extent),
-            name="Large | slope units (step 5)",
+            name="Large | slope units (landslide step 1)",
             color="#00000000",
             outline="#111111",
             width=0.5,
@@ -554,7 +556,7 @@ def main(
             1,
             {
                 "path": str(large_file),
-                "name": f"R{r:03d} | large failures (step 1)",
+                "name": f"R{r:03d} | large failures (landslide step 3)",
                 "field": "land_class",
                 "categories": LAND_CLASS_COLOUR,
                 "outline": "#4e342e",
@@ -563,7 +565,9 @@ def main(
             },
         )
     else:
-        print(f"step 1 wrote no large failures for R{r:03d}; the layer is left out")
+        print(
+            f"landslide step 3 wrote no large failures for R{r:03d}; the layer is left out"
+        )
 
     builder = load_builder()
     builder.run(

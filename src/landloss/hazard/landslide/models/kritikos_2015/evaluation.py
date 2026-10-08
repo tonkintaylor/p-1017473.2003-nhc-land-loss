@@ -26,7 +26,7 @@ from landloss.io import ASSETS_DIR
 # The number of equal-weight hazard bins the transfer function is fitted over.
 DEFAULT_N_BINS = 20
 
-# The fitted curve, written by landslide step 11's
+# The fitted curve, written by landslide step 8's
 # ``gen_kritikos_2015_transfer_function.py`` and read by its hazard script.
 TRANSFER_FUNCTION_PATH = ASSETS_DIR / "kritikos-2015-transfer-function.csv"
 

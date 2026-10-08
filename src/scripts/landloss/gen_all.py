@@ -1,4 +1,4 @@
-"""Run the whole pipeline end to end: hazard, exposure, hazard urban, then vul.
+"""Run the whole pipeline end to end: ground, exposure, hazard, then vul.
 
     uv run --frozen python src/scripts/landloss/gen_all.py
 
@@ -10,28 +10,26 @@ at the four tables the loss module reads,
 suffix is ``extent_suffix(extent)``: none for the full study, ``-pilot`` for
 the Wellington pilot. The loss module itself is not run from here.
 
-The hazard module runs twice because the urban slope chain crosses modules
-both ways. Its first pass (``gen_hazard.main``) builds the shaking, the
-liquefaction and the landslide ground work (terrain, ground map, slope units,
-and step 12's faces and wall units drawn per world) and the large landslide
-model, none of which reads an exposure output. The exposure module's wall
-population then reads step 12's wall units and is drawn per world. The hazard module's second
-pass (``gen_hazard.main_urban``) assigns each of step 12's per-world urban
-slope polygons its fragility for the walls that world drew (the draw
-exposure rw step 6 exposes), and draws the urban realisation, so it can only
-run after exposure. The
+The modules run in the order they read each other. The ground module
+(``gen_ground.main``) builds what the ground is, once per extent: the 1 m DEM
+and terrain, the ground map, the instability zones (pips to elements), the
+wall evidence on each pif and the pif cut and fill. The exposure module reads
+it for the wall units and draws which of them are walled in each world. The
+hazard module then builds the shaking, the liquefaction and the landslide
+hazard, whose urban zones are built for each world's drawn walls. The
 vulnerability module reads everything above.
 """
 
 from landloss.io.area_of_interest import check_extent
 from scripts.landloss import config, pipeline
 from scripts.landloss.exposure import gen_exposure
+from scripts.landloss.ground import gen_ground
 from scripts.landloss.hazard import gen_hazard
 from scripts.landloss.vul import gen_vul
 
 
 def main(*, extent, world_ids, realisation_ids, start_from):
-    """Run every module in order: hazard, exposure, hazard urban, vul.
+    """Run every module in order: ground, exposure, hazard, vul.
 
     Args:
         extent: The extent to run over, a name from
@@ -44,9 +42,9 @@ def main(*, extent, world_ids, realisation_ids, start_from):
     check_extent(extent)
     ids = {"extent": extent, "world_ids": world_ids, "realisation_ids": realisation_ids}
     with pipeline.starting_from(start_from):
-        gen_hazard.main(**ids)
+        gen_ground.main(extent=extent)
         gen_exposure.main(**ids)
-        gen_hazard.main_urban(**ids)
+        gen_hazard.main(**ids)
         gen_vul.main(**ids)
 
 

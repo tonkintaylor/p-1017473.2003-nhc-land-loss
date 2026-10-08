@@ -2,9 +2,9 @@
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/validations/urban/table_urban_area_calibration.py
 
-Run landslide steps 3, 4 and 12 (the topographic position, the ground map and
+Run ground steps 1 and 2 and landslide step 4 (the topographic position, the ground map and
 the bare zones), shaking steps 2 and 3 (the site class and PGV grids) and
-landslide step 8 for ``config.WORLD_ID`` first, over ``config.EXTENT``.
+landslide step 5 for ``config.WORLD_ID`` first, over ``config.EXTENT``.
 
 **The adopted fit** is the one the project lead chose on 2026-10-07
 (``area_calibration.fit_record_and_polygons``). It is fitted to two kinds of
@@ -25,12 +25,12 @@ So the zone fractions of ``urban-fragility-anchors.csv`` (``measure`` of
 that lies in the evacuated or inundated zone of a failed bare polygon
 (``landloss.hazard.landslide.urban.area_calibration``). Shared by every fit:
 
-1. **The polygons.** Landslide step 12's bare zones (no wall anywhere), made
-   into one row per polygon as step 8 makes a world's zones
+1. **The polygons.** Landslide step 4's bare zones (no wall anywhere), made
+   into one row per polygon as landslide step 5 makes a world's zones
    (``face_polygons.face_polygons`` and ``with_amplification``), every one
    on the localised curve. Step 8's model files are a world's walled zones,
    whose polygons differ, so they are not read for this.
-2. **The reference area.** The non-flat pieces of the step 4 ground map on a
+2. **The reference area.** The non-flat pieces of the ground step 2 ground map on a
    2 m grid; runout onto flat land does not count. The whole non-flat pilot
    is treated as Kingsbury High (the lead's choice), so the fit is to the
    High zone fractions A10 to A12.
@@ -45,7 +45,7 @@ that lies in the evacuated or inundated zone of a failed bare polygon
    are the Kingsbury zone fractions: the High ones on the whole pilot, and
    each zone's on the non-flat cells nearest a polygon of that zone. They
    also include A16, the polygon anchors A17 to A21, the A12 upper limit,
-   and the wall type medians of step 8's walled polygons against the no-wall
+   and the wall type medians of landslide step 5's walled polygons against the no-wall
    median on the same polygons.
 
 Prints the constants to adopt and every check, and writes eight CSVs under
@@ -78,17 +78,17 @@ from landloss.hazard.shaking.site_class import (
 )
 from landloss.io.area_of_interest import get_area_of_interest
 from landloss.io.ts1170 import get_ts1170_pga
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_terrain_derivatives import (
+from scripts.landloss.ground.steps.s1_terrain.gen_terrain_derivatives import (
     terrain_path,
 )
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import (
+    zones_path,
+)
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
     read_grid,
     read_step12_inputs,
     representative_points,
     urban_slope_model_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    zones_path,
 )
 from scripts.landloss.hazard.landslide.validations.urban import config
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
@@ -196,8 +196,8 @@ def committed_curve():
 def read_bare_polygons(*, extent):
     """Step 12's bare zones as one row per polygon, scored and amplified.
 
-    The same path step 8 takes for a world's zones (``face_polygons`` with
-    the extent's box, then the amplification on step 3's 100 m topographic
+    The same path landslide step 5 takes for a world's zones (``face_polygons`` with
+    the extent's box, then the amplification on ground step 1's 100 m topographic
     position), on the bare scenario.
 
     Returns:
@@ -226,7 +226,7 @@ def add_demand_ratios(polygons, *, extent, return_period_yr):
     """Add each polygon's site PGV per g of rock PGA and of site PGA.
 
     The site PGV is shaking step 3's grid; the rock PGA the TS1170.5 site
-    class I grid, the site PGA the grid of each cell's own class, as step 8
+    class I grid, the site PGA the grid of each cell's own class, as landslide step 5
     reads it.
     """
     pgv = read_grid(
@@ -735,7 +735,7 @@ def main(*, extent, world_id, return_period_yr):
     Args:
         extent: The extent to read, a name from
             ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
-        world_id: The exposure world whose step 8 model the walls are
+        world_id: The exposure world whose landslide step 5 model the walls are
             compared on.
         return_period_yr: The return period of the TS1170.5 grids.
     """
@@ -770,7 +770,7 @@ def write_tables(inputs, *, model_path):
             model, {name: curves[name] for name in ("adopted", "committed", "area")}
         )
     else:
-        print(f"{model_path} not found: run step 8 for the wall comparison.")
+        print(f"{model_path} not found: run landslide step 5 for the wall comparison.")
     for name, table in tables.items():
         show(name, table)
     print(RULE)

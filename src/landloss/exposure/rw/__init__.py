@@ -5,7 +5,7 @@ value of the land it holds up, so it is carried as its own asset with its own
 geometry rather than as an attribute of the land.
 
 No retaining wall dataset exists for the study area, so the population has to be
-inferred (**L-04**). The candidate walls are step 12's wall units
+inferred (**L-04**). The candidate walls are exposure step 6's wall units
 (:mod:`landloss.hazard.landslide.wall_units`;
 :mod:`landloss.exposure.rw.lines` keeps the wall positions and step height they
 share), the probability that each is a wall from

@@ -156,7 +156,7 @@ BETA_SCENARIO_MW = 8.1
 BETA_SITE_DISTANCE_KM = 25.0
 
 # The Vs30, in m/s, a 100 m shaking cell takes from its majority ground map
-# material (landslide step 4) where the Foster et al. (2019) model has no value
+# material (ground step 2) where the Foster et al. (2019) model has no value
 # and no Foster-classed cell lies within 200 m: mostly reclaimed ground along
 # the harbour. Judgement, set by the lead on 2026-10-06 (fill at 200 m/s); the
 # lead confirmed the whole table on 2026-10-06 (every material, the five added

@@ -11,7 +11,7 @@ carrying the share of its walls in each age bin and the rule that set them:
 (`landloss.io.qv_rating_roll.get_qv_rating_roll`), so this runs from a session
 that can reach it. Run exposure step 8 first (``gen_rwt_age.py`` then
 ``table_rwt_age_by_suburb.py``) over ``AGE_EXTENT`` in ``config.py``, and
-landslide step 12's ``gen_urban_slope_faces.py`` over ``EXTENT``, whose DEM bbox
+ground step 4's ``gen_slope_faces.py`` over ``EXTENT``, whose DEM bbox
 the LINZ property boundaries are read on; that cache is shared with
 ``gen_wall_probability.py``.
 
@@ -50,7 +50,7 @@ from scripts.landloss.exposure.rw.steps.s8_infer_rwt_age.table_rwt_age_by_suburb
     SUBURB_COLUMNS,
     table_path,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
     CRS,
     dem_bbox,
 )

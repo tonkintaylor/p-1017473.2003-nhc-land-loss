@@ -92,7 +92,7 @@
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/test_property_damage_step.py`. It has not been run on
   the pilot since the rework, so no counts are recorded here; it needs
-  exposure steps 5, 6 and 7, landslide steps 1 to 9 and every vul step it
+  the ground module, exposure steps 5, 6 and 7, landslide steps 1 to 6 and every vul step it
   reads run first.
 
 Potential future improvements: see `s10_property_damage_implementation_plan.md`.

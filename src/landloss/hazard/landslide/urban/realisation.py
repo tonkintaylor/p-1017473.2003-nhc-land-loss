@@ -4,8 +4,8 @@ What belongs here: sampling PGV at each polygon's representative point, the
 failure draw against each polygon's fragility, resolving overlaps among the
 failed polygons (absorption), supersession by the large model's evacuated
 polygons, the rows the surviving failures write beside the large model's, and
-the wall outcome table. Used by landslide step 9
-(``s9_urban_slope_realisation``); contract sections 5 and 7.11 of
+the wall outcome table. Used by landslide step 6
+(``s6_urban_slope_realisation``); contract sections 5 and 7.11 of
 ``.agents/plans/urban-slope-build-contract.md``.
 
 The draw is one uniform per polygon of the model file, in the file's own order
@@ -127,7 +127,7 @@ UNIFORM_COLUMN = "uniform"
 FAILED_COLUMN = "failed"
 
 # The combined realisation columns (contract section 3.10), in order. The
-# large rows keep every column step 1 wrote after these.
+# large rows keep every column landslide step 3 wrote after these.
 LANDSLIDE_ID_COLUMN = "landslide_id"
 UNIT_ID_COLUMN = "unit_id"
 DEPTH_COLUMN = "depth_m"
@@ -672,7 +672,8 @@ def combine_with_large(
     """Put the urban rows beside the large-model rows in one schema.
 
     The contract columns come first in their order, then every further column
-    the large rows carry (step 1's simulation columns), null on the urban rows;
+    the large rows carry (landslide step 3's simulation columns), null on the
+    urban rows;
     large rows carry null in the urban-only columns. Sorted by
     ``landslide_id`` then ``land_class``.
 
@@ -695,7 +696,10 @@ def combine_with_large(
     required = (LANDSLIDE_ID_COLUMN, POPULATION_COLUMN, LAND_CLASS_COLUMN)
     missing = [column for column in required if column not in large_rows.columns]
     if missing:
-        msg = f"the large-model rows miss {missing}; run the reworked step 1"
+        msg = (
+            f"the large-model rows miss {missing}; "
+            "run landslide step 3 (s1_simulate_landslides.py)"
+        )
         raise ValueError(msg)
 
     extra = [column for column in large_rows.columns if column not in COMBINED_COLUMNS]

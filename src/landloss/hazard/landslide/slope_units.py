@@ -13,7 +13,7 @@ The routing comes from :mod:`landloss.common.utils.hydrology` -- priority
 flood, D8 receivers and accumulation -- and the labelling from
 ``scipy.ndimage``; pysheds is not used, because it needs numba and numba
 forces a numpy downgrade this project does not tolerate (contract section 12).
-The layer is built by landslide step 5 (``s5_slope_units``), which mints the
+The layer is built by landslide step 1 (``s1_slope_units``), which mints the
 ``unit_id`` and reads the flatland share onto each unit.
 
 Every stage is a public function taking and returning arrays or frames, so a

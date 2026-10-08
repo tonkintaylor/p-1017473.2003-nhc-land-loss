@@ -2,7 +2,7 @@
 
 A retaining wall inventory does not exist for the study area (**L-04**), so a
 candidate carries a probability, not a fact. The candidates are the wall units
-landslide step 12 builds on the potential instability faces
+exposure rw step 6 builds on the potential instability faces of ground step 4
 (:mod:`landloss.hazard.landslide.wall_units`), which carry their own
 ``p_wall``: :func:`gen_unit_probability_table` puts on each unit the claim it
 belongs to (:func:`claim_of_properties`), in the shape the population draw
@@ -14,7 +14,7 @@ The probability carries a *basis*, the last rule that set it, so a map of
 there is. :mod:`landloss.exposure.rw.population` draws a world from the table
 this module writes; keeping the two apart means the evidence is read once and
 any number of worlds are drawn from it cheaply. The walls a claim report lists
-raise the wall units' probabilities in landslide step 12
+raise the wall units' probabilities in exposure rw step 6
 (:func:`landloss.hazard.landslide.wall_units.gen_wall_unit_probability`), not
 here.
 """
@@ -31,7 +31,7 @@ from landloss.exposure.rw.population import REQUIRED_COLUMNS, WALL_LINE_ID_COLUM
 
 HEIGHT_COLUMN = "face_height_m"
 
-# The wall unit columns the unit table reads (landslide step 12).
+# The wall unit columns the unit table reads (exposure rw step 6).
 UNIT_COLUMNS = (
     "property_id",
     "p_wall",
@@ -100,12 +100,12 @@ def gen_unit_probability_table(
 ) -> gpd.GeoDataFrame:
     """Return the wall units in the shape the population draw reads.
 
-    One row per wall unit from landslide step 12, carrying its ``p_wall`` as
+    One row per wall unit from exposure rw step 6, carrying its ``p_wall`` as
     it is. A unit's id is its ``wall_line_id``, so a drawn wall names the unit
     it came from.
 
     Args:
-        units: The wall unit table ``gen_urban_slope_wall_units.py`` writes,
+        units: The wall unit table ``gen_wall_units.py`` writes,
             indexed by ``wall_unit_id``, carrying :data:`UNIT_COLUMNS`.
         claim_ids: From :func:`claim_of_properties`.
 
@@ -140,7 +140,7 @@ def gen_unit_probability_table(
             "size_class": size_class,
             HEIGHT_COLUMN: height,
             "length_m": units["length_m"].to_numpy(dtype=float),
-            # is_fill is landslide step 13's class fill or cut and fill; every
+            # is_fill is ground step 5's class fill or cut and fill; every
             # other class (cut, natural, uncertain, unknown) is read as a cut.
             "wall_position": np.where(units["is_fill"].to_numpy(dtype=bool), FILL, CUT),
             # The wall units are faces of sloping ground; walls on the flat

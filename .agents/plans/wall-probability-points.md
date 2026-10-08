@@ -2,14 +2,14 @@
 
 Written 2026-10-07 for review by the lead; **implemented 2026-10-07** with the
 lead's decisions below (`wall_units.gen_wall_points`). Replaces the
-multiplied factors of `wall_units.gen_wall_prior` (step 12). Builds on
+multiplied factors of `wall_units.gen_wall_prior` (then in step 12, now exposure rw step 6). Builds on
 `placing-retaining-walls-on-pifs.md`, whose candidate model (SIZ pieces,
 low-height walls, GNS-only pieces, each independent) is unchanged.
 
 ## The lead's decisions (2026-10-07)
 
 1. Flatland is not scored. Length scores −5 under 5 m only.
-2. Step 13 class: a cut in rock deeper than **2.0 m** (was 2.5 m) −20; fill
+2. Ground step 5 class: a cut in rock deeper than **2.0 m** (was 2.5 m) −20; fill
    and cut and fill +5; natural −15.
 3. Geology: a cut in soil (alluvium, loess, colluvium, the fill materials)
    **+10**; highly or completely weathered rock (`rock_hw_cw`) and crushed
@@ -40,7 +40,7 @@ low-height walls, GNS-only pieces, each independent) is unchanged.
 ## Why change
 
 The prior today multiplies probabilities: 0.5 for a SIZ piece, times the
-height band, the step 13 class (fill ×1.3, natural ×0.5, rock cut ×0.3), the
+height band, the ground step 5 class (fill ×1.3, natural ×0.5, rock cut ×0.3), the
 setting (road frontage ×2.0, property boundary ×1.5) and the tall-face taper,
 then clipped to 1. The factors stack past 1: a cut, fill or uncertain face on
 a road frontage reaches 1.0 with no mapped wall, more certain than a GNS
@@ -85,7 +85,7 @@ A read-only check of the 4,975 pif candidates (SIZ and low-height) on the
 pilot: the share with a GNS mapped wall within 2 m, by attribute (23.2%
 overall), and a joint logistic fit of GNS presence on all attributes at once
 (AUC 0.74), with its coefficients as points at 20 per doubling. Script:
-scratchpad `wall_attr_check.py`, run on a snapshot of the step 12 outputs.
+scratchpad `wall_attr_check.py`, run on a snapshot of the wall unit outputs (then step 12, now exposure rw step 6).
 
 **The label is positive-only and visibility-biased.** GNS mapped the walls it
 could see from above; a candidate without a GNS wall is not a "no". Anything
@@ -102,7 +102,7 @@ size.
 | Distance to building | 0.30 within 2 m, 0.06 at 20–50 m | +21 within 5 m | Real: walls hold house platforms |
 | Road frontage | 0.48 vs 0.20 | +37 | Real and visible; keep strong but below the raw value |
 | Property boundary (not road) | 0.32 vs 0.17 | +8 | Real; mostly explained by building distance and road frontage together |
-| Step 13 class | cut and fill 0.32, cut 0.25, fill 0.21, uncertain 0.23, natural 0.14 | natural −8, fill +4 | Natural faces are less often walls |
+| Ground step 5 class | cut and fill 0.32, cut 0.25, fill 0.21, uncertain 0.23, natural 0.14 | natural −8, fill +4 | Natural faces are less often walls |
 | NLM flatland | 0.33 vs 0.20 | +12 | GNS sees walls along open flat streets; the lead's judgement is a modest reduction |
 | Straightness, bends, turning | straight pieces lower (0.20) | 0 | No signal once length is held fixed: short pieces are straight. Drop |
 
@@ -130,7 +130,7 @@ calibration.
 |  | over 20 m | −20 |
 | Setting | road frontage | +20 |
 |  | property boundary (not road) | +10 |
-| Step 13 class | fill, cut and fill | +5 |
+| Ground step 5 class | fill, cut and fill | +5 |
 |  | natural | −15 |
 |  | cut in rock over 2.0 m | −20 (the lead, 2026-10-07: −35 too extreme; 2.0 m not 2.5 m) |
 | Geology | cut in soil (incl. HW/CW and crushed rock) | +10 |
@@ -180,7 +180,7 @@ everything downstream read `p_prior` and `p_wall` as now.
   `gen_wall_prior`; the units already carry height, length, `building_m`, the
   setting flags and `cut_fill_class`; add the property's NHC-land-attrs flag.
 - `gen_wall_unit_probability`: drop the NHC-land-attrs update.
-- Step 12 `config.py`: the CSV path, the base and points per doubling.
+- Exposure rw step 6 `config.py` (was step 12): the CSV path, the base and points per doubling.
 - Tests: the scale (0 points = base, +20 doubles the odds), each attribute's
   bins, the explain string, no probability reaching 1, the floor and update
   still on top.

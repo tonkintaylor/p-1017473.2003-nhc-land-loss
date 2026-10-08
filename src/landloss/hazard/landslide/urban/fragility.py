@@ -4,13 +4,13 @@ What belongs here: the reader of the anchor table
 (``urban-fragility-anchors.csv`` in :mod:`landloss.io.assets`), the
 conversion of a PGA-based median by the PGV/PGA ratio, the localised (no
 wall) median from the susceptibility rating, the rate factor, the row assembly
-:func:`assign_fragility` that landslide step 8 writes out, and the fit of the
+:func:`assign_fragility` that landslide step 5 writes out, and the fit of the
 localised median to the anchor table that the urban validation draws. The
 lognormal failure probability lives in
 :mod:`landloss.hazard.landslide.urban.lognormal` and is re-exported here; the
 wall curves are read from
 :mod:`landloss.hazard.landslide.urban.wall_type_fragility`. Used by landslide
-step 8 (``s8_urban_slope_fragility``), the urban validations and
+step 5 (``s5_urban_slope_fragility``), the urban validations and
 ``landloss.vul.shaking.fragility`` for flat-land walls.
 
 Every fragility is a lognormal cumulative distribution on PGV in m/s,
@@ -605,7 +605,7 @@ def _pick_state(
 ) -> gpd.GeoSeries:
     """Take the geometry of the polygon's own state, one column per kind.
 
-    Polygons built for one world's walls (landslide step 12's zones, through
+    Polygons built for one world's walls (landslide step 4's zones, through
     :mod:`landloss.hazard.landslide.urban.face_polygons`) carry one geometry
     per kind, already the world's, and it is taken as it is.
     """
@@ -666,7 +666,7 @@ def drawn_edge_walls(
     polygon its wall, and every such wall fails with the polygon.
 
     Args:
-        polygons: The polygons (step 12's zones, shaped by
+        polygons: The polygons (landslide step 4's zones, shaped by
             :mod:`~landloss.hazard.landslide.urban.face_polygons`; the old
             step 7 polygons were removed 2026-10-08), carrying ``wall_line_id`` and
             ``wall_line_ids``.
@@ -717,7 +717,7 @@ def assign_fragility(
     sharing its longest edge, because the old step 7 polygons (removed
     2026-10-08) fixed one wall geometry per polygon. The model carries that line
     as ``wall_line_id`` and every edge
-    line that drew a wall as ``wall_line_ids``, so step 9 can give each of
+    line that drew a wall as ``wall_line_ids``, so landslide step 6 can give each of
     those walls the polygon's outcome. It then sets the wall state, picks the
     state's fixed
     geometry and depths off the polygon file, and computes the row columns of
@@ -730,7 +730,7 @@ def assign_fragility(
 
     Args:
         polygons: The polygons, carrying ``wall_line_ids`` beside
-            ``wall_line_id``: in the pipeline, one world's landslide step 12
+            ``wall_line_id``: in the pipeline, one world's landslide step 4
             zones from
             :func:`landloss.hazard.landslide.urban.face_polygons.face_polygons`,
             whose wall line is the polygon's wall unit and whose geometry is

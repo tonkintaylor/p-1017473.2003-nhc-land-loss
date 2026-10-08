@@ -174,7 +174,7 @@ window.REVIEWER = __REVIEWER_DATA__;
 <script>
 "use strict";
 const R = window.REVIEWER;
-const MODULE_COLOUR = { hazard: "#3b6e8f", exposure: "#8a5cc2", vul: "#eb6834", input: "#8d8d88", loss: "#1baf7a" };
+const MODULE_COLOUR = { ground: "#7a6a3a", hazard: "#3b6e8f", exposure: "#8a5cc2", vul: "#eb6834", input: "#8d8d88", loss: "#1baf7a" };
 const CLASS_COLOUR = {
   cut: "#2a78d6", fill: "#eb6834", cut_and_fill: "#8a5cc2", natural: "#1baf7a",
   uncertain: "#b4b4b0", unknown: "#55554f",
@@ -805,7 +805,7 @@ function pipRule(parent, ex) {
       `A cell is a pip when it stands more than <b>${ex.drop_m} m</b> above each of the cells <b>${ex.offsets_cells.join(", ")}</b> cells away in one of the eight directions` +
       ` (×1.41 along a diagonal, so ${(ex.drop_m * Math.SQRT2).toFixed(2)} m). All three must pass. ` +
       `This one falls ${ex.diagonal ? "along a diagonal" : "along a row or column"}, so it needs ${ex.need_m.toFixed(2)} m. ` +
-      `Filled dots are cells step 12 recorded as pips of pif ${ex.pif_id} (${esc(ex.cut_fill_class ?? "")}); click any dot to test that cell instead. ` +
+      `Filled dots are cells ground step 3 recorded as pips of pif ${ex.pif_id} (${esc(ex.cut_fill_class ?? "")}); click any dot to test that cell instead. ` +
       `The 1-cell test keeps out batters, whose drop is spread out; the 5-cell test keeps out blips. A cell is tested in all eight directions, and only the one it falls along is drawn (RW-A01).`);
     side.append("p").attr("class", "hint").text(`Site: ${ex.site} · pip at NZTM ${ex.x.toFixed(0)}, ${ex.y.toFixed(0)}`);
     linkify(side);
@@ -887,7 +887,7 @@ function sectionChart(parent, sec, width) {
   svg.append("text").attr("x", W / 2).attr("y", H - 2).attr("text-anchor", "middle").style("font-size", "10.5px").attr("fill", "#6a6a66")
     .text(`m along the section · uphill ← 0 = crest pip → downhill · ${exaggeration > 1.05 ? `vertical ×${exaggeration.toFixed(1)}` : "true scale"}`);
   parent.append("div").attr("class", "key").style("margin-left", 0).html(
-    `<span><i style="background:#5a4a32"></i>1 m DEM</span><span><i style="background:#2a78d6"></i>step 13 fitted surface (dashed)</span>` +
+    `<span><i style="background:#5a4a32"></i>1 m DEM</span><span><i style="background:#2a78d6"></i>ground step 5 fitted surface (dashed)</span>` +
     `<span><i style="background:${colour}"></i>this pif's pips near the line</span><span>● crest pip ○ its foot</span>` +
     `<span>bars: <i style="background:#eb6834"></i>above surface <i style="background:#2a78d6"></i>below</span>`);
 }
@@ -900,7 +900,7 @@ function openTrace(unitId) {
   if (!c) { body.append("p").text(`No chain for ${unitId}.`); return; }
   const u = c.unit;
   body.append("h3").text(`Wall unit ${u.wall_unit_id}`);
-  body.append("div").attr("class", "stamp").html(`<a href="#trace=${encodeURIComponent(u.wall_unit_id)}">link to this trace</a> · ids change when step 12 reruns`);
+  body.append("div").attr("class", "stamp").html(`<a href="#trace=${encodeURIComponent(u.wall_unit_id)}">link to this trace</a> · ids change when exposure rw step 6 reruns`);
   body.append("div").attr("class", "stamp").text(`${u.unit_source} · ${u.cut_fill_class ?? "no class"} · ${fmt(u.height_m)} m high · ${fmt(u.length_m)} m long`);
 
   const pifIds = (u.member_pif_ids || []).map(String).filter(id => R.sections[id]);
@@ -915,7 +915,7 @@ function openTrace(unitId) {
   body.append("h4").html(`3 · Probability of a wall <a href="#step-wall_units">↗</a>`);
   waterfall(body, u);
   if (u.wall_points !== null && u.wall_points !== undefined) {
-    // The bins that scored, as step 12 wrote them in wall_points_explain.
+    // The bins that scored, as exposure rw step 6 wrote them in wall_points_explain.
     const parts = (u.wall_points_explain || "").split("; ").filter(Boolean);
     body.append("div").style("font-size", "12.5px").style("margin-top", "4px")
       .html(`<b>${u.wall_points >= 0 ? "+" : ""}${fmt(u.wall_points)} points</b> (RW-A08)`);

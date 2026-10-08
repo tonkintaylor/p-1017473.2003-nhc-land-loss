@@ -130,7 +130,7 @@ Christchurch, with the comparison above, as a known conservatism.
    elsewhere. The type then sets the condition: the gravity masonry types
    read poor, the others read the age rule.
 4. **One curve set for sloping and flat walls**, as now. The Canterbury walls
-   are Port Hills hillside walls, so the comparison serves landslide step 8
+   are Port Hills hillside walls, so the comparison serves landslide step 5
    (walls on slopes) and vul shaking rw step 9 (flat-land walls).
 
 ## Other sources reviewed

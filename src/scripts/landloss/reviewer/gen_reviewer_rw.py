@@ -76,31 +76,35 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population i
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_probability import (
     wall_probability_path,
 )
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
-    dem_path,
-)
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility.gen_urban_slope_fragility import (
-    urban_slope_model_path,
-)
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
-    combined_realisation_path,
-    urban_wall_outcome_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    elements_path,
-    gns_only_path,
-    siz_table_path,
-    wall_elements_path,
-    zones_path,
-)
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_wall_units import (
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
     wall_draws_path,
     wall_property_records_path,
     wall_units_path,
 )
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill.gen_pif_cut_fill import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
+    dem_path,
+)
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
+    elements_path,
+)
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import (
+    gns_only_path,
+    siz_table_path,
+)
+from scripts.landloss.ground.steps.s5_pif_cut_fill.gen_pif_cut_fill import (
     pif_cut_fill_path,
     pif_cut_fill_pips_path,
+)
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import (
+    wall_elements_path,
+    zones_path,
+)
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
+    urban_slope_model_path,
+)
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
+    combined_realisation_path,
+    urban_wall_outcome_path,
 )
 from scripts.landloss.paths import REPO_ROOT, REPORT_DIR
 from scripts.landloss.reviewer import config
@@ -156,7 +160,7 @@ SECTION_UPHILL_M = 15.0
 SECTION_DOWNHILL_M = 25.0
 SECTION_STEP_M = 0.5
 SECTION_PIP_BUFFER_M = 1.5
-# The step 13 figures a section prints beside it.
+# The ground step 5 figures a section prints beside it.
 SECTION_METRICS = [
     "cut_fill_class",
     "n_pips",
@@ -432,7 +436,7 @@ def row_checks(frames, *, world_id):
         )
     population = frames["wall_population"]
     for key, label in [
-        ("wall_outcome", "landslide step 9 outcomes"),
+        ("wall_outcome", "landslide step 6 outcomes"),
         ("wall_landslide_damage", "vul landslide rw flags"),
         ("loss_input_rw", "loss input rw rows"),
     ]:
@@ -497,7 +501,7 @@ def explain_counts(explain):
     """How many units scored each attribute bin, from ``wall_points_explain``.
 
     The explain string lists the bins that scored, "verticality 0.5 and over
-    +10; setting road_frontage +20", so this counts what step 12 wrote rather
+    +10; setting road_frontage +20", so this counts what exposure rw step 6 wrote rather
     than scoring the units again. Age is share-weighted, so its points vary by
     unit; it is one row with the range of points it took.
     """
@@ -524,8 +528,9 @@ def wall_points_charts(units):
     """The points table, the points-to-prior scale and how the units scored.
 
     The table and the scale are the model's own (``wall_units.load_wall_points``
-    and ``wall_units.wall_probability`` at the step 12 constants); the pilot
-    charts count the ``wall_points`` and ``wall_points_explain`` step 12 wrote.
+    and ``wall_units.wall_probability`` at the exposure rw step 6 constants);
+    the pilot charts count the ``wall_points`` and ``wall_points_explain``
+    that step wrote.
     """
     table = wall_units.load_wall_points()
     charts = {
@@ -643,7 +648,7 @@ def fragility_table_chart():
         "(moderate) read as replace. p15 and p50 are PGA (g); β is the "
         "lognormal dispersion through them. The height class splits at "
         f"{wall_type_fragility.HEIGHT_CLASS_SPLIT_M:g} m. On a slope, landslide "
-        f"step 8 multiplies the median by {wall_type_fragility.FILL_CAPACITY_FACTOR:g} "
+        f"step 5 multiplies the median by {wall_type_fragility.FILL_CAPACITY_FACTOR:g} "
         f"for a fill wall and {wall_type_fragility.CUT_CAPACITY_FACTOR:g} for a cut "
         "wall, then converts it to PGV.",
         wide=True,
@@ -898,12 +903,12 @@ def section_pip(pips):
 
 
 def pif_section(pif, pips, dem):
-    """One pif's cross-section as step 13 saw it, or None if it has no walk.
+    """One pif's cross-section as ground step 5 saw it, or None if it has no walk.
 
     The line runs along the chosen pip's own walk to its foot, which is the
-    direction step 13 measured the face in, so the crest and foot on the section
+    direction ground step 5 measured the face in, so the crest and foot on the section
     are the ones its residuals were taken at. The surface drawn is the
-    quadratic step 13 fitted and saved for the pif, evaluated along the line;
+    quadratic ground step 5 fitted and saved for the pif, evaluated along the line;
     nothing is refitted. The class itself rests on medians over all the pif's
     pips, so one section illustrates it rather than proves it.
     """
@@ -981,7 +986,7 @@ def pip_example(site, half_width_m, frames, dem_path):
     """The DEM cells along one real pip's fall, for drawing the pip rule.
 
     The pip is the middle pip of the longest fill pif at the site (any class if
-    there is no fill), and its direction is the one step 12 recorded for it
+    there is no fill), and its direction is the one ground step 3 recorded for it
     (``pip_direction``), so the example is a pip the model found, read the way
     the model read it. Only the cells are returned; the page applies the rule
     from :mod:`landloss.hazard.landslide.instability_zones` to them, with the

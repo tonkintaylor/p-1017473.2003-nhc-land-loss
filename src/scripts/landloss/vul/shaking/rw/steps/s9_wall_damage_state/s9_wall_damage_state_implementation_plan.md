@@ -30,7 +30,7 @@ Contract sections 3.11 and 7.12 of `.agents/plans/urban-slope-build-contract.md`
 
 - [x] Restrict the step to walls with `is_flatland` true. A sloping wall stands
       on an urban failure polygon's edge and is drawn with it by landslide
-      step 9, so it is not drawn here.
+      step 6, so it is not drawn here.
 - [x] Move the intensity measure from PGA to PGV: read shaking step 5's
       `pgv_path(r)` instead of step 4's PGA.
 - [x] Index the curve on size class and initial condition through

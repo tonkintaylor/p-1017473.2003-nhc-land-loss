@@ -26,7 +26,7 @@ the legend should read, which is not always the sort order of the values.
 # they have to be told apart at a glance, because the whole reason the model
 # keeps them separate is that NHC settles loss of support and runout
 # differently. Yellow for imminent land, the band behind the scarp that has not
-# moved but is left unsafe, which the urban failures (step 9) also write.
+# moved but is left unsafe, which the urban failures (landslide step 6) also write.
 EVACUATED_LAND = "evacuated land"
 INUNDATED_LAND = "inundated land"
 IMMINENT_LAND = "imminent land"

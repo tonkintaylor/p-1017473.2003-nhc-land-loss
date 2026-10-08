@@ -52,7 +52,7 @@ Nick Peters). This plan:
 - [x] The research figure and findings
   (`src/scripts/landloss/vul/research/fig_rw_type_fragility.py`).
 
-Since 2026-10-06 landslide step 8 and vul shaking step 9 read the type table.
+Since 2026-10-06 landslide step 5 (then step 8) and vul shaking step 9 read the type table.
 
 **Changed 2026-10-07 (the lead): two height classes, not three size
 classes.** The table is keyed on `(wall_type, height_class)`, 14 rows:
@@ -172,7 +172,7 @@ walls.
 
 `wall_type_failure_probability(pga_g, wall_type, height_m, wall_position,
 table)` (`size_class` until 2026-10-07) gives each wall's probability of replacement. `wall_position` is the
-unit's `fill` or `cut` (step 13's class, already on the drawn walls). It
+unit's `fill` or `cut` (ground step 5's class, already on the drawn walls). It
 replaces the `(wall_class, size_class, initial_condition)` lookup in:
 
 - `landloss.hazard.landslide.urban.fragility` (walls on sloping land, landslide

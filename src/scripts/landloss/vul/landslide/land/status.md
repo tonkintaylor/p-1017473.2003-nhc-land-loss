@@ -14,7 +14,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [x] Read the hazard module's source and runout polygons **separately** and produce
   an outcome per cause, because loss of support and runout are settled
   differently.
-- [x] Read the large and urban landslides alike, from landslide step 9's
+- [x] Read the large and urban landslides alike, from landslide step 6's
   combined realisation per exposure world and earthquake, and leave the urban
   model's imminent land unmeasured until **T-45** is decided.
 - [x] Work per property against the **insured land polygon**, the 8 m line from the
@@ -86,7 +86,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   not to be quoted: the hazard realisation currently produces about two orders
   of magnitude less damaged ground than the ESNZ grid's own expectation, because
   the size power law is sampled far below the scale it was fitted at. The shape
-  of the output is right and the quantity is not. That run predates the step 1
+  of the output is right and the quantity is not. That run predates the landslide step 3
   rework and the urban model; the step is tested on synthetic inputs since and
   has not been rerun.
 - Nothing is priced. The rate schedule has not been brought into the repository;
@@ -108,7 +108,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 5. Add the scheme feasibility table and the cheapest-feasible selection.
 6. Add the repair-against-value settlement test, reading the land value rate
    from the exposure module.
-7. Rerun over the pilot once landslide step 9 has written the combined
+7. Rerun over the pilot once landslide step 6 has written the combined
    realisation.
 
 ## Validation

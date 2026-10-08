@@ -1,97 +1,56 @@
-"""Run the hazard steps end to end, in two passes around the exposure module.
+"""Run the hazard steps end to end, after the ground and exposure modules.
 
     uv run --frozen python src/scripts/landloss/hazard/gen_hazard.py
 
-:func:`main` runs everything that reads no exposure: first the landslide
-multiscale slope, terrain derivatives and ground map (shaking step 2 reads the
-ground map's materials for the cells the Foster Vs30 model leaves unclassed),
-then shaking (site class, PGV, then the PGA and PGV realisations), liquefaction
-(free faces, land damage probabilities, then states), then the rest of the
-landslide ground work -- the slope units, step 14's instability zones (the
-pips to elements, skipped when its last run still holds), step 12's urban
-slope faces, step 13's pif cut and fill (which the wall units read), and step 12's wall units (drawn per exposure world) and
-per-world zones -- and last the large-model landslide realisations,
-which read only hazard outputs. Exposure rw step 6 reads step 12's wall units,
-so they are built in this pass. The extent, realisations and worlds come from ``config.py``
-beside this; anything else a step reads comes from that step's own
-``config.py``.
+Shaking first (site class, which reads the ground module's ground map for the
+cells the Foster Vs30 model leaves unclassed, PGV, then the PGA and PGV
+realisations), then liquefaction (free faces, land damage probabilities, then
+states), then landslide: the slope units (step 1), the Hancox 1997 coverage
+(step 2), the large-model landslide realisations (step 3), the zones of each
+exposure world's drawn walls (step 4), the fragility of those zones (step 5)
+and the urban realisation per world and earthquake (step 6).
 
-:func:`main_urban` runs the rest of the landslide chain, steps 8 and 9: the
-fragility of each world's urban failure polygons (step 12's zones of that
-world's wall draw) and the urban realisation per world and earthquake. These
-read the exposure module's drawn walls and wall population, so the hazard
-module no longer runs in one pass before or after exposure: ``gen_all.py``
-runs :func:`main`, then the exposure module (whose wall population reads step
-12's draw), then :func:`main_urban`, then vul. Running this file runs
-:func:`main` only: it redraws the wall units, and step 8 stops on zones and
-drawn walls from different draws, so run ``gen_all.py`` for the whole chain,
-or the exposure module and then :func:`main_urban` by hand.
+Landslide steps 4 to 6 read exposure rw step 6's wall units and each world's
+draw of them, which read the ground module, so ``gen_all.py`` runs ground,
+exposure, then this. The extent, realisations and worlds come from
+``config.py`` beside this; anything else a step reads comes from that step's
+own ``config.py``.
 
-The slope failure susceptibility step is not run: nothing downstream reads it
-yet, as it rebuilds the GWRC model for comparison against the supplied grid
+The slope failure susceptibility (step 7) and the Kritikos et al. 2015 model
+(step 8) are not run here: step 3 calls the coverage model it is set to use,
+and step 7 rebuilds the GWRC model for comparison against the supplied grid
 rather than feeding the chain.
 """
 
-from scripts.landloss.exposure.rw.steps.s6_wall_population import (
-    config as wall_population_config,
-)
-from scripts.landloss.exposure.rw.steps.s6_wall_population import gen_wall_age
 from scripts.landloss.hazard import config
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
-    config as large_config,
-)
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
-    s1_simulate_landslides,
-)
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
-    config as slope_config,
-)
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope import (
-    gen_multiscale_slope,
-    gen_terrain_derivatives,
-)
-from scripts.landloss.hazard.landslide.steps.s4_ground_map import (
-    config as ground_map_config,
-)
-from scripts.landloss.hazard.landslide.steps.s4_ground_map import gen_ground_map
-from scripts.landloss.hazard.landslide.steps.s5_slope_units import (
+from scripts.landloss.hazard.landslide.steps.s1_slope_units import (
     config as slope_units_config,
 )
-from scripts.landloss.hazard.landslide.steps.s5_slope_units import gen_slope_units
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
-    config as fragility_config,
-)
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
-    gen_urban_slope_fragility,
-)
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
-    gen_urban_slope_realisation,
-)
-from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+from scripts.landloss.hazard.landslide.steps.s1_slope_units import gen_slope_units
+from scripts.landloss.hazard.landslide.steps.s2_hancox_1997 import (
     config as hancox_config,
 )
-from scripts.landloss.hazard.landslide.steps.s10_hancox_1997 import (
+from scripts.landloss.hazard.landslide.steps.s2_hancox_1997 import (
     gen_hancox_1997_coverage,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
-    config as faces_config,
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
+    config as large_config,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces import (
-    gen_urban_slope_faces,
-    gen_urban_slope_wall_units,
-    gen_urban_slope_wall_zones,
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
+    s1_simulate_landslides,
 )
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill import (
-    config as cut_fill_config,
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones import (
+    config as wall_zones_config,
 )
-from scripts.landloss.hazard.landslide.steps.s13_pif_cut_fill import (
-    gen_pif_cut_fill,
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones import gen_wall_zones
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import (
+    config as fragility_config,
 )
-from scripts.landloss.hazard.landslide.steps.s14_instability_zones import (
-    config as zones_config,
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import (
+    gen_urban_slope_fragility,
 )
-from scripts.landloss.hazard.landslide.steps.s14_instability_zones import (
-    gen_instability_zones,
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
+    gen_urban_slope_realisation,
 )
 from scripts.landloss.hazard.liquefaction.steps.s1_free_faces import (
     gen_liq_free_faces,
@@ -124,44 +83,19 @@ from scripts.landloss.pipeline import run_steps
 
 
 def main(*, extent, realisation_ids, world_ids):
-    """Run the hazard steps that read no exposure, in order.
+    """Run the hazard steps in order.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
         realisation_ids: Which modelled earthquakes to run.
-        world_ids: Which exposure worlds to draw the step 12 wall units for
-            and build their zones; the worlds exposure rw step 6 populates.
+        world_ids: Which exposure worlds to build the urban zones, fragility
+            and realisations for; the worlds exposure rw step 6 draws.
     """
     ids = {"extent": extent, "realisation_ids": realisation_ids}
     run_steps(
         "hazard",
         [
-            (
-                "landslide s3, multiscale slope and aspect",
-                lambda: gen_multiscale_slope.main(
-                    extent=extent,
-                    resolutions_m=slope_config.RESOLUTIONS_M,
-                    use_cached_dem=slope_config.USE_CACHED_DEM,
-                ),
-            ),
-            (
-                "landslide s3, terrain derivatives",
-                lambda: gen_terrain_derivatives.main(
-                    extent=extent,
-                    residual_base_resolutions_m=slope_config.RESIDUAL_BASE_RESOLUTIONS_M,
-                    topographic_position_windows_m=slope_config.TOPOGRAPHIC_POSITION_WINDOWS_M,
-                ),
-            ),
-            (
-                "landslide s4, ground map",
-                lambda: gen_ground_map.main(
-                    extent=extent,
-                    use_cached_layers=ground_map_config.USE_CACHED_LAYERS,
-                    default_gw_depth_m=ground_map_config.DEFAULT_GROUNDWATER_DEPTH_M,
-                    residual_modification_threshold_m=ground_map_config.RESIDUAL_MODIFICATION_THRESHOLD_M,
-                ),
-            ),
             (
                 "shaking s2, site class",
                 lambda: gen_site_class.main(extent=extent),
@@ -200,7 +134,7 @@ def main(*, extent, realisation_ids, world_ids):
                 lambda: gen_liq_ld_states.main(**ids),
             ),
             (
-                "landslide s5, slope units",
+                "landslide s1, slope units",
                 lambda: gen_slope_units.main(
                     extent=extent,
                     channel_threshold_ha=slope_units_config.CHANNEL_THRESHOLD_HA,
@@ -211,79 +145,7 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
-                "landslide s14, instability zones",
-                lambda: gen_instability_zones.main(
-                    extent=extent,
-                    use_cached_layers=zones_config.USE_CACHED_LAYERS,
-                    rebuild=zones_config.REBUILD,
-                    max_bends=faces_config.WALL_MAX_BENDS,
-                    stray_tolerance_m=faces_config.WALL_STRAY_TOLERANCE_M,
-                    min_segment_m=faces_config.WALL_MIN_SEGMENT_M,
-                    max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
-                    end_window_m=faces_config.PIF_END_WINDOW_M,
-                    wall_height_reach_m=faces_config.WALL_HEIGHT_REACH_M,
-                    wall_height_quantile=faces_config.WALL_HEIGHT_QUANTILE,
-                    max_untiled_cells=zones_config.MAX_UNTILED_CELLS,
-                    tile_core_m=zones_config.TILE_CORE_M,
-                    tile_margin_m=zones_config.TILE_MARGIN_M,
-                ),
-            ),
-            (
-                "landslide s12, urban slope faces",
-                lambda: gen_urban_slope_faces.main(
-                    extent=extent,
-                    use_cached_layers=faces_config.USE_CACHED_LAYERS,
-                    gns_wall_match_m=faces_config.GNS_WALL_MATCH_M,
-                    manual_wall_duplicate_m=faces_config.MANUAL_WALL_DUPLICATE_M,
-                    search_m=faces_config.SEARCH_M,
-                    gns_only_min_length_m=faces_config.GNS_ONLY_MIN_LENGTH_M,
-                    max_bends=faces_config.WALL_MAX_BENDS,
-                    stray_tolerance_m=faces_config.WALL_STRAY_TOLERANCE_M,
-                    max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
-                    wall_max_length_m=faces_config.WALL_MAX_LENGTH_M,
-                ),
-            ),
-            (
-                # The wall age shares give the wall points their age (the lead,
-                # 2026-10-07); they read QV (on T:), exposure step 8 and the
-                # LINZ properties on the step 3 DEM's bbox, none of step 12, so
-                # they run here, before the wall units.
-                "rw s6, wall age",
-                lambda: gen_wall_age.main(
-                    extent=extent, age_extent=wall_population_config.AGE_EXTENT
-                ),
-            ),
-            (
-                "landslide s13, pif cut and fill",
-                lambda: gen_pif_cut_fill.main(
-                    extent=extent,
-                    use_cached_layers=cut_fill_config.USE_CACHED_LAYERS,
-                ),
-            ),
-            (
-                "landslide s12, wall units",
-                lambda: gen_urban_slope_wall_units.main(
-                    extent=extent,
-                    use_cached_layers=faces_config.USE_CACHED_LAYERS,
-                    max_bends=faces_config.WALL_MAX_BENDS,
-                    min_segment_m=faces_config.WALL_MIN_SEGMENT_M,
-                    max_length_m=faces_config.WALL_MAX_LENGTH_M,
-                    max_turn_deg=faces_config.MAX_TOTAL_TURN_DEG,
-                    holdout_share=faces_config.CLAIM_HOLDOUT_SHARE,
-                    holdout_seed=faces_config.CLAIM_HOLDOUT_SEED,
-                    world_ids=world_ids,
-                ),
-            ),
-            (
-                "landslide s12, wall zones per world",
-                lambda: gen_urban_slope_wall_zones.main(
-                    extent=extent,
-                    use_cached_layers=faces_config.USE_CACHED_LAYERS,
-                    world_ids=world_ids,
-                ),
-            ),
-            (
-                "landslide s10, Hancox 1997 coverage",
+                "landslide s2, Hancox 1997 coverage",
                 lambda: gen_hancox_1997_coverage.main(
                     extent=extent,
                     realisation_ids=realisation_ids,
@@ -297,7 +159,7 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
-                "landslide s1, large-model landslide realisations",
+                "landslide s3, large-model landslide realisations",
                 lambda: s1_simulate_landslides.main(
                     **ids,
                     coverage_model=large_config.COVERAGE_MODEL,
@@ -307,28 +169,16 @@ def main(*, extent, realisation_ids, world_ids):
                     crest_weight=large_config.CREST_WEIGHT,
                 ),
             ),
-        ],
-    )
-
-
-def main_urban(*, extent, realisation_ids, world_ids):
-    """Run the urban slope chain, landslide steps 8 and 9, after exposure.
-
-    Step 8 reads step 12's zones of each world's wall draw (built in
-    :func:`main`) and exposure rw step 6's drawn walls of the same draw; step
-    12's zones are the polygons (the old steps 6 and 7 were removed 2026-10-08).
-
-    Args:
-        extent: The extent to run over, a name from
-            landloss.io.area_of_interest.EXTENTS or "full".
-        realisation_ids: Which modelled earthquakes to run.
-        world_ids: Which exposure worlds to run.
-    """
-    run_steps(
-        "hazard urban",
-        [
             (
-                "landslide s8, urban slope fragility",
+                "landslide s4, wall zones per world",
+                lambda: gen_wall_zones.main(
+                    extent=extent,
+                    use_cached_layers=wall_zones_config.USE_CACHED_LAYERS,
+                    world_ids=world_ids,
+                ),
+            ),
+            (
+                "landslide s5, urban slope fragility",
                 lambda: gen_urban_slope_fragility.main(
                     extent=extent,
                     world_ids=world_ids,
@@ -337,7 +187,7 @@ def main_urban(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
-                "landslide s9, urban slope realisations",
+                "landslide s6, urban slope realisations",
                 lambda: gen_urban_slope_realisation.main(
                     extent=extent,
                     world_ids=world_ids,
@@ -349,17 +199,8 @@ def main_urban(*, extent, realisation_ids, world_ids):
 
 
 if __name__ == "__main__":
-    settings = {
-        "extent": config.EXTENT,
-        "realisation_ids": config.REALISATION_IDS,
-        "world_ids": config.WORLD_IDS,
-    }
-    main(**settings)
-    print("-" * 72)
-    print(
-        "Ran the first hazard pass only. The urban slope chain (landslide steps "
-        "8 and 9, gen_hazard.main_urban) reads the exposure module's drawn walls "
-        "and wall population, which must be redrawn from these wall units "
-        "first: run gen_all.py, or exposure/gen_exposure.py and then "
-        "gen_hazard.main_urban."
+    main(
+        extent=config.EXTENT,
+        realisation_ids=config.REALISATION_IDS,
+        world_ids=config.WORLD_IDS,
     )

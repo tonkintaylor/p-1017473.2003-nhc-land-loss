@@ -1,6 +1,6 @@
 """Write the ground map's inputs and result as layers for a QGIS project.
 
-Clips each polygon source step 4 reads, and the ground map it makes, to the pilot and
+Clips each polygon source ground step 2 reads, and the ground map it makes, to the pilot and
 writes them under ``temp/qgis-ground-map/`` with a spec for
 ``.agents/skills/making-qgis-projects/scripts/build_qgis_project.py``. Hillshade and
 contours are reused from ``temp/qgis-d2-pilot/``
@@ -29,10 +29,10 @@ from landloss.io.readers import (
     get_wellington_urban_geology,
 )
 from scripts.landloss.hazard.landslide.research.slope_elements import config
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     resolve_extent,
 )
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     MODIFICATION_RESIDUAL_M,
     ground_map_path,
     polygonise_groundwater,

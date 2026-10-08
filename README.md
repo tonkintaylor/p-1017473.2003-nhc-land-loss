@@ -44,7 +44,7 @@ explanation.
 
 ### `tdrive_sync` and local-only working mode
 
-This project's own versioned intermediate/output data (hazard, exposure, vul,
+This project's own versioned intermediate/output data (ground, hazard, exposure, vul,
 loss) is saved and read through `src/tdrive_sync` (imported as `ts`), backed by
 the shared `T:` drive at the `BASE_DIR`/`DATA_VERSION` set in `tdrive_sync_config.py`
 at the repo root. That file is committed to git — `BASE_DIR` and `DATA_VERSION`

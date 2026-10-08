@@ -2,7 +2,7 @@
 
 Run 2026-10-06 with `fig_rw_type_fragility.py`, which writes
 `report/vul/rw/fig/rw-type-fragility.png`. The project lead confirmed the
-curves on 2026-10-06, and since then landslide step 8 and vul shaking step 9
+curves on 2026-10-06, and since then landslide step 5 and vul shaking step 9
 read them (`.agents/plans/assigning-retaining-wall-types.md`).
 
 ## Question

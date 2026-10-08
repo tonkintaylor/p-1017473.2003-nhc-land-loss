@@ -56,14 +56,11 @@ from scripts.landloss.hazard.landslide.research.cut_fill.gen_pif_cut_fill import
     pip_table_path,
     rolling_mean_path,
 )
-from scripts.landloss.hazard.landslide.steps.s3_multiscale_slope.gen_multiscale_slope import (
+from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
     dem_path,
 )
-from scripts.landloss.hazard.landslide.steps.s12_urban_slope_faces.gen_urban_slope_faces import (
-    CRS,
-    CUT_FILL_LINE_TYPE,
-    MAPPED_WALL_TYPE,
-)
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import CRS
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import CUT_FILL_LINE_TYPE, MAPPED_WALL_TYPE
 from scripts.landloss.paths import RESEARCH_DIR
 
 FIG_DIR = RESEARCH_DIR / "hazard" / "landslide" / "pif_cut_fill" / "fig"
@@ -358,7 +355,7 @@ def main(*, extent, use_cached_layers, specs, length_m, buffer_m, method):
     dem = read_raster(dem_path(1, extent=extent))
     rolling = read_raster(rolling_mean_path(extent=extent))
 
-    # The same bbox landslide step 12 read the layers with, so the cache is reused.
+    # The same bbox ground step 4 read the layers with, so the cache is reused.
     bbox = dem[2]
     morphology = get_gns_slide_morphology(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
     walls = morphology[morphology["Type"] == MAPPED_WALL_TYPE]

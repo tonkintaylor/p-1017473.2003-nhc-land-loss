@@ -9,7 +9,7 @@
   question — unlike liquefaction, where the property carries a state.
 - Properties come from `temp/exposure/insured-land[-pilot].geoparquet`
   (exposure step 5's `insured_land_path()`) and landslides from the combined
-  realisation landslide step 9 writes,
+  realisation landslide step 6 writes,
   `temp/hazard/landslide/landslide-realisation-w<NNN>-r<NNN>[-pilot].geoparquet`,
   read through `combined_realisation_path(world_id, realisation_id, extent=...)`.
   The combined realisation holds the large model's polygons and the urban slope

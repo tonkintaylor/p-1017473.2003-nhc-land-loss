@@ -230,11 +230,11 @@ density forward.
   - scaled so the total matches the amount, Marc's total for the scenario
     apportioned to the study area (phase 6; model 3 is the one model scaled
     to Marc).
-- [x] Slope at 10 m from the multiscale stack (`s3_multiscale_slope`), stated as
+- [x] Slope at 10 m from the multiscale stack (`ground/steps/s1_terrain`), stated as
       a judgement: Hancox measured slope angles of individual failures, not of a
       coarse grid.
 - [x] Wellington forward step
-      (`steps/s10_hancox_1997/gen_hancox_1997_coverage.py`), with method and
+      (`hazard/landslide/steps/s2_hancox_1997/gen_hancox_1997_coverage.py`), with method and
       plan files, handing coverage to the realisation machinery above the size
       split. Its committed Marc settings are the central interface sensitivity
       in this plan (`R0 = 22.5 km`, modal slope 22°, `A_topo = 1`, all
@@ -330,7 +330,7 @@ Figure 1 or its sources).
 | `src/landloss/domain/constants.py` | `BETA_SCENARIO_MW`, `BETA_SITE_DISTANCE_KM` |
 | `src/landloss/io/assets/hancox-1997-figure-19-area-affected.csv` | Digitised Figure 19 points |
 | `src/scripts/landloss/hazard/landslide/validations/calibration/` | Kaikōura test of both constraints, findings |
-| `src/scripts/landloss/hazard/landslide/steps/s<n>_hancox_1997/` | Wellington forward run |
+| `src/scripts/landloss/hazard/landslide/steps/s2_hancox_1997/` | Wellington forward run |
 | `tests/landloss/hazard/landslide/models/test_hancox_1997.py`, `tests/landloss/hazard/landslide/test_calibration.py` | Unit tests |
 
 ## Verification

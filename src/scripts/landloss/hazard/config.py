@@ -1,8 +1,7 @@
 """Run settings for running the whole hazard module end to end.
 
-`gen_hazard.py` beside this runs the module's steps in two passes around the
-exposure module, `main` and `main_urban` (`gen_all.py` runs both; the file run
-on its own runs `main` only). The three
+`gen_hazard.py` beside this runs the module's steps in one pass, after the
+ground and exposure modules (`gen_all.py` holds that order). The three
 settings here override each step's own `config.py`, so the whole module runs
 over one extent, one set of realisations and one set of exposure worlds.
 Everything else a step reads, such as whether to reuse a cached elevation model

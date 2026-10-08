@@ -8,9 +8,9 @@ its TS1170.5:2025 Table 3.3 site class from Vs30 alone
 leaves out). Cells the model leaves without a Vs30 value, along the harbour
 edge, take the class of the nearest classed cell within 200 m
 (``fill_site_class_gaps``). Cells still unclassed take the class of a default
-Vs30 for their majority material on the landslide ground map
+Vs30 for their majority material on the ground map
 (``fill_site_class_from_ground_map``, ``BETA_GROUND_MAP_DEFAULT_VS30_M_S``), so
-landslide step 4 (``s4_ground_map/gen_ground_map.py``) has to have been run over
+ground step 2 (``ground/steps/s2_ground_map/gen_ground_map.py``) has to have been run over
 the same extent first. A raster coding where each cell's class came from is
 written beside the grid. The model's own grid -- 100 m NZTM cells on 100
 m-aligned bounds -- is the grid written, and the grid the shaking steps that
@@ -43,7 +43,7 @@ from landloss.io.area_of_interest import (
 )
 from landloss.io.ts1170 import SITE_CLASS_NUMERALS
 from landloss.io.vs30 import get_foster_2019_vs30
-from scripts.landloss.hazard.landslide.steps.s4_ground_map.gen_ground_map import (
+from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
 from scripts.landloss.hazard.shaking.steps.s2_site_class import config
@@ -100,17 +100,17 @@ def source_path(*, extent):
 
 
 def read_ground_map(*, extent):
-    """Read landslide step 4's ground map materials over the extent.
+    """Read ground step 2's ground map materials over the extent.
 
     Raises:
-        FileNotFoundError: If landslide step 4 has not been run over this
+        FileNotFoundError: If ground step 2 has not been run over this
             extent.
     """
     path = ground_map_path(extent=extent)
     if not path.exists():
-        msg = f"No ground map at {path}. Shaking step 2 reads landslide step 4's "
+        msg = f"No ground map at {path}. Shaking step 2 reads ground step 2's "
         msg += "materials for the cells Foster leaves unclassed: run "
-        msg += "landslide/steps/s4_ground_map/gen_ground_map.py with "
+        msg += "ground/steps/s2_ground_map/gen_ground_map.py with "
         msg += f'EXTENT = "{extent}" first.'
         raise FileNotFoundError(msg)
     return gpd.read_parquet(path, columns=["material", "geometry"])

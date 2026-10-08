@@ -526,7 +526,7 @@ def gen_pif_near_drops(
     A pip's near drop is the fall from the pip to the lowest DEM cell within
     ``reach_m`` of it along its own fall direction (the cells 1 to 3 m below
     the pip that the pip test reads; the lead, 2026-10-06). It replaces the
-    walk to the foot of the face (landslide step 13), which runs on down a
+    walk to the foot of the face (ground step 5), which runs on down a
     long batter or hillside and overstated the retained height. A cell off
     the grid or with no DEM is skipped; a pip with none in reach has no
     drop.

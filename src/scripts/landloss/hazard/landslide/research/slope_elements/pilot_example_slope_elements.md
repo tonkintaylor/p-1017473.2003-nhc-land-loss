@@ -184,7 +184,7 @@ model.
    upslope. At 20% of the pilot evacuated, these hillsides dominate the number. They
    are the likeliest place for the order-of-1% check in D3 to fail.
 6. **Fill is probably over-assigned.** About 74% of the ground map by area is fill, and
-   70% of elements are on fill. The ground map's step 4 rerun is pending, so this is a
+   70% of elements are on fill. The ground map's ground step 2 rerun is pending, so this is a
    map caveat, not yet a model result. Every number above that depends on fill (the
    fill-bank wedges, the fill flow slides, run-out) moves when the ground map does.
 7. **Platforms are left alone.** Site 06's flat fill platform, about 100 m across,
@@ -311,8 +311,8 @@ every siz walled and with none walled
 
 ## Re-running
 
-No inputs besides the pilot DEM (`dem-1m-pilot.tif`, step 3), the ground map
-(`ground-map-pilot.geoparquet`, step 4) and the LINZ coastline polygons (fetched and
+No inputs besides the pilot DEM (`dem-1m-pilot.tif`, ground step 1), the ground map
+(`ground-map-pilot.geoparquet`, ground step 2) and the LINZ coastline polygons (fetched and
 cached on the first run) are needed. If the ground map is rebuilt,
 rerun this script and update the numbers above. If a `BETA_` value is changed in the
 library, also rerun the 19 toy cases and `uv run --frozen pytest tests/landloss/hazard/landslide`.

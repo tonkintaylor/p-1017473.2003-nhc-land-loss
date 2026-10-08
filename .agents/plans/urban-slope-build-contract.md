@@ -1,5 +1,20 @@
 # Urban slope failure and retaining wall build: interface contract
 
+> **Step numbers.** This plan was written under the landslide step numbers of
+> before 2026-10-08, and its dated history keeps them. Read old step 1 as
+> landslide step 3 (realisation), old step 2 as landslide step 7
+> (susceptibility), old step 3 as ground step 1 (terrain), old step 4 as ground
+> step 2 (ground map), old step 5 as landslide step 1 (slope units), old step 8
+> as landslide step 5 (fragility), old step 9 as landslide step 6 (urban
+> realisation), old step 10 as landslide step 2 (Hancox), old step 11 as
+> landslide step 8 (Kritikos), old step 13 as ground step 5 (pif cut and fill)
+> and old step 14 as ground step 3 (instability zones). Old step 12 is now three
+> steps: ground step 4 (faces, siz table, GNS-only candidates), exposure rw step
+> 6 (wall units and wall draws) and landslide step 4 (wall zones). Old steps 6
+> and 7 are deleted. Exposure, shaking, liquefaction and vul step numbers are
+> unchanged. File and folder paths are given by their current names where a
+> rename could resolve them; a path to a deleted step stays as it was.
+
 > **Historical (2026-10-02).** This is the contract the first build was made
 > against, with "As built" notes added as it went. It is kept as the record of
 > that build, not as a description of the code. **The current truth is each
@@ -157,14 +172,14 @@ Path function and output:
 
 Prints: the realisation id, the factor, median and max PGV.
 
-### 3.1 Landslide step 3, extended — `hazard/landslide/steps/s3_multiscale_slope/`
+### 3.1 Landslide step 3, extended — `ground/steps/s1_terrain/`
 
 Scripts: `gen_multiscale_slope.py` (exists, extended),
 `gen_terrain_derivatives.py` (new), `fig_terrain_derivatives.py` (new; the
 derivatives over the pilot, to
-`report/hazard/landslide/terrain-derivatives/fig/`), `fig_multiscale_slope.py`
+`report/ground/terrain-derivatives/fig/`), `fig_multiscale_slope.py`
 (new; slope and aspect per scale, to
-`report/hazard/landslide/multiscale-slope/fig/`).
+`report/ground/multiscale-slope/fig/`).
 
 `config.py`:
 
@@ -193,15 +208,15 @@ builds every coarser grid from it.
 Path functions (keep `output_path(kind, resolution_m, *, pilot)`; add one
 wrapper per output kind so callers never spell the kind):
 
-- `dem_path(resolution_m, *, pilot)` → `temp/hazard/landslide/dem-<n>m[-pilot].tif`
-- `slope_path(resolution_m, *, pilot)` → `temp/hazard/landslide/slope-<n>m[-pilot].tif`
+- `dem_path(resolution_m, *, pilot)` → `temp/ground/dem-<n>m[-pilot].tif`
+- `slope_path(resolution_m, *, pilot)` → `temp/ground/slope-<n>m[-pilot].tif`
   (band `slope_degrees`)
-- `aspect_path(resolution_m, *, pilot)` → `temp/hazard/landslide/aspect-<n>m[-pilot].tif`
+- `aspect_path(resolution_m, *, pilot)` → `temp/ground/aspect-<n>m[-pilot].tif`
   (band `downhill_azimuth_degrees`)
 
 `gen_terrain_derivatives.py` reads the 1, 3, 10, 30 and 100 m DEMs the script
 above wrote and the LINZ 1 m DSM, and writes under
-`temp/hazard/landslide/terrain/`. Path function
+`temp/ground/terrain/`. Path function
 `terrain_path(layer, *, pilot)` keyed on `TERRAIN_LAYERS`, a dict of layer key
 → band name, with these keys and files:
 
@@ -242,10 +257,10 @@ exercises both scripts end to end on synthetic DEMs with `fetch_dem` and
 
 Prints: per layer the grid, NaN count and deciles.
 
-### 3.2 Landslide step 4 — `hazard/landslide/steps/s4_ground_map/` (new)
+### 3.2 Landslide step 4 — `ground/steps/s2_ground_map/` (new)
 
 Scripts: `gen_ground_map.py`, `fig_ground_map.py` (material and modification
-over the pilot, to `report/hazard/landslide/ground-map/fig/`).
+over the pilot, to `report/ground/ground-map/fig/`).
 
 `config.py`: `PILOT`, `USE_CACHED_LAYERS = True`,
 `DEFAULT_GROUNDWATER_DEPTH_M = 4.0` (the same value step 2 assumes off the NLM
@@ -317,7 +332,7 @@ As built (phase 1, accepted):
 Path function and output:
 
 - `ground_map_path(*, pilot)` →
-  `temp/hazard/landslide/ground-map[-pilot].geoparquet`, one row per `ground_id`.
+  `temp/ground/ground-map[-pilot].geoparquet`, one row per `ground_id`.
 
 | Column | dtype | Meaning |
 | --- | --- | --- |
@@ -360,7 +375,7 @@ is seen.
 Prints: area share by material, by modification, by prior failure, and by
 source for each attribute; the strength row chosen per grade.
 
-### 3.3 Landslide step 5 — `hazard/landslide/steps/s5_slope_units/` (new)
+### 3.3 Landslide step 5 — `hazard/landslide/steps/s1_slope_units/` (new)
 
 Scripts: `gen_slope_units.py`, `fig_slope_units.py` (units coloured by aspect
 over the pilot, to `report/hazard/landslide/slope-units/fig/`).
@@ -847,7 +862,7 @@ population names a line that drew no wall; the script adds `DRAWN_STEM`,
 above; the contract's names, columns and signatures are kept. Not run over the
 pilot.
 
-### 3.8 Landslide step 8 — `hazard/landslide/steps/s8_urban_slope_fragility/` (new)
+### 3.8 Landslide step 8 — `hazard/landslide/steps/s5_urban_slope_fragility/` (new)
 
 Scripts: `gen_urban_slope_fragility.py`, `fig_urban_slope_model.py` (medians
 on the map over the pilot, to `report/hazard/landslide/urban-slope-model/fig/`),
@@ -948,7 +963,7 @@ reads only the insured population. Step 9's wall outcome table is unchanged: it 
 the insured population, so a polygon carrying an uninsured wall gives no wall
 a row, while its ground is still modelled with the wall.
 
-### 3.9 Landslide step 1, reworked — `hazard/landslide/steps/s1_landslide_realisation/`
+### 3.9 Landslide step 1, reworked — `hazard/landslide/steps/s3_landslide_realisation/`
 
 Scripts: `s1_simulate_landslides.py` (name kept), `fig_landslide_realisation.py`
 (exists, re-pointed).
@@ -1022,7 +1037,7 @@ As built (phases 2 to 4, accepted, J1):
   synthetic three-unit plane in
   `tests/landloss/hazard/landslide/test_large_placement.py`.
 
-### 3.10 Landslide step 9 — `hazard/landslide/steps/s9_urban_slope_realisation/` (new)
+### 3.10 Landslide step 9 — `hazard/landslide/steps/s6_urban_slope_realisation/` (new)
 
 Scripts: `gen_urban_slope_realisation.py`, `fig_urban_slope_realisation.py`
 (failed, absorbed and superseded polygons over the pilot, to
@@ -2497,7 +2512,7 @@ creates every package `__init__.py` listed below with its one-line docstring
 and `__all__ = []`, so no implementer creates one.
 
 Phase 0 creates: `src/landloss/hazard/landslide/urban/__init__.py`,
-`src/scripts/landloss/hazard/landslide/steps/s4_ground_map/__init__.py`,
+`src/scripts/landloss/ground/steps/s2_ground_map/__init__.py`,
 `.../s5_slope_units/__init__.py`, `.../s6_urban_slope_candidates/__init__.py`,
 `.../s7_urban_slope_polygons/__init__.py`, `.../s8_urban_slope_fragility/__init__.py`,
 `.../s9_urban_slope_realisation/__init__.py`,
@@ -2561,6 +2576,8 @@ steps 7–9 read exposure's wall lines and population):
 - `gen_all.main(*, pilot, realisation_ids, world_ids)` runs `gen_hazard.main`,
   `gen_exposure.main`, `gen_hazard.main_urban`, `gen_vul.main`, and its
   docstring says why the hazard module runs twice.
+  (Since 2026-10-08 `main_urban` and the second hazard pass are gone: the
+  ground module runs first and hazard runs once, after exposure.)
 - `gen_all.py` cannot run between G's phase 2 (`gen_exposure.main` then
   requires `world_ids`) and K's phase 4; the architect verifies phases 1–3 by
   running the new steps singly, as every step script is run anyway.

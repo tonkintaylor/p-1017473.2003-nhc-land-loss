@@ -48,7 +48,7 @@ SPEED_TILES = (25, 10)
 # ---------------------------------------------------------------------------
 
 # The extent the examples are drawn from; the DEM and the ground map are the
-# ones landslide steps 3 and 4 wrote for it. "wlg-pilot" is Mt Victoria and
+# ones ground steps 1 and 2 wrote for it. "wlg-pilot" is Mt Victoria and
 # Hataitai.
 PILOT_EXTENT = "wlg-pilot"
 

@@ -1,5 +1,20 @@
 # Plan: free-face based urban slope polygons and retaining wall candidates
 
+> **Step numbers.** This plan was written under the landslide step numbers of
+> before 2026-10-08, and its dated history keeps them. Read old step 1 as
+> landslide step 3 (realisation), old step 2 as landslide step 7
+> (susceptibility), old step 3 as ground step 1 (terrain), old step 4 as ground
+> step 2 (ground map), old step 5 as landslide step 1 (slope units), old step 8
+> as landslide step 5 (fragility), old step 9 as landslide step 6 (urban
+> realisation), old step 10 as landslide step 2 (Hancox), old step 11 as
+> landslide step 8 (Kritikos), old step 13 as ground step 5 (pif cut and fill)
+> and old step 14 as ground step 3 (instability zones). Old step 12 is now three
+> steps: ground step 4 (faces, siz table, GNS-only candidates), exposure rw step
+> 6 (wall units and wall draws) and landslide step 4 (wall zones). Old steps 6
+> and 7 are deleted. Exposure, shaking, liquefaction and vul step numbers are
+> unchanged. File and folder paths are given by their current names where a
+> rename could resolve them; a path to a deleted step stays as it was.
+
 > **Phase 1 (seeds, free-face and bank) is superseded by
 > `building-pip-pif-siz-slope-polygons.md`; phases 2-5 stand.**
 
@@ -331,7 +346,7 @@ findings document with the reason.
       `pilot_example_slope_elements.md`). The judgement numbers are tuned
       here, not in stage D3.
 - [x] **Stage D3 — the full pilot.** Built as step 12
-      (`steps/s12_urban_slope_faces/`, 2026-10-04) over the pilot: the
+      (`steps/s12_urban_slope_faces/`, 2026-10-04; split on 2026-10-08 into ground step 4, exposure rw step 6 and landslide step 4) over the pilot: the
       pipeline, the wall candidates' evidence (with each pif's property and
       the GNS-only wall candidates, 2026-10-05) and the checks that need only
       those layers, with counts and timings in its method file. The walls'

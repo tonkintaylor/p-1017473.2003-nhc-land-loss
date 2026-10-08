@@ -28,16 +28,16 @@ from landloss.hazard.realisation import realisation_seed
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     gen_wall_population,
 )
-from scripts.landloss.hazard.landslide.steps.s1_landslide_realisation import (
+from scripts.landloss.hazard.landslide.steps.s3_landslide_realisation import (
     s1_simulate_landslides,
 )
-from scripts.landloss.hazard.landslide.steps.s8_urban_slope_fragility import (
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import (
     gen_urban_slope_fragility,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     fig_urban_slope_realisation as fig,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation as step,
 )
 from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation import (
@@ -95,7 +95,7 @@ def model_rows(
     edge_lines=None,
     rate_setting="medium",
 ):
-    """Synthetic step 8 model rows, one per face, in slope_id order.
+    """Synthetic landslide step 5 model rows, one per face, in slope_id order.
 
     Every state geometry is the face itself, so absorption and supersession
     are decided by the faces alone. Without ``wall_line_ids`` each row with an
@@ -142,7 +142,7 @@ def model_rows(
 
 
 def wall_population(rw_ids, *, flat=(), wall_line_ids=None):
-    """Synthetic step 6 walls, one per rw_id on its own line, flat where listed."""
+    """Synthetic exposure rw step 6 walls, one per rw_id on its own line."""
     if wall_line_ids is None:
         wall_line_ids = [line_of(rw) for rw in rw_ids]
     return gpd.GeoDataFrame(
@@ -174,7 +174,7 @@ LARGE_COLUMNS = (
 
 
 def large_rows(circles, realisation_id=EARTHQUAKE):
-    """Synthetic step 1 rows: an evacuated and an inundated row per circle."""
+    """Synthetic landslide step 3 rows: an evacuated and an inundated row per circle."""
     circles = list(circles)
     rows = []
     for n, circle in enumerate(circles, 1):

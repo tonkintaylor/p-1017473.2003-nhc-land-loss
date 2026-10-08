@@ -7,7 +7,7 @@ since the urban slope chain landed.
 ## Phase 1 — Evacuated and inundated flags per wall (complete)
 
 - [x] Read the insured wall population from exposure step 6 and the landslide
-      realisation from hazard step 1, each through its own step's path function.
+      realisation from landslide step 3, each through its own step's path function.
 - [x] Intersect each wall with the realisation's evacuated and inundated
       polygons and flag it for each kind of ground separately.
 - [x] Key the output on `rw_id` and carry `claim_id` from the wall population.
@@ -21,7 +21,7 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.12, 5.2 and
 - [x] Read the wall population per exposure world
       (`wall_population_path(world_id, extent=...)`) and the combined
       realisation and urban wall outcome table per world and earthquake from
-      landslide step 9.
+      landslide step 6.
 - [x] Map each sloping wall's outcome onto a flag by the one dict
       `landloss.vul.landslide.flags.OUTCOME_FLAGS` (`outcome_flags()`), and
       OR it with the geometric intersections (`wall_flags()`).
@@ -44,7 +44,7 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.12, 5.2 and
 
 ## Phase 3 — Run on the pilot
 
-- [ ] Run over the pilot once exposure rw step 6 and landslide steps 7 to 9
+- [ ] Run over the pilot once exposure rw step 6 and landslide steps 4 to 6
       have been run for world 0, and record the outcome and flag counts in
       the method document.
 

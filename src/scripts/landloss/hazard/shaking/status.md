@@ -55,10 +55,10 @@ of each per realisation.
 extent, from the Foster et al. (2019) V<sub>s</sub>30 model on that model's own
 grid; cells Foster leaves empty along the harbour edge take the class of the
 nearest classed cell within 200 m, and any still unclassed take a default
-V<sub>s</sub>30 for their majority material on landslide step 4's ground map
+V<sub>s</sub>30 for their majority material on ground step 2's ground map
 (uncontrolled fill 200 m/s, Class VI; `BETA_GROUND_MAP_DEFAULT_VS30_M_S`, the
 whole table confirmed by the lead on 2026-10-06), so
-landslide step 4 now runs first. Over the pilot every urban slope polygon now
+ground step 2 now runs first. Over the pilot every urban slope polygon now
 has a site class: 8 harbour-edge cells on reclaimed fill took the fill default.
 A source raster records which cells came from where. The profile criteria of
 TS1170.5 Table 3.3 are not applied (**L-38**).
@@ -80,7 +80,7 @@ step 3 wrote, scaled by the same lognormal factor step 4 puts on PGA for that
 realisation id, recomputed from the same seed, so one modelled earthquake's PGA
 and PGV agree. Output `temp/hazard/shaking/pgv-rNNN[-pilot].tif`; a unit test
 holds the two steps' factors together. Two steps read it through `pgv_path`:
-landslide step 9 (`s9_urban_slope_realisation`) and vul shaking rw step 9
+landslide step 6 (`s6_urban_slope_realisation`) and vul shaking rw step 9
 (`s9_wall_damage_state`), the urban slope realisation and the flat-land wall
 damage state of `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
 Step 5 is tested end to end on synthetic inputs and has not yet been run over

@@ -14,8 +14,8 @@ that step's own `config.py`.
 EXTENT = "wlg-pilot"
 
 # Which exposure worlds to run. A world is one draw of the wall population;
-# each must already have been run through the exposure module and the hazard
-# module's urban pass.
+# each must already have been run through the ground, exposure and hazard
+# modules.
 WORLD_IDS = [0]
 
 # Which modelled earthquakes to run. Each must already have been run through

@@ -55,7 +55,7 @@ from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
-from scripts.landloss.hazard.landslide.steps.s9_urban_slope_realisation.gen_urban_slope_realisation import (
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
     combined_realisation_path,
 )
 from scripts.landloss.paths import TEMP_DIR

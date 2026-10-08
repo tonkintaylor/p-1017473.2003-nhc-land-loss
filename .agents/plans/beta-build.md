@@ -119,7 +119,7 @@ produces.
 
 ### Landslide
 
-Already further along than the others: `steps/s1_landslide_realisation/`
+Already further along than the others: `hazard/landslide/steps/s3_landslide_realisation/`
 produces the evacuated and inundated polygons, resolving same-type overlaps
 largest-first. **[proposed]** the beta takes it as it stands, including its two
 known shortcuts — independent per-cell sampling with no spatial correlation, and

@@ -1,11 +1,12 @@
-"""Retaining wall line rules shared by landslide step 12 and the wall units.
+"""Retaining wall line rules shared by ground step 3 and the wall units.
 
 The GNS SLIDE morphology types that mark a mapped wall and a cut/fill line
 [townsend_2020], the two wall positions (``fill`` and ``cut``), and the step a
 wall line makes in the 1 m DEM (:func:`step_height_m`), which the wall units
 read as a GNS-only wall's height. The candidate wall lines this module once
 built for exposure rw step 6 (``gen_wall_lines.py``) were removed on
-2026-10-08: the wall population is now drawn from step 12's wall units.
+2026-10-08: the wall population is now drawn from the wall units of exposure rw
+step 6.
 """
 
 from pathlib import Path

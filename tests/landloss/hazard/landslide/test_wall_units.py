@@ -104,7 +104,7 @@ NO_GNS_ONLY = _gns_only()
 
 
 def _cut_fill(sizs, *, classes=None):
-    """Step 13 per pif: uncertain (neutral) by default."""
+    """Ground step 5 per pif: uncertain (neutral) by default."""
     return pd.DataFrame(
         {"cut_fill_class": classes or ["uncertain"] * len(sizs)},
         index=sizs.index,
@@ -388,7 +388,7 @@ def test_a_gns_only_candidate_takes_its_probability_whatever_its_points():
 
 def test_a_candidate_pif_missing_from_step_13_stops_the_members():
     sizs = _pifs(_pif((0, 0), (0, 10), 90.0), _pif((0, 13), (0, 23), 90.0))
-    with pytest.raises(ValueError, match="step 13"):
+    with pytest.raises(ValueError, match="ground step 5"):
         gen_wall_members(sizs, NO_GNS_ONLY, _cut_fill(sizs).iloc[:1])
 
 

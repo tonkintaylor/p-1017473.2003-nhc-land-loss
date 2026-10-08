@@ -37,7 +37,7 @@ step = "faces"
 title = "Pips join into faces (pifs)"
 text = "Pips within {PIF_JOIN_M} m of each other join into a pif (potential instability face), which needs at least 3 pips and a spine of at least 3 m. A pif lying mostly inside a building outline is dropped. Pifs come from the DEM alone; GNS mapping only flags them."
 status = "beta"
-source = "s12_urban_slope_faces_method.md"
+source = "s4_slope_faces_method.md"
 
 [[assumptions]]
 id = "RW-A03"
@@ -54,7 +54,7 @@ step = "faces"
 title = "Faces only where there is LiDAR; fill is soil"
 text = "Pifs are found only on the LiDAR DEM, and fill is treated as soil."
 status = "beta"
-source = "s12_urban_slope_faces_method.md; hazard/landslide/status.md"
+source = "s4_slope_faces_method.md; hazard/landslide/status.md"
 
 [[assumptions]]
 id = "RW-A05"
@@ -62,7 +62,7 @@ step = "cut_fill"
 title = "Cut, fill or natural from a fitted ground surface"
 text = "Each pif's crest and the foot of its face are compared with a robust quadratic surface fitted to the ground off the faces. An excess drop of up to 1 m is natural, and up to 2 sigma is uncertain. Beyond that, a position above +1/3 is fill, below -1/3 is cut, and in between is cut and fill. Fewer than 30 fit cells gives unknown."
 status = "beta"
-source = "src/landloss/hazard/landslide/pif_cut_fill.py; s13_pif_cut_fill_method.md"
+source = "src/landloss/hazard/landslide/pif_cut_fill.py; s5_pif_cut_fill_method.md"
 
 [[assumptions]]
 id = "RW-A06"
@@ -94,7 +94,7 @@ source = "src/landloss/io/assets/wall-probability-points.csv; constants.BETA_WAL
 id = "RW-A09"
 step = "wall_units"
 title = "Wall height is a near-drop quantile"
-text = "A pif's wall height is near_drop_p80_m from the siz table: a quantile over its pips of the drop to the lowest cell close below each pip. Neither the largest pip drop nor step 13's walk to the foot of the face is used."
+text = "A pif's wall height is near_drop_p80_m from the siz table: a quantile over its pips of the drop to the lowest cell close below each pip. Neither the largest pip drop nor ground step 5's walk to the foot of the face is used."
 status = "check"
 note = "The wall_units.py docstring says within 3 m; the exposure status notes say the lead chose the 0.7 quantile within 2 m. Confirm which the code runs."
 source = "wall_units.py module docstring; instability_zones.gen_pif_near_drops; exposure/rw/status.md"
@@ -189,7 +189,7 @@ step = "zones"
 title = "Evacuated width behind the crest"
 text = "Every polygon, walled or not, has an evacuated strip behind its crest {BETA_MIN_EVACUATED_WIDTH_H} H wide, or {BETA_MIN_EVACUATED_WIDTH_M} m if that is wider. Each face type also has its own rule: a walled face the active wedge, 0.45 H at φ′ {BETA_DEFAULT_RETAINED_PHI_DEG}°; an unwalled fill bank {BETA_FILL_BANK_WIDTH_H} H; an unwalled cut or natural bank a {BETA_HEADSCARP_BAND_M} or {BETA_HEADSCARP_BAND_STEEP_M} m band. The wider of the two is used. With today's values every rule width is at or below the minimum, so every polygon gets exactly max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m). A wall changes the depth of the failure, not its width (see the landslide reviewer, LS-A60)."
 status = "beta"
-source = "src/landloss/hazard/landslide/slope_polygons.py; s12_urban_slope_faces_method.md"
+source = "src/landloss/hazard/landslide/slope_polygons.py; s4_slope_faces_method.md"
 
 [[assumptions]]
 id = "RW-A21"
@@ -197,7 +197,7 @@ step = "zones"
 title = "Runout and the imminent band"
 text = "Runout follows Hunter and Fell's travel angle from the crest (on the ground below the toe where that is 20 degrees or steeper, otherwise on the face's angle), with a seismic distance by Kingsbury zone added, capped at 2, 3 or 4 H by the ground below the toe. The imminent band runs to a 35 degree repose line from the toe."
 status = "beta"
-source = "s12_urban_slope_faces_method.md"
+source = "s4_slope_faces_method.md"
 
 [[assumptions]]
 id = "RW-A22"
@@ -205,7 +205,7 @@ step = "zones"
 title = "Forced polygons for units with nowhere to grow"
 text = "A unit none of whose pifs grew an element gets a line element along its line. Where there is no free cell for one, a polygon is forced on it."
 status = "beta"
-source = "src/landloss/hazard/landslide/forced_polygons.py; gen_urban_slope_wall_zones.py"
+source = "src/landloss/hazard/landslide/forced_polygons.py; gen_wall_zones.py"
 
 [[assumptions]]
 id = "RW-A23"
@@ -230,7 +230,7 @@ step = "fragility"
 title = "A sloping wall fails with its polygon"
 text = "One uniform is drawn per wall: if any polygon on the wall fails, the wall fails."
 status = "decided"
-source = "s9_urban_slope_realisation_method.md"
+source = "s6_urban_slope_realisation_method.md"
 
 [[assumptions]]
 id = "RW-A26"
@@ -238,8 +238,8 @@ step = "fragility"
 title = "Every wall takes one curve for now"
 text = "The seven type curves are not yet read by anything; every wall takes the one 'unnamed' curve."
 status = "retired"
-note = "Retired 2026-10-07: landslide step 8 and vul shaking rw step 9 read the type curves (RW-A33)."
-source = "exposure/rw/status.md; s8_urban_slope_fragility"
+note = "Retired 2026-10-07: landslide step 5 and vul shaking rw step 9 read the type curves (RW-A33)."
+source = "exposure/rw/status.md; s5_urban_slope_fragility"
 
 [[assumptions]]
 id = "RW-A27"

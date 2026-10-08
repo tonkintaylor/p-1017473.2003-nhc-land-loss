@@ -1,24 +1,24 @@
-"""Run every exposure step end to end.
+"""Run every exposure step end to end, after the ground module.
 
     uv run --frozen python src/scripts/landloss/exposure/gen_exposure.py
 
 The address spine, the terrain, accessibility and amenity attributes and the land value
 per address, the insured land extent and the dwellings on each claim, then the
-retaining wall population -- a probability on each of landslide step 12's
-wall units and one draw per exposure world -- and the crossing
-population per realisation. The extent, worlds and realisations come from
-``config.py`` beside this; anything else a step reads, such as whether to reuse
-a cached download, comes from that step's own ``config.py``.
+retaining wall population -- the wall age shares, the wall units (the pif
+pieces and GNS-only walls of the ground module, each drawn walled or not per
+exposure world), a probability on each unit and the population per world --
+and the crossing population per realisation. The extent, worlds and
+realisations come from ``config.py`` beside this; anything else a step reads,
+such as whether to reuse a cached download, comes from that step's own
+``config.py``.
 
-The wall probability and population read the wall units and their draws
-from landslide step 12, so ``gen_hazard.main`` runs before this module;
-``gen_all.py`` holds that order. ``gen_hazard.main`` runs step 12 (faces,
-then step 13's pif cut and fill, then the wall units); without it, run ``gen_urban_slope_faces.py``,
-``gen_pif_cut_fill.py`` and ``gen_urban_slope_wall_units.py`` by hand first, or
-the wall probability stops and says so. The property age shares read the QV
-rating roll from the T: drive and exposure step 8's property ages, which no
-orchestrator runs: run ``gen_rwt_age.py`` and ``table_rwt_age_by_suburb.py``
-by hand first, or the age step stops and says so.
+The wall units read the ground module's siz table, GNS-only walls and pif cut
+and fill, so ``gen_ground.py`` runs before this module and ``gen_all.py`` holds
+that order. The hazard module's urban zones read the wall draws written here,
+so it runs after. The property age shares read the QV rating roll from the T:
+drive and exposure step 8's property ages, which no orchestrator runs: run
+``gen_rwt_age.py`` and ``table_rwt_age_by_suburb.py`` by hand first, or the
+age step stops and says so.
 """
 
 from scripts.landloss.exposure import config
@@ -47,8 +47,10 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     config as wall_config,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
+    gen_wall_age,
     gen_wall_population,
     gen_wall_probability,
+    gen_wall_units,
 )
 from scripts.landloss.exposure.steps.s1_address_spine import (
     config as spine_config,
@@ -145,6 +147,29 @@ def main(*, extent, realisation_ids, world_ids):
                 "s3, dwellings per property",
                 lambda: gen_dwellings_per_property.main(
                     extent=extent, use_cached_extent=dwellings_config.USE_CACHED_EXTENT
+                ),
+            ),
+            (
+                # The wall age shares give the wall units their age (the lead,
+                # 2026-10-07); they read QV (on T:), exposure step 8 and the
+                # LINZ properties, so they run before the wall units.
+                "rw s6, wall age",
+                lambda: gen_wall_age.main(
+                    extent=extent, age_extent=wall_config.AGE_EXTENT
+                ),
+            ),
+            (
+                "rw s6, wall units",
+                lambda: gen_wall_units.main(
+                    extent=extent,
+                    use_cached_layers=wall_config.USE_CACHED_LAYERS,
+                    max_bends=wall_config.WALL_MAX_BENDS,
+                    min_segment_m=wall_config.WALL_MIN_SEGMENT_M,
+                    max_length_m=wall_config.WALL_MAX_LENGTH_M,
+                    max_turn_deg=wall_config.MAX_TOTAL_TURN_DEG,
+                    holdout_share=wall_config.CLAIM_HOLDOUT_SHARE,
+                    holdout_seed=wall_config.CLAIM_HOLDOUT_SEED,
+                    world_ids=world_ids,
                 ),
             ),
             (

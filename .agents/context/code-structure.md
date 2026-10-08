@@ -1,21 +1,30 @@
 # Code structure
 
-The analysis is split into four modules that run in sequence: **hazard** defines
-what the ground does, **exposure** defines what is on it, **vul** works out how
-badly each asset is damaged, and **loss** turns that damage into money. Each
-depends only on the ones before it, so a change to the policy settings re-runs
-`loss` alone, while a change to the seismic demand re-runs everything.
+The analysis is split into five modules that run in sequence: **ground** defines
+what the ground is, **exposure** defines what is on it, **hazard** defines what
+the ground does, **vul** works out how badly each asset is damaged, and **loss**
+turns that damage into money. Each depends only on the ones before it, so a
+change to the policy settings re-runs `loss` alone, while a change to the
+terrain re-runs everything. The order is ground, exposure, hazard, vul, loss, and
+`gen_all.py` runs the first four; `loss` is run on its own.
 
-## The four modules
+## The five modules
 
 | Module | Responsibility |
 | --- | --- |
+| `ground` | Builds what the ground is, once per extent and independent of any earthquake: the 1 m DEM and terrain derivatives, the ground map, the instability zones (pips to elements), the wall evidence on each pif and the pif cut and fill. |
 | `hazard` | Defines the shaking, liquefaction and landslide extents. |
 | `exposure` | Defines the assets in terms of location, extent and attributes. |
 | `vul` | Vulnerability calculations for each asset against each hazard. |
 | `loss` | Combines damage ratios with replacement ratios and policy settings to give financial loss. |
 
-`hazard` is the demand side and knows nothing about properties. `exposure` is
+`ground` is the static ground that every other module stands on; it is built
+once per extent and read, not rebuilt, by the modules after it. `exposure` reads
+it to build the retaining wall units and to draw which of them are walled in
+each world. `hazard` is the demand side and knows nothing about properties,
+except that its landslide urban zones are built from the walls each world
+draws, so `hazard` reads `exposure` for them; this is why `exposure` runs before
+`hazard`. `exposure` is
 where a property's insured land extent and its attributes — slope, retaining
 walls, services, land value — are assembled. `vul` is the only place the two meet,
 producing a damage ratio per asset per hazard. `loss` is the only place money and
@@ -24,7 +33,7 @@ study rather than something baked through the model.
 
 ## Submodules: the two axes
 
-Three of the four modules are split again, because neither the hazards nor the
+Three of the five modules are split again, because neither the hazards nor the
 insured assets behave alike and mixing them in one namespace hides that.
 
 | Module | Split by | Submodules |
@@ -32,6 +41,7 @@ insured assets behave alike and mixing them in one namespace hides that.
 | `exposure` | Insured asset type | `land`, `rw` (retaining walls), `culverts_bridges` |
 | `hazard` | Hazard | `liquefaction`, `landslide`, `shaking` |
 | `vul` | Hazard, then asset type | `<hazard>/<asset>`, e.g. `liquefaction/land` |
+| `ground` | Not split | — |
 | `loss` | Not split | — |
 
 The asset axis is the one the policy cares about: land is settled on its value,
@@ -42,6 +52,8 @@ liquefaction settlement under insured land and shaking of a retaining wall are
 unrelated relationships, and an aggregate of the two is not a number anybody can
 use.
 
+`ground` is left flat: its steps run in one chain over one extent and none of
+them belongs to a single hazard or asset, so there is nothing to split by.
 `loss` is left flat. It reads damage ratios that already carry their hazard and
 asset, and adds only money and policy wording.
 
@@ -55,7 +67,8 @@ work reaches them.
 
 Every submodule of `exposure`, `hazard` and `vul` holds a `status.md` beside its
 scripts, at its own level — `exposure/<asset>/`, `hazard/<hazard>/`,
-`vul/<hazard>/<asset>/`. It summarises the current approach for that piece of
+`vul/<hazard>/<asset>/`. `ground` has no submodules, so it carries a single
+`ground/status.md` at the module level, as `loss` would. It summarises the current approach for that piece of
 work and what will be done next. `hazard/shaking/status.md` is the worked
 example the others follow. `loss` is flat, so it would take a single
 `loss/status.md`.
@@ -87,6 +100,10 @@ hazard goes in that submodule. Work shared across all of them stays at the
 module level, because filing it under one asset or one hazard would be a lie
 about what reads it:
 
+- `ground/steps/` — the whole of the ground module: terrain, ground map,
+  instability zones, slope faces and the pif cut and fill. They are shared by
+  the retaining wall exposure and the landslide hazard, so they sit under
+  neither.
 - `exposure/steps/s1_address_spine/` — the property spine. Land, retaining walls
   culverts and bridges all hang off the same addresses.
 - `hazard/research/fig_cross_sections.py` — valley cross-sections, read by the
@@ -100,7 +117,7 @@ Each module appears twice, and the split is deliberate:
 
 ```text
 src/landloss/{hazard,exposure,vul,loss}/
-src/scripts/landloss/{hazard,exposure,vul,loss}/
+src/scripts/landloss/{ground,exposure,hazard,vul,loss}/
 ```
 
 - `src/landloss/<module>/` is the **library**: reusable, tested logic with no
@@ -111,7 +128,9 @@ src/scripts/landloss/{hazard,exposure,vul,loss}/
 The two trees mirror each other down to the submodule, so
 `landloss.exposure.land.land_value` is exercised by
 `src/scripts/landloss/exposure/land/steps/s2_land_value/`, and `tests/` mirrors
-the library the same way.
+the library the same way. The one exception is `ground`, which exists only in
+the scripts tree: its reusable logic still lives in the library under
+`landloss.hazard.landslide` and `landloss.exposure.rw`.
 
 Within the scripts tree, at the module level or at any submodule below it:
 
@@ -151,7 +170,7 @@ than in each file that moves.
 
 ## Shared support code
 
-Three packages sit outside the four modules because all of them need them:
+Three packages sit outside the five modules because all of them need them:
 
 - `src/landloss/domain/` — constants shared across the model: the default CRS
   (NZTM, `EPSG:2193`), the Koordinates domains and their API key variables, and
@@ -173,6 +192,7 @@ each other:
 | --- | --- |
 | `hazard/liquefaction/report/fig_waterway_map.py` | `report/hazard/liquefaction/fig/` |
 | `hazard/landslide/validations/fig_landslide_vulnerability_model_gwrc.py` | `report/hazard/landslide/fig/` |
+| `ground/steps/s1_terrain/fig_multiscale_slope.py` | `report/ground/multiscale-slope/fig/` |
 | `exposure/land/steps/s2_land_value/fig_land_value_map.py` | `report/exposure/land/land-value/fig/` |
 | `vul/liquefaction/land/report/fig_land_damage_maps.py` | `report/vul/liquefaction/land/fig/` |
 | `hazard/research/fig_cross_sections.py` | `research/hazard/cross_sections/fig/` |
@@ -269,7 +289,7 @@ with no `DATA_VERSION`, no save side, and no local-only working mode fallback.
 `src/landloss/io/versioned_store.py` is the thin, landloss-specific layer on top:
 `save_hazard`/`read_hazard`, `save_exposure`/`read_exposure`, `save_vul`/
 `read_vul` and `save_loss`/`read_loss` each just prepend the module's name to
-`sub_dirs` before delegating to `ts.local_save`/`ts.local_read`, so the four
+`sub_dirs` before delegating to `ts.local_save`/`ts.local_read`, so the
 modules share one `DATA_VERSION` without their files colliding.
 
 This is separate from the NLM's own *upstream* release directory
