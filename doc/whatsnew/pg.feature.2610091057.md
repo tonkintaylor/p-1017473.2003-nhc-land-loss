@@ -1,0 +1,1 @@
+A claim in the loss viewer whose only damage is a culvert or bridge is typed "Culvert or bridge only" rather than as no damage, so it now appears with the claims on the map and in the histogram. The land cap scenario in the histogram key is drawn as a dashed line, matching the lines on the chart.

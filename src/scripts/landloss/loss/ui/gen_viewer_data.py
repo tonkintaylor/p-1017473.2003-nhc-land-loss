@@ -37,8 +37,13 @@ import numpy as np
 import pandas as pd
 
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN
+from landloss.hazard.landslide.urban.realisation import FAILED_WITH_POLYGON
 from landloss.hazard.liquefaction.land_damage import LD_STATES
-from landloss.io.area_of_interest import extent_suffix
+from landloss.io.area_of_interest import (
+    extent_suffix,
+    get_area_of_interest,
+    get_study_areas,
+)
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
@@ -53,6 +58,7 @@ from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     ACCESS_COLUMN,
     CONSTRUCTABILITY_COLUMN,
+    CROSSING_REPAIR_COLUMN,
     EARTHWORKS_COLUMN,
     LAND_REPAIR_COLUMN,
     LIQ_REPAIR_COLUMN,
@@ -65,6 +71,15 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     settlement_path,
 )
 from scripts.landloss.paths import REPORT_DIR
+from scripts.landloss.vul.landslide.land.steps.s3_landslide_land_damage import (
+    gen_landslide_land_damage as landslide_land,
+)
+from scripts.landloss.vul.landslide.rw.steps.s11_wall_landslide_damage import (
+    gen_wall_landslide_damage as wall_landslide,
+)
+from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage import (
+    gen_liq_land_damage as liq_land,
+)
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
     world_loss_input_path,
 )
@@ -80,6 +95,11 @@ HERE = __import__("pathlib").Path(__file__).resolve().parent
 # the Canterbury cost for it -- an average with non-claimants in at $0 -- but
 # has nothing to claim for.
 NO_DAMAGE_LIQ_STATE = LD_STATES.index("None") + 1
+# How the settled liquefaction cost was priced, as the page names it. Vul step
+# 10 hands loss one or the other, and which depends on the code vul ran on, not
+# on this script, so it is read off the data (liquefaction_method).
+LOOKUP_METHOD = "Canterbury cost per damage state"
+AREA_METHOD = "Priced from the ground lost, at rates fitted to claimant-only costs"
 
 
 def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
@@ -144,6 +164,146 @@ def liquefaction_states(
         .groupby(land[CLAIM_ID_COLUMN])
         .max()
     )
+
+
+def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
+    """Return each claim's evacuated and inundated land, and what caused it.
+
+    The loss input carries one damaged area per claim, which is all settlement
+    needs; the page also shows how it splits (T-123), read here from the vul
+    tables the loss input was built from. The two are not additive: where the
+    ground was both evacuated and inundated it counts in each.
+
+    The cause names liquefaction, landslide, retaining wall failure, or a
+    combination, without areas per cause. A claim's wall failure is a wall on it
+    that failed and brought ground down with it; whether a given landslide came
+    from that wall or from the slope is not yet passed down (T-124), so a claim
+    with both reads as both.
+
+    Args:
+        world_id: The exposure world.
+        realisation_id: The modelled earthquake.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        ``evacuated_m2``, ``inundated_m2``, ``cause`` and ``has_landslide`` per
+        claim that has any.
+    """
+    areas = ["evacuated_area_m2", "inundated_area_m2"]
+    liq = pd.read_parquet(
+        liq_land.liq_land_damage_path(realisation_id, extent=extent),
+        columns=[CLAIM_ID_COLUMN, "ld_state", *areas],
+    )
+    # Only a claimed state worse than None has ground to show.
+    liq = liq[liq["ld_state"].fillna(0) > NO_DAMAGE_LIQ_STATE]
+    slid = pd.read_parquet(
+        landslide_land.landslide_land_damage_path(
+            world_id, realisation_id, extent=extent
+        ),
+        columns=[CLAIM_ID_COLUMN, *areas],
+    )
+    walls = pd.read_parquet(
+        wall_landslide.wall_landslide_damage_path(
+            world_id, realisation_id, extent=extent
+        ),
+        columns=[CLAIM_ID_COLUMN, "outcome"],
+    )
+    totals = pd.concat([liq[[CLAIM_ID_COLUMN, *areas]], slid])
+    land = totals.groupby(CLAIM_ID_COLUMN)[areas].sum()
+    land.columns = ["evacuated_m2", "inundated_m2"]
+
+    def damaged(table: pd.DataFrame) -> set:
+        return set(table.loc[table[areas].sum(axis=1) > 0, CLAIM_ID_COLUMN])
+
+    by_liquefaction = damaged(liq)
+    by_landslide = damaged(slid)
+    by_wall = set(walls.loc[walls["outcome"] == FAILED_WITH_POLYGON, CLAIM_ID_COLUMN])
+    land = land.reindex(sorted(by_liquefaction | by_landslide | by_wall), fill_value=0)
+    land["cause"] = [
+        cause_label(
+            liquefaction=claim in by_liquefaction,
+            landslide=claim in by_landslide,
+            wall=claim in by_wall,
+        )
+        for claim in land.index
+    ]
+    # Landslide ground as a flag too, so the page can type the claim by it.
+    land["has_landslide"] = land.index.isin(by_landslide).astype(int)
+    return land.round(4)
+
+
+def cause_label(*, liquefaction: bool, landslide: bool, wall: bool) -> str:
+    """Name what damaged a claim's land, in a sentence: "Landslide and ..."."""
+    names = [
+        name
+        for name, present in (
+            ("liquefaction", liquefaction),
+            ("landslide", landslide),
+            ("retaining wall failure", wall),
+        )
+        if present
+    ]
+    if not names:
+        return ""
+    text = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+    return text[0].upper() + text[1:]
+
+
+def within_territorial_authority(rows: pd.DataFrame, extent: str) -> pd.DataFrame:
+    """Keep the claims in the territorial authority the extent is named for.
+
+    An extent over one authority is its bounding box, so it also takes in the
+    edges of its neighbours -- about a quarter of the claims in the Porirua box
+    are in Wellington City or Lower Hutt. Those are counted again in their own
+    authority's run, so a viewer for Porirua shows Porirua's claims only. A
+    claim is placed by its map point, which sits inside its insured land, so a
+    claim with no address point on it is placed too. The full study area and the
+    pilot boxes are not one authority, and are kept whole.
+
+    Args:
+        rows: The viewer's rows, with ``lon`` and ``lat``.
+        extent: The extent the run is over.
+
+    Returns:
+        The rows inside the authority, or every row.
+    """
+    aoi = get_area_of_interest(extent)
+    authorities = get_study_areas(4326)
+    if aoi is None or aoi.name not in set(authorities["name"]):
+        return rows
+    boundary = authorities.loc[authorities["name"] == aoi.name].union_all()
+    points = gpd.GeoSeries(gpd.points_from_xy(rows["lon"], rows["lat"]), crs=4326)
+    inside = points.within(boundary).to_numpy()
+    print(
+        f"  Kept {int(inside.sum()):,} claims in {aoi.name}; left out "
+        f"{int((~inside).sum()):,} in the extent's box beyond it"
+    )
+    return rows[inside]
+
+
+def liquefaction_method(
+    claims: pd.DataFrame, realisation_id: int, *, extent: str
+) -> str:
+    """Return how the settled liquefaction cost was priced.
+
+    Vul step 2 prices every claim both ways and step 10 hands loss one of them,
+    so the method is whichever the settled cost matches. It is read off the data
+    because runs from before 2026-10-08 settled the lookup, and the page has to
+    say so rather than present the two as alike.
+    """
+    priced = (
+        pd.read_parquet(
+            liq_land.liq_land_damage_path(realisation_id, extent=extent),
+            columns=[CLAIM_ID_COLUMN, "cost_nzd", liq_land.AREA_COST_COLUMN],
+        )
+        .groupby(CLAIM_ID_COLUMN)
+        .sum()
+    )
+    settled = (claims[LIQ_REPAIR_COLUMN] / 1.15).reindex(priced.index).fillna(0.0)
+    lookup_miss = (settled - priced["cost_nzd"]).abs().sum()
+    area_miss = (settled - priced[liq_land.AREA_COST_COLUMN]).abs().sum()
+    return AREA_METHOD if area_miss < lookup_miss else LOOKUP_METHOD
 
 
 def site_multiplier(claims: pd.DataFrame) -> pd.Series:
@@ -228,7 +388,9 @@ def viewer_rows(
             "has_liquefaction": (
                 liq_state.reindex(claims.index).fillna(0) > NO_DAMAGE_LIQ_STATE
             ).astype(int),
-            "has_crossing": 0,
+            # A damaged culvert or bridge is priced at its sub-cap, on both the
+            # cap and the repair, so the page needs only whether there is one.
+            "has_crossing": (claims[CROSSING_REPAIR_COLUMN] > 0).astype(int),
             "access": claims[ACCESS_COLUMN],
             "earthworks": claims[EARTHWORKS_COLUMN],
             "constructability": claims[CONSTRUCTABILITY_COLUMN],
@@ -328,8 +490,19 @@ def main(*, extent, world_ids, realisation_ids):
         wall_value_excl_gst(rw, policy),
         liquefaction_states(world_id, realisation_id, extent=extent),
     )
+    land = damaged_land(world_id, realisation_id, extent=extent)
+    rows = rows.join(land)
+    rows[["evacuated_m2", "inundated_m2"]] = rows[
+        ["evacuated_m2", "inundated_m2"]
+    ].fillna(0.0)
+    rows["cause"] = rows["cause"].fillna("")
+    rows["has_landslide"] = rows["has_landslide"].fillna(0).astype(int)
+    method = liquefaction_method(claims, realisation_id, extent=extent)
+    print(f"  Liquefaction costs: {method}")
+    rows["liq_method"] = method
     points = claim_points(world_id, realisation_id, extent=extent)
     rows = rows.join(points).reset_index()
+    rows = within_territorial_authority(rows, extent)
 
     check_viewer_against_the_model(rows.set_index(CLAIM_ID_COLUMN), claims, policy)
 
@@ -339,6 +512,8 @@ def main(*, extent, world_ids, realisation_ids):
         OUT_DIR / f"loss-viewer-w{world_id:03d}-r{realisation_id:03d}{suffix}.csv"
     )
     rows.to_csv(csv_path, index=False)
+    # A copy beside the CSVs, so the folder can be sent as it is. The page in
+    # this directory is the one kept in git; this copy is ignored.
     shutil.copy(HERE / VIEWER, OUT_DIR / VIEWER)
     print(f"Wrote {len(rows):,} claims to {csv_path}")
     print(f"Wrote {OUT_DIR / VIEWER}")

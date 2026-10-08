@@ -186,6 +186,11 @@ report/**/*.pdf
 # result, let alone carried in the history for ever.
 report/**/*SYNTHETIC*
 
+# The loss viewer page beside its CSVs. A copy of
+# src/scripts/landloss/loss/ui/loss_viewer.html, which is the one kept,
+# written there by gen_viewer_data.py so the folder can be handed over whole.
+report/loss/viewer/loss_viewer.html
+
 # Built reviewer pages. Each embeds claim ids and claim report wall counts, so
 # it stays inside T+T, and it is rebuilt from the current outputs by
 # src/scripts/landloss/reviewer/gen_reviewer_rw.py rather than kept.

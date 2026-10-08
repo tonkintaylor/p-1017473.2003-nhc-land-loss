@@ -1,0 +1,1 @@
+The loss viewer shows its headline totals no finer than the model supports: the figures under the Act as it stands to the nearest thousand dollars, and each land cap scenario's total and change to the nearest million. The land cap table also gives each scenario's change against the Act as a percentage, and professional fees are labelled as including consents.
