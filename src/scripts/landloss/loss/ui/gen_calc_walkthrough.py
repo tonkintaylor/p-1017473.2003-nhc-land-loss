@@ -79,6 +79,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     WALL_REPAIR_COLUMN,
     settlement_path,
 )
+from scripts.landloss.loss.ui.gen_viewer_data import NO_DAMAGE_LIQ_STATE
 from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
     world_loss_input_path,
@@ -197,6 +198,27 @@ DATA_LABEL_COL = 18
 DATA_VALUE_COL = 19
 
 
+def has_damage(claims: pd.DataFrame) -> pd.Series:
+    """Return whether each property has damage, which is what makes it a claim.
+
+    A wall to replace or build, a crossing, or liquefaction worse than the None
+    state. The excess may still take a claim's whole settlement; it is a claim
+    all the same. A flat property in the None state is not one, though it
+    carries the Canterbury cost for that state -- an average with non-claimants
+    in at $0 -- because it has nothing to claim for.
+
+    Args:
+        claims: Step 1's settlements, with the worst liquefaction state per
+            claim in ``LIQ_STATE_COLUMN``.
+
+    Returns:
+        True for a claim, per property.
+    """
+    walled = (claims[WALL_REPAIR_COLUMN] > 0) | (claims[LAND_REPAIR_COLUMN] > 0)
+    liquefied = claims[LIQ_STATE_COLUMN] > NO_DAMAGE_LIQ_STATE
+    return walled | liquefied | (claims[CROSSING_REPAIR_COLUMN] > 0)
+
+
 def pick_claims(claims: pd.DataFrame) -> pd.DataFrame:
     """Return the twenty claims the Calculation tab shows.
 
@@ -210,15 +232,16 @@ def pick_claims(claims: pd.DataFrame) -> pd.DataFrame:
     Returns:
         Up to :data:`CLAIMS` rows, with a ``case`` column saying why each is in.
     """
+    claims = claims[has_damage(claims)]
     wanted = {
         "the cap binds": claims["capped"] & (claims["damaged_area_m2"] > 0),
         "landslide, new wall built": claims[SYNTHETIC_WALL_COLUMN],
         "damaged wall": claims[WALL_REPAIR_COLUMN] > 0,
-        "liquefaction only": (claims[LIQ_REPAIR_COLUMN] > 0)
-        & (claims[WALL_REPAIR_COLUMN] == 0),
+        "liquefaction only": (claims[LIQ_STATE_COLUMN] > NO_DAMAGE_LIQ_STATE)
+        & (claims[WALL_REPAIR_COLUMN] == 0)
+        & (claims[LAND_REPAIR_COLUMN] == 0),
         "several dwellings": claims["dwelling_count"] > 1,
-        "paid nothing, excess took it": (claims["repair_cost_incl_gst_nzd"] > 0)
-        & (claims["settlement_incl_gst_nzd"] == 0),
+        "paid nothing, excess took it": claims["settlement_incl_gst_nzd"] == 0,
     }
     taken: list[str] = []
     labels: dict[str, str] = {}
@@ -274,10 +297,10 @@ def band_label(lower: float, upper: float) -> str:
 def claim_types(claims: pd.DataFrame) -> pd.Series:
     """Return what kind of damage each claim carries.
 
-    Three kinds, by which costs a claim attracts: a Canterbury liquefaction
-    cost, a wall cost -- whether replacing one that failed or building one to
-    reinstate landslide ground -- or both. On this data they are exhaustive
-    over every claim that is paid anything.
+    Three kinds, by which damage a claim carries: liquefaction worse than the
+    None state, a wall cost -- whether replacing one that failed or building
+    one to reinstate landslide ground -- or both. On this data they are
+    exhaustive over every claim, as :func:`has_damage` defines one.
 
     Args:
         claims: Step 1's settlements.
@@ -286,7 +309,7 @@ def claim_types(claims: pd.DataFrame) -> pd.Series:
         One of :data:`CLAIM_TYPES` per claim, or the empty string for a claim
         with neither.
     """
-    liquefied = claims[LIQ_REPAIR_COLUMN] > 0
+    liquefied = claims[LIQ_STATE_COLUMN] > NO_DAMAGE_LIQ_STATE
     walled = (claims[WALL_REPAIR_COLUMN] > 0) | (claims[LAND_REPAIR_COLUMN] > 0)
     return pd.Series(
         np.select(
@@ -347,7 +370,6 @@ def write_settings(sheet, policy: PolicySettings, *, subtitle: str) -> None:
             policy.excess_max_nzd,
             MONEY,
         ),
-        (SETTINGS_ROW["gst"], "GST rate", policy.gst_rate, "0.0%"),
     ]
     for row, label, value, fmt in rows:
         sheet.cell(row=row, column=1, value=label).font = TEXT
@@ -355,6 +377,13 @@ def write_settings(sheet, policy: PolicySettings, *, subtitle: str) -> None:
         cell.font = INPUT
         cell.fill = SETTING_FILL
         cell.number_format = fmt
+    # GST is fixed rather than a setting (T-86): the Act compares every amount
+    # GST-inclusive at 15%. The formulas still read it from this cell, so it is
+    # written in the same place, but plain rather than as an input.
+    sheet.cell(row=SETTINGS_ROW["gst"], column=1, value="GST rate (fixed)").font = TEXT
+    gst = sheet.cell(row=SETTINGS_ROW["gst"], column=2, value=policy.gst_rate)
+    gst.font = WORKED
+    gst.number_format = "0.0%"
 
 
 def add_chart(
@@ -505,6 +534,8 @@ def write_overview(sheet, claims: pd.DataFrame, policy: PolicySettings) -> None:
     sheet.column_dimensions[get_column_letter(DATA_LABEL_COL)].width = 24
     sheet.column_dimensions[get_column_letter(DATA_VALUE_COL)].width = 14
 
+    properties = len(claims)
+    claims = claims[has_damage(claims)]
     paid = claims[claims["settlement_incl_gst_nzd"] > 0]
     with_repair = claims[claims["repair_cost_incl_gst_nzd"] > 0]
     with_cap = claims[claims["land_cover_cap_incl_gst_nzd"] > 0]
@@ -513,7 +544,8 @@ def write_overview(sheet, claims: pd.DataFrame, policy: PolicySettings) -> None:
     sheet["A10"] = "Across the whole run"
     sheet["A10"].font = SECTION
     headline = [
-        ("Claims", float(len(claims)), COUNT, True),
+        ("Insured properties in the run", float(properties), COUNT, False),
+        ("Claims (properties with damage)", float(len(claims)), COUNT, True),
         ("Claims paid anything", float(len(paid)), COUNT, True),
         ("Total settlement ($)", claims["settlement_incl_gst_nzd"].sum(), MONEY, True),
         (

@@ -53,6 +53,7 @@ DRAWN = [
     "new_wall_rate_excl_gst",
     "spoil_m3",
     "liq_cost_excl_gst",
+    "liq_state",
     "has_damaged_wall",
     "has_new_wall",
     "has_liquefaction",

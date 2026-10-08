@@ -131,6 +131,14 @@ def main(*, extent, realisation_ids, world_ids):
                 lambda: gen_insured_land.main(
                     extent=extent,
                     use_cached_extent=insured_land_config.USE_CACHED_EXTENT,
+                    residential_rule=insured_land_config.RESIDENTIAL_RULE,
+                    max_dwelling_footprint_m2=(
+                        insured_land_config.MAX_DWELLING_FOOTPRINT_M2
+                    ),
+                    min_crossing_area_m2=insured_land_config.MIN_CROSSING_AREA_M2,
+                    min_crossing_share=insured_land_config.MIN_CROSSING_SHARE,
+                    driveway_half_width_m=(insured_land_config.DRIVEWAY_HALF_WIDTH_M),
+                    max_driveway_length_m=(insured_land_config.MAX_DRIVEWAY_LENGTH_M),
                 ),
             ),
             (

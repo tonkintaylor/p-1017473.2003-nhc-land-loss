@@ -194,7 +194,12 @@ def main(*, extent, close_up_m, use_cached_extent):
     )
     # The same filter the extent was built with, so the outlines drawn on the
     # close-up are the ones that were actually buffered.
-    buildings = drop_non_residential_buildings(buildings)
+    # The footprint rule, at the step's limit. The figure reads nothing
+    # from T:, so under the default "qv" rule its buildings can differ
+    # from the extent's on mixed and commercial land.
+    buildings = drop_non_residential_buildings(
+        buildings, max_area_m2=config.MAX_DWELLING_FOOTPRINT_M2
+    )
 
     print(f"Buffer: {INSURED_LAND_BUFFER_M:,.0f} m from every building outline")
     fig = build_figure(insured, buildings, window)

@@ -12,9 +12,16 @@ scenarios are two CSVs dragged onto the same page.
 **What the CSV carries is everything the settlement does not decide.** Areas,
 rates, wall geometry, the Canterbury cost, who has what damage -- all fixed by
 exposure and vul. What it deliberately leaves out is every figure the Act sets:
-GST, the caps, the sub-caps, the excess, the fees, the specification uplift.
-Those are the controls, so a number that moves when a control moves is not in
-this file.
+the caps, the sub-caps, the excess, the fees, the specification uplift. Those
+are the controls, so a number that moves when a control moves is not in this
+file. GST is left out too but is not a control: the page fixes it at
+:data:`~landloss.loss.policy.GST_RATE`, as the module does. The page also
+scales the wall rates and the land value, to show how far an answer leans on
+them; at a scale of one each, it is the module's answer.
+
+The land cap scenarios NHC is weighing are drawn over the main histogram, with
+the share of claims above each cap and the total settled under it. Those are
+the page's own arithmetic over the same rows, not something this file carries.
 
 That split is also what keeps the page honest. It cannot show a settlement that
 the module would not produce, because it is running the same arithmetic on the
@@ -29,7 +36,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from landloss.domain.loss_contract import CLAIM_ID_COLUMN
+from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN
+from landloss.hazard.liquefaction.land_damage import LD_STATES
 from landloss.io.area_of_interest import extent_suffix
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
@@ -67,6 +75,11 @@ if hasattr(sys.stdout, "reconfigure"):
 OUT_DIR = REPORT_DIR / "loss" / "viewer"
 VIEWER = "loss_viewer.html"
 HERE = __import__("pathlib").Path(__file__).resolve().parent
+# The liquefaction land damage state that is no damage at all: "None", the
+# first of LD_STATES, numbered from one. A property drawn in it still carries
+# the Canterbury cost for it -- an average with non-claimants in at $0 -- but
+# has nothing to claim for.
+NO_DAMAGE_LIQ_STATE = LD_STATES.index("None") + 1
 
 
 def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
@@ -103,6 +116,36 @@ def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
     )
 
 
+def liquefaction_states(
+    world_id: int, realisation_id: int, *, extent: str
+) -> pd.Series:
+    """Return each claim's liquefaction land damage state, 0 where it has none.
+
+    Sloping land has no state at all, because the liquefaction model covers
+    flat land only. Where a claim has more than one land row, its worst state.
+
+    Args:
+        world_id: The exposure world.
+        realisation_id: The modelled earthquake.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        The state per claim, 1 (None) to 6 (Very severe), or 0.
+    """
+    land = pd.read_parquet(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent),
+        columns=[CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN],
+    )
+    return (
+        land[LIQ_LD_STATE_COLUMN]
+        .fillna(0)
+        .astype(int)
+        .groupby(land[CLAIM_ID_COLUMN])
+        .max()
+    )
+
+
 def site_multiplier(claims: pd.DataFrame) -> pd.Series:
     """Return each claim's site multiplier, summed from its three ratings."""
     return sum(
@@ -122,18 +165,22 @@ def wall_value_excl_gst(rw: pd.DataFrame, policy: PolicySettings) -> pd.Series:
     return wall_udv_by_claim(rw, policy=policy) / (1.0 + policy.gst_rate)
 
 
-def viewer_rows(claims: pd.DataFrame, wall_value: pd.Series) -> pd.DataFrame:
+def viewer_rows(
+    claims: pd.DataFrame, wall_value: pd.Series, liq_state: pd.Series
+) -> pd.DataFrame:
     """Return the table the viewer reads, one row per claim.
 
     Only what the Act does not decide. Wall value and wall cost arrive **before
     GST**, and the repair as a face area and a rate rather than as a price,
     because a price already has GST, the site multiplier and the specification
-    uplift baked into it -- and all three are controls on the page.
+    uplift baked into it -- and the page applies all three itself.
 
     Args:
         claims: Step 1's settlements, indexed by claim.
         wall_value: The damaged walls' value before GST per claim, as
             :func:`wall_value_excl_gst` returns.
+        liq_state: The liquefaction land damage state per claim, as
+            :func:`liquefaction_states` returns.
 
     Returns:
         The viewer's rows.
@@ -173,7 +220,14 @@ def viewer_rows(claims: pd.DataFrame, wall_value: pd.Series) -> pd.DataFrame:
             "site_multiplier": site_multiplier(claims).round(3),
             "has_damaged_wall": (claims[WALL_REPAIR_COLUMN] > 0).astype(int),
             "has_new_wall": (claims[LAND_REPAIR_COLUMN] > 0).astype(int),
-            "has_liquefaction": (claims[LIQ_REPAIR_COLUMN] > 0).astype(int),
+            # The state as well as the cost, because the cost alone cannot tell
+            # a claim from a property with nothing to claim for: the None state
+            # carries a Canterbury cost too. Liquefaction damage is a state worse
+            # than None, and it is what makes a property a claim on the page.
+            "liq_state": liq_state.reindex(claims.index).fillna(0).astype(int),
+            "has_liquefaction": (
+                liq_state.reindex(claims.index).fillna(0) > NO_DAMAGE_LIQ_STATE
+            ).astype(int),
             "has_crossing": 0,
             "access": claims[ACCESS_COLUMN],
             "earthworks": claims[EARTHWORKS_COLUMN],
@@ -269,7 +323,11 @@ def main(*, extent, world_ids, realisation_ids):
     rw = gpd.read_parquet(
         world_loss_input_path("rw", world_id, realisation_id, extent=extent)
     )
-    rows = viewer_rows(claims, wall_value_excl_gst(rw, policy))
+    rows = viewer_rows(
+        claims,
+        wall_value_excl_gst(rw, policy),
+        liquefaction_states(world_id, realisation_id, extent=extent),
+    )
     points = claim_points(world_id, realisation_id, extent=extent)
     rows = rows.join(points).reset_index()
 

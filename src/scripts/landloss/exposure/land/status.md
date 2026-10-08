@@ -160,10 +160,11 @@ polygon now includes the driveway and is cut to the property boundary.
     Road (as transcribed), where missing roads make the generated driveways long
     (**T-62**). The same area has no property boundaries or addresses yet
     (**L-41**).
-11. Exclude non-residential sites using a land use layer rather than by hand
-    (**T-63**); the building use field is too incomplete, so buildings default
-    to residential (**L-42**). The zoo was the example. Low priority unless the
-    false positives start to show in the costs.
+11. Run step 5 with the QV rule (`RESIDENTIAL_RULE = "qv"`, now the default)
+    over the pilot and the full extent, which needs T:, and record how many
+    outlines it keeps and drops against the footprint rule (**T-63**, **L-42**).
+    `validations/gen_building_classification.py` with `USE_QV_ROLL = True`
+    writes the comparison for QGIS.
 12. Switch step 2's land value to the QV rating roll's `land_value`, carried
     onto the claim properties. Each council's values are at its own
     revaluation date, September 2024 for Wellington City to September 2025 for

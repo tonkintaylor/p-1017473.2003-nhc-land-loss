@@ -98,6 +98,21 @@ LOWER_HUTT_PILOT = AreaOfInterest(
     north=-41.195,
 )
 
+# The bounding box of Wellington City, the largest single territorial
+# authority a build can run over while the full study area does not fit in
+# memory at 1 m (a 57,000 by 62,000 cell elevation model; the per-territorial
+# authority tiling plan is not yet built). Taken from the packaged study area
+# boundary. Being a box, it also takes in edge strips of Lower Hutt (Petone and
+# the western Hutt hills) and Porirua (Kenepuru), whose claims are partial and
+# should be left out of anything reported for Wellington City.
+WELLINGTON_CITY = AreaOfInterest(
+    name="Wellington City",
+    west=174.613267,
+    south=-41.362455,
+    east=174.89541,
+    north=-41.143536,
+)
+
 # A pilot box over central Porirua: the city centre, Elsdon, Takapuwahia and
 # the southern end of Titahi Bay, about 2.8 by 3.0 km. It is the first extent
 # outside Wellington City, so it runs without the GNS SLIDE layers and the WCC
@@ -156,6 +171,7 @@ FULL_EXTENT = "full"
 EXTENTS = {
     "wlg-pilot": SMALL_WLG_PILOT,
     "wlg-earthworks-pilot": WLG_EARTHWORKS_PILOT,
+    "wellington-city": WELLINGTON_CITY,
     "porirua-pilot": PORIRUA_PILOT,
     "porirua": PORIRUA,
 }

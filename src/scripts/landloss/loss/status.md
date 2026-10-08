@@ -111,6 +111,15 @@ The settlement core is built and is the only part that needed no upstream data.
   cap; only 2 of them have damaged ground. On the rest the cap is the wall's
   value and the repair cost is that value plus the multiplier, so capping is
   arithmetic. Read the count with damaged land.
+- **The viewer and the walkthrough read step 1's output** (`ui/`). The viewer
+  settles every claim in the browser and draws Bridget Attwood's land caps
+  ($15k, $30k, $90k, $120k) over the main histogram with the share of claims
+  above each and the total under each (**T-87**); GST is fixed at 15% rather
+  than an input (**T-86**). Whether a land cap *replaces* the Act's cap or
+  *limits* it, as `total_cap_nzd` does, is a toggle until NHC says which it
+  means. Both count a property as a claim only where it has damage -- a wall, a
+  crossing, or liquefaction worse than None -- since a None state still carries
+  the Canterbury average cost: on the pilot, 3,485 claims of 4,295 properties.
 
 ## Next
 

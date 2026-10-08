@@ -7,6 +7,12 @@
   insured land and writes `temp/exposure/insured-land.geoparquet`. Both take the
   `extent_suffix(config.EXTENT)` suffix (`-pilot` for `"wlg-pilot"`), so a run
   over one extent cannot overwrite another's outputs.
+- **Every judgement the step makes is set in `config.py`**: the residential
+  rule, the footprint limit, the two thresholds for splitting a building across
+  a boundary, the driveway width and longest driveway, and the fetch margin.
+  `gen_exposure.py`, the figure, the report numbers and the building
+  classification validation read the same values. NHC's own definitions -- the
+  8 m buffer and the 60 m of insured access -- stay in the code.
 - **The claim is the property, not the address.** That is the decision the step
   is built around and it replaces an earlier model keyed on address points, in
   which 40% of addresses found no building near enough to buffer and so carried
@@ -52,7 +58,32 @@
   follows a residential building. A bare section belongs in that group; so does
   a property whose address point LINZ placed just outside its own boundary, and
   only the second is an error.
-- **A building that cannot be a home is dropped**, by
+- **By default a building is a dwelling where the land is used for homes**
+  (`RESIDENTIAL_RULE = "qv"` in `config.py`, Maxim Millen 2026-10-08), by
+  `drop_buildings_by_property_use` in `landloss.exposure.land.residential_use`.
+  Each claim property takes the broad use of its rating units on the QV rating
+  roll, joined on the valuation reference: the first letter of
+  `property_category` under the Rating Valuations Rules 2008 gives residential
+  (R), lifestyle (L), rural (A, D, F, H, P, S) or non-residential (C, I, O, U,
+  M), with RV vacant residential land apart. A property of several units takes
+  the first of residential, lifestyle, rural, non-residential, vacant that any
+  unit has, so shops under flats count as residential. A building then stands
+  on the property its representative point falls in:
+  - on residential, lifestyle or rural land it is kept **whatever its size**, so
+    an apartment block is a dwelling;
+  - on non-residential land it is dropped, so a corner shop or a workshop is not;
+  - a building LINZ names is dropped either way;
+  - on land the roll does not hold, on vacant land (a house may have been built
+    since the revaluation) or outside every property, the footprint rule below
+    decides.
+
+  The roll is read from T: and is sensitive: only the broad use per claim
+  property leaves the join, and nothing of the roll is written.
+  `describe_use_filter()` prints the share of claim properties on the roll and
+  how many outlines the roll keeps that the footprint rule drops, and the
+  reverse. `RESIDENTIAL_RULE = "footprint"` runs the earlier rule alone, which
+  needs nothing from T:.
+- **Under the footprint rule, a building that cannot be a home is dropped**, by
   `drop_non_residential_buildings` in `landloss.exposure.land.extent`, before
   anything is buffered. Two tests, both of which rule buildings out and neither
   of which can rule one in:
@@ -79,8 +110,8 @@
   `describe_extent()` counts the dwellings on occupied properties that ended up
   with no building rather than leaving them to be inferred. Neither test says a
   building *is* residential, so what remains is still houses, offices and small
-  commercial units together: this is a tidy-up, not the residential filter the
-  study needs, which is step 1's Phase 3.
+  commercial units together: this is a tidy-up, which is why the QV rule above
+  replaced it as the default.
 - **Every building inside the property sets the extent**, buffered by
   `INSURED_LAND_BUFFER_M` and the buffers merged by `buffer_buildings`. A
   garage, a sleepout and a shed are **appurtenant structures and are buffered
