@@ -16,10 +16,10 @@ each extent's pipeline, using START_FROM_BY_EXTENT for individual restarts.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
 EXTENT = "lower-hutt"
 
-EXTENTS = ["wellington-city", "upper-hutt", "porirua"]
+EXTENTS = ["wellington-city"]
 
 START_FROM_BY_EXTENT = {
-    "wellington-city": {"module": "ground", "step": "s3, instability zones"},
+    "wellington-city": {"module": "exposure", "step": "rw s6, wall age"},
 }
 
 # Which exposure worlds to run. A world is one draw of the wall population,

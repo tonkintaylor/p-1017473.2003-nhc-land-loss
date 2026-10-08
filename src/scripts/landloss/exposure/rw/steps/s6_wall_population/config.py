@@ -60,9 +60,9 @@ USE_CACHED_LAYERS = True
 
 # The extent exposure step 8 was run over, whose property ages
 # (gen_rwt_age.py) and per-suburb age table (table_rwt_age_by_suburb.py)
-# gen_wall_age.py reads. Exposure rw step 8 is run over the full extent and a smaller
-# extent's walls are found in it by claim id, so this need not match EXTENT.
-AGE_EXTENT = "full"
+# gen_wall_age.py reads. Keep this in sync with that step's config. This run
+# uses Wellington City property ages and suburb shares.
+AGE_EXTENT = "wellington-city"
 
 # The share of claimed properties held out of the claim update for the
 # cross-validation, and the seed that picks them.
