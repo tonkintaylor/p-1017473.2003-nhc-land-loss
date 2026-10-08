@@ -58,7 +58,9 @@ def test_the_packaged_shares_cover_every_bin_and_band_and_sum_to_one() -> None:
     assert shares.shape == (len(AGE_BINS) * len(wt.HEIGHT_BANDS), len(WALL_TYPES))
     assert list(shares.columns) == list(WALL_TYPES)
     np.testing.assert_allclose(shares.sum(axis=1), 1.0)
-    assert shares.loc[("pre_1970", "over_2_5_m"), "reinforced_concrete"] == 0.55
+    assert (
+        shares.loc[("pre_1970", "over_2_5_m"), "reinforced_concrete_pre_1992"] == 0.60
+    )
 
 
 def test_the_packaged_multipliers_cover_every_type() -> None:
@@ -254,7 +256,7 @@ def test_a_type_with_no_share_is_never_drawn(on_road_frontage: bool) -> None:
         "crib_gabion",
         "concrete_block",
         "timber_pole_post_1992",
-        "engineered",
+        "reinforced_concrete_post_1992",
     }
 
 
@@ -267,7 +269,7 @@ def test_a_wall_of_unknown_height_draws_in_the_lowest_band() -> None:
 
     # Assert
     assert "garden_timber" in set(drawn["wall_type"])
-    assert "engineered" not in set(drawn["wall_type"])
+    assert "reinforced_concrete_post_1992" not in set(drawn["wall_type"])
 
 
 @pytest.mark.parametrize(

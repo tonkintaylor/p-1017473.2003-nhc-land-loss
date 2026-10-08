@@ -11,12 +11,12 @@ Each wall type has one curve per height class, not per size class (the lead,
 2026-10-07): a wall under 2 m high is ``under_2_m`` and one 2 m or higher is
 ``2_m_and_over`` (:func:`height_class`; a wall whose height is not known is
 ``under_2_m``). Which published wall height each class takes depends on the
-type. For brick or rock masonry, reinforced concrete, timber pole before July
-1992, concrete block and garden timber the published height effect is
+type. For brick or rock masonry, reinforced concrete before July 1992, timber
+pole before July 1992, concrete block and garden timber the published height effect is
 switched: taller walls of these types are the worse, so ``under_2_m`` takes
-the 6 m wall and ``2_m_and_over`` the 3 m wall. Crib or gabion, timber pole
-from July 1992 and engineered walls have no height effect and take the 3 m
-wall for both. ``size_class`` stays on every wall for pricing; only this
+the 6 m wall and ``2_m_and_over`` the 3 m wall. Crib or gabion, and timber
+pole and reinforced concrete from July 1992, have no height effect and take
+the 3 m wall for both. ``size_class`` stays on every wall for pricing; only this
 lookup uses the height class.
 
 Replacement is read at the **moderate** damage state, not the most severe,
@@ -38,9 +38,19 @@ dispersion. A wall whose position is not known keeps the stored curve.
 
 The packaged rows are read out of [koutsoupaki_2023], DS2 (5% of H), each
 type on one initial-condition rung and some then scaled by ``type_factor``
-(1.3 for timber pole from July 1992, 1.5 for engineered); the README beside the
-CSV says how, and ``src/scripts/landloss/vul/research/fig_rw_type_fragility.md``
+(1.3 for timber pole from July 1992, 1.5 for reinforced concrete from July
+1992); the README beside the CSV says how, and
+``src/scripts/landloss/vul/research/fig_rw_type_fragility.md``
 sets them beside the other published curves and the Canterbury failure shares.
+
+On 2026-10-08 the lead moved four medians after reviewing the curves on PGV
+(``fig_urban_fragility_curves.py`` in landslide step 5): reinforced
+concrete before July 1992, timber pole before July 1992, concrete block and
+reinforced concrete from July 1992, under 2 m, to 1.5, 0.9, 0.7 and 2.5 m/s,
+read as PGA at the pilot walled polygons' median PGV/PGA ratio of 0.848 m/s
+per g. Both percentiles moved by one factor, so the dispersion is kept, and
+the 2 m and over curve moved by
+the same factor; ``type_factor`` is the whole scaling of the rung.
 """
 
 from pathlib import Path
@@ -61,17 +71,19 @@ WALL_TYPE_FRAGILITY_PATH = ASSETS_DIR / "retaining-wall-type-fragility.csv"
 WALL_TYPES_PATH = ASSETS_DIR / "retaining-wall-types.csv"
 
 # The wall types, oldest-style first, as named in the tables (renamed by the
-# lead on 2026-10-08 to follow the NHC costing tool's wall rows). Each one's
+# lead on 2026-10-08 to follow the NHC costing tool's wall rows; reinforced
+# concrete split at July 1992 the same day, the later half replacing
+# ``engineered``). Each one's
 # readable label and the NHC rate row it is priced at are in WALL_TYPES_PATH.
 WALL_TYPES = (
     "brick_rock",
-    "reinforced_concrete",
+    "reinforced_concrete_pre_1992",
     "crib_gabion",
     "timber_pole_pre_1992",
     "concrete_block",
     "timber_pole_post_1992",
     "garden_timber",
-    "engineered",
+    "reinforced_concrete_post_1992",
 )
 
 # The two height classes a wall's curve is chosen by (the lead, 2026-10-07),

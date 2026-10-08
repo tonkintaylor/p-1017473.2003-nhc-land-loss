@@ -1,9 +1,9 @@
 wall_type,label,nhc_rate_item,covers
 brick_rock,Brick or rock masonry,Rock: Mortar Bed,"Brick and stone gravity walls, and brick linings up a cut"
-reinforced_concrete,Reinforced concrete,Reinforced Concrete,"Mass and precast concrete gravity walls (about 1900 to the 1960s) and reinforced concrete cantilevers"
+reinforced_concrete_pre_1992,"Reinforced concrete, before July 1992",Reinforced Concrete,"Mass and precast concrete gravity walls (about 1900 to the 1960s) and reinforced concrete cantilevers"
 crib_gabion,Crib or gabion,Concrete Crib,"Concrete and timber crib walls and gabion baskets; a gabion would take the Gabion Basket rate"
 timber_pole_pre_1992,"Timber pole, before July 1992","Timber Pole: 175mm SED to 350mm SED, by height","Timber pole walls built before the Building Act 1991 took effect, unengineered or decayed"
 concrete_block,Concrete block,Concrete Block,"Concrete block masonry cantilevers"
 timber_pole_post_1992,"Timber pole, July 1992 on","Timber Pole: 175mm SED to 350mm SED, by height","Timber pole walls built since the Building Act 1991, engineered where over 1.5 m"
 garden_timber,Garden timber,Timber Pole: 175mm SED,"Half-round and sleeper walls under 1.5 m, built without a consent"
-engineered,Engineered,Mechanically Stabilised Earth (MSE),"MSE, soil-nailed and large reinforced concrete walls"
+reinforced_concrete_post_1992,"Reinforced concrete, July 1992 on",Mechanically Stabilised Earth (MSE),"MSE, soil-nailed and large reinforced concrete walls"

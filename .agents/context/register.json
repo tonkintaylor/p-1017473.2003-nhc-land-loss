@@ -759,6 +759,206 @@
       "Phase": "4",
       "Source": "Wgtn land model sense check 2026-10-05",
       "Status": "Open"
+    },
+    {
+      "ID": "T-118",
+      "Task": "Revise the retaining wall type shares by age bin to those Nick Peters and John Leeves agreed: before 1970 no crib and about 70% concrete or masonry; 1970 to 1991 crib down to about 10%, with timber pole taking the difference; from 2005 crib 5% and anchored sprayed concrete 10%; and about 5% landscaping walls between 1.5 and 2.5 m after 2005.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-119",
+      "Task": "Name each retaining wall type by how it is built rather than calling modern walls engineered, since new timber pole walls are engineered too, and carry anchored sprayed concrete as its own type.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-120",
+      "Task": "Compare the modelled wall type mix across the population with the mix in about 2,000 claim reports from all insurers: 53% timber, 16% concrete, 15% masonry or block, 6% crib, 4% brick, 4% stone and 1% other.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-121",
+      "Task": "Add a background population of low retaining walls, since the wall count is probably much too low; wall numbers were raised by about 40% in the meantime.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-122",
+      "Task": "Price a failed wall's replacement as a timber pole wall whatever type failed, except that a concrete block wall may go back as block and an anchored sprayed concrete wall is replaced in kind.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-123",
+      "Task": "Split each claim's damaged land into inundated and evacuated in the loss viewer, and label its damage as liquefaction, retaining wall failure, landslide or a combination, without breaking out the areas.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-124",
+      "Task": "Pass the loss module which landslide polygons are retaining wall failures, and which polygons on one property are separate failures needing separate walls.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-125",
+      "Task": "Show the retaining wall repair cost separately from inundation removal in the loss outputs, so NHC can see each repair solution.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-126",
+      "Task": "Retitle professional fees in the loss viewer as professional fees including consents.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-127",
+      "Task": "Carry imminent risk through to the loss outputs with a switch to exclude it, since the board wants to test the scheme without it.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-128",
+      "Task": "Check whether commercial buildings are still counted as dwellings in the Porirua pilot after the QV land use filter (T-63), and tighten the filter if they are.",
+      "Owner": "Maxim Millen",
+      "Phase": "1",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-129",
+      "Task": "Check what drives the largest claims in the pilot, such as industrial sites or long walls.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-130",
+      "Task": "Check the pilot's total land loss of $163 million under the current Act, about $40,000 a property over about 4,000 claims.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-131",
+      "Task": "Add the percentage change against the current Act for each land cap scenario to the loss viewer, and round the dollar millions to whole numbers.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-132",
+      "Task": "Show how much properties miss out on under a land cap as a headline output, for example repair cost against settlement with a summary statistic, rather than only in the per-property view.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-133",
+      "Task": "Run the whole study area, or Wellington City if it does not fit, for the placeholder numbers going to Bridget Attwood on Friday 9 October.",
+      "Owner": "Maxim Millen",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-134",
+      "Task": "Write the first cut of the report, leaving placeholders for Maxim Millen and Perrie Gilbert to fill.",
+      "Owner": "John Leeves",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-135",
+      "Task": "Check that multi-unit properties are traced through the loss correctly, since losses are worked per property.",
+      "Owner": "Maxim Millen",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-136",
+      "Task": "Send Perrie Gilbert the updated liquefaction numbers for the loss viewer.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "3",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-137",
+      "Task": "Send a figure of how often each wall type fails beside how often slopes fail, with the wall types named as NHC names them.",
+      "Owner": "Maxim Millen",
+      "Phase": "3",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-138",
+      "Task": "Ask Bridget Attwood whether NHC wants a single best estimate of losses or low and high scenarios alongside a central estimate (Q-20).",
+      "Owner": "John Leeves",
+      "Phase": "4",
+      "Source": "Maxim Millen 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-139",
+      "Task": "Confirm which land cap values are the scenarios, $30,000, $60,000, $100,000 and $150,000 or the 15, 30, 90 and 120 in Bridget Attwood's document (Q-21).",
+      "Owner": "John Leeves",
+      "Phase": "4",
+      "Source": "Maxim Millen 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-140",
+      "Task": "Give culverts and bridges the same flag set in the vul contract by adding the missing flags, as decided under Q-09; needed for the final model.",
+      "Owner": "Unassigned",
+      "Phase": "Unassigned",
+      "Source": "Culverts and bridges task review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-141",
+      "Task": "Validate culvert and bridge crossing detection by checking the share of properties with a crossing by territorial authority, hand-checking a sample against aerial imagery, and counting crossings found only on the river polygon layer; needed for the final model.",
+      "Owner": "Unassigned",
+      "Phase": "Unassigned",
+      "Source": "Culverts and bridges task review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-142",
+      "Task": "Validate the culvert and bridge shaking damage states by comparing the realised write-off share with the fragility it was drawn from, and the realised culvert and bridge split with the 80/20 assumption; needed for the final model.",
+      "Owner": "Unassigned",
+      "Phase": "Unassigned",
+      "Source": "Culverts and bridges task review 2026-10-08",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -1160,6 +1360,55 @@
       "Affects": "hazard/landslide, exposure/rw, vul",
       "Source": "Wgtn land model sense check 2026-10-05",
       "Status": "Open"
+    },
+    {
+      "ID": "L-62",
+      "Limitation": "The wall rates and professional fees from NHC's costing spreadsheet are probably too low, judging by the NHC claim reports.",
+      "Affects": "loss",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-63",
+      "Limitation": "Access, mobilisation, demobilisation and reinstatement scale with wall size through the site rating multipliers, but in practice they are partly fixed per job, so small walls are underpriced; John Leeves expects a fixed allowance to be needed (T-32).",
+      "Affects": "loss",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-64",
+      "Limitation": "A failed wall is replaced over its whole length, in segments of up to 50 m, with no partly failed state, which may overstate the cost and the inundated land. It is stated as an assumption justified by the size of the earthquake.",
+      "Affects": "exposure/rw, vul/landslide/rw, loss",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Accepted"
+    },
+    {
+      "ID": "L-65",
+      "Limitation": "Council walls at road edges, and how their repair cost is shared with owners, are not modelled; a wall outside the property boundary settles only the land inside it.",
+      "Affects": "exposure/rw, loss",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-66",
+      "Limitation": "Where a watercourse crosses the insured accessway, the structure is drawn as a culvert with 80% probability and a bridge with 20%; both figures are engineering judgement and will need disclosing in the report.",
+      "Affects": "exposure/culverts_bridges",
+      "Source": "Culverts and bridges task review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-67",
+      "Limitation": "Both LINZ river name layers are published as pilots, so their coverage over the study area is unconfirmed and the crossing rate rests on whatever they hold; this is accepted as a caveat to disclose in the report.",
+      "Affects": "exposure/culverts_bridges",
+      "Source": "Culverts and bridges task review 2026-10-08",
+      "Status": "Accepted"
+    },
+    {
+      "ID": "L-68",
+      "Limitation": "Earthquakes increase silt run-off, which would damage culverts in small rainfall events, and the model does not represent this.",
+      "Affects": "vul/shaking/culverts_bridges",
+      "Source": "Maxim Millen, culverts and bridges task review 2026-10-08",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -1312,6 +1561,14 @@
       "Rationale": "In SME experience the big concrete and brick walls are in soil country (Karori, Thorndon, Mount Cook, Mount Victoria), while walls in greywacke are mostly small ones at the front of a section; held as a future improvement in the wall types plan.",
       "Phase": "Future",
       "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-20",
+      "Improvement": "Replace only part of a failed wall's length, for example 70% of the length within the insured land.",
+      "Rationale": "Walls are often only partly damaged, though Wellington has little earthquake experience to set the share; rejected for now in favour of stating full replacement as an assumption.",
+      "Phase": "Future",
+      "Source": "Wgtn Land Model 2026-10-07",
       "Status": "Parked"
     }
   ],

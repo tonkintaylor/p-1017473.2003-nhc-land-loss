@@ -31,8 +31,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   and give each type its own curve, in place of the condition axis
   (`.agents/plans/assigning-retaining-wall-types.md`). The seven type curves
   are set (the lead, 2026-10-06; two height classes from 2026-10-07), and the
-  draw is built in step 6 but not yet run on the pilot (Next, 7); the type
-  shares, revised by the lead on 2026-10-08, await Nick Peters (Next, 8).
+  draw is built in step 6 but not yet run on the pilot (Next, 7). Nick
+  Peters and John Leeves reviewed the shares on 2026-10-07, and the lead
+  applied their changes on 2026-10-08 (**T-118**).
 - [~] **Identify where walls are, as lines, with a probability on each**
   (`steps/s6_wall_population/`). No wall dataset exists (**L-04**), so the
   lines are inferred: GNS mapped walls [townsend_2020], SLIDE cut and fill
@@ -400,9 +401,13 @@ What this module owes the retaining wall table `loss` reads
 7. **Run `gen_wall_age.py` from the console** (it reads the QV roll on T:),
    then rerun step 6's population and the pilot chain, so the drawn walls
    carry their age bin and wall type (wall types plan, phase 3).
-8. Have Nick Peters review the type shares, which the lead revised on
-   2026-10-08 for the types renamed that day (`retaining-wall-types.csv`),
-   and the frontage multipliers (wall types plan, phase 4).
+8. Done 2026-10-08: the type shares (`beta-retaining-wall-type-shares.csv`)
+   follow the 2026-10-07 review by Nick Peters and John Leeves (**T-118**).
+   On 2026-10-08 the lead renamed `engineered` to
+   `reinforced_concrete_post_1992` and `reinforced_concrete` to
+   `reinforced_concrete_pre_1992` (**T-119**), and moved four wall type curves
+   (wall types plan). The frontage multipliers
+   are still to be reviewed (wall types plan, phase 4).
 9. Bring subdivision age into `p_wall`.
 10. Calibrate the wall units' weights on the held-out claims, GNS and the
    strata once **T-50** is complete (Wall datasets, above).
@@ -416,6 +421,13 @@ What this module owes the retaining wall table `loss` reads
     factored once per cluster of nearby units, so milliseconds per world. The
     claim update's assumption of independent units on a property is accepted
     (the lead, 2026-10-06). It changes every world's draw.
+14. Add a background population of low walls, since the count is probably
+    much too low; wall numbers were raised by about 40% in the meantime
+    (**T-121**, 2026-10-07).
+15. Compare the drawn type mix with the claim reports' (about 2,000 reports:
+    53% timber, 16% concrete, 15% masonry or block, 6% crib) (**T-120**).
+16. Send John Leeves and Nick Peters a figure of how often each wall type
+    fails beside how often slopes fail (**T-137**).
 
 ## Validation
 
@@ -441,9 +453,9 @@ What this module owes the retaining wall table `loss` reads
 - Ask NHC how the NZMM `RetainingWallInd` is filled. It flags 3% of
   properties, and claimed properties far more often than others.
 
-- The share of each wall type by age bin and height band, and the road
-  frontage multipliers: placeholders in the wall types plan, for Nick Peters
-  to review.
+- The road frontage multipliers: placeholders in the wall types plan, for
+  Nick Peters to review. The type shares were settled on 2026-10-08
+  (**T-118**).
 - Whether repair cost scales with wall length or height, and the fixed costs per
   job (**T-32**).
 - The rock-cut factor from height band 4 (over 2.5 m), the cut height taken

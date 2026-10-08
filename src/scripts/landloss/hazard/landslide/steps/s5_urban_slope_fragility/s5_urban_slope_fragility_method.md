@@ -6,7 +6,11 @@
   medians are tabulated by `table_urban_slope_model.py`, written to
   `report/hazard/landslide/urban-slope-model/tab/`, and mapped by
   `fig_urban_slope_model.py`, written to
-  `report/hazard/landslide/urban-slope-model/fig/`.
+  `report/hazard/landslide/urban-slope-model/fig/`. The curves themselves
+  are drawn for review by `fig_urban_fragility_curves.py`: the localised
+  curve at each Kingsbury zone's mid rating, each wall type's curve per height
+  class converted to PGV at the median ratio of the run's walled polygons, and
+  each curve's failure probability across the study's 2,500-year PGV range.
 - What a run does is set by `config.py` in the step folder — `EXTENT`,
   `WORLD_IDS`, `URBAN_RATE` and `RETURN_PERIOD_YR` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
@@ -118,10 +122,10 @@
   curve was keyed on `size_class`, which the model file still carries for
   pricing). The median and dispersion run through the stored 15% and 50% PGA
   of `retaining-wall-type-fragility.csv`, read from [koutsoupaki_2023] as the
-  asset README records them: `brick_rock`, `reinforced_concrete`,
+  asset README records them: `brick_rock`, `reinforced_concrete_pre_1992`,
   `timber_pole_pre_1992`, `concrete_block` and `garden_timber` take the published height effect switched
   (6 m curve under 2 m, 3 m curve at 2 m and over), and `crib_gabion`,
-  `timber_pole_post_1992` and `engineered` the 3 m curve for both (types renamed
+  `timber_pole_post_1992` and `reinforced_concrete_post_1992` the 3 m curve for both (types renamed
   2026-10-08, `retaining-wall-types.csv`). The PGA median is scaled by the wall's own
   `wall_position`, 0.85 for a wall retaining fill and 1.15 for a cut
   (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`); the wall's position is

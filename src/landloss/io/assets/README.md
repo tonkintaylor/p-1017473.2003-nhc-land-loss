@@ -314,22 +314,27 @@ height is not known), `2_m_and_over` at 2.0 m and above
 what the loss module prices on; only this lookup moved. `height_effect` says
 which published height each class takes:
 
-- `switched` (`brick_rock`, `reinforced_concrete`, `timber_pole_pre_1992`,
+- `switched` (`brick_rock`, `reinforced_concrete_pre_1992`, `timber_pole_pre_1992`,
   `concrete_block`, `garden_timber`): taller walls of these types are the worse, so
   `under_2_m` takes the 6 m curve and `2_m_and_over` the 3 m curve, the
   opposite of the paper, whose taller wall is the stronger.
-- `none` (`crib_gabion`, `timber_pole_post_1992`, `engineered`): no height effect; both
+- `none` (`crib_gabion`, `timber_pole_post_1992`, `reinforced_concrete_post_1992`): no height effect; both
   classes take the 3 m curve. The damage state is DS2, *moderate*,
 `Ux = 5% of H`, not the DS3 the condition table reads: moderate damage usually
 leads to full replacement in a claim (the lead, 6 October 2026).
 `type_factor` scales both percentiles of a type's rung: 1.3 for
-`timber_pole_post_1992` and 1.5 for `engineered`, 1 otherwise; the stored percentiles
-already include it. The rungs are
+`timber_pole_post_1992` and 1.5 for `reinforced_concrete_post_1992`, 1 otherwise; the stored percentiles
+already include it. On 2026-10-08 the lead moved the medians of
+`reinforced_concrete_pre_1992`, `timber_pole_pre_1992`, `concrete_block` and `reinforced_concrete_post_1992`
+(named `engineered` until 2026-10-08) after reviewing the curves on PGV: under 2 m to 1.5,
+0.9, 0.7 and 2.5 m/s at the pilot's median PGV/PGA ratio of 0.848 m/s per g,
+with 2 m and over moved by the same factor and the dispersion kept, so for those
+four `type_factor` is the whole scaling of the rung. The rungs are
 judgement, ordered by the Port Hills failure shares by type [anderson_2015]
 [stone_2015]; `src/scripts/landloss/vul/research/fig_rw_type_fragility.md`
 sets them beside the other published curves.
 
-`reinforced_concrete` (8 October 2026) covers the old mass and precast
+`reinforced_concrete_pre_1992` (8 October 2026) covers the old mass and precast
 concrete gravity walls, most of its walls since it carries up to 0.55 of the
 pre-1970 ones, and reinforced concrete cantilevers. It takes the Fs = 1.2 rung
 (Table A4, crib's) with the height effect switched like the other gravity
@@ -348,7 +353,7 @@ the types on 8 October 2026 to follow the NHC costing tool's wall rows
 (`.agents/context/nhc-costing-tool.md`), from `gravity_masonry`, `crib`,
 `timber_pole_old`, `block_rc_cantilever`, `timber_pole_new`,
 `landscaper_timber` and `engineered_modern`. `gravity_masonry` split into
-`brick_rock` and `reinforced_concrete` (the old mass concrete walls, with
+`brick_rock` and `reinforced_concrete_pre_1992` (the old mass concrete walls, with
 reinforced concrete cantilevers); `block_rc_cantilever` became
 `concrete_block`. `wall_type` is the name the code and the other tables use;
 `label` is how a figure or map names it. `nhc_rate_item` is the row of the
@@ -357,7 +362,7 @@ costing tool's `lists` sheet the type would be priced at
 not read it yet, and it is for the loss module's owner to adopt. The timber
 pole types take the pile size from the wall's height, as the loss module
 already does. `garden_timber` on the 175 mm pole rather than Sleepers, and
-`engineered` on MSE rather than Soil Nail, are proposals awaiting the lead.
+`reinforced_concrete_post_1992` on MSE rather than Soil Nail, are proposals awaiting the lead.
 
 ## `beta-retaining-wall-type-shares.csv`
 
@@ -385,7 +390,7 @@ Judgement placeholders set by the project lead (6 October 2026) for Nick
 Peters to revise. One row per wall type, every type present. Where a wall
 stands on a road frontage, its row of `beta-retaining-wall-type-shares.csv`
 is multiplied by `road_frontage_multiplier` and renormalised: `brick_rock`,
-`reinforced_concrete` and `concrete_block` ×1.5, `crib_gabion` ×0.5,
+`reinforced_concrete_pre_1992` and `concrete_block` ×1.5, `crib_gabion` ×0.5,
 `garden_timber` ×0.3, the rest ×1. Retaining walls on a road boundary hold up driveways, garages and footpath
 cuts, so they are more often the heavier types.
 

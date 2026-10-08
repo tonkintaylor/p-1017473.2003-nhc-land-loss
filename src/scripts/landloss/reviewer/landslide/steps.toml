@@ -569,7 +569,7 @@ Each polygon gets a lognormal fragility on PGV, a median θ and a dispersion β:
   class, under or over {HEIGHT_CLASS_SPLIT_M} m (the curves and table below). Its
   median is multiplied by {FILL_CAPACITY_FACTOR} for fill or
   {CUT_CAPACITY_FACTOR} for cut, then converted from PGA to PGV at the site's
-  ratio (LS-A45, LS-A46; RW-A23, RW-A33). New timber pole and engineered modern
+  ratio (LS-A45, LS-A46; RW-A23, RW-A33). New timber pole and reinforced concrete from July 1992
   are the block/RC curve ×1.3 and ×1.5; for gravity masonry, old timber pole,
   block/RC and landscaper timber the taller wall takes the weaker curve.
 - **Unwalled polygon**: a median that falls log-linearly with the Kingsbury

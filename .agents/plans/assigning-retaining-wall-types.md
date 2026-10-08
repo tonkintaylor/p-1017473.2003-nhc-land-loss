@@ -91,6 +91,44 @@ placeholder. The lead then revised every row of the shares the same day, with
 the sense check of 2026-10-05 in hand; the packaged CSV holds them, and the
 Table 2 fractions below are the superseded placeholders.
 
+**Renamed and four curves moved 2026-10-08 (the lead), after reviewing the
+urban model's curves on PGV** (`fig_urban_fragility_curves.py`, landslide
+step 5). `reinforced_concrete` became `reinforced_concrete_pre_1992` and
+`engineered` became `reinforced_concrete_post_1992`; their shares, frontage
+multipliers and rate rows are unchanged. The medians under 2 m, with the wall's
+position unknown, were set on PGV: reinforced concrete before July 1992
+1.5 m/s, timber pole before July 1992 0.9 m/s, concrete block 0.7 m/s and
+reinforced concrete from July 1992 2.5 m/s. They are stored on PGA at the
+pilot walled polygons' median PGV/PGA ratio of 0.848 m/s per g. Both
+percentiles moved by one factor, so each dispersion is kept, and the 2 m and
+over curve moved by the same factor so the height effect is kept.
+
+**Before 1970 revised 2026-10-08 (the lead), from the 2026-10-07 review by
+Nick Peters and John Leeves** (**T-118**), who put crib walls before 1970 at
+or near zero and concrete or masonry at about 70% of 1.5 to 2.5 m walls. Crib
+falls from 10% to 5% under 1.5 m and from 5% to 0% over 2.5 m, and stays at
+5% between 1.5 and 2.5 m. `reinforced_concrete` (cast in situ) takes 20%,
+55% and 60% across the three bands, and `brick_rock` falls from 15% to 10%
+between 1.5 and 2.5 m.
+
+**1970 to 1991 revised 2026-10-08 (the lead), from the same review.** Crib is
+10% in every band, Nick Peters' "safe place to sit", from 25%, and old timber
+pole, the under-designed walls of that period, takes the difference: 35%
+under 1.5 m, 55% between 1.5 and 2.5 m and 50% over 2.5 m. Between 1.5 and
+2.5 m `reinforced_concrete` falls from 10% to 5%, so concrete and masonry
+together are the agreed 10%.
+
+**1992 to 2004, 1.5 to 2.5 m, set back 2026-10-08 (the lead)** to the shares
+Nick Peters approved on 2026-10-07: crib 10%, block 30%, new timber pole
+55% and engineered 5%. The bands under 1.5 m and over 2.5 m, which were not
+discussed, keep the lead's revision of the same day.
+
+**2005 on, 1.5 to 2.5 m, revised 2026-10-08 (the lead), from the same
+review**: crib 5% and anchored sprayed concrete, held as `engineered` until
+**T-119** renames it, 10%, with 5% garden timber for the walls still built
+over 1.5 m without a consent. Block and new timber pole are unchanged. The
+other two bands were not discussed and are unchanged.
+
 ## The wall types and their curves
 
 All on DS2, moderate, `Ux = 5% of H`.

@@ -124,8 +124,21 @@
   times the polygon's own evacuated depth, whichever is less, the inundated zone
   spreads back over the polygon's own evacuated ground, the lowest cells first,
   until it does not (`deposit_overlap_m2`), so a polygon's inundated and
-  evacuated zones can overlap; its imminent band to where the 35° repose line
-  from the toe meets level ground. No barrier grid is passed, so buildings and
+  evacuated zones can overlap. Before the spread back is sized, a piece of a
+  polygon's strip of one cell, or two side by side, touching none of its other
+  cells along a row or column is dropped (`_drop_specks`, the lead,
+  2026-10-08), so the volume it held spreads back over the scar instead; a
+  polygon whose strip is only such pieces keeps them. Its imminent band to where
+  the 35° repose line from the toe meets level ground.
+- The evacuated ground loses its specks the same way, straight after the
+  contest for shared ground and the one-cell gap filling, and before anything
+  is read off it (`_drop_specks`, the lead, 2026-10-08): the polygon's area,
+  volume, depth and realised width, the cells it shares with other polygons
+  (`_recount_overlaps` drops a pair left sharing nothing and counts the rest
+  again), and the imminent band and runout, which leave out the polygon's own
+  evacuated ground. A dropped cell goes to no polygon. Before the change, world
+  0 of the pilot carried 275 such pieces in 203 of its 5,766 polygons, 224 m²
+  drawn. No barrier grid is passed, so buildings and
   roads do not stop the runout.
 - `build_slope_polygons` builds the zones twice as the bounds, with `with_walls`
   setting every element walled (`walled`) or none (`bare`), and once per exposure

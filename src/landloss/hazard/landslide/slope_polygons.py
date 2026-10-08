@@ -94,7 +94,11 @@ run only over elements and polygons. The rules, each where the plan sets it:
    depth, whichever is less, the inundated ground spreads back
    over the polygon's own evacuated ground, the lowest cells first, until it
    does not (:func:`deposit_overlap_m2`). An optional barrier grid
-   (buildings, roads) stops a ray at the first barrier cell.
+   (buildings, roads) stops a ray at the first barrier cell. A piece of the
+   strip of under three cells apart from the rest of it is dropped before the
+   spread back is sized. A piece of a polygon's evacuated ground of under
+   three cells apart from the rest of it is dropped before anything is read
+   off it.
 
 Depths, for the volume: a free-face's own ground (its face and the width
 behind its crest) is cut by a straight slip plane from its toe to the back of
@@ -1630,6 +1634,79 @@ def _fill_gaps(
     return pd.concat([cells, extra[cells.columns]], ignore_index=True)
 
 
+def _drop_specks(cells: pd.DataFrame, shape: tuple[int, int]) -> pd.DataFrame:
+    """Drop the pieces of fewer than three cells from each polygon's zone.
+
+    Judgement (the lead, 2026-10-08): a piece of a polygon's zone of one cell,
+    or of two side by side, touching none of its other cells along a row or a
+    column, is dropped, so the drawn zone carries no specks apart from the
+    rest of it. A polygon whose zone is only such pieces keeps them all, so no
+    polygon loses its zone. Whole arrays, keyed as in :func:`_fill_gaps`.
+
+    Returns:
+        ``cells`` less the specks.
+    """
+    if cells.empty:
+        return cells
+    n_rows, n_cols = shape
+    n_cells = n_rows * n_cols
+    key = cells["polygon"].to_numpy(dtype=np.int64) * n_cells + cells["cell"].to_numpy(
+        dtype=np.int64
+    )
+    keys = np.unique(key)
+    key_polygon, position = np.divmod(keys, n_cells)
+    rows, cols = np.divmod(position, n_cols)
+
+    def neighbour(dr: int, dc: int) -> NDArray[np.int64]:
+        """The index into ``keys`` of each key's neighbour, -1 where absent."""
+        row, col = rows + dr, cols + dc
+        inside = (row >= 0) & (row < n_rows) & (col >= 0) & (col < n_cols)
+        candidate = key_polygon * n_cells + np.where(inside, row * n_cols + col, 0)
+        found = np.minimum(np.searchsorted(keys, candidate), keys.size - 1)
+        return np.where(inside & (keys[found] == candidate), found, -1)
+
+    neighbours = np.stack(
+        [neighbour(dr, dc) for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))]
+    )
+    count = (neighbours >= 0).sum(axis=0)
+    partner = neighbours.max(axis=0)
+    speck = (count == 0) | ((count == 1) & (count[np.maximum(partner, 0)] == 1))
+    has_rest = pd.Series(~speck).groupby(key_polygon).transform("any").to_numpy()
+    dropped = keys[speck & has_rest]
+    if dropped.size == 0:
+        return cells
+    return cells[~np.isin(key, dropped)].reset_index(drop=True)
+
+
+def _recount_overlaps(overlaps: pd.DataFrame, kept: pd.DataFrame) -> pd.DataFrame:
+    """The overlaps that still share cells once specks are dropped, recounted.
+
+    Args:
+        overlaps: The overlaps :func:`_contest` found.
+        kept: The evacuated cells kept, ``polygon`` and ``cell``.
+
+    Returns:
+        ``overlaps`` less the pairs that no longer share a cell, with
+        ``n_cells`` counted again.
+    """
+    if overlaps.empty:
+        return overlaps
+    cells = kept[["polygon", "cell"]].drop_duplicates()
+    shared = cells[cells.duplicated("cell", keep=False)]
+    pairs = shared.merge(shared, on="cell", suffixes=("_a", "_b"))
+    counts = (
+        pairs[pairs["polygon_a"] < pairs["polygon_b"]]
+        .groupby(["polygon_a", "polygon_b"])
+        .size()
+        .rename("n_cells")
+        .reset_index()
+    )
+    recounted = overlaps.drop(columns="n_cells").merge(
+        counts, on=["polygon_a", "polygon_b"]
+    )
+    return recounted[overlaps.columns].reset_index(drop=True)
+
+
 def _element_links(
     stack_links: pd.DataFrame, width_m: NDArray[np.float64]
 ) -> pd.DataFrame:
@@ -2106,6 +2183,14 @@ def build_slope_polygons(
     taken = np.zeros(shape[0] * n_cols, dtype=bool)
     taken[kept["cell"].to_numpy(dtype=np.intp)] = True
     evacuated = _fill_gaps(evacuated, shape, taken)
+    # Specks of a polygon's evacuated ground go before anything is read off
+    # it: its area, volume and realised width, the ground it shares, and the
+    # imminent band and runout drawn from it.
+    evacuated = _drop_specks(evacuated, shape)
+    kept = kept.merge(
+        evacuated[["polygon", "cell"]].drop_duplicates(), on=["polygon", "cell"]
+    )
+    overlaps = _recount_overlaps(overlaps, kept)
 
     # Polygon attributes.
     polygons = keys.copy()
@@ -2354,6 +2439,9 @@ def build_slope_polygons(
     inundated = inundated[inundated["evac"].isna()].drop(columns="evac")
     if barrier_grid is not None:
         inundated = inundated[~barrier_grid.ravel()[inundated["cell"].to_numpy()]]
+    # Specks of the strip go before the spread back is sized, so the volume
+    # they held spreads back over the scar instead.
+    inundated = _drop_specks(inundated, shape)
     inundated = pd.concat(
         [
             inundated,

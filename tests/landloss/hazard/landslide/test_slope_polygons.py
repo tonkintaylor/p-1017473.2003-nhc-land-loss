@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import shapely
+from scipy import ndimage
 
 from landloss.hazard.landslide import slope_polygons
 from landloss.hazard.landslide.slope_elements import (
@@ -1237,3 +1238,88 @@ def test_the_smoothed_imminent_band_lies_against_the_evacuated_outline():
     # Within a cell or so of the band's own cells' area, not shaved off.
     drawn = imminent.set_index("polygon").area.sum()
     assert drawn == pytest.approx(cells.set_index("polygon").area.sum(), rel=0.1)
+
+
+def _specks_dropped(grid: np.ndarray, polygon: int = 0) -> np.ndarray:
+    """The grid after :func:`slope_polygons._drop_specks`, as a boolean grid."""
+    cells = pd.DataFrame(
+        {"polygon": polygon, "cell": np.flatnonzero(grid), "zone": INUNDATED}
+    )
+    kept = slope_polygons._drop_specks(cells, grid.shape)  # noqa: SLF001
+    out = np.zeros(grid.size, dtype=bool)
+    out[kept["cell"].to_numpy()] = True
+    return out.reshape(grid.shape)
+
+
+@pytest.mark.parametrize(
+    "speck",
+    [
+        [(6, 6)],
+        [(6, 5), (6, 6)],
+        [(5, 6), (6, 6)],
+        [(0, 6), (1, 5)],
+    ],
+)
+def test_pieces_of_one_or_two_cells_are_dropped(speck):
+    grid = np.zeros((7, 7), dtype=bool)
+    grid[:3, :3] = True
+    for cell in speck:
+        grid[cell] = True
+    expected = np.zeros_like(grid)
+    expected[:3, :3] = True
+    assert (_specks_dropped(grid) == expected).all()
+
+
+@pytest.mark.parametrize(
+    "piece",
+    [
+        [(6, 4), (6, 5), (6, 6)],
+        [(5, 6), (6, 5), (6, 6)],
+    ],
+)
+def test_pieces_of_three_cells_are_kept(piece):
+    grid = np.zeros((7, 7), dtype=bool)
+    grid[:3, :3] = True
+    for cell in piece:
+        grid[cell] = True
+    assert (_specks_dropped(grid) == grid).all()
+
+
+def test_a_zone_of_only_specks_is_kept():
+    grid = np.zeros((5, 5), dtype=bool)
+    grid[0, 0] = grid[3, 3] = grid[3, 4] = True
+    assert (_specks_dropped(grid) == grid).all()
+
+
+def test_specks_are_judged_per_polygon():
+    big = np.zeros((5, 5), dtype=bool)
+    big[:3, :3] = True
+    # Polygon 1's one cell lies against polygon 0 but is its only cell, so it
+    # is kept; polygon 2's cell 4 is a speck apart from its run 14, 19, 24.
+    cells = pd.concat(
+        [
+            pd.DataFrame(
+                {"polygon": 0, "cell": np.flatnonzero(big), "zone": INUNDATED}
+            ),
+            pd.DataFrame({"polygon": 1, "cell": [3], "zone": INUNDATED}),
+            pd.DataFrame({"polygon": 2, "cell": [4, 24], "zone": INUNDATED}),
+            pd.DataFrame({"polygon": 2, "cell": [19, 14], "zone": INUNDATED}),
+        ],
+        ignore_index=True,
+    )
+    kept = slope_polygons._drop_specks(cells, big.shape)  # noqa: SLF001
+    assert len(kept[kept["polygon"] == 0]) == 9
+    assert kept.loc[kept["polygon"] == 1, "cell"].tolist() == [3]
+    assert sorted(kept.loc[kept["polygon"] == 2, "cell"]) == [14, 19, 24]
+
+
+@pytest.mark.parametrize("name", sorted(TOY_CASES))
+@pytest.mark.parametrize("noise", NOISE_LEVELS)
+def test_no_evacuated_ground_is_left_in_specks(name, noise):
+    _, _, result = run_case(name, noise)
+    for _, cells in zone_cells(result, EVACUATED).groupby("polygon"):
+        grid = np.zeros(result.shape, dtype=bool)
+        grid[cells["row"], cells["col"]] = True
+        labels, n = ndimage.label(grid)
+        sizes = np.bincount(labels.ravel())[1:]
+        assert n == 1 or (sizes >= 3).all() or (sizes < 3).all()

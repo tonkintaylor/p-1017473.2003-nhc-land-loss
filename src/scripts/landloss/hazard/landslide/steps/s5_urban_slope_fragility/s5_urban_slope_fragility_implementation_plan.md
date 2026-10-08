@@ -69,6 +69,9 @@ built against.
 - [x] `fig_urban_slope_model.py`: the finest-scale polygons coloured by
       median, and the cumulative distribution of the median per wall state
       against the study's PGV range.
+- [x] `fig_urban_fragility_curves.py`: the no-wall and wall type curves on
+      PGV, before amplification, and each curve's failure probability at the
+      study's PGV range (2026-10-08).
 - [x] Tests in `tests/landloss/hazard/landslide/urban/test_fragility.py`: the
       contract's unit checks, the packaged tables read and validated, and the
       three scripts end to end on synthetic inputs in a temporary directory.

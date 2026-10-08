@@ -4,7 +4,7 @@
 applied to an insured land extent buffered off every building on the property,
 driveways included, clipped to the boundary.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-08
 
 ## Approach
 
@@ -169,6 +169,9 @@ polygon now includes the driveway and is cut to the property boundary.
     onto the claim properties. Each council's values are at its own
     revaluation date, September 2024 for Wellington City to September 2025 for
     Porirua.
+13. Check the Porirua run for commercial buildings still counted as
+    dwellings once item 11 has run, and tighten the filter if any remain
+    (**T-128**; raised 2026-10-07 from the Porirua pilot).
 
 ## Validation
 
