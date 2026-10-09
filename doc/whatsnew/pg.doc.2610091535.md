@@ -1,0 +1,1 @@
+Vul liquefaction land step 3's figure script draws two more figures, one each for inundated and evacuated land: what a claim costs against that area at the fitted rate, with the no-SVA rate for inundated land, and the range of that ground a modelled claim in each damage state loses.

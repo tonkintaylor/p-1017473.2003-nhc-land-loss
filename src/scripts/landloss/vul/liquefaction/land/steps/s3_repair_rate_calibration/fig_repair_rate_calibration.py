@@ -1,7 +1,8 @@
 """Draw how the liquefied land repair rates were fitted, as an aid to explaining it.
 
-Four figures, one per stage of the fit in step 3, read off the claims step 2
-last wrote and the rates step 2 is configured with:
+Six figures, read off the claims step 2 last wrote and the rates step 2 is
+configured with -- four for the stages of the fit in step 3 and two for how the
+rates behave:
 
     uv run --frozen python src/scripts/landloss/vul/liquefaction/land/steps/s3_repair_rate_calibration/fig_repair_rate_calibration.py
 
@@ -17,6 +18,11 @@ last wrote and the rates step 2 is configured with:
   with the fitted spread: why the spread is there, and how far it gets.
 - **Spread fit.** The claim-weighted miss against the Canterbury quartiles as
   the spread varies, with the minimum the fit chose.
+- **Rate curves**, one for inundated land and one for evacuated: what a claim
+  costs against that area, the per-claim cost plus the rate, with its spread,
+  and for inundated land the no-SVA rate beside it; under each, the range of
+  that ground a modelled claim in each damage state loses. The cost build-up
+  figure is where the rates meet the Canterbury means.
 
 The Canterbury figures are a calibration target only, drawn to compare with.
 The modelled quartiles integrate the per-claim draw, as step 3 does, rather
@@ -481,8 +487,194 @@ def fig_spread_fit(area_cost, canterbury, rates, states, weights, extent):
     finish(fig, "liq-repair-spread-fit", extent)
 
 
-def main(*, extent, realisation_ids, fit_states, weight_by_claims, repair_rates):
-    """Draw the four figures."""
+# The damage states as an ordinal ramp, None lightest, so a band's shade says how
+# bad the state is. One hue, light to dark, starting no lighter than the ramp's
+# 250 step so None still reads against the surface.
+STATE_RAMP = {
+    1: "#86b6ef",
+    2: "#5598e7",
+    3: "#3987e5",
+    4: "#256abf",
+    5: "#184f95",
+    6: "#0d366b",
+}
+# The normal quantile at the upper quartile: the per-claim spread band runs
+# between the quartiles of the lognormal multiplier.
+Z_QUARTILE = 0.6744897501960817
+
+
+def draw_state_bands(strip, claims, column, states):
+    """Draw each state's ground lost per claim as a horizontal band.
+
+    The band runs from the 10th to the 90th percentile of the modelled claims in
+    the state, with a dot at the median; a state that loses none of this ground
+    is marked at zero and said so.
+    """
+    for row, state in enumerate(states):
+        area = claims.loc[claims[STATE_COLUMN] == state, column]
+        colour = STATE_RAMP[state]
+        if area.empty or area.max() <= 0:
+            strip.plot([0], [row], marker="|", color=colour, markersize=9)
+            strip.annotate(
+                "none lost",
+                (0, row),
+                xytext=(6, 0),
+                textcoords="offset points",
+                va="center",
+                color=INK_MUTED,
+                fontsize=8,
+            )
+            continue
+        low, mid, high = area.quantile([0.1, 0.5, 0.9])
+        strip.plot(
+            [low, high], [row, row], color=colour, linewidth=7, solid_capstyle="round"
+        )
+        strip.plot(
+            [mid],
+            [row],
+            marker="o",
+            markersize=4.5,
+            color=SURFACE,
+            markeredgecolor=INK,
+            markeredgewidth=0.8,
+        )
+    strip.set_yticks(range(len(states)), [STATE_LABELS[s] for s in states])
+    strip.set_ylim(-0.7, len(states) - 0.3)
+    strip.grid(axis="y", visible=False)
+    strip.tick_params(axis="y", length=0)
+
+
+def fig_rate_curve(claims, rates, states, extent, *, ground, no_sva_multiplier):
+    """Draw what a claim costs against its inundated or evacuated area.
+
+    The line is the per-claim cost plus the rate times the area, with the other
+    kind of ground held at zero, so its slope is the rate; the light band either
+    side is the spread of the per-claim cost between claims, its quartiles. The
+    strip below says how much of that ground a modelled claim in each state
+    loses. How the rates meet the Canterbury means is the cost build-up figure.
+    """
+    inundated = ground == "inundated"
+    column = INUNDATED_AREA_COLUMN if inundated else EVACUATED_AREA_COLUMN
+    rate = rates.inundated_nzd_per_m2 if inundated else rates.evacuated_nzd_per_m2
+    hue = INUNDATED if inundated else EVACUATED
+
+    # Wide enough for every state's 90th percentile, not the long tail beyond.
+    tops = [claims.loc[claims[STATE_COLUMN] == s, column].quantile(0.9) for s in states]
+    x_max = max([t for t in tops if t > 0] or [10.0]) * 1.15
+    x = np.linspace(0.0, x_max, 200)
+    fixed = rates.per_claim_nzd
+    sigma = rates.per_claim_sigma
+    low = fixed * np.exp(-sigma * Z_QUARTILE - sigma**2 / 2)
+    high = fixed * np.exp(sigma * Z_QUARTILE - sigma**2 / 2)
+
+    fig, (ax, strip) = plt.subplots(
+        2,
+        1,
+        sharex=True,
+        figsize=(8.0, 5.6),
+        gridspec_kw={"height_ratios": [3.0, 1.6], "hspace": 0.12},
+    )
+    ax.fill_between(
+        x, low + rate * x, high + rate * x, color=hue, alpha=0.12, linewidth=0
+    )
+    ax.plot(x, fixed + rate * x, color=hue, linewidth=2)
+    lines = [(fixed + rate * x[-1], f"With volunteers: ${rate:,.2f} per m²", "-")]
+    if inundated:
+        steep = rate * no_sva_multiplier
+        ax.plot(x, fixed + steep * x, color=hue, linewidth=2, linestyle=(0, (5, 3)))
+        lines.append(
+            (
+                fixed + steep * x[-1],
+                f"Without volunteers (x{no_sva_multiplier:g}): ${steep:,.2f} per m²",
+                "--",
+            )
+        )
+    else:
+        lines[0] = (
+            lines[0][0],
+            f"${rate:,.2f} per m², with or without volunteers",
+            "-",
+        )
+    # Each line is labelled just above it, the steeper one further left, so the
+    # two labels sit apart and neither runs into the other line.
+    for (_, text, style), share in zip(lines, (0.98, 0.55), strict=False):
+        at = x_max * share
+        slope = rate if style == "-" else rate * no_sva_multiplier
+        ax.annotate(
+            text,
+            (at, fixed + slope * at),
+            xytext=(0, 7),
+            textcoords="offset points",
+            ha="right",
+            va="bottom",
+            color=INK_SECONDARY,
+            fontsize=8.5,
+        )
+    ax.annotate(
+        f"Per-claim cost: ${fixed:,.0f} on average, quartiles ${low:,.0f} to "
+        f"${high:,.0f} (shaded)",
+        (0, fixed),
+        xytext=(4, -14),
+        textcoords="offset points",
+        color=INK_SECONDARY,
+        fontsize=8,
+    )
+    ax.set_ylim(bottom=0)
+    ax.yaxis.set_major_formatter(DOLLARS)
+    ax.set_ylabel("Cost of a claim (2010/2011 $, excl GST)")
+    note = (
+        "Dashed: without volunteers, at the no-SVA multiplier (L-40). "
+        if inundated
+        else "The no-SVA multiplier applies to inundated land only. "
+    )
+    # Title and subtitle as figure text above the plot, so neither runs into
+    # the other however the subtitle wraps.
+    fig.text(
+        0.125,
+        0.985,
+        f"Cost of a liquefaction claim against its {ground} land",
+        fontsize=11,
+        fontweight="bold",
+        color=INK,
+        va="top",
+    )
+    fig.text(
+        0.125,
+        0.952,
+        f"Per-claim cost plus ${rate:,.2f} per m² of {ground} land, the claim's other "
+        "ground held at zero. Shaded: the spread of the per-claim cost.\n"
+        f"{note}2010/2011 dollars excluding GST; the loss module multiplies by "
+        "1.42 to today's and adds GST.",
+        fontsize=8,
+        color=INK_SECONDARY,
+        va="top",
+        linespacing=1.4,
+    )
+    fig.subplots_adjust(top=0.86)
+
+    draw_state_bands(strip, claims, column, states)
+    strip.set_xlim(0, x_max)
+    strip.set_xlabel(f"{ground.capitalize()} land per claim (m²)")
+    strip.set_title(
+        "Ground lost by a modelled claim in each state: 10th to 90th percentile, "
+        "dot at the median",
+        fontsize=8.5,
+        fontweight="normal",
+        color=INK_SECONDARY,
+    )
+    finish(fig, f"liq-rate-curve-{ground}", extent)
+
+
+def main(
+    *,
+    extent,
+    realisation_ids,
+    fit_states,
+    weight_by_claims,
+    repair_rates,
+    no_sva_multiplier,
+):
+    """Draw the six figures."""
     rates = RepairRates(**repair_rates)
     claims = load_claims(extent, realisation_ids)
     canterbury = load_claimant_costs()
@@ -497,6 +689,15 @@ def main(*, extent, realisation_ids, fit_states, weight_by_claims, repair_rates)
     fig_cost_build_up(claims, canterbury, rates, states, extent)
     fig_quartiles(area_cost, canterbury, rates, states, extent)
     fig_spread_fit(area_cost, canterbury, rates, states, weights, extent)
+    for ground in ("inundated", "evacuated"):
+        fig_rate_curve(
+            claims,
+            rates,
+            states,
+            extent,
+            ground=ground,
+            no_sva_multiplier=no_sva_multiplier,
+        )
 
 
 if __name__ == "__main__":
@@ -506,4 +707,5 @@ if __name__ == "__main__":
         fit_states=config.FIT_STATES,
         weight_by_claims=config.WEIGHT_BY_CLAIMS,
         repair_rates=s2_config.REPAIR_RATES,
+        no_sva_multiplier=s2_config.NO_SVA_INUNDATED_MULTIPLIER,
     )

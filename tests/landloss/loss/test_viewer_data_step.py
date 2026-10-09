@@ -1,5 +1,7 @@
 """Tests for the loss viewer's data script (loss/ui/gen_viewer_data.py)."""
 
+import re
+
 import pandas as pd
 import pytest
 
@@ -83,3 +85,19 @@ def test_the_method_is_whichever_cost_was_settled(
         index=pd.Index(["a", "b"], name="claim_id"),
     )
     assert liquefaction_method(claims, 0, extent="porirua") == method
+
+
+def test_the_version_names_the_commit_and_the_build_date() -> None:
+    version = gen_viewer_data.viewer_version()
+    assert re.fullmatch(
+        r"v[0-9a-f]{6}, built \d{4}-\d{2}-\d{2}(, with uncommitted changes)?", version
+    )
+
+
+def test_the_written_page_carries_the_version_in_place_of_the_placeholder(
+    tmp_path,
+) -> None:
+    page = gen_viewer_data.write_viewer(tmp_path, "v1a2b3c, built 2026-10-09")
+    text = page.read_text(encoding="utf-8")
+    assert gen_viewer_data.VERSION_PLACEHOLDER not in text
+    assert '<span id="version">v1a2b3c, built 2026-10-09</span>' in text

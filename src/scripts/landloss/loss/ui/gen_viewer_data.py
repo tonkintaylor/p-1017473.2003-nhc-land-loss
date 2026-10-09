@@ -29,8 +29,9 @@ same inputs -- and `check_viewer_against_the_model` proves it, at the default
 settings, before the file is written.
 """
 
-import shutil
+import subprocess
 import sys
+from datetime import UTC, datetime
 
 import geopandas as gpd
 import numpy as np
@@ -71,7 +72,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     WALL_REPAIR_COLUMN,
     settlement_path,
 )
-from scripts.landloss.paths import REPORT_DIR
+from scripts.landloss.paths import REPO_ROOT, REPORT_DIR
 from scripts.landloss.vul.landslide.land.steps.s3_landslide_land_damage import (
     gen_landslide_land_damage as landslide_land,
 )
@@ -91,6 +92,9 @@ if hasattr(sys.stdout, "reconfigure"):
 OUT_DIR = REPORT_DIR / "loss" / "viewer"
 VIEWER = "loss_viewer.html"
 HERE = __import__("pathlib").Path(__file__).resolve().parent
+# Where the page shows its version; the copy written beside the CSVs has it
+# replaced (write_viewer).
+VERSION_PLACEHOLDER = "__VIEWER_VERSION__"
 # The liquefaction land damage state that is no damage at all: "None", the
 # first of LD_STATES, numbered from one. A property drawn in it still carries
 # the Canterbury cost for it -- an average with non-claimants in at $0 -- but
@@ -311,6 +315,46 @@ def liquefaction_method(
     return AREA_METHOD if area_miss < lookup_miss else LOOKUP_METHOD
 
 
+def viewer_version() -> str:
+    """Return the version the page and its CSV are stamped with.
+
+    The first six characters of the commit they are built from and the date,
+    so an issued copy can be traced to the code that made it. Uncommitted
+    changes under ``src`` mean the commit alone does not say what was issued,
+    so the version says so.
+
+    Returns:
+        For example ``v1a2b3c, built 2026-10-09``, ending ``, with uncommitted
+        changes`` when there are any, or ``unknown`` in place of the commit
+        when git cannot be read.
+    """
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],  # noqa: S607
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    commit = git("rev-parse", "--short=6", "HEAD")
+    built = datetime.now(UTC).astimezone().date().isoformat()
+    version = f"v{commit}, built {built}" if commit else f"unknown, built {built}"
+    if git("status", "--porcelain", "--", "src"):
+        version += ", with uncommitted changes"
+    return version
+
+
+def write_viewer(out_dir, version: str):
+    """Write the page beside the CSVs, with its version in place."""
+    page = (HERE / VIEWER).read_text(encoding="utf-8")
+    path = out_dir / VIEWER
+    path.write_text(page.replace(VERSION_PLACEHOLDER, version), encoding="utf-8")
+    return path
+
+
 def site_multiplier(claims: pd.DataFrame) -> pd.Series:
     """Return each claim's site multiplier, summed from its three ratings."""
     return sum(
@@ -522,12 +566,16 @@ def main(*, extent, world_ids, realisation_ids):
     csv_path = (
         OUT_DIR / f"loss-viewer-w{world_id:03d}-r{realisation_id:03d}{suffix}.csv"
     )
+    # Each CSV carries the version it was built with too: the page beside it is
+    # rewritten on every run, so a CSV can be older than the page it sits with.
+    version = viewer_version()
+    rows["built_with"] = version
     rows.to_csv(csv_path, index=False)
     # A copy beside the CSVs, so the folder can be sent as it is. The page in
     # this directory is the one kept in git; this copy is ignored.
-    shutil.copy(HERE / VIEWER, OUT_DIR / VIEWER)
+    page = write_viewer(OUT_DIR, version)
     print(f"Wrote {len(rows):,} claims to {csv_path}")
-    print(f"Wrote {OUT_DIR / VIEWER}")
+    print(f"Wrote {page}, version {version}")
     print("Open the page and drag the CSV onto it.")
     return 0
 
