@@ -123,7 +123,7 @@
 <main>
 <aside id="config">
   <h2>Cover</h2>
-  <label>Area cap (m²)<input type="number" id="areaCap" value="4000" step="100"></label>
+  <label title="Land damage is paid at most the value of the smallest section the district plan allows a house on, or 4,000 m² where it sets none">Area cap: minimum-sized site (m²)<input type="number" id="areaCap" value="4000" step="100"></label>
   <label>Retaining wall sub-cap, per dwelling, excl GST
     <input type="number" id="rwSub" value="50000" step="1000"></label>
   <label>Bridge / culvert sub-cap, per dwelling, excl GST
@@ -215,6 +215,7 @@
           <option value="has_new_wall">Needs a new wall built</option>
           <option value="has_liquefaction">Has liquefaction damage</option>
           <option value="has_landslide">Has landslide damage</option>
+          <option value="has_area_cap_limit">Limited by the land area cap</option>
           <option value="access">Construction access rating</option>
         </select></label>
       <label>Show
@@ -350,6 +351,12 @@ function settle(r, s) {
   // nothing and it is not a claim.
   const insured = insuredDraw(r.claim_id) < s.penetration;
   const payable = insured ? Math.min(repair, cap) : 0;
+  // Whether the area cap -- the minimum-sized site, 4,000 m2 by default --
+  // lowers what the claim is paid: its cap with all the damaged land valued
+  // would pay more than it does.
+  const fullCap = cap - landValue
+    + nz(r.damaged_area_m2) * nz(r.land_rate_incl_gst) * s.landScale;
+  const has_area_cap_limit = insured && Math.min(repair, fullCap) > payable + 0.5;
   // The excess a claim would pay if anything were payable, kept apart so each
   // cap scenario can apply it to its own payable amount.
   const excessIf = Math.min(dwellings * s.exEach, s.exCeil);
@@ -377,6 +384,7 @@ function settle(r, s) {
     : repair <= cap ? "Paid the repair cost" : "Capped";
   return {...r, udv, wall, newWall, spoil, fees, liq, crossing, landValue, cap,
           repair, payable, excessIf, excess, settlement, insured, damaged, claimed,
+          has_area_cap_limit,
           type, basis};
 }
 
@@ -804,6 +812,14 @@ function debounce(fn, ms) {
   };
 }
 const rerender = debounce(() => render(), 180);
+
+// The source copy of this page is never stamped, so it says so rather than
+// showing the placeholder. The token is split so the stamping in
+// gen_viewer_data.py, which replaces every copy of it, leaves this check alone.
+if (document.getElementById("version").textContent === "__VIEWER" + "_VERSION__") {
+  document.getElementById("version").textContent =
+    "unversioned source copy; issue the one gen_viewer_data.py writes to report/loss/viewer/";
+}
 
 function load(text) {
   RAW = d3.csvParse(text, d3.autoType);

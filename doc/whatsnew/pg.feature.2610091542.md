@@ -1,0 +1,1 @@
+The loss viewer's map can colour claims by whether the land area cap -- the minimum-sized site, 4,000 m² by default -- lowers what they are paid, following the cap set on the page, and the cap's setting now says what it stands for.
