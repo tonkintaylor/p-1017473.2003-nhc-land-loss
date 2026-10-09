@@ -33,10 +33,10 @@ import inspect
 import json
 import pickle
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import rioxarray
 from rasterio import features
 
@@ -45,15 +45,12 @@ from landloss.hazard.landslide import bend_split, instability_zones, slope_eleme
 from landloss.hazard.landslide.instability_zones import (
     beyond_reach,
     find_instability_zones,
-    gen_pif_near_drops,
-    gen_pif_spines,
-    gen_pif_verticality,
-    gen_siz_table,
     write_siz_table,
 )
 from landloss.hazard.landslide.slope_elements import (
     COARSE_SLOPE_M,
     rasterise_ground_map,
+    store_elements,
 )
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_building_outlines, get_nz_coastline_polygons
@@ -63,10 +60,13 @@ from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
 from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
-from scripts.landloss.ground.steps.s3_instability_zones import config, tiled
+from scripts.landloss.ground.steps.s3_instability_zones import config, grid, tiled
+from scripts.landloss.ground.steps.s3_instability_zones.grid import (
+    CRS,
+    element_polygons,
+    grid_table,
+)
 from scripts.landloss.paths import TEMP_DIR
-
-CRS = 2193
 
 WORK_DIR = TEMP_DIR / "ground"
 
@@ -91,7 +91,12 @@ def found_path(*, extent):
 
 
 def write_found(found, *, extent):
-    """Keep the found elements so landslide step 4's per-world zones need not find them again."""
+    """Keep the found elements so landslide step 4's per-world zones need not find them again.
+
+    A whole run keeps a ``StoredSlopeElements`` (``store_elements``), which
+    landslide step 4 restores on the same DEM; a tiled run keeps a
+    ``tiled.TiledFound`` index to the tiles' stored elements.
+    """
     with found_path(extent=extent).open("wb") as file:
         pickle.dump(found, file, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -162,36 +167,84 @@ def get_inputs(*, extent, use_cached_layers):
     return dem, transform, bbox, ground_map, group, position
 
 
-def grid_table(
-    zones, dem, transform, *, end_window_m, wall_height_reach_m, wall_height_quantile
-):
-    """The siz table with the columns read off the grid: drops, verticality, spines."""
-    table = gen_siz_table(zones, transform, crs=CRS)
-    table["near_drop_p80_m"] = gen_pif_near_drops(
-        dem,
-        zones.pips,
-        zones.pif_labels,
-        abs(transform.a),
-        reach_m=wall_height_reach_m,
-        quantile=wall_height_quantile,
-    ).reindex(table.index)
-    table["verticality"] = gen_pif_verticality(
-        dem, zones.pips, zones.pif_labels
-    ).reindex(table.index)
-    return table.join(
-        gen_pif_spines(
-            table,
-            cell_size_m=abs(transform.a),
-            end_window_m=end_window_m,
-            lines=zones.pif_lines,
-        )
-    )
+def tiles_dir(*, extent):
+    """The folder a tiled run keeps each tile in, for a resume and for the wall zones."""
+    return WORK_DIR / f"urban-slope-found{extent_suffix(extent)}-tiles"
 
 
 def tile_found_path(tile, *, extent):
     """Where one tile's elements, as found, are kept for the wall zones."""
-    folder = WORK_DIR / f"urban-slope-found{extent_suffix(extent)}-tiles"
-    return folder / f"tile-{tile.row:02d}-{tile.col:02d}.pkl"
+    return tiles_dir(extent=extent) / f"tile-{tile.row:02d}-{tile.col:02d}.pkl"
+
+
+def keep_or_clear_tiles(*, extent, record, rebuild):
+    """Keep the tiles an earlier run of the same search found; clear any others.
+
+    The folder holds the run's record (:func:`built_from`), so a tile is reused
+    only by a run with the same settings, DEM, ground map and search code.
+
+    Returns:
+        How many tile files were cleared.
+    """
+    folder = tiles_dir(extent=extent)
+    stamp = folder / "built-from.json"
+    same = stamp.exists() and json.loads(stamp.read_text(encoding="utf-8")) == record
+    stale = [] if same and not rebuild else sorted(folder.glob("tile-*"))
+    for path in stale:
+        path.unlink()
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(json.dumps(record, indent=1), encoding="utf-8")
+    return len(stale)
+
+
+def run_tiles(todo, *, workers, start_args, tile_kwargs):
+    """Build the tiles not yet done, in worker processes, printing each as it lands.
+
+    Each tile is written to disk by :func:`tiled.build_tile` and dropped from
+    memory, so ``workers`` tiles are held at once. With one worker the tiles run
+    here, in order, without a pool.
+    """
+    start = time.perf_counter()
+
+    def report(number, summary):
+        tile = summary["tile"]
+        if summary["skipped"]:
+            what = "skipped, no land within reach of a building"
+        else:
+            what = (
+                f"{summary['n_pifs']:,} pifs, {summary['n_elements']:,} elements "
+                f"on {summary['cells'] / summary['tile_cells']:.0%} of the tile"
+            )
+        print(
+            f"  [{number}/{len(todo)}] tile {tile.row},{tile.col}: {what} "
+            f"({summary['seconds']:,.0f} s; {time.perf_counter() - start:,.0f} s in all)",
+            flush=True,
+        )
+
+    if workers == 1:
+        tiled.start_worker(*start_args)
+        try:
+            for number, (tile, kwargs) in enumerate(
+                zip(todo, tile_kwargs, strict=True), 1
+            ):
+                report(number, tiled.build_tile(tile, **kwargs))
+        finally:
+            tiled.end_worker()
+        return
+    with ProcessPoolExecutor(
+        max_workers=workers, initializer=tiled.start_worker, initargs=start_args
+    ) as pool:
+        futures = [
+            pool.submit(tiled.build_tile, tile, **kwargs)
+            for tile, kwargs in zip(todo, tile_kwargs, strict=True)
+        ]
+        try:
+            for number, future in enumerate(as_completed(futures), 1):
+                report(number, future.result())
+        except BaseException:
+            # The tiles already written stay on disk for the next run.
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
 
 
 def find_tiled(
@@ -203,22 +256,28 @@ def find_tiled(
     building_reach_m,
     find_settings,
     table_settings,
+    crop_pad_m,
+    workers,
+    record,
+    rebuild,
 ):
     """Find the pifs and elements tile by tile and stitch them (:mod:`tiled`).
 
+    Each tile is kept on disk as it is done (:func:`tiled.build_tile`), so a
+    run that stops resumes from the tiles not yet done, and ``workers`` tiles
+    run at once. The stitch reads back only each tile's siz table, element
+    polygons and owned parents, never its grids.
+
     Returns:
-        ``(table, elements, bbox, ground_map, buildings)``: the siz table with
-        its grid columns and the element polygons, owned rows only with
-        global ids, and the layers the rest of the step reads.
+        ``(table, elements)``: the siz table with its grid columns and the
+        element polygons, owned rows only with global ids.
     """
     dem_file = dem_path(1, extent=extent)
     bbox = dem_bbox(extent=extent)
-    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
     buildings = get_nz_building_outlines(
         bbox=bbox, crs=CRS, use_cache=use_cached_layers
     )
     land = get_nz_coastline_polygons(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
-    inputs = {"land": land, "ground_map": ground_map, "buildings": buildings}
     # The catchments are read on blocks of cells from the window's corner, so
     # every tile starts on the whole grid's blocks.
     with rioxarray.open_rasterio(dem_file) as dem:
@@ -227,42 +286,39 @@ def find_tiled(
     grid = tiles.tile_grid(
         dem_file, core_m=core_m, margin_m=margin_m, align_cells=block
     )
-    print(f"{len(grid)} tiles of {core_m:,.0f} m with a {margin_m:,.0f} m margin")
-    start = time.perf_counter()
-    records = []
-    n_skipped = 0
-    for tile in grid:
-        found = tiled.find_tile(
-            dem_file,
-            tile,
-            inputs=inputs,
-            find_settings=find_settings,
-            building_reach_m=building_reach_m,
-        )
-        if found is None:
-            n_skipped += 1
-            continue
-        zones, dem, transform = found
-        table = grid_table(zones, dem, transform, **table_settings)
-        path = tile_found_path(tile, extent=extent)
-        tiled.write_tile_found(zones.found, path)
-        records.append(
-            {
-                "tile": tile,
-                "path": path,
-                "table": table,
-                "elements": element_polygons(zones.found, transform),
-                "owned": tiled.owned_parents(table, tile.core_bounds),
-            }
-        )
-        print(
-            f"  tile {tile.row},{tile.col}: {len(table):,} pifs, "
-            f"{len(zones.found.elements):,} elements "
-            f"({time.perf_counter() - start:,.0f} s)",
-            flush=True,
-        )
+    n_cleared = keep_or_clear_tiles(extent=extent, record=record, rebuild=rebuild)
+    if n_cleared:
+        print(f"Cleared {n_cleared} tile files from an earlier, different search")
+    paths = {tile: tile_found_path(tile, extent=extent) for tile in grid}
+    todo = [t for t in grid if not tiled.tile_record_path(paths[t]).exists()]
     print(
-        f"{n_skipped} of {len(grid)} tiles skipped: no land within "
+        f"{len(grid)} tiles of {core_m:,.0f} m with a {margin_m:,.0f} m margin: "
+        f"{len(grid) - len(todo)} done by an earlier run, {len(todo)} to find "
+        f"on {min(workers, max(len(todo), 1))} worker(s)"
+    )
+    run_tiles(
+        todo,
+        workers=min(workers, max(len(todo), 1)),
+        start_args=(ground_map_path(extent=extent), land, buildings),
+        tile_kwargs=[
+            {
+                "dem_file": dem_file,
+                "found_path": paths[tile],
+                "find_settings": find_settings,
+                "table_settings": table_settings,
+                "building_reach_m": building_reach_m,
+                "crop_pad_m": crop_pad_m,
+            }
+            for tile in todo
+        ],
+    )
+    records = []
+    for tile in grid:
+        record_of_tile = tiled.read_tile_record(paths[tile])
+        if record_of_tile is not None:
+            records.append({"tile": tile, "path": paths[tile]} | record_of_tile)
+    print(
+        f"{len(grid) - len(records)} of {len(grid)} tiles skipped: no land within "
         f"{building_reach_m:,.0f} m of a building"
     )
     found, table, elements = tiled.globalise_found(records, transform)
@@ -272,29 +328,7 @@ def find_tiled(
         f"Stitched: {len(table):,} pifs, {int(table['is_siz'].sum()):,} sizs, "
         f"{len(elements):,} elements"
     )
-    return table, elements, bbox, ground_map, buildings
-
-
-def element_polygons(found, transform):
-    """The grown elements as polygons, with their attributes."""
-    shapes = features.shapes(
-        found.labels.astype("int32"), mask=found.labels > 0, transform=transform
-    )
-    rows = [
-        {"type": "Feature", "geometry": g, "properties": {"label": int(v)}}
-        for g, v in shapes
-    ]
-    # A tile can hold pifs but grow no element (a few slivers of hillside at the
-    # edge of Upper Hutt did), and from_features cannot build an empty frame.
-    if not rows:
-        frame = gpd.GeoDataFrame(
-            geometry=gpd.GeoSeries([], crs=CRS),
-            index=pd.Index([], dtype="int64", name="label"),
-        )
-        return frame.join(found.elements, how="left")
-    frame = gpd.GeoDataFrame.from_features(rows, crs=CRS)
-    frame = frame.dissolve(by="label")
-    return frame.join(found.elements, how="left")
+    return table, elements
 
 
 def building_mask(buildings, transform, shape):
@@ -335,9 +369,8 @@ SEARCH_CODE = (
     get_dem,
     get_inputs,
     building_mask,
-    grid_table,
+    grid,
     find_tiled,
-    element_polygons,
 )
 
 
@@ -398,16 +431,17 @@ def search_whole(
     )
     start = time.perf_counter()
     on_building = building_mask(buildings, transform, dem.shape)
+    within = ~beyond_reach(on_building, abs(transform.a), building_reach_m)
     zones = find_instability_zones(
         dem,
         group,
         transform,
         categories={"ground_row": position},
-        exclude=on_building
-        | beyond_reach(on_building, abs(transform.a), building_reach_m),
+        exclude=on_building | ~within,
+        pip_area=within,
         **find_settings,
     )
-    write_found(zones.found, extent=extent)
+    write_found(store_elements(zones.found), extent=extent)
     describe(zones, time.perf_counter() - start, building_reach_m=building_reach_m)
     table = grid_table(zones, dem, transform, **table_settings)
     return table, element_polygons(zones.found, transform)
@@ -429,6 +463,8 @@ def main(
     max_untiled_cells,
     tile_core_m,
     tile_margin_m,
+    tile_crop_pad_m,
+    tile_workers,
 ):
     """Find the instability zones over the extent, unless the last run still holds.
 
@@ -451,6 +487,11 @@ def main(
             tile by tile.
         tile_core_m: The side of a tile's core, in metres.
         tile_margin_m: The width read around each core, in metres.
+        tile_crop_pad_m: A tile is searched only on the bounds of its building
+            outlines grown by ``building_reach_m`` and this many metres more
+            (:func:`tiled.crop_tile`); None searches the whole tile.
+        tile_workers: How many tiles are found at once, each in its own
+            process. Not part of the record: it does not change the result.
     """
     find_settings = {
         "max_bends": max_bends,
@@ -468,6 +509,7 @@ def main(
         "max_untiled_cells": max_untiled_cells,
         "tile_core_m": tile_core_m,
         "tile_margin_m": tile_margin_m,
+        "tile_crop_pad_m": tile_crop_pad_m,
     }
     record = built_from(
         extent=extent, settings=find_settings | table_settings | tile_settings
@@ -482,7 +524,7 @@ def main(
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     if tiles.raster_cells(dem_path(1, extent=extent)) > max_untiled_cells:
-        table, elements, *_ = find_tiled(
+        table, elements = find_tiled(
             extent=extent,
             use_cached_layers=use_cached_layers,
             core_m=tile_core_m,
@@ -490,6 +532,10 @@ def main(
             building_reach_m=building_reach_m,
             find_settings=find_settings,
             table_settings=table_settings,
+            crop_pad_m=tile_crop_pad_m,
+            workers=tile_workers,
+            record=record,
+            rebuild=rebuild,
         )
     else:
         table, elements = search_whole(
@@ -526,4 +572,6 @@ if __name__ == "__main__":
         max_untiled_cells=config.MAX_UNTILED_CELLS,
         tile_core_m=config.TILE_CORE_M,
         tile_margin_m=config.TILE_MARGIN_M,
+        tile_crop_pad_m=config.TILE_CROP_PAD_M,
+        tile_workers=config.TILE_WORKERS,
     )

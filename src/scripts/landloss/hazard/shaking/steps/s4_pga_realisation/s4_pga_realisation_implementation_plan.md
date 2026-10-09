@@ -25,14 +25,17 @@ single site class 5 grid. The design is in
       cell, read a PGA. Done in step 2 by a nearest-class fill within
       200 m.
 
-## Phase 4 — A defensible spread
+## Phase 4 — A defensible spread (dropped)
 
-- [ ] Replace the flat 10% coefficient of variation with the ground motion
-      model's own sigma.
-- [ ] Replace the single field-wide multiplier with a spatially correlated
+Dropped by the lead on 2026-10-09 as not applicable; the flat 10% coefficient
+of variation and the single field-wide multiplier stay.
+
+- ~~Replace the flat 10% coefficient of variation with the ground motion
+      model's own sigma.~~
+- ~~Replace the single field-wide multiplier with a spatially correlated
       random field. The current choice is the fully correlated end of the range;
       real ground motion decorrelates over hundreds of metres to tens of
-      kilometres, and the portfolio spread depends on which is used.
+      kilometres, and the portfolio spread depends on which is used.~~
 
 ## Potential future improvements
 

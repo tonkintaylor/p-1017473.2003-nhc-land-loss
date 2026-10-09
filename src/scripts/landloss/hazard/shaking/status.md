@@ -2,10 +2,9 @@
 
 **Status:** A PGA field per realisation runs, off the NLM grid. Coarse: one
 cell covers the whole pilot box. A PGV field per realisation, scaled by the
-same factor, is built (step 5) and tested on synthetic inputs, and has not yet
-been run over the pilot.
+same factor, is built (step 5) and has been run over the pilot.
 
-**Updated:** 2026-10-06
+**Updated:** 2026-10-09
 
 ## Approach
 
@@ -26,9 +25,6 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   `.agents/context/retaining-wall-fragility.md` are velocity-based.
 - [x] Scale PGV per realisation by the factor PGA takes, so one modelled
   earthquake's two measures agree.
-- [ ] Replace the flat 10% coefficient of variation and the one field-wide
-  multiplier with the ground motion model's own sigma and a spatially
-  correlated field, PGA and PGV each with their own dispersion.
 **Parked.** NSHM (2022) scenario demands run through a GMPE in OpenQuake were
 held as the alternative to TS1170.5. That route is parked: the demand comes from
 TS1170.5. It would produce the same PGA and PGV layers from the same
@@ -73,7 +69,8 @@ coefficient of variation, seeded from the project realisation stream.
 **The demand grids are about 9,930 m across a cell**, so within one demand cell
 PGA and PGV change only where the site class does, and the realisation
 multiplier is one number over the whole field. Variation between assets within
-a realisation still comes mostly from the fragility draw, not from the shaking.
+a realisation still comes mostly from the fragility draw, not from the shaking
+(**L-69**).
 
 `steps/s5_pgv_realisation/` writes one PGV field per realisation: the PGV grid
 step 3 wrote, scaled by the same lognormal factor step 4 puts on PGA for that
@@ -83,21 +80,15 @@ holds the two steps' factors together. Two steps read it through `pgv_path`:
 landslide step 6 (`s6_urban_slope_realisation`) and vul shaking rw step 9
 (`s9_wall_damage_state`), the urban slope realisation and the flat-land wall
 damage state of `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`.
-Step 5 is tested end to end on synthetic inputs and has not yet been run over
-the pilot: `temp/hazard/shaking/` holds no `pgv-rNNN` raster.
+Step 5 is tested end to end on synthetic inputs and has been run over the
+pilot (`pgv-r000-pilot.tif`).
 
 `steps/s1_pga_realisation/`, which read the NLM's site class 5 PGA grid
 directly, was retired on 2026-09-30; its method file records how it ran.
 
 ## Next
 
-1. Run step 5 over the pilot (`gen_hazard.main` now runs it after step 4).
-2. Replace the flat 10% coefficient of variation with the ground motion
-   model's own sigma, PGA and PGV each taking their own (step 4's plan, phase
-   4; step 5's plan, phase 2).
-3. Replace the single field-wide multiplier with a spatially correlated random
-   field, written by step 4 and read by step 5 rather than recomputed from the
-   seed.
+1. Build the validation below, for the final model (**T-143**).
 
 ## Validation
 
@@ -107,12 +98,10 @@ directly, was retired on 2026-09-30; its method file records how it ran.
 
 ## Open decisions
 
-- **T-15** — the site class decision above. Step 2 adopts Foster, which closes
-  it; the register entry still reads as open and needs updating.
-- **T-26** is closed (the lead, 2026-10-02): the TS1170.5 2,500-year demands
-  as the standard gives them, per site class, and the NSHM scenario route is
-  parked. Over the pilot that is 1.68 to 1.77 g on site classes II and III,
-  larger than the roughly 1 g the scope was written around.
+None. **T-15** (site class, closed by adopting Foster) and **T-26** (TS1170.5
+over the NSHM scenario route, the lead, 2026-10-02) are settled. Over the pilot
+the TS1170.5 demand is 1.68 to 1.77 g on site classes II and III, larger than
+the roughly 1 g the scope was written around.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

@@ -7,7 +7,10 @@ import geopandas as gpd
 import numpy as np
 import pytest
 import rioxarray  # noqa: F401  # registers the .rio accessor
+import shapely
 import xarray as xr
+from rasterio import features
+from rasterio.transform import Affine
 from shapely.geometry import box
 
 from landloss.common.utils import tiles
@@ -121,3 +124,35 @@ def test_aligned_tiles_start_on_whole_blocks(tmp_path):
         assert tile.outer.row_off % 3 == 0
         assert tile.core.col_off % 51 == 0
         assert tile.core.row_off % 51 == 0
+
+
+def test_a_feature_cut_to_a_window_burns_the_same_cells():
+    # A star of 400 vertices far larger than the window, and one feature that
+    # misses the window.
+    angles = np.linspace(0, 2 * np.pi, 400, endpoint=False)
+    radius = np.where(np.arange(400) % 2, 300.0, 900.0)
+    star = shapely.Polygon(
+        np.column_stack([500 + radius * np.cos(angles), 500 + radius * np.sin(angles)])
+    )
+    frame = gpd.GeoDataFrame(
+        {"value": [7, 9]},
+        geometry=[star, shapely.box(5000, 5000, 5010, 5010)],
+        crs=2193,
+    )
+    transform = Affine(1, 0, 420, 0, -1, 760)
+    shape = (60, 90)
+    bounds = (420.0, 700.0, 510.0, 760.0)
+
+    cut = tiles.clip_to_window(frame, bounds, margin=2.0)
+
+    def burn(f):
+        return features.rasterize(
+            zip(f.geometry, f["value"], strict=True),
+            out_shape=shape,
+            transform=transform,
+            fill=0,
+        )
+
+    assert list(cut.index) == [0]
+    assert len(shapely.get_coordinates(cut.geometry.iloc[0])) < 400
+    np.testing.assert_array_equal(burn(cut), burn(frame))

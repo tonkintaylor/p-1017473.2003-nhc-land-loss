@@ -162,3 +162,37 @@ def owned_by(frame: gpd.GeoDataFrame, core_bounds: Bounds) -> np.ndarray:
     x = shapely.get_x(points)
     y = shapely.get_y(points)
     return (x >= minx) & (x < maxx) & (y >= miny) & (y < maxy)
+
+
+def clip_to_window(
+    frame: gpd.GeoDataFrame, bounds: Bounds, margin: float
+) -> gpd.GeoDataFrame:
+    """Return the features that reach a window, each cut to the window and a margin.
+
+    Burning a polygon onto a grid costs time in its vertices, not in the grid's
+    cells, so a large polygon (a ground map unit, the coastline) burned onto a
+    small window costs as much as onto the whole grid. Cut to the window first,
+    it burns the same cells, as long as the margin is at least a cell: a cell
+    is burned where its centre is inside the polygon, and inside the window the
+    cut polygon is the polygon.
+
+    Args:
+        frame: The features.
+        bounds: The window, as (minx, miny, maxx, maxy).
+        margin: How far past the window the features are kept, at least a cell.
+
+    Returns:
+        The rows of ``frame`` whose cut is not empty, with their index and
+        order, and their cut geometries.
+    """
+    minx, miny, maxx, maxy = bounds
+    near = frame.cx[minx - margin : maxx + margin, miny - margin : maxy + margin]
+    cut = shapely.clip_by_rect(
+        near.geometry.to_numpy(),
+        minx - margin,
+        miny - margin,
+        maxx + margin,
+        maxy + margin,
+    )
+    keep = ~shapely.is_empty(cut)
+    return near[keep].set_geometry(cut[keep], crs=frame.crs)

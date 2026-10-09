@@ -52,6 +52,7 @@ def main(*, extent):
                 lambda: gen_multiscale_slope.main(
                     extent=extent,
                     resolutions_m=terrain_config.RESOLUTIONS_M,
+                    slope_resolutions_m=terrain_config.SLOPE_RESOLUTIONS_M,
                     use_cached_dem=terrain_config.USE_CACHED_DEM,
                 ),
             ),
@@ -89,6 +90,8 @@ def main(*, extent):
                     max_untiled_cells=zones_config.MAX_UNTILED_CELLS,
                     tile_core_m=zones_config.TILE_CORE_M,
                     tile_margin_m=zones_config.TILE_MARGIN_M,
+                    tile_crop_pad_m=zones_config.TILE_CROP_PAD_M,
+                    tile_workers=zones_config.TILE_WORKERS,
                 ),
             ),
             (

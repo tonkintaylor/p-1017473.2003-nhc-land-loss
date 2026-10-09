@@ -87,9 +87,30 @@ def main(*, extent, resolutions_m):
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
-        resolutions_m: The cell sizes the run built.
+        resolutions_m: The cell sizes to draw.
+
+    Raises:
+        FileNotFoundError: If a slope or an aspect at one of the cell sizes was
+            not built.
     """
     resolutions = sorted(resolutions_m)
+    missing = [
+        r
+        for r in resolutions
+        if not (
+            slope_path(r, extent=extent).exists()
+            and aspect_path(r, extent=extent).exists()
+        )
+    ]
+    if missing:
+        sizes = ", ".join(f"{r:g} m" for r in missing)
+        msg = (
+            f"No slope or aspect at {sizes} for {extent}: ground step 1 builds them "
+            "only at SLOPE_RESOLUTIONS_M. Add those cell sizes to "
+            "SLOPE_RESOLUTIONS_M in src/scripts/landloss/ground/steps/s1_terrain/"
+            "config.py and rerun gen_multiscale_slope.py to build them."
+        )
+        raise FileNotFoundError(msg)
     slopes = {r: read_layer(slope_path(r, extent=extent)) for r in resolutions}
     aspects = {r: read_layer(aspect_path(r, extent=extent)) for r in resolutions}
     first = next(iter(slopes.values()))

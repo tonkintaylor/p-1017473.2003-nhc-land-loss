@@ -1,12 +1,23 @@
 # Ground step 5 — Pif cut and fill: method
 
-- **Inputs.** The pifs come from ground step 4's siz table (`siz_table_path`), and the
-  DEM from ground step 3's `get_dem()`: ground step 1's 1 m DEM with every cell
-  off the LINZ land polygons set to no data, the same grid the pips were found
-  on. The step is run by `gen_pif_cut_fill.py` ("s5, pif cut and fill" in
-  `gen_ground.py`), after ground step 4. Each pip's
-  fall direction is re-read with `instability_zones.find_pips`, and the step
-  stops if any pip of the table is not a pip of this DEM (ground step 3 is then stale).
+- **Inputs.** The pifs come from ground step 4's siz table (`siz_table_path`),
+  each pip's fall direction with them (`pip_direction`, written by ground step
+  3), and the DEM is ground step 1's 1 m DEM with every cell off the LINZ land
+  polygons set to no data, the same grid the pips were found on. The step is
+  run by `gen_pif_cut_fill.py` ("s5, pif cut and fill" in `gen_ground.py`),
+  after ground step 4. It stops if the directions do not line up with the pips
+  (`pip_directions()`; ground steps 3 and 4 are then stale).
+- **Blocks.** The DEM is never read whole (`cut_fill_by_block()`, 2026-10-09).
+  A pif belongs to the `BLOCK_M` (1 km) block holding its pips' top left
+  corner. Each block's pifs are classed on a window of the DEM reaching
+  `WINDOW_REACH_M` (about 68 m) past their pips, with every other pip within
+  `NEIGHBOUR_REACH_M` (about 54 m) walked too, since the fits skip the faces of
+  any walk that reaches them; only the block's own pifs are kept. That reach
+  covers everything a pif's class reads (a 15 m walk, a 20 m fit, the faces of
+  walks reaching the fit), so the classes are those of a whole-grid run: over
+  Porirua (2026-10-09) all 69,643 pifs and 4.37 million pips matched the
+  whole-grid run to within 1e-6 in every column, in 349 s and a peak of
+  2.5 GB.
 - **The method** is `landloss.hazard.landslide.pif_cut_fill.gen_pif_cut_fill`.
   Every threshold is a named constant at the top of that module, judgement and
   untuned.

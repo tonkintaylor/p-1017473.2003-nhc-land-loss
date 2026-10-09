@@ -942,6 +942,7 @@ def find_instability_zones(
     categories: Mapping[str, ArrayLike] | None = None,
     core: ArrayLike | None = None,
     exclude: ArrayLike | None = None,
+    pip_area: ArrayLike | None = None,
     max_bends: int | None = None,
     stray_tolerance_m: float = 0.0,
     min_segment_m: float = 0.0,
@@ -975,6 +976,10 @@ def find_instability_zones(
             building outlines): a pif most of whose pips are on them is
             dropped before the siz test (:func:`exclude_pifs`), so it is no
             siz, element or wall candidate. Its pips stay pips.
+        pip_area: True on the cells a pip may stand on (the step passes the
+            cells within reach of a building, :func:`beyond_reach`): a pip
+            anywhere else is dropped before the pips are joined into pifs, so
+            no pif reaches past it. None keeps every pip.
         max_bends: The bends rule :func:`split_pifs` cuts the pifs by (the
             step passes the walls' ``WALL_MAX_BENDS``); None cuts them only
             at :data:`MAX_PIF_SPAN_M`.
@@ -991,6 +996,12 @@ def find_instability_zones(
         ValueError: If the grids do not share a shape.
     """
     elevation = np.asarray(dem, dtype=float)
+    area = None
+    if pip_area is not None:
+        area = np.asarray(pip_area, dtype=bool)
+        if area.shape != elevation.shape:
+            msg = f"The pip area is {area.shape}, the DEM {elevation.shape}."
+            raise ValueError(msg)
     groups = np.asarray(ground_group, dtype=np.int8)
     if groups.shape != elevation.shape:
         msg = f"The ground group grid is {groups.shape}, the DEM {elevation.shape}."
@@ -1005,6 +1016,11 @@ def find_instability_zones(
     layers = terrain_layers(elevation, cell_size_m)
 
     pips = find_pips(elevation, cell_size_m)
+    if area is not None:
+        pips = Pips(
+            mask=pips.mask & area,
+            direction=np.where(area, pips.direction, -1).astype(np.int8),
+        )
     pif_labels, _ = cluster_pifs(pips.mask, cell_size_m)
     n_excluded = 0
     if exclude is not None:

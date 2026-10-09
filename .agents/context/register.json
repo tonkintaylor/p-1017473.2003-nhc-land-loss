@@ -959,6 +959,14 @@
       "Phase": "Unassigned",
       "Source": "Culverts and bridges task review 2026-10-08",
       "Status": "Open"
+    },
+    {
+      "ID": "T-143",
+      "Task": "Validate the shaking demand by comparing the mean modelled PGA per site class with the NSHM values for that class, as a script under hazard/shaking/validations/, to check the Foster et al. (2019) classes are paired with the right TS1170.5 demand; needed for the final model.",
+      "Owner": "Unassigned",
+      "Phase": "Unassigned",
+      "Source": "Shaking task review 2026-10-09",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -1408,6 +1416,13 @@
       "Limitation": "Earthquakes increase silt run-off, which would damage culverts in small rainfall events, and the model does not represent this.",
       "Affects": "vul/shaking/culverts_bridges",
       "Source": "Maxim Millen, culverts and bridges task review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-69",
+      "Limitation": "The TS1170.5 demand grid cells are about 9.9 km across and each realisation scales the whole field by one multiplier, so within a cell PGA and PGV change only where the site class does. Variation between assets in one realisation comes mostly from the fragility draw rather than from the shaking.",
+      "Affects": "Shaking hazard: PGA and PGV demand and realisations (hazard/shaking s3_pgv, s4_pga_realisation, s5_pgv_realisation)",
+      "Source": "Maxim Millen, shaking task review 2026-10-09",
       "Status": "Open"
     }
   ],

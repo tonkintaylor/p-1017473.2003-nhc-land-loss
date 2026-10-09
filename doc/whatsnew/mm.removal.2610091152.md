@@ -1,0 +1,1 @@
+Ground step 1 no longer builds the 1 m and 3 m slope and aspect rasters, which nothing in the pipeline reads (about 9 GB over Upper Hutt). The DEM is still built at every cell size. `SLOPE_RESOLUTIONS_M` in the step's `config.py` sets which sizes get a slope and an aspect, and `fig_multiscale_slope.py` stops with a message naming it if a size it draws is missing.

@@ -306,7 +306,12 @@ uv run --frozen python src/scripts/landloss/qgis/gen_qgis_e2e_build.py
 
 Set `EXTENT`, `WORLD_ID` and `REALISATION_ID` in `src/scripts/landloss/qgis/config.py`
 first. It writes `temp/qgis/e2e_build/e2e_build<suffix>.qgs`, with its derived layers
-beside it. Before running it:
+beside it. To build over a copy of a run's outputs instead, set `RESULTS_DIR` to that
+folder. Each layer is then the file of the same name anywhere under it, and the project
+is written into the folder with its derived layers in `qgis/`. Keep that copy on a local
+disk. QGIS re-reads every file on each pan, so a network copy is slow, and a mapped drive
+that resolves to `ttgroup.local` is off limits under the org rules (check with
+`net use`). Before running it:
 
 1. Check that the run exists: `gen_all.py` for ground, exposure, hazard and vul, and
    `loss/gen_loss.py` for the cost layers. Loss is not run by `gen_all.py`. Run it

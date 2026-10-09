@@ -42,6 +42,7 @@ from landloss.hazard.landslide.forced_polygons import (
     gen_forced_zones,
 )
 from landloss.hazard.landslide.instability_zones import add_line_elements, with_walls
+from landloss.hazard.landslide.slope_elements import restore_elements
 from landloss.hazard.landslide.slope_polygons import (
     ZONES,
     build_slope_polygons,
@@ -269,6 +270,13 @@ def build_tiled(found, units, draws, *, extent, use_cached_layers, world_ids):
     lineless = units_without_element(
         units, gpd.read_parquet(elements_path(extent=extent))
     )
+    missed = tiled.units_on_no_tile(found, lineless)
+    if len(missed):
+        print(
+            f"{len(missed):,} wall units with no element are on no searched tile "
+            f"(beyond the ground searched near the buildings) and get no forced "
+            f"element: {missed['unit_source'].value_counts().to_dict()}"
+        )
     flags = dict(SCENARIOS.items())
     for world_id in world_ids:
         flags[world_scenario(world_id)] = world_walls(draws, world_id)
@@ -342,6 +350,7 @@ def main(*, extent, use_cached_layers, world_ids):
     dem, transform, _, ground_map, group, position = get_inputs(
         extent=extent, use_cached_layers=use_cached_layers
     )
+    found = restore_elements(found, dem, abs(transform.a))
     lineless = units_without_element(units, found.elements)
     found = add_line_elements(
         found,

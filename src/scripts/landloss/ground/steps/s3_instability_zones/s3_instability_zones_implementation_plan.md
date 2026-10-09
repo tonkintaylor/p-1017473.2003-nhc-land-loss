@@ -58,8 +58,18 @@ per-extent work.
 - [ ] Own pieces rather than parent pifs in the tiles, now that each piece is
       tested on its own, and bring `TILE_MARGIN_M` down from 750 m towards
       100 m.
-- [ ] Run the tiles in parallel (about 8 at once on a 14-core machine, each
-      about 4 to 5 GB).
+- [x] Run the tiles in parallel (`config.TILE_WORKERS`, 4 by default; about 4
+      to 5 GB each) and keep each tile on disk as it is done, so a stopped run
+      resumes from the next tile (2026-10-09, after the Upper Hutt run was
+      killed at tile 3,5).
+- [x] Only the pips within `BUILDING_REACH_M` of a building are joined into
+      pifs, and each tile is searched only near its buildings
+      (`TILE_CROP_PAD_M`) (the lead, 2026-10-09).
+- [x] Keep the found elements without their terrain layers, which landslide
+      step 4 recomputes from the DEM (2026-10-09): a full Upper Hutt tile's
+      file was 920 MB, 810 MB of it the layers.
+- [ ] Measure the peak memory of an Upper Hutt tile and set `TILE_WORKERS`
+      from it.
 - [ ] Run over Porirua, then the other three territorial authorities.
 - [ ] The old seeding code (`find_slope_elements`) is removed with
       `fig_toy_slope_elements.py` refactored off it.

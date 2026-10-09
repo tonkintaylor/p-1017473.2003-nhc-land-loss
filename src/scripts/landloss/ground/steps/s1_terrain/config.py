@@ -22,6 +22,15 @@ EXTENT = "wlg-pilot"
 # fill residual the 30 and 100 m surfaces.
 RESOLUTIONS_M = (1, 3, 10, 30, 50, 100)
 
+# The cell sizes a slope and an aspect are built at as well, from RESOLUTIONS_M.
+# Nothing in the pipeline reads the 1 m or 3 m slope or aspect (ground step 3
+# finds its own slopes on the 1 m DEM, and the landslide steps read 10 m), and
+# over a territorial authority the two at 1 m alone are about 9 GB, so they are
+# left out (the lead, 2026-10-09). fig_multiscale_slope.py draws every cell size
+# in RESOLUTIONS_M and stops with a message if one is missing: add 1 and 3 here
+# and rerun gen_multiscale_slope.py to draw it.
+SLOPE_RESOLUTIONS_M = (10, 30, 50, 100)
+
 # Whether to reuse an already-fetched elevation model for this extent. Set False
 # to fetch it again. Read by `gen_multiscale_slope.py` only.
 USE_CACHED_DEM = True

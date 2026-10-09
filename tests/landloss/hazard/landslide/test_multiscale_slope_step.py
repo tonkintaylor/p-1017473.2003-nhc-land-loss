@@ -16,6 +16,9 @@ import xarray as xr
 from landloss.common.utils.terrain import block_mean, write_raster
 from landloss.domain import constants
 from scripts.landloss.ground.steps.s1_terrain import (
+    fig_multiscale_slope as fig_step,
+)
+from scripts.landloss.ground.steps.s1_terrain import (
     gen_multiscale_slope as slope_step,
 )
 from scripts.landloss.ground.steps.s1_terrain import (
@@ -151,7 +154,10 @@ def test_the_slope_step_writes_a_dem_a_slope_and_an_aspect_per_cell_size(
     work_dir, small_extent, fake_fetch
 ):
     slope_step.main(
-        extent="wlg-pilot", resolutions_m=RESOLUTIONS_M, use_cached_dem=True
+        extent="wlg-pilot",
+        resolutions_m=RESOLUTIONS_M,
+        slope_resolutions_m=RESOLUTIONS_M,
+        use_cached_dem=True,
     )
 
     for resolution in RESOLUTIONS_M:
@@ -179,7 +185,12 @@ def test_the_slope_step_writes_a_dem_a_slope_and_an_aspect_per_cell_size(
 def test_the_aspect_points_downhill_and_the_grids_nest(
     work_dir, small_extent, fake_fetch
 ):
-    slope_step.main(extent="wlg-pilot", resolutions_m=(1, 10), use_cached_dem=True)
+    slope_step.main(
+        extent="wlg-pilot",
+        resolutions_m=(1, 10),
+        slope_resolutions_m=(1, 10),
+        use_cached_dem=True,
+    )
 
     aspect_1m = read(slope_step.aspect_path(1, extent="wlg-pilot")).values
     aspect_10m = read(slope_step.aspect_path(10, extent="wlg-pilot")).values
@@ -193,6 +204,35 @@ def test_the_aspect_points_downhill_and_the_grids_nest(
     assert (aspect_1m < 360).all()
     # The 10 m DEM is the block mean of the 1 m one, written from the same corner.
     assert dem_10m.values == pytest.approx(block_mean(dem_1m, 10).values, abs=1e-4)
+
+
+@ignore_affine_matmul
+def test_a_cell_size_left_out_of_the_slopes_gets_a_dem_only(
+    work_dir, small_extent, fake_fetch
+):
+    slope_step.main(
+        extent="wlg-pilot",
+        resolutions_m=(1, 10),
+        slope_resolutions_m=(10,),
+        use_cached_dem=True,
+    )
+
+    assert slope_step.dem_path(1, extent="wlg-pilot").exists()
+    assert not slope_step.slope_path(1, extent="wlg-pilot").exists()
+    assert not slope_step.aspect_path(1, extent="wlg-pilot").exists()
+    assert slope_step.slope_path(10, extent="wlg-pilot").exists()
+    with pytest.raises(FileNotFoundError, match="SLOPE_RESOLUTIONS_M"):
+        fig_step.main(extent="wlg-pilot", resolutions_m=(1, 10))
+
+
+def test_a_slope_cell_size_with_no_dem_is_refused(work_dir):
+    with pytest.raises(ValueError, match="not in the DEM cell sizes"):
+        slope_step.main(
+            extent="wlg-pilot",
+            resolutions_m=(1, 10),
+            slope_resolutions_m=(3,),
+            use_cached_dem=True,
+        )
 
 
 # --- gen_terrain_derivatives ---------------------------------------------------
