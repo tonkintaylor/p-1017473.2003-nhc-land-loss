@@ -1,0 +1,1 @@
+The claim report extraction now writes to `CLAIM_REPORTS_EXTRACTED_DIR` in `scripts/landloss/paths.py`, `U:\MAMI\land-loss\claim_reports\extracted`, instead of the repo's gitignored `claim_reports/extracted/`. The claim report analysis and the retaining wall validation read from the same place, so the validation no longer looks under the U: folder of whoever runs it.

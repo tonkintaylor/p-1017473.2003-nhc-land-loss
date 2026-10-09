@@ -1,0 +1,1 @@
+New end-to-end QGIS build (src/scripts/landloss/qgis/gen_qgis_e2e_build.py) writes temp/qgis/e2e_build/e2e_build<suffix>.qgs. It summarises one run's hazard, ground model, exposure, vul and loss costs (settlement, total repair, landslide, wall and liquefaction repair), and adds each urban polygon's probability of triggering and the liquefaction P(state 2) and P(state 3) grids.

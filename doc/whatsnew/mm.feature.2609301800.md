@@ -1,0 +1,1 @@
+Add `landloss.hazard.landslide.calibration.marc_2016`, the Marc et al. (2016) total landslide area and volume expression with Monte Carlo percentiles and a refit of its landscape sensitivity, checked against the paper's Table S1 by `hazard/landslide/validations/calibration/fig_marc_2016_table_s1.py`.

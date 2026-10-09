@@ -1,0 +1,1 @@
+The Waiwhetū Stream is no longer a lateral spreading free face. It was added by ID on 2026-10-02 and is taken out pending Maxim Millen's view (Q-19), so the free faces are now the NLM's own layer with nothing added. Over the study area this takes 122 NLM cells out of the near zone.

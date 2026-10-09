@@ -1,0 +1,62 @@
+factor,class_or_x,x_value,x_unit,membership
+mm_intensity,MM 5.00,5.00,MM,0.010
+mm_intensity,MM 5.25,5.25,MM,0.017
+mm_intensity,MM 5.50,5.50,MM,0.024
+mm_intensity,MM 5.75,5.75,MM,0.031
+mm_intensity,MM 6.00,6.00,MM,0.038
+mm_intensity,MM 6.25,6.25,MM,0.088
+mm_intensity,MM 6.50,6.50,MM,0.138
+mm_intensity,MM 6.75,6.75,MM,0.200
+mm_intensity,MM 7.00,7.00,MM,0.277
+mm_intensity,MM 7.25,7.25,MM,0.377
+mm_intensity,MM 7.50,7.50,MM,0.495
+mm_intensity,MM 7.75,7.75,MM,0.613
+mm_intensity,MM 8.00,8.00,MM,0.709
+mm_intensity,MM 8.25,8.25,MM,0.779
+mm_intensity,MM 8.50,8.50,MM,0.834
+mm_intensity,MM 8.75,8.75,MM,0.882
+mm_intensity,MM 9.00,9.00,MM,0.920
+slope_angle,0-5 centre,2.5,deg,0.020
+slope_angle,class edge,5.0,deg,0.081
+slope_angle,5-10 centre,7.5,deg,0.142
+slope_angle,class edge,10.0,deg,0.204
+slope_angle,10-15 centre,12.5,deg,0.265
+slope_angle,class edge,15.0,deg,0.326
+slope_angle,15-20 centre,17.5,deg,0.387
+slope_angle,class edge,20.0,deg,0.452
+slope_angle,20-25 centre,22.5,deg,0.517
+slope_angle,class edge,25.0,deg,0.579
+slope_angle,25-30 centre,27.5,deg,0.627
+slope_angle,class edge,30.0,deg,0.682
+slope_angle,30-35 centre,32.5,deg,0.723
+slope_angle,class edge,35.0,deg,0.758
+slope_angle,35-40 centre,37.5,deg,0.786
+slope_angle,class edge,40.0,deg,0.813
+slope_angle,40-45 centre,42.5,deg,0.835
+slope_angle,class edge,45.0,deg,0.854
+slope_angle,45-50 centre,47.5,deg,0.870
+slope_angle,class edge,50.0,deg,0.884
+slope_angle,>50 centre,52.5,deg,0.905
+fault_distance,0-5 centre,2.5,km,1.000
+fault_distance,0-5 / 5-10 midpoint,5.0,km,0.864
+fault_distance,5-10 centre,7.5,km,0.712
+fault_distance,5-10 / 10-20 midpoint,11.25,km,0.460
+fault_distance,10-20 centre,15.0,km,0.224
+fault_distance,10-20 / 20-30 midpoint,20.0,km,0.114
+fault_distance,20-30 centre,25.0,km,0.058
+fault_distance,20-30 / 30-40 midpoint,30.0,km,0.029
+fault_distance,30-40 centre,35.0,km,0.016
+fault_distance,30-40 / 40-50 midpoint,40.0,km,0.014
+fault_distance,40-50 centre,45.0,km,0.012
+fault_distance,40-50 / >50 midpoint,50.0,km,0.011
+fault_distance,>50 centre,55.0,km,0.010
+stream_distance,0-0.5 centre,0.25,km,1.000
+stream_distance,0.5-1 centre,0.75,km,0.919
+stream_distance,1-1.5 centre,1.25,km,0.607
+stream_distance,1.5-2 centre,1.75,km,0.245
+stream_distance,2-2.5 centre,2.25,km,0.086
+stream_distance,>2.5 centre,2.75,km,0.046
+slope_position,Flat,0,class,0.025
+slope_position,Valley,1,class,0.342
+slope_position,Midslope,2,class,0.751
+slope_position,Ridge,3,class,0.915

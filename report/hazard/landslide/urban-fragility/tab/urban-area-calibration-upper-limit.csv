@@ -1,0 +1,5 @@
+curve,anchor_id,reference,pga_rock_g_min,pga_rock_g_max,upper_limit,footprint_coverage,predicted,within_limit
+adopted,A12,whole non-flat pilot,0.5,0.8,0.25,0.22417260313980636,0.05408806879685067,True
+committed,A12,whole non-flat pilot,0.5,0.8,0.25,0.22417260313980636,0.029592575785663662,True
+area,A12,whole non-flat pilot,0.5,0.8,0.25,0.22417260313980636,0.19584893447173177,True
+footprint,A12,whole non-flat pilot,0.5,0.8,0.25,0.22417260313980636,0.055741270375234374,True

@@ -1,0 +1,14 @@
+metric,value,world_id,reference
+wall_units,5832.000,,
+wall_units_in_exposure,5383.000,,
+expected_walls,3358.041,,
+expected_walls_floor,3356.191,,
+units_is_property_boundary,1832.000,,
+units_is_road_frontage,793.000,,
+median_wall_points,5.000,,
+evacuated_m2_walled,664951.243,,
+evacuated_m2_bare,657163.243,,
+walled_share_of_units,0.581,0,
+walled_share_of_sizs,0.551,0,
+evacuated_m2,661844.243,0,664951.243
+share_walled_under_1.5m,0.630,0,0.540

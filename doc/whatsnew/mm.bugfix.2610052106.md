@@ -1,0 +1,1 @@
+A pif's spine (`instability_zones.gen_pif_spines`) is now the longest shortest path through its pips on the whole `PIF_JOIN_M` graph. The spanning-tree path it replaces folded back on faces two or more cells thick, which put both ends at one end of the face and overstated `spine_length_m`.

@@ -1,0 +1,1 @@
+Builds can now be run over Upper Hutt City: set `EXTENT = "upper-hutt"`. Like `"porirua"`, it is the city's bounding box widened by about 500 m, so it also takes in edges of Lower Hutt and the hill country outside the city.

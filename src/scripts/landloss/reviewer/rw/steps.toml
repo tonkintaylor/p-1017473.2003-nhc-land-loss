@@ -1,0 +1,554 @@
+# Content of the retaining wall reviewer page: the overview, the flow diagram,
+# the inputs and one table per step.
+#
+# The narrative is markdown. Each step's `checked` is the date its narrative was
+# last checked against the code. The page sets it beside the date of the step's
+# newest output and flags a step whose data has moved on since, so update
+# `checked` whenever you re-read a step and bring its text up to date.
+#
+# `outputs` and `inputs` name keys of LAYER_FILES in gen_reviewer_rw.py. `layers`
+# names the map layers drawn for the step (the first `visible` count are
+# switched on). `charts` names pilot summaries the generator computes. `tables`
+# are CSVs relative to the repository root. Write a constant as its name in
+# braces, {BETA_WALL_BASE_P}, and the generator fills in today's value from
+# landloss.domain.constants.
+
+title = "Retaining walls: placement, vulnerability and damage"
+short = "RW reviewer"
+
+overview = """
+Retaining walls are modelled in five moves, each a question about one wall:
+
+1. **Where could a wall be?** No dataset of residential walls exists (RW-A14), so
+   candidates are read off the 1 m LiDAR DEM. A cell where the ground drops
+   sharply is a **pip**, a *potential instability point*. Pips close together
+   are joined into a **pif**, a *potential instability face*, and each pif is cut
+   into wall-length pieces. Pips and pifs come from the DEM alone. GNS-mapped
+   walls only flag the pifs they lie on, and a mapped wall with no pips beneath
+   it becomes a candidate of its own.
+2. **What kind of ground is it holding?** Each face is classed as cut, fill, cut
+   and fill, or natural by comparing its crest and foot with a surface fitted to
+   the ground around it.
+3. **Is there a wall there?** Each candidate gets a probability from a points
+   score, a GNS floor and claim report wall counts. It is then drawn walled or not
+   once per exposure world, and the walls on insured land get an age, a type and a
+   size class.
+4. **Does it fail in this earthquake?** Every face gets evacuated, imminent and
+   inundated zones. A walled face takes a wall fragility curve, and a wall fails
+   when its slope polygon fails.
+5. **What is damaged?** A failed, absorbed or overrun wall is flagged for
+   replacement. The same polygons give the land damage on the property.
+
+The steps below follow that order. Pick an example site at the top and it stays
+selected in every step's map. **Click any wall unit** to trace that one wall
+from candidate to damage flag in the side panel.
+"""
+
+[flow]
+# Each edge is [from, to] or [from, to, label]; the diagram lays the nodes out
+# left to right by their longest path from an input. Label an edge where the
+# arrow alone would overstate what the input does at that step.
+edges = [
+    ["dem", "faces", "pips and pifs come from the DEM alone"],
+    ["gns", "faces", "flags pifs; adds gns_only candidates"],
+    ["linz", "faces", "drops pifs in buildings"],
+    ["faces", "cut_fill"], ["dem", "cut_fill"],
+    ["faces", "wall_units"], ["cut_fill", "wall_units"],
+    ["claims", "wall_units", "raises p_wall"],
+    ["wall_units", "population"], ["linz", "population"],
+    ["wall_units", "zones"], ["faces", "zones"],
+    ["zones", "fragility"], ["population", "fragility"], ["pga", "fragility"],
+    ["fragility", "damage"], ["population", "damage"], ["zones", "damage"],
+    ["fragility", "land"],
+    ["damage", "loss"], ["land", "loss"],
+]
+
+
+[[flow.nodes]]
+id = "dem"
+label = "LiDAR DEM 1 m"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "gns"
+label = "GNS SLIDE walls"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "linz"
+label = "LINZ buildings, parcels, titles"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "claims"
+label = "Claim reports + NHC land attrs"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "pga"
+label = "PGA / PGV realisation"
+kind = "data"
+module = "input"
+
+[[flow.nodes]]
+id = "faces"
+label = "1 Faces: pips → pifs → candidates"
+kind = "step"
+module = "ground"
+step = "faces"
+
+[[flow.nodes]]
+id = "cut_fill"
+label = "2 Cut / fill class"
+kind = "step"
+module = "ground"
+step = "cut_fill"
+
+[[flow.nodes]]
+id = "wall_units"
+label = "3 Wall units + p_wall"
+kind = "step"
+module = "exposure"
+step = "wall_units"
+
+[[flow.nodes]]
+id = "population"
+label = "4 Draw, age, type, insured"
+kind = "step"
+module = "exposure"
+step = "population"
+
+[[flow.nodes]]
+id = "zones"
+label = "5 Instability zones"
+kind = "step"
+module = "hazard"
+step = "zones"
+
+[[flow.nodes]]
+id = "fragility"
+label = "6 Fragility + realisation"
+kind = "step"
+module = "hazard"
+step = "fragility"
+
+[[flow.nodes]]
+id = "damage"
+label = "7 Wall damage flags"
+kind = "step"
+module = "vul"
+step = "damage"
+
+[[flow.nodes]]
+id = "land"
+label = "8 Land damage"
+kind = "step"
+module = "vul"
+step = "land"
+
+[[flow.nodes]]
+id = "loss"
+label = "Loss: settlement"
+kind = "data"
+module = "loss"
+
+
+[[inputs]]
+name = "LiDAR DEM, 1 m"
+source = "LINZ elevation catalogue, mosaicked by ground step 1 (temp/ground/dem-1m*.tif)"
+licence = "CC BY 4.0: attribute LINZ in anything derived and published."
+used_by = "Faces, cut/fill, zones"
+file = "dem_1m"
+
+[[inputs]]
+name = "GNS SLIDE morphology (retaining walls, cut/fill lines)"
+source = "GNS Science via Koordinates layer 125308"
+licence = "See the reader docstring in landloss.io for the licence and attribution."
+used_by = "Faces (gns_wall, gns_only candidates), the GNS floor"
+
+[[inputs]]
+name = "LINZ building outlines, property boundaries, titles"
+source = "LINZ Data Service via Koordinates (get_nz_building_outlines, get_nz_property_boundaries, get_nz_property_titles_list)"
+licence = "CC BY 4.0: attribute LINZ in anything derived and published."
+used_by = "Faces (pifs inside buildings dropped), points prior (building distance, road frontage, boundary), wall age"
+
+[[inputs]]
+name = "Claim reports and NHC land attributes (NZMM)"
+source = "Claim report wall counts on U:, NHC land attributes extract on T: (SENSITIVE)"
+licence = "NHC confidential: internal to T+T. This page carries claim ids, so it must not leave T+T."
+used_by = "Claim update of p_wall, points prior, held-out check"
+file = "property_records"
+
+[[inputs]]
+name = "QV rating roll and LINZ title issue dates"
+source = "QV district valuation roll (T:), LINZ titles (Koordinates table 51567)"
+licence = "QV: licensed to the project. LINZ: CC BY 4.0."
+used_by = "Wall age shares"
+file = "wall_age"
+
+[[inputs]]
+name = "Insured land extent"
+source = "Exposure land step 5"
+licence = "Derived"
+used_by = "Insured wall filter (2 m buffer)"
+file = "insured_land"
+
+[[inputs]]
+name = "Wall fragility curves"
+source = "Koutsoupaki (2023), src/landloss/io/assets/retaining-wall-type-fragility.csv"
+licence = "Published paper; values transcribed."
+used_by = "Landslide step 5, vul shaking rw step 9"
+
+[[inputs]]
+name = "Shaking realisation (PGA, PGV)"
+source = "Hazard shaking steps 4 and 5"
+licence = "Derived"
+used_by = "Landslide steps 5 and 6, vul shaking rw step 9"
+
+# --------------------------------------------------------------------- steps
+
+[[steps]]
+id = "faces"
+number = 1
+title = "Finding faces: potential instability points and faces"
+module = "ground"
+folder = "src/scripts/landloss/ground/steps/s3_instability_zones + s4_slope_faces"
+scripts = ["gen_instability_zones.py", "gen_slope_faces.py"]
+inputs = ["dem_1m"]
+outputs = ["sizs", "elements", "gns_only"]
+layers = ["pifs", "pips", "gns_only", "elements"]
+visible = 3
+pip_example = true
+charts = ["candidate_classes", "height_bands"]
+tables = [
+    "report/ground/urban-slope-faces/tab/gns-agreement.csv",
+    "report/ground/urban-slope-faces/tab/sizs-by-group-band.csv",
+]
+checked = "2026-10-07"
+narrative = """
+A **pip** (*potential instability point*) is a 1 m DEM cell that stands more
+than {PIP_DROP_M} m above each of the cells 1, 3 and 5 cells away in one of the
+eight directions. Along a diagonal those cells are 1.41 times further away, so
+the drop needed is 1.41 times larger. All three tests must pass (RW-A01): the
+1-cell test keeps out batters, whose drop is spread out, and the 5-cell test keeps
+out small blips. The card below draws the rule on a real pilot pip.
+
+Pips within {PIF_JOIN_M} m of each other join into a **pif** (*potential
+instability face*). A pif needs at least 3 pips and a spine of 3 m or more, and
+pifs mostly inside a building outline are dropped (RW-A02). Pips and pifs come
+from the DEM alone.
+
+**GNS SLIDE makes no pifs.** A pif with a GNS-mapped wall within 2 m is flagged
+`gns_wall`, which later lifts its probability to the GNS floor (RW-A10). A
+mapped wall with no pip within 2 m becomes a `gns_only` candidate. LINZ building
+outlines only remove pifs.
+
+Each pif is then cut along its spine into **pieces** of 3 to 50 m, with at most 3
+bends and 185 degrees of turning (RW-A03). Each piece is one wall candidate.
+
+The candidate classes are:
+
+- **siz**: a piece steep enough to fail by the slope thresholds (a seed
+  instability zone).
+- **low_height**: a piece that is not a siz but has a GNS-mapped wall within 2 m.
+- **gns_only**: a stretch of GNS-mapped wall with no pip within 2 m.
+
+Sizs grow **elements**, the slope polygons that are later given zones.
+
+On the map, pips are coloured by their pif's ground step 5 class, so this view and the
+next share one colour key.
+"""
+
+[[steps]]
+id = "cut_fill"
+number = 2
+title = "Cut or fill: what the face is holding"
+module = "ground"
+folder = "src/scripts/landloss/ground/steps/s5_pif_cut_fill"
+scripts = ["gen_pif_cut_fill.py", "table_pif_cut_fill_checks.py"]
+inputs = ["sizs", "dem_1m"]
+outputs = ["pif_cut_fill", "pif_cut_fill_pips"]
+layers = ["pifs", "pips", "pip_feet"]
+visible = 3
+section = true
+charts = ["cut_fill_classes"]
+tables = [
+    "report/ground/pif-cut-fill/tab/class-counts.csv",
+    "report/ground/pif-cut-fill/tab/class-vs-slide.csv",
+]
+checked = "2026-10-07"
+narrative = """
+For each pif, a robust quadratic surface is fitted to the ground around it, off
+the faces. The pif's **crest** and the **foot** of its face (the thin ticks
+on the map running from each pip) are then compared with that surface.
+
+The excess drop is how much further the face falls than the fitted ground:
+
+- up to 1 m is **natural**;
+- up to 2 sigma is **uncertain**.
+
+Beyond that, the class comes from where the face sits against the surface:
+
+- above +1/3 is **fill** (the face stands proud of the ground, like the front of
+  a platform);
+- below -1/3 is **cut**;
+- in between is **cut and fill**.
+
+Fewer than 30 cells to fit gives **unknown** (RW-A05). A wall unit takes the
+class of its longest pif (RW-A06).
+
+**The cross-section under the map** runs through one of the pif's pips, along
+that pip's own walk to the foot of its face. It draws the DEM, the surface ground
+step 5 fitted for the pif (dashed), and the crest and foot residuals as coloured
+bars, orange above the surface and blue below. A fill face has its crest well
+above the surface and its foot near it; a cut has its foot well below. Click
+any pif or pip on the map to section it.
+
+The class tables under `report/` count pifs from whenever their script last
+ran. Check their date in the freshness panel before quoting them.
+"""
+
+[[steps]]
+id = "wall_units"
+number = 3
+title = "Wall units and the probability of a wall"
+module = "exposure / rw"
+folder = "src/scripts/landloss/exposure/rw/steps/s6_wall_population"
+scripts = ["gen_wall_units.py", "table_wall_unit_checks.py"]
+inputs = ["sizs", "pif_cut_fill", "property_records"]
+outputs = ["wall_units", "wall_draws"]
+layers = ["units", "pifs", "gns_only"]
+visible = 1
+charts = [
+    "wall_points_table", "points_to_prior", "wall_points_hist", "wall_points_scored",
+    "p_wall_basis", "p_wall_hist", "expected_walls",
+]
+tables = [
+    "report/exposure/rw/wall-units/tab/wall-pilot-counts.csv",
+    "report/exposure/rw/wall-units/tab/wall-gns-recall.csv",
+    "report/exposure/rw/wall-units/tab/wall-claims-holdout.csv",
+    "report/exposure/rw/wall-units/tab/wall-strata.csv",
+]
+checked = "2026-10-07"
+narrative = """
+Every candidate becomes one **wall unit**: one line, one probability, one draw,
+independent of every other unit (RW-A07). Its probability is built in three
+stages, and the units file keeps all three:
+
+1. **Prior, `p_prior`.** Each unit scores the points of the bin it falls in for
+   ten attributes: verticality, height, length, distance to a building, road
+   frontage or property boundary, cut/fill class, a cut in rock deeper than
+   2 m, a cut in soil, the property's wall age shares (share-weighted) and NHC's
+   land attributes flag. The points add on the odds: every
+   {BETA_WALL_POINTS_PER_DOUBLING} points doubles them, from p =
+   {BETA_WALL_BASE_P} at zero for a siz piece and {BETA_LOW_HEIGHT_WALL_PRIOR}
+   for a low-height wall, so no total reaches 0 or 1 (RW-A08, RW-A13). A
+   gns_only unit is scored too, but takes {BETA_GNS_ONLY_WALL_PROBABILITY}.
+   The full table and the points-to-prior scale are below.
+2. **GNS floor, `p_floor`.** A unit with a GNS-mapped wall on it is lifted to at
+   least {BETA_GNS_WALL_UNIT_FLOOR} (RW-A10).
+3. **Claim update, `p_claims` = `p_wall`.** Where a claim report counts the
+   property's walls, its units are updated on that count with a Poisson-binomial.
+   The update only ever raises (RW-A11, RW-A12).
+
+`p_wall_basis` names the stage that set the final value. **Click a unit** to see
+its three stages as a waterfall and the bins that scored its points
+(`wall_points_explain`).
+
+Base {BETA_WALL_BASE_P}, floor {BETA_GNS_WALL_UNIT_FLOOR} and gns_only
+{BETA_GNS_ONLY_WALL_PROBABILITY} are interim (the lead, 2026-10-07): the base is
+solved so the expected walls come to 60% of the old factor prior's total.
+
+Wall height is the siz table's near-drop quantile (RW-A09, marked *check*).
+"""
+
+[[steps]]
+id = "population"
+number = 4
+title = "Drawing the walls and the insured population"
+module = "exposure / rw"
+folder = "src/scripts/landloss/exposure/rw/steps/s6_wall_population"
+scripts = ["gen_wall_probability.py", "gen_wall_age.py", "gen_wall_population.py"]
+inputs = ["wall_units", "wall_draws", "wall_age", "insured_land"]
+outputs = ["wall_probability", "drawn_walls", "wall_population"]
+layers = ["walls", "units", "insured_land"]
+visible = 3
+charts = [
+    "wall_type_shares", "frontage_multipliers", "drawn_type_by_age",
+    "population_tiles", "size_class", "wall_type", "age_bin", "wall_position",
+]
+tables = [
+    "report/exposure/rw/rw-datasets/tab/rw-dataset-wall-counts.csv",
+    "report/exposure/rw/rw-datasets/tab/rw-dataset-agreement-gns-nhc.csv",
+]
+checked = "2026-10-07"
+narrative = """
+Each unit is drawn walled or not once per **exposure world**, independently of
+the earthquake (RW-A15). Every walled unit is a **drawn wall**: it holds up its
+slope in the hazard whoever owns it.
+
+Each drawn wall then gets:
+
+- an **age bin** from its property's dwelling (RW-A16);
+- a **wall type** from the age, height band and road frontage (RW-A17);
+- a **size class** from its height (RW-A18).
+
+The type is drawn in three moves, on its own random stream per world:
+
+1. Draw an age bin from the property's age shares.
+2. With probability {BETA_WALL_REBUILT_SHARE}, move it one bin later (the wall
+   was rebuilt since the house; 2005 on stays).
+3. Draw the type from the row of the **type shares** table (below) for that
+   age bin and the wall's height band (under 1.5 m, 1.5 to 2.5 m, over 2.5 m).
+   On a road frontage the row is first multiplied by the **frontage
+   multipliers** and renormalised.
+
+The shares and multipliers are placeholders for Nick Peters to revise (RW-A17).
+Note the type height bands (1.5 m, 2.5 m) differ from the fragility table's
+height class (2 m).
+
+Only drawn walls with a claim, whose line comes within 2 m of insured land, form
+the **insured population** that vul and loss see (RW-A19). Each gets an
+`rw_id` of `<claim_id>-RW<nn>`.
+
+On the map, solid lines are insured walls and dashed lines are drawn walls
+outside the insured population. Grey unit lines were not walled in this world.
+"""
+
+[[steps]]
+id = "zones"
+number = 5
+title = "Instability zones: evacuated, imminent, inundated"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s4_wall_zones"
+scripts = ["gen_wall_zones.py", "fig_wall_zones.py"]
+inputs = ["elements", "wall_units", "wall_draws"]
+outputs = ["wall_elements", "zones_world", "zones_walled", "zones_bare"]
+layers = ["zones_world", "zones_walled", "zones_bare", "forced", "walls"]
+visible = 1
+charts = ["zone_areas"]
+tables = [
+    "report/ground/urban-slope-faces/tab/polygon-sizes.csv",
+]
+checked = "2026-10-07"
+narrative = """
+Each element is given three zones:
+
+- **evacuated**: the ground that leaves, behind and including the face
+  (RW-A20);
+- **imminent**: the band to a 35 degree repose line from the toe, ground that is
+  at risk but has not gone;
+- **inundated**: the runout below the face (RW-A21).
+
+A unit none of whose pifs grew an element gets a line element along its line,
+and where there is no free cell for that, a **forced polygon** (RW-A22).
+
+The zones are built for this world's draw and for two bounds: every unit walled,
+and every unit bare. Switch between them on the map to see what a wall changes.
+"""
+
+[[steps]]
+id = "fragility"
+number = 6
+title = "Wall fragility and the realisation"
+module = "hazard / landslide"
+folder = "src/scripts/landloss/hazard/landslide/steps/s5_urban_slope_fragility + s6_urban_slope_realisation"
+scripts = ["gen_urban_slope_fragility.py", "gen_urban_slope_realisation.py"]
+inputs = ["zones_world", "drawn_walls"]
+outputs = ["urban_model", "realisation", "wall_outcome"]
+layers = ["slides", "walls", "zones_world"]
+visible = 2
+charts = ["fragility_curves", "wall_type_fragility", "outcomes"]
+tables = [
+    "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-walls.csv",
+]
+checked = "2026-10-07"
+narrative = """
+Landslide step 5 gives each zone polygon a **wall state** (`fill_wall`,
+`cut_wall` or `no_wall`) from its unit's drawn wall. A walled polygon takes the
+Koutsoupaki (2023) curve for the wall's **type and height class** (below; RW-A23,
+RW-A33): fourteen curves, seven types by under or over
+{HEIGHT_CLASS_SPLIT_M} m. The median is multiplied by
+{FILL_CAPACITY_FACTOR} for a fill wall or {CUT_CAPACITY_FACTOR} for a cut wall,
+then converted from PGA to PGV at the site's ratio. There are two damage
+states, none and replace (RW-A24).
+
+Two choices in the table are the lead's (2026-10-06 and 07): new timber pole
+and reinforced concrete walls from July 1992 (engineered until 2026-10-08) are the block/RC curve times 1.3 and 1.5
+(`type_factor`), and for gravity masonry, old timber pole, block/RC and
+landscaper timber the height effect is **switched**, so a taller wall of those
+types takes the weaker curve.
+
+Landslide step 6 draws one uniform per wall, and **if any polygon on the wall
+fails, the wall fails** (RW-A25). Each insured wall's outcome is one of:
+
+- **failed_with_polygon**: the wall's own polygon failed;
+- **absorbed** or **superseded**: a larger failure took the ground it sits on;
+- **standing**.
+
+A wall on flat land would go through vul shaking rw step 9 instead (RW-A27). No
+pilot wall is on flat land at present, so that step writes no rows.
+"""
+
+[[steps]]
+id = "damage"
+number = 7
+title = "Wall damage flags and the loss input"
+module = "vul / landslide rw, shaking rw, vul step 10"
+folder = "src/scripts/landloss/vul/landslide/rw/steps/s11_wall_landslide_damage + vul/steps/s10_property_damage"
+scripts = ["gen_wall_landslide_damage.py", "gen_wall_damage_state.py", "gen_property_damage.py"]
+inputs = ["wall_population", "wall_outcome", "realisation"]
+outputs = ["wall_damage_state", "wall_landslide_damage", "loss_input_rw"]
+layers = ["walls", "slides"]
+visible = 2
+charts = ["flag_counts"]
+tables = []
+checked = "2026-10-07"
+narrative = """
+Vul landslide rw step 11 turns the outcome into flags (RW-A28):
+
+| outcome | flag |
+|---|---|
+| failed_with_polygon | `is_damaged_by_shaking` |
+| absorbed, superseded | `is_evacuated` |
+| standing | none |
+
+These are then ORed with a geometry test: more than 0.01 m of the wall line
+inside an evacuated or inundated polygon.
+
+Any flag true means one replacement (RW-A29). Vul attaches no cost; vul step 10
+writes the loss input table (`rw_id, claim_id, rw_size, rw_length` and the three
+flags), and the loss module prices it. A boundary wall counting on each property
+is decided but not yet in loss (RW-A31).
+
+**Check the freshness panel first.** If the vul files are older than the
+population, the counts here belong to an earlier set of walls.
+"""
+
+[[steps]]
+id = "land"
+number = 8
+title = "Land damage from the same polygons"
+module = "vul / landslide land"
+folder = "src/scripts/landloss/vul/landslide/land/steps/s3_landslide_land_damage"
+scripts = ["gen_landslide_land_damage.py"]
+inputs = ["realisation", "insured_land"]
+outputs = ["land_damage"]
+layers = ["slides", "insured_land", "walls"]
+visible = 3
+charts = ["land_damage_tiles"]
+tables = []
+checked = "2026-10-07"
+narrative = """
+The failed polygons that take walls also take land. Vul landslide land step 3
+intersects the realisation with each property's insured land and records the
+evacuated and inundated area and depth, with the cause of each.
+
+A wall replaced and land damage on the same claim are both paid; they are not a
+double count (RW-A30). Settlement is at undepreciated value under the sub-caps
+(RW-A32).
+"""

@@ -1,0 +1,16 @@
+name,kind,weight,decay_length_m,lon,lat,basis
+Wellington CBD,regional,1.00,6000,174.7764,-41.2834,"Plan weight and decay length (s2_land_value_implementation_plan.md, Phase 3). Placed at Midland Park on Lambton Quay, the middle of the CBD office core."
+Lower Hutt CBD,city,0.30,3000,174.9064,-41.2096,"Plan weight and decay length. Placed on High Street by Queensgate."
+Porirua CBD,city,0.20,3000,174.8410,-41.1330,Plan weight and decay length. Placed in the Porirua city centre by Cobham Court.
+Upper Hutt CBD,city,0.12,3000,175.0705,-41.1240,Plan weight and decay length. Placed on Main Street.
+Johnsonville,local,0.10,3000,174.8047,-41.2227,"Top of the plan's 0.05 to 0.10 local centre band: the largest suburban centre in the study area, with the mall, the library and the rail terminus."
+Kilbirnie,local,0.08,3000,174.7948,-41.3174,"Upper local centre band: the main shopping centre for the eastern suburbs, on Bay Road."
+Petone,local,0.08,3000,174.8745,-41.2263,"Upper local centre band: Jackson Street, a destination shopping street as well as a local one."
+Karori,local,0.06,3000,174.7382,-41.2849,Mid local centre band: the Karori Road shops by the mall.
+Newtown,local,0.06,3000,174.7797,-41.3107,Mid local centre band: Riddiford Street by the hospital.
+Miramar,local,0.05,3000,174.8148,-41.3155,Bottom of the local centre band: Miramar Avenue.
+Tawa,local,0.05,3000,174.8262,-41.1685,Bottom of the local centre band: the Main Road shops.
+Naenae,local,0.05,3000,174.9483,-41.1994,Bottom of the local centre band: Hillary Court.
+Wainuiomata,local,0.05,3000,174.9447,-41.2618,Bottom of the local centre band: Queen Street.
+Khandallah,local,0.05,3000,174.7913,-41.2437,Bottom of the local centre band: Khandallah village.
+Eastbourne,local,0.05,3000,174.8983,-41.2912,Bottom of the local centre band: the Muritai Road shops.

@@ -1,0 +1,5 @@
+feature,match_m,sample_points,share_near_siz,share_near_any_pif
+GNS mapped wall,2.000,31193,0.631,0.672
+GNS cut/fill line,2.000,16515,0.047,0.052
+GNS sharp break in slope,3.000,42280,0.594,0.658
+GNS rounded break in slope,3.000,88674,0.380,0.443

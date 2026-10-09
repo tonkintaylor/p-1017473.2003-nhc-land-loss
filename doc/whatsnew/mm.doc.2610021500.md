@@ -1,0 +1,1 @@
+Add a plan for running the pipeline per territorial authority, `.agents/plans/running-per-territorial-authority.md`: one extent function for every step, a tiling utility for the 1 m grids, a split between static layers built once and the per-realisation draws, and the versioned store for the static layers.

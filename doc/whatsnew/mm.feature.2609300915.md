@@ -1,0 +1,1 @@
+Read TS1170.5:2025 Table 3.2, the site demand parameters (PGA, Sa,s, Tc, Td) by 0.1 degree grid point, from the T+T data library with `landloss.io.ts1170.get_ts1170_table_3_2`, returned as one row per grid point, annual probability of exceedance and site class (1 to 6).

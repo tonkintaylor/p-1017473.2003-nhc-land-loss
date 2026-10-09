@@ -1,0 +1,4 @@
+ground_group,min_step_height_m,bank_min_slope_deg,adjacent_step_m
+soil_like,0.5,18.4,0.7
+weak_rock,0.5,18.4,3.0
+stronger_rock,0.5,18.4,3.0

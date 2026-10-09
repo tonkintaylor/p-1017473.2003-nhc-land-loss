@@ -1,0 +1,1 @@
+Add Downes & Grapes (1999), the compilation of historical accounts of the 1855 Wairarapa earthquake, to `context/lit/landslide/`, and note in the landslide status file that it can inform the calibration of the landslide models.

@@ -1,0 +1,354 @@
+"""Write the one CSV the static loss viewer reads, and put the viewer beside it.
+
+    uv run --frozen python src/scripts/landloss/loss/ui/gen_viewer_data.py
+
+The viewer is `loss_viewer.html`, a single page with no server and no build
+step: open it, drag the CSV on, and it settles every claim in the browser. The
+point is that **the policy settings are controls rather than constants**, so
+somebody at NHC can move the excess or the total cap and watch the portfolio
+answer, without Python, a spreadsheet, or anyone to run it for them. Two
+scenarios are two CSVs dragged onto the same page.
+
+**What the CSV carries is everything the settlement does not decide.** Areas,
+rates, wall geometry, the Canterbury cost, who has what damage -- all fixed by
+exposure and vul. What it deliberately leaves out is every figure the Act sets:
+the caps, the sub-caps, the excess, the fees, the specification uplift. Those
+are the controls, so a number that moves when a control moves is not in this
+file. GST is left out too but is not a control: the page fixes it at
+:data:`~landloss.loss.policy.GST_RATE`, as the module does. The page also
+scales the wall rates and the land value, to show how far an answer leans on
+them; at a scale of one each, it is the module's answer.
+
+The land cap scenarios NHC is weighing are drawn over the main histogram, with
+the share of claims above each cap and the total settled under it. Those are
+the page's own arithmetic over the same rows, not something this file carries.
+
+That split is also what keeps the page honest. It cannot show a settlement that
+the module would not produce, because it is running the same arithmetic on the
+same inputs -- and `check_viewer_against_the_model` proves it, at the default
+settings, before the file is written.
+"""
+
+import shutil
+import sys
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+
+from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN
+from landloss.hazard.liquefaction.land_damage import LD_STATES
+from landloss.io.area_of_interest import extent_suffix
+from landloss.loss.policy import PolicySettings
+from landloss.loss.pricing import (
+    INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
+    PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
+    RATING_MARKUP,
+    timber_pole_rate_excl_gst_nzd_per_m2,
+)
+from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
+    wall_udv_by_claim,
+)
+from scripts.landloss.loss.steps.s1_settlement import config
+from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
+    ACCESS_COLUMN,
+    CONSTRUCTABILITY_COLUMN,
+    EARTHWORKS_COLUMN,
+    LAND_REPAIR_COLUMN,
+    LIQ_REPAIR_COLUMN,
+    NEW_WALL_HEIGHT_COLUMN,
+    NEW_WALL_LENGTH_COLUMN,
+    REPLACEMENT_WALL_FACE_COLUMN,
+    REPLACEMENT_WALL_RATE_COLUMN,
+    SPOIL_VOLUME_COLUMN,
+    WALL_REPAIR_COLUMN,
+    settlement_path,
+)
+from scripts.landloss.paths import REPORT_DIR
+from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
+    world_loss_input_path,
+)
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+OUT_DIR = REPORT_DIR / "loss" / "viewer"
+VIEWER = "loss_viewer.html"
+HERE = __import__("pathlib").Path(__file__).resolve().parent
+# The liquefaction land damage state that is no damage at all: "None", the
+# first of LD_STATES, numbered from one. A property drawn in it still carries
+# the Canterbury cost for it -- an average with non-claimants in at $0 -- but
+# has nothing to claim for.
+NO_DAMAGE_LIQ_STATE = LD_STATES.index("None") + 1
+
+
+def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
+    """Return each claim's position in degrees, for the map.
+
+    The insured land is a polygon; the viewer wants a dot, so this takes a
+    point guaranteed to sit inside it rather than a centroid, which on an
+    L-shaped section can fall outside the property altogether.
+
+    Args:
+        world_id: The exposure world.
+        realisation_id: The modelled earthquake.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        ``lon`` and ``lat`` per claim.
+    """
+    land = gpd.read_parquet(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent)
+    )
+    inside = land.geometry.representative_point()
+    degrees = gpd.GeoSeries(inside, crs=land.crs).to_crs(4326)
+    return (
+        pd.DataFrame(
+            {
+                CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
+                "lon": degrees.x.to_numpy().round(6),
+                "lat": degrees.y.to_numpy().round(6),
+            }
+        )
+        .groupby(CLAIM_ID_COLUMN)
+        .first()
+    )
+
+
+def liquefaction_states(
+    world_id: int, realisation_id: int, *, extent: str
+) -> pd.Series:
+    """Return each claim's liquefaction land damage state, 0 where it has none.
+
+    Sloping land has no state at all, because the liquefaction model covers
+    flat land only. Where a claim has more than one land row, its worst state.
+
+    Args:
+        world_id: The exposure world.
+        realisation_id: The modelled earthquake.
+        extent: The extent the run is over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        The state per claim, 1 (None) to 6 (Very severe), or 0.
+    """
+    land = pd.read_parquet(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent),
+        columns=[CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN],
+    )
+    return (
+        land[LIQ_LD_STATE_COLUMN]
+        .fillna(0)
+        .astype(int)
+        .groupby(land[CLAIM_ID_COLUMN])
+        .max()
+    )
+
+
+def site_multiplier(claims: pd.DataFrame) -> pd.Series:
+    """Return each claim's site multiplier, summed from its three ratings."""
+    return sum(
+        claims[column].map(RATING_MARKUP).fillna(0.0)
+        for column in (ACCESS_COLUMN, EARTHWORKS_COLUMN, CONSTRUCTABILITY_COLUMN)
+    )
+
+
+def wall_value_excl_gst(rw: pd.DataFrame, policy: PolicySettings) -> pd.Series:
+    """Return each claim's damaged wall value before GST, summed wall by wall.
+
+    Taken from step 0's own function, so the viewer's cap is built from the same
+    value the module's is. A claim's walls are valued one by one and then added:
+    a single size, length and rate per claim would price every metre of a claim
+    with walls of mixed sizes at its tallest wall's size and highest rate.
+    """
+    return wall_udv_by_claim(rw, policy=policy) / (1.0 + policy.gst_rate)
+
+
+def viewer_rows(
+    claims: pd.DataFrame, wall_value: pd.Series, liq_state: pd.Series
+) -> pd.DataFrame:
+    """Return the table the viewer reads, one row per claim.
+
+    Only what the Act does not decide. Wall value and wall cost arrive **before
+    GST**, and the repair as a face area and a rate rather than as a price,
+    because a price already has GST, the site multiplier and the specification
+    uplift baked into it -- and the page applies all three itself.
+
+    Args:
+        claims: Step 1's settlements, indexed by claim.
+        wall_value: The damaged walls' value before GST per claim, as
+            :func:`wall_value_excl_gst` returns.
+        liq_state: The liquefaction land damage state per claim, as
+            :func:`liquefaction_states` returns.
+
+    Returns:
+        The viewer's rows.
+    """
+    new_height = claims[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
+    new_rate = np.where(
+        new_height > 0, timber_pole_rate_excl_gst_nzd_per_m2(new_height), 0.0
+    )
+    return pd.DataFrame(
+        {
+            "dwellings": claims["dwelling_count"].astype(int),
+            "damaged_area_m2": claims["damaged_area_m2"].round(4),
+            "land_rate_incl_gst": claims["land_rate_incl_gst_nzd_per_m2"].round(6),
+            # What the damaged walls were worth, before GST: it builds the cap.
+            "wall_value_excl_gst": wall_value.reindex(claims.index)
+            .fillna(0.0)
+            .round(6),
+            # What the damaged wall is replaced at, which a landslide can make
+            # larger than the wall that was there. The value above builds the
+            # cap; this builds the repair.
+            "replacement_face_m2": claims[REPLACEMENT_WALL_FACE_COLUMN].round(6),
+            "replacement_rate_excl_gst": claims[REPLACEMENT_WALL_RATE_COLUMN].round(6),
+            "new_wall_face_m2": (
+                claims[NEW_WALL_HEIGHT_COLUMN] * claims[NEW_WALL_LENGTH_COLUMN]
+            ).round(6),
+            # An invented wall is priced at the timber pole rate its height
+            # calls for rather than at the claim's own wall rate -- it has no
+            # wall of its own to take a construction from, and a claim needing
+            # one often has no damaged wall at all, so there is no rate to
+            # borrow. Carried separately so the page does not silently price it
+            # at zero.
+            "new_wall_rate_excl_gst": np.round(new_rate, 6),
+            "spoil_m3": claims[SPOIL_VOLUME_COLUMN].round(6),
+            # The Canterbury cost is a settled amount, so it arrives whole --
+            # but before GST, which is a control.
+            "liq_cost_excl_gst": (claims[LIQ_REPAIR_COLUMN] / 1.15).round(6),
+            "site_multiplier": site_multiplier(claims).round(3),
+            "has_damaged_wall": (claims[WALL_REPAIR_COLUMN] > 0).astype(int),
+            "has_new_wall": (claims[LAND_REPAIR_COLUMN] > 0).astype(int),
+            # The state as well as the cost, because the cost alone cannot tell
+            # a claim from a property with nothing to claim for: the None state
+            # carries a Canterbury cost too. Liquefaction damage is a state worse
+            # than None, and it is what makes a property a claim on the page.
+            "liq_state": liq_state.reindex(claims.index).fillna(0).astype(int),
+            "has_liquefaction": (
+                liq_state.reindex(claims.index).fillna(0) > NO_DAMAGE_LIQ_STATE
+            ).astype(int),
+            "has_crossing": 0,
+            "access": claims[ACCESS_COLUMN],
+            "earthworks": claims[EARTHWORKS_COLUMN],
+            "constructability": claims[CONSTRUCTABILITY_COLUMN],
+        }
+    )
+
+
+def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFrame:
+    """Settle the viewer's rows the way the page will, as a check on it.
+
+    A transcription of the JavaScript, kept here so the page can be shown to
+    disagree with the module rather than trusted not to.
+
+    Args:
+        rows: The viewer's rows.
+        policy: The settings the page opens on.
+
+    Returns:
+        The cap, repair cost and settlement per claim.
+    """
+    gst = 1.0 + policy.gst_rate
+    spec = 1.0 + policy.replacement_spec_uplift
+    mult = 1.0 + rows["site_multiplier"]
+
+    udv = rows["wall_value_excl_gst"] * gst
+    wall = (
+        rows["replacement_face_m2"]
+        * rows["replacement_rate_excl_gst"]
+        * gst
+        * mult
+        * spec
+    )
+    new_wall = (
+        rows["new_wall_face_m2"] * rows["new_wall_rate_excl_gst"] * gst * mult * spec
+    )
+    spoil = rows["spoil_m3"] * INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3 * gst
+    walled = (rows["has_damaged_wall"] > 0) | (rows["has_new_wall"] > 0)
+    fees = np.where(walled, PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD * mult * gst, 0.0)
+    crossing_limit = rows["has_crossing"] * policy.bridge_culvert_limit_nzd(
+        rows["dwellings"]
+    )
+
+    land_value = (
+        np.minimum(rows["damaged_area_m2"], policy.area_cap_m2)
+        * rows["land_rate_incl_gst"]
+    )
+    cap = (
+        land_value
+        + np.minimum(udv, policy.retaining_wall_limit_nzd(rows["dwellings"]))
+        + crossing_limit
+    )
+    repair = wall + new_wall + spoil + fees + rows["liq_cost_excl_gst"] * gst
+    repair = repair + crossing_limit
+    payable = np.minimum(repair, cap)
+    excess = np.minimum(
+        rows["dwellings"].clip(lower=1) * policy.excess_per_dwelling_nzd,
+        policy.excess_max_nzd,
+    ) * (payable > 0)
+    return pd.DataFrame(
+        {
+            "cap": cap,
+            "repair": repair,
+            "settlement": np.maximum(payable - excess, 0.0),
+        },
+        index=rows.index,
+    )
+
+
+def check_viewer_against_the_model(rows, claims, policy) -> float:
+    """Print whether the viewer's arithmetic still matches what was settled."""
+    mine = settled_in_python(rows, policy)
+    worst = max(
+        (mine["cap"] - claims["land_cover_cap_incl_gst_nzd"]).abs().max(),
+        (mine["repair"] - claims["repair_cost_incl_gst_nzd"]).abs().max(),
+        (mine["settlement"] - claims["settlement_incl_gst_nzd"]).abs().max(),
+    )
+    if worst > 1.0:
+        print(f"  WARNING: the viewer would differ from the module by ${worst:,.2f}")
+    else:
+        print(f"  Viewer arithmetic agrees with the module to ${worst:,.2f} at worst")
+    return worst
+
+
+def main(*, extent, world_ids, realisation_ids):
+    """Write the viewer's CSV for the first world and realisation, and the page."""
+    policy = PolicySettings()
+    world_id = world_ids[0]
+    realisation_id = realisation_ids[0]
+    claims = pd.read_parquet(
+        settlement_path(world_id, realisation_id, extent=extent)
+    ).set_index(CLAIM_ID_COLUMN)
+    rw = gpd.read_parquet(
+        world_loss_input_path("rw", world_id, realisation_id, extent=extent)
+    )
+    rows = viewer_rows(
+        claims,
+        wall_value_excl_gst(rw, policy),
+        liquefaction_states(world_id, realisation_id, extent=extent),
+    )
+    points = claim_points(world_id, realisation_id, extent=extent)
+    rows = rows.join(points).reset_index()
+
+    check_viewer_against_the_model(rows.set_index(CLAIM_ID_COLUMN), claims, policy)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = extent_suffix(extent)
+    csv_path = (
+        OUT_DIR / f"loss-viewer-w{world_id:03d}-r{realisation_id:03d}{suffix}.csv"
+    )
+    rows.to_csv(csv_path, index=False)
+    shutil.copy(HERE / VIEWER, OUT_DIR / VIEWER)
+    print(f"Wrote {len(rows):,} claims to {csv_path}")
+    print(f"Wrote {OUT_DIR / VIEWER}")
+    print("Open the page and drag the CSV onto it.")
+    return 0
+
+
+if __name__ == "__main__":
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        realisation_ids=config.REALISATION_IDS,
+    )

@@ -1,0 +1,8 @@
+anchor_id,role,reference,reference_area_km2,pga_rock_g_min,pga_rock_g_max,target,predicted_footprint
+A07,check,footprint cells nearest a zone 3 polygon,0.414832,0.02,0.06,0.005,0.020676348341182732
+A08,check,footprint cells nearest a zone 3 polygon,0.414832,0.1,0.2,0.02,0.08378151349621187
+A09,check,footprint cells nearest a zone 3 polygon,0.414832,0.5,0.8,0.08,0.25552104598317377
+A10,rejected footprint fit,footprint cells,0.50966,0.02,0.06,0.02,0.019889889731397846
+A11,rejected footprint fit,footprint cells,0.50966,0.1,0.2,0.08,0.08095392497722013
+A12,rejected footprint fit,footprint cells,0.50966,0.5,0.8,0.25,0.2486533572546822
+A16,check,footprint cells,0.50966,0.15,0.15,0.001,0.08379948923793457

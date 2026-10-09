@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model reviewer</title>
+<!--
+  Template for the reviewer pages. gen_reviewer_rw.py replaces the data token
+  below with the build's JSON and writes a self-contained page. Nothing here is
+  specific to retaining walls except the layer styles, so a second chain can
+  reuse it by adding its styles to LAYER_STYLE.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --ink: #1c1c1a; --muted: #6a6a66; --line: #dcdcd8; --surface: #fcfcfb;
+    --panel: #f4f4f1; --accent: #3b6e8f; --warn: #b3261e; --warn-bg: #fdecea;
+    --ok: #1b7f4d; --amber: #9a6700; --amber-bg: #fff4d6;
+    --hazard: #3b6e8f; --exposure: #8a5cc2; --vul: #eb6834; --input: #8d8d88; --loss: #1baf7a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--surface); color: var(--ink);
+    font: 14.5px/1.55 -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+  code, .mono { font-family: Consolas, "SFMono-Regular", Menlo, monospace; font-size: 12.5px; }
+  a { color: var(--accent); }
+  header.top {
+    position: sticky; top: 0; z-index: 1000; background: #fff;
+    border-bottom: 1px solid var(--line); padding: 10px 20px;
+  }
+  header.top h1 { margin: 0; font-size: 18px; }
+  .stamp { color: var(--muted); font-size: 12px; }
+  .stamp b.bad { color: var(--warn); }
+  .sitebar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+  .sitebar .lab { font-size: 12px; color: var(--muted); margin-right: 4px; }
+  .sitebar button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 14px;
+    padding: 3px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .sitebar button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .sitewhy { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } nav.toc { display: none; } }
+  nav.toc {
+    position: sticky; top: 104px; align-self: start; max-height: calc(100vh - 110px);
+    overflow: auto; padding: 16px 12px 40px 20px; font-size: 13px;
+  }
+  nav.toc a { display: block; padding: 3px 0; color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+  nav.toc .stale::after { content: " ●"; color: var(--amber); }
+  nav.toc .notbuilt { color: var(--muted); text-decoration: line-through; }
+  main { padding: 10px 28px 80px 12px; max-width: 1180px; }
+  section.block { border-top: 1px solid var(--line); padding: 22px 0 10px; scroll-margin-top: 110px; }
+  section.block > h2 { margin: 0 0 4px; font-size: 21px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .chip {
+    font-size: 11.5px; padding: 1px 8px; border-radius: 10px; background: var(--panel);
+    border: 1px solid var(--line); color: var(--muted);
+  }
+  .chip.mod { color: #fff; border: none; }
+  .chip.warn { background: var(--amber-bg); color: var(--amber); border-color: #f0d48a; }
+  .chip.bad { background: var(--warn-bg); color: var(--warn); border-color: #f3b9b4; }
+  .narr { max-width: 820px; }
+  .narr table { border-collapse: collapse; margin: 8px 0; }
+  .narr th, .narr td { border: 1px solid var(--line); padding: 3px 9px; font-size: 13px; }
+  .io { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; margin: 12px 0; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fff; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .filelist { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+  .filelist li { padding: 2px 0; }
+  .filelist .meta { color: var(--muted); }
+  .filelist .missing { color: var(--warn); }
+  .mapwrap { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 12px 0; background: #fff; }
+  @media (max-width: 700px) { .mapwrap { grid-template-columns: 1fr; } }
+  .map { height: 460px; }
+  .mapctl { padding: 10px 12px; font-size: 12.5px; border-left: 1px solid var(--line); background: var(--panel); overflow: auto; max-height: 460px; }
+  .mapctl h4 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .mapctl h4:first-child { margin-top: 0; }
+  .mapctl label { display: flex; gap: 6px; align-items: center; padding: 1px 0; cursor: pointer; }
+  .mapctl select { width: 100%; font: inherit; padding: 2px; }
+  .key { display: flex; flex-wrap: wrap; gap: 3px 10px; margin: 1px 0 4px 20px; font-size: 11.5px; color: var(--muted); }
+  .key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin: 12px 0; }
+  .charts .card p.note { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
+  /* A model table (points, type shares, curves) spans the step and wraps its text. */
+  .charts .card.wide { grid-column: 1 / -1; }
+  .charts .card.wide .tblwrap { max-height: none; }
+  .charts .card.wide table.data td { white-space: normal; max-width: 640px; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .tile { background: var(--panel); border-radius: 8px; padding: 8px 12px; min-width: 130px; }
+  .tile b { display: block; font-size: 19px; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: 11.5px; color: var(--muted); }
+  .axis text { font-size: 10.5px; fill: var(--muted); }
+  .axis path, .axis line { stroke: #cfcfca; }
+  .assume {
+    border: 2px solid var(--accent); border-left-width: 6px; border-radius: 6px;
+    background: #f3f8fb; padding: 9px 13px; margin: 10px 0; max-width: 860px; scroll-margin-top: 120px;
+  }
+  .assume.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { from { background: #ffe9a8; } to { background: #f3f8fb; } }
+  .assume .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .assume .id { font-weight: 700; font-family: Consolas, monospace; color: var(--accent); }
+  .assume .t { font-weight: 600; }
+  .assume p { margin: 4px 0; }
+  .assume .src { font-size: 12px; color: var(--muted); }
+  .st { font-size: 11px; padding: 0 7px; border-radius: 9px; color: #fff; text-transform: uppercase; letter-spacing: .04em; }
+  .st-decided { background: #1b7f4d; } .st-beta { background: #9a6700; } .st-pending { background: #8a5cc2; }
+  .st-adopted { background: #3b6e8f; } .st-check { background: #b3261e; } .st-retired { background: #8d8d88; }
+  details.tbl { margin: 8px 0; }
+  details.tbl summary { cursor: pointer; font-size: 13px; }
+  .tblwrap { overflow: auto; max-height: 380px; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; background: #fff; }
+  table.data { border-collapse: collapse; font-size: 12px; width: max-content; min-width: 100%; }
+  table.data th { position: sticky; top: 0; background: var(--panel); text-align: left; cursor: pointer; }
+  table.data th, table.data td { border-bottom: 1px solid var(--line); padding: 3px 8px; white-space: nowrap; max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
+  table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.data th.num { text-align: right; }
+  .checks li { font-size: 13px; }
+  .checks .ok::marker { content: "✔ "; color: var(--ok); }
+  .checks .no::marker { content: "✖ "; color: var(--warn); }
+  .checks .no { color: var(--warn); }
+  .banner { background: var(--warn-bg); color: var(--warn); border: 1px solid #f3b9b4; border-radius: 6px; padding: 6px 10px; font-size: 13px; margin-top: 6px; }
+  .notbuilt-box { background: var(--panel); border: 1px dashed var(--line); padding: 12px; border-radius: 6px; color: var(--muted); }
+  /* trace drawer */
+  aside.trace {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100vw; z-index: 2000;
+    background: #fff; border-left: 1px solid var(--line); box-shadow: -6px 0 18px rgba(0,0,0,.08);
+    transform: translateX(105%); transition: transform .18s; overflow: auto; padding: 14px 16px 40px;
+  }
+  aside.trace.open { transform: none; }
+  aside.trace h3 { margin: 0 0 2px; font-size: 16px; }
+  aside.trace h4 { margin: 14px 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  aside.trace .close { position: absolute; top: 8px; right: 10px; border: none; background: none; font-size: 22px; cursor: pointer; color: var(--muted); }
+  aside.trace table { font-size: 12.5px; border-collapse: collapse; width: 100%; }
+  aside.trace td { padding: 2px 4px; border-bottom: 1px solid #efefec; vertical-align: top; }
+  aside.trace td:first-child { color: var(--muted); width: 44%; }
+  .flagrow { display: flex; flex-wrap: wrap; gap: 4px; }
+  .flag { font-size: 11.5px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--line); color: var(--muted); }
+  .flag.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .verdict { font-weight: 700; padding: 4px 8px; border-radius: 6px; display: inline-block; }
+  .leaflet-tile-pane img.hill { mix-blend-mode: multiply; z-index: 5; }
+  img.raster { image-rendering: pixelated; }
+  .leaflet-popup-content { font-size: 12px; max-height: 260px; overflow: auto; }
+  .leaflet-popup-content table td { padding: 0 4px; }
+  .flow svg text { font-size: 11.5px; }
+  .flow .node { cursor: pointer; }
+  .section { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; }
+  @media (max-width: 800px) { .section { grid-template-columns: 1fr; } }
+  .section table td { font-size: 12px; padding: 1px 4px; }
+  .hint { font-size: 11.5px; color: #6a6a66; margin: 4px 0 0; }
+  .tip { position: fixed; pointer-events: none; background: #23231f; color: #fff; padding: 5px 8px; border-radius: 5px; font-size: 12px; opacity: 0; z-index: 3000; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1 id="title"></h1>
+  <div class="stamp" id="stamp"></div>
+  <div class="sitebar" id="sitebar"><span class="lab">Example site:</span></div>
+  <div class="sitewhy" id="sitewhy"></div>
+</header>
+<div class="layout">
+  <nav class="toc" id="toc"></nav>
+  <main id="main"></main>
+</div>
+<aside class="trace" id="trace"><button class="close" onclick="closeTrace()">×</button><div id="tracebody"></div></aside>
+<div class="tip" id="tip"></div>
+<script>
+window.REVIEWER = __REVIEWER_DATA__;
+</script>
+<script>
+"use strict";
+const R = window.REVIEWER;
+const MODULE_COLOUR = { ground: "#7a6a3a", hazard: "#3b6e8f", exposure: "#8a5cc2", vul: "#eb6834", input: "#8d8d88", loss: "#1baf7a" };
+const CLASS_COLOUR = {
+  cut: "#2a78d6", fill: "#eb6834", cut_and_fill: "#8a5cc2", natural: "#1baf7a",
+  uncertain: "#b4b4b0", unknown: "#55554f",
+};
+const OUTCOME_COLOUR = {
+  failed_with_polygon: "#c62828", absorbed: "#ef6c00", superseded: "#c29100", standing: "#1b7f4d",
+};
+const ZONE_COLOUR = { evacuated: "#c62828", imminent: "#f2b134", inundated: "#2a78d6" };
+const PWALL = d3.scaleSequential(d3.interpolateYlOrRd).domain([0, 1]);
+// Every colour is a literal: a canvas cannot resolve CSS custom properties.
+
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const BASEMAPS = {
+  aerial: { url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, attribution: "Esri, Maxar, Earthstar Geographics", max: 19 },
+  grey: { url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, attribution: "Esri, HERE, Garmin, © OpenStreetMap contributors", max: 16 },
+  osm: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© OpenStreetMap contributors", max: 19 },
+  none: null,
+};
+
+const fmt = v => {
+  if (v === null || v === undefined) return "–";
+  if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString() : (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3));
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  return String(v);
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// An id this page holds links to its box; one from another chain's page (an
+// RW id on the landslide page) is left as text.
+const linkAssumptions = html => html.replace(/\b(?:RW|LS)-A\d{2}\b/g, m => R.assumptions.some(a => a.id === m)
+  ? `<a class="aref" href="#${m}" onclick="flashAssumption('${m}')">${m}</a>` : m);
+const md = text => linkAssumptions(marked.parse(text || ""));
+
+// ---- layer styles -----------------------------------------------------------
+// One entry per map layer key the content names. `style` takes the feature's
+// properties and the step id, so a layer can be drawn differently in one step.
+const MATERIAL_COLOUR = {
+  rock: "#8d6e63", colluvium: "#c0a060", fill_uncontrolled: "#eb6834", fill_engineered: "#f2a65a",
+  alluvium: "#7fb3d5", unknown: "#b4b4b0",
+};
+const THETA = v => d3.interpolateRdYlGn(Math.max(0, Math.min(1, Math.log(v / 0.1) / Math.log(40))));
+const zoneOf = landClass => String(landClass || "").replace(" land", "");
+const lineStyle = (color, weight, dash) => ({ color, weight, opacity: 0.95, dashArray: dash || null });
+const LAYER_STYLE = {
+  pips: {
+    name: "Pips (by pif class)", kind: "point",
+    style: p => ({ radius: 2.6, color: CLASS_COLOUR[p.cut_fill_class] || "#444", fillColor: CLASS_COLOUR[p.cut_fill_class] || "#444", fillOpacity: 0.9, weight: 0 }),
+    key: CLASS_COLOUR,
+  },
+  pip_feet: {
+    name: "Pip → foot of face", kind: "line",
+    style: p => ({ color: CLASS_COLOUR[p.cut_fill_class] || "#444", weight: 1, opacity: 0.55 }),
+  },
+  pifs: {
+    name: "Pif pieces (spines)", kind: "line",
+    style: p => lineStyle(CLASS_COLOUR[p.cut_fill_class] || "#444", 3),
+    key: CLASS_COLOUR,
+  },
+  gns_only: {
+    name: "GNS-only wall candidates", kind: "line",
+    style: () => lineStyle("#111", 3, "6 4"),
+  },
+  elements: {
+    name: "Grown elements (slope polygons)", kind: "poly",
+    style: () => ({ color: "#7a5a32", weight: 1.2, fillColor: "#c9a36b", fillOpacity: 0.18 }),
+  },
+  units: {
+    name: "Wall units (by p_wall)", kind: "line", trace: "wall_unit_id",
+    style: (p, step) => step === "population" && p.walled === false
+      ? lineStyle("#9a9a96", 3, "2 4")
+      : lineStyle(PWALL(p.p_wall ?? 0), 5),
+    ramp: true,
+  },
+  walls: {
+    name: "Drawn walls (by outcome)", kind: "line", trace: "wall_line_id",
+    style: p => lineStyle(p.insured ? (OUTCOME_COLOUR[p.outcome] || "#1c1c1a") : "#555", p.insured ? 6 : 4, p.insured ? null : "7 5"),
+    key: { ...OUTCOME_COLOUR, "not insured (dashed)": "#555" },
+  },
+  insured_land: {
+    name: "Insured land", kind: "poly",
+    style: () => ({ color: "#3d8b37", weight: 1.2, fillColor: "#3d8b37", fillOpacity: 0.04, dashArray: "3 3" }),
+  },
+  zones_world: { name: "Zones, this world's draw", kind: "poly", style: p => zoneStyle(p), key: ZONE_COLOUR },
+  zones_walled: { name: "Zones, all walled", kind: "poly", style: p => zoneStyle(p), key: ZONE_COLOUR },
+  zones_bare: { name: "Zones, all bare", kind: "poly", style: p => zoneStyle(p), key: ZONE_COLOUR },
+  forced: {
+    name: "Forced polygons", kind: "poly",
+    style: () => ({ color: "#ad1457", weight: 2, fillColor: "#ad1457", fillOpacity: 0.35 }),
+  },
+  slides: {
+    name: "Failed polygons (realisation)", kind: "poly",
+    style: p => ({ color: "#7f0000", weight: 1.5, fillColor: p.population === "urban" ? "#e53935" : "#6d4c41", fillOpacity: 0.3 }),
+    key: { urban: "#e53935", "large landslide": "#6d4c41" },
+  },
+  // ---- landslide chain ----
+  // Rasters arrive as coloured PNGs warped to web mercator; their colour ramp
+  // comes with the data in R.raster_legends.
+  slope_10m: { name: "Slope, 10 m (degrees)", kind: "image", opacity: 0.7 },
+  tpi_100m: { name: "Topographic position, 100 m (m)", kind: "image", opacity: 0.7 },
+  hancox_coverage: { name: "Hancox 1997 coverage (share of cell)", kind: "image", opacity: 0.8 },
+  kritikos_coverage: { name: "Kritikos 2015 coverage (share of cell)", kind: "image", opacity: 0.8 },
+  ground_material: {
+    name: "Ground map material", kind: "poly",
+    style: p => ({ color: MATERIAL_COLOUR[p.material] || "#777", weight: 0.6, fillColor: MATERIAL_COLOUR[p.material] || "#777", fillOpacity: 0.35 }),
+    key: MATERIAL_COLOUR,
+  },
+  flatland: {
+    name: "NLM flatland (no large failure starts)", kind: "poly",
+    style: () => ({ color: "#1f5f99", weight: 1, fillColor: "#4a90c2", fillOpacity: 0.25, dashArray: "4 3" }),
+  },
+  slope_units: {
+    name: "Slope units", kind: "poly",
+    style: () => ({ color: "#111", weight: 1.6, fillOpacity: 0 }),
+  },
+  large_realisation: {
+    name: "Large failures (step 1)", kind: "poly",
+    style: p => ({ color: "#4e342e", weight: 2, fillColor: p.land_class === "evacuated land" ? "#6d4c41" : "#a1887f", fillOpacity: 0.45 }),
+    key: { "evacuated land": "#6d4c41", "inundated land": "#a1887f" },
+  },
+  urban_model_theta: {
+    name: "Urban polygons by median θ (m/s)", kind: "poly",
+    style: p => ({ color: "#333", weight: 0.6, fillColor: THETA(p.theta ?? 3), fillOpacity: 0.65 }),
+    legendHtml: () => `<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,${[0.1, 0.25, 0.5, 1, 2, 4].map(v => THETA(v)).join(",")})"></span> 0.1 → 4 m/s (red = fails at less shaking)`,
+  },
+  failures: {
+    name: "Failed ground (realisation)", kind: "poly",
+    style: p => ({ color: p.population === "urban" ? (ZONE_COLOUR[zoneOf(p.land_class)] || "#777") : "#4e342e",
+      weight: p.population === "urban" ? 1 : 2, fillColor: ZONE_COLOUR[zoneOf(p.land_class)] || "#777",
+      fillOpacity: zoneOf(p.land_class) === "evacuated" ? 0.45 : 0.25 }),
+    key: { ...ZONE_COLOUR, "large failure (brown edge)": "#4e342e" },
+  },
+};
+function zoneStyle(p) {
+  const c = ZONE_COLOUR[p.zone] || "#777";
+  return { color: c, weight: 1, fillColor: c, fillOpacity: p.zone === "evacuated" ? 0.38 : 0.22 };
+}
+const DRAW_ORDER = ["slope_10m", "tpi_100m", "hancox_coverage", "kritikos_coverage", "ground_material", "flatland",
+  "insured_land", "urban_model_theta", "zones_bare", "zones_walled", "zones_world", "slides", "elements", "forced", "failures", "large_realisation", "slope_units", "pip_feet", "pifs", "pips", "gns_only", "units", "walls"];
+
+// ---- state ------------------------------------------------------------------
+let SITE = 0;
+const MAPS = [];  // {step, map, groups, hill, tiles, visible:Set}
+
+// ---- header -----------------------------------------------------------------
+function renderHeader() {
+  document.title = R.short;
+  d3.select("#title").text(R.title);
+  const b = R.build, bad = R.checks.filter(c => !c.ok).length;
+  d3.select("#stamp").html(
+    `Extent <b>${esc(b.extent)}</b> · world ${b.world_id} · realisation ${b.realisation_id} · built ${esc(b.built)} from <code>${esc(b.branch)}@${esc(b.commit)}</code>` +
+    (b.dirty ? ` <b class="bad">(uncommitted changes)</b>` : "") +
+    ` · <a href="#freshness">${bad ? `<b class="bad">${bad} freshness check${bad > 1 ? "s" : ""} failing</b>` : "freshness checks pass"}</a>` +
+    ` · <b>Internal: carries claim ids</b>`
+  );
+  const bar = d3.select("#sitebar");
+  R.sites.forEach((s, i) => bar.append("button").text(s.title).attr("data-i", i).on("click", () => selectSite(i)));
+  updateSiteBar();
+}
+function updateSiteBar() {
+  d3.selectAll("#sitebar button").classed("on", function () { return +this.dataset.i === SITE; });
+  const s = R.sites[SITE];
+  d3.select("#sitewhy").html(`<b>Why this site:</b> ${esc(s.why)} <span class="mono">(NZTM ${s.x.toFixed(0)}, ${s.y.toFixed(0)})</span>`);
+}
+function selectSite(i) {
+  SITE = i; updateSiteBar();
+  MAPS.forEach(drawSite);
+}
+
+// ---- table of contents ------------------------------------------------------
+function renderToc() {
+  const toc = d3.select("#toc");
+  toc.append("a").attr("href", "#overview").text("Overview");
+  toc.append("a").attr("href", "#inputs").text("Inputs");
+  R.steps.forEach(s => toc.append("a").attr("href", `#step-${s.id}`).text(`${s.number} ${s.title.split(":")[0]}`)
+    .classed("stale", !!s.narrative_stale).classed("notbuilt", !s.built));
+  toc.append("a").attr("href", "#assumptions").text("All assumptions");
+  toc.append("a").attr("href", "#freshness").text("Freshness and checks");
+}
+
+// ---- overview + flow --------------------------------------------------------
+function renderOverview(main) {
+  const sec = main.append("section").attr("class", "block").attr("id", "overview");
+  sec.append("h2").text("Overview");
+  sec.append("div").attr("class", "narr").html(md(R.overview));
+  sec.append("div").attr("class", "flow card").attr("id", "flow");
+  drawFlow();
+}
+function drawFlow() {
+  const nodes = R.flow.nodes.map(n => ({ ...n })), byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const edges = R.flow.edges.map(([s, t, label]) => ({ source: byId[s], target: byId[t], label }));
+  // Layer each node by its longest path from an input, so the chain reads left to right.
+  nodes.forEach(n => n.layer = 0);
+  for (let pass = 0; pass < nodes.length; pass++)
+    edges.forEach(e => { e.target.layer = Math.max(e.target.layer, e.source.layer + 1); });
+  const layers = d3.groups(nodes, n => n.layer).sort((a, b) => a[0] - b[0]);
+  const W = 1080, colW = W / layers.length, nodeW = Math.min(150, colW - 22), nodeH = 40, gap = 16;
+  const H = d3.max(layers, l => l[1].length) * (nodeH + gap) + 30;
+  layers.forEach(([, ns]) => {
+    const total = ns.length * (nodeH + gap) - gap, top = (H - total) / 2;
+    ns.forEach((n, i) => { n.x = n.layer * colW + (colW - nodeW) / 2; n.y = top + i * (nodeH + gap); });
+  });
+  const svg = d3.select("#flow").append("svg").attr("viewBox", `0 0 ${W} ${H}`).style("width", "100%");
+  svg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 0 10 10").attr("refX", 9).attr("refY", 5)
+    .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
+    .append("path").attr("d", "M0,0L10,5L0,10z").attr("fill", "#9a9a96");
+  const link = d3.linkHorizontal().x(d => d[0]).y(d => d[1]);
+  svg.append("g").selectAll("path").data(edges).join("path")
+    .attr("d", e => link({ source: [e.source.x + nodeW, e.source.y + nodeH / 2], target: [e.target.x - 2, e.target.y + nodeH / 2] }))
+    .attr("fill", "none").attr("stroke", "#bdbdb8").attr("stroke-width", 1.3).attr("marker-end", "url(#arr)");
+  // An edge label says what the input does at that step, where an arrow alone
+  // would overstate it (GNS walls flag pifs; they do not make them). The gaps
+  // between columns are too narrow for text, so each labelled arrow carries a
+  // numbered marker at its midpoint and the text goes in a key below.
+  const labelled = edges.filter(e => e.label);
+  // A point a fifth of the way along the arrow's curve (d3.linkHorizontal's
+  // cubic, control points at mid x), so each marker sits by its own source.
+  const nearSource = e => {
+    const x0 = e.source.x + nodeW, y0 = e.source.y + nodeH / 2, x1 = e.target.x - 2, y1 = e.target.y + nodeH / 2;
+    const xm = (x0 + x1) / 2, t = 0.2, u = 1 - t;
+    return [u ** 3 * x0 + 3 * u * u * t * xm + 3 * u * t * t * xm + t ** 3 * x1,
+            u ** 3 * y0 + 3 * u * u * t * y0 + 3 * u * t * t * y1 + t ** 3 * y1];
+  };
+  labelled.forEach((e, i) => { e.n = i + 1; });
+  const marks = svg.append("g").selectAll("g").data(labelled).join("g")
+    .attr("transform", e => { const [px, py] = nearSource(e); return `translate(${px},${py})`; });
+  marks.append("circle").attr("r", 8).attr("fill", "#fff").attr("stroke", "#55554f").attr("stroke-width", 1.2);
+  marks.append("text").attr("text-anchor", "middle").attr("dy", "0.35em").style("font-size", "10px").style("font-weight", 700).text(e => e.n);
+  marks.append("title").text(e => `${e.source.label} → ${e.target.label}: ${e.label}`);
+  const g = svg.append("g").selectAll("g").data(nodes).join("g").attr("class", "node")
+    .attr("transform", n => `translate(${n.x},${n.y})`)
+    .on("click", (ev, n) => { if (n.step) location.hash = `step-${n.step}`; });
+  g.append("rect").attr("width", nodeW).attr("height", nodeH).attr("rx", n => n.kind === "step" ? 7 : 2)
+    .attr("fill", n => n.kind === "step" ? MODULE_COLOUR[n.module] : "#fff")
+    .attr("stroke", n => MODULE_COLOUR[n.module]).attr("stroke-width", 1.5)
+    .attr("stroke-dasharray", n => n.kind === "step" ? null : "4 3");
+  g.append("text").attr("x", nodeW / 2).attr("y", nodeH / 2).attr("dy", "0.35em").attr("text-anchor", "middle")
+    .attr("fill", n => n.kind === "step" ? "#fff" : "#1c1c1a").style("font-weight", n => n.kind === "step" ? 600 : 400)
+    .each(function (n) { wrapText(d3.select(this), n.label, nodeW - 10); });
+  g.filter(n => n.step).append("title").text(n => {
+    const s = R.steps.find(s => s.id === n.step);
+    return s && s.built ? `Data written ${s.data_modified}. Click to open the step.` : "Not built";
+  });
+  const notes = d3.select("#flow").append("ol").style("font-size", "12px").style("margin", "4px 0 0").style("padding-left", "22px");
+  labelled.forEach(e => notes.append("li").html(`<b>${esc(e.source.label)} → ${esc(e.target.label)}:</b> ${esc(e.label)}`));
+  const legend = d3.select("#flow").append("div").attr("class", "key").style("margin", "6px 0 0");
+  Object.entries(MODULE_COLOUR).forEach(([m, c]) => legend.append("span").html(`<i style="background:${c}"></i>${m}`));
+  legend.append("span").text("· solid box = step, dashed box = data · click a step to go to it");
+}
+function wrapText(text, label, width) {
+  const words = label.split(/\s+/), lines = [[]];
+  const probe = text.append("tspan");
+  words.forEach(w => {
+    const cur = lines[lines.length - 1];
+    probe.text([...cur, w].join(" "));
+    if (probe.node().getComputedTextLength() > width && cur.length) lines.push([w]); else cur.push(w);
+  });
+  probe.remove();
+  text.text(null);
+  lines.forEach((l, i) => text.append("tspan").attr("x", text.attr("x")).attr("dy", i === 0 ? `${0.35 - (lines.length - 1) * 0.6}em` : "1.2em").text(l.join(" ")));
+}
+
+// ---- inputs -----------------------------------------------------------------
+function renderInputs(main) {
+  const sec = main.append("section").attr("class", "block").attr("id", "inputs");
+  sec.append("h2").text("Inputs");
+  sec.append("p").attr("class", "narr").text("The external datasets the chain starts from. Outputs passed between steps are listed in each step.");
+  const grid = sec.append("div").attr("class", "io");
+  R.inputs.forEach(inp => {
+    const c = grid.append("div").attr("class", "card");
+    c.append("div").style("font-weight", 600).text(inp.name);
+    const f = inp.file ? R.files[inp.file] : null;
+    c.append("div").style("font-size", "12.5px").html(
+      `<div><span class="filelist meta">Source:</span> ${esc(inp.source)}</div>` +
+      `<div><span class="filelist meta">Licence:</span> ${esc(inp.licence)}</div>` +
+      `<div><span class="filelist meta">Used by:</span> ${esc(inp.used_by)}</div>` +
+      (f ? `<div class="filelist">${fileLine(inp.file)}</div>` : ""));
+  });
+}
+function fileLine(key) {
+  const f = R.files[key];
+  if (!f) return `<span class="missing">${esc(key)}: unknown</span>`;
+  if (!f.exists) return `<span class="missing"><code>${esc(f.path)}</code>: not built</span>`;
+  return `<code>${esc(f.path)}</code> <span class="meta">· ${esc(f.modified)}` +
+    (f.rows !== undefined ? ` · ${f.rows.toLocaleString()} rows` : "") + ` · ${f.size_mb} MB</span>`;
+}
+
+// ---- steps ------------------------------------------------------------------
+function renderStep(main, step) {
+  const sec = main.append("section").attr("class", "block").attr("id", `step-${step.id}`);
+  sec.append("h2").text(`${step.number} · ${step.title}`);
+  const chips = sec.append("div").attr("class", "chips");
+  const mod = step.module.split(" ")[0];
+  chips.append("span").attr("class", "chip mod").style("background", MODULE_COLOUR[mod] || "#777").text(step.module);
+  chips.append("span").attr("class", "chip").text(`narrative checked ${step.checked}`);
+  if (step.built) chips.append("span").attr("class", "chip").text(`data written ${step.data_modified}`);
+  if (step.narrative_stale) chips.append("span").attr("class", "chip warn").text("data is newer than the narrative: re-check the text");
+  if (!step.built) chips.append("span").attr("class", "chip bad").text("not built");
+
+  sec.append("div").attr("class", "narr").html(md(step.narrative));
+
+  const io = sec.append("div").attr("class", "io");
+  const where = io.append("div").attr("class", "card");
+  where.append("h3").text("Where it lives");
+  where.append("div").style("font-size", "12.5px").html(
+    `<div><code>${esc(step.folder)}</code></div>` +
+    `<ul class="filelist">${step.scripts.map(s => `<li><code>${esc(s)}</code></li>`).join("")}</ul>`);
+  [["Reads", step.inputs], ["Writes", step.outputs]].forEach(([h, keys]) => {
+    const c = io.append("div").attr("class", "card");
+    c.append("h3").text(h);
+    c.append("ul").attr("class", "filelist").html(keys.map(k => `<li>${fileLine(k)}</li>`).join(""));
+  });
+
+  if (step.pip_example && R.pip_example) {
+    const card = sec.append("div").attr("class", "card");
+    card.append("h3").text("The pip rule on a real pip");
+    pipRule(card.append("div"), R.pip_example);
+  }
+
+  if (step.layers && step.layers.length) {
+    const wrap = sec.append("div").attr("class", "mapwrap");
+    const mapDiv = wrap.append("div").attr("class", "map").node();
+    const ctl = wrap.append("div").attr("class", "mapctl");
+    const entry = { step, mapDiv, ctl, map: null, groups: {}, visible: new Set(step.layers.slice(0, step.visible ?? step.layers.length)) };
+    if (step.section) {
+      const card = sec.append("div").attr("class", "card");
+      card.append("h3").text("Cross-section through one pif");
+      entry.sectionCard = card.append("div");
+    }
+    MAPS.push(entry);
+  }
+
+  const charts = (step.charts || []).filter(k => R.charts[k]);
+  if (charts.length) {
+    const grid = sec.append("div").attr("class", "charts");
+    charts.forEach(k => renderChart(grid.append("div").attr("class", "card").classed("wide", !!R.charts[k].wide), R.charts[k]));
+  }
+
+  const mine = R.assumptions.filter(a => a.step === step.id);
+  if (mine.length) {
+    sec.append("h3").style("font-size", "14px").style("margin", "16px 0 2px").text("Assumptions in this step");
+    mine.forEach(a => renderAssumption(sec, a, true));
+  }
+
+  if (step.table_data && step.table_data.length) {
+    sec.append("h3").style("font-size", "14px").style("margin", "16px 0 2px").text("Key tables");
+    step.table_data.forEach(t => renderTable(sec, t));
+  }
+}
+
+function renderAssumption(parent, a, anchor) {
+  const box = parent.append("div").attr("class", "assume");
+  if (anchor) box.attr("id", a.id);
+  const head = box.append("div").attr("class", "head");
+  head.append("span").attr("class", "id").text(a.id);
+  head.append("span").attr("class", `st st-${a.status}`).text(a.status);
+  head.append("span").attr("class", "t").text(a.title);
+  box.append("p").text(a.text);
+  if (a.note) box.append("p").html(`<b>Note:</b> ${esc(a.note)}`);
+  if (a.see) box.append("p").html(`<b>See also:</b> ${esc(a.see)} in the retaining wall reviewer`);
+  box.append("div").attr("class", "src").html(
+    (a.decided ? `Decided by ${esc(a.decided)} · ` : "") + `Source: <code>${esc(a.source)}</code>`);
+}
+function flashAssumption(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+}
+
+function renderTable(parent, t) {
+  const det = parent.append("details").attr("class", "tbl");
+  if (!t.exists) {
+    det.append("summary").html(`<code>${esc(t.path)}</code> <span style="color:#b3261e">not found</span>`);
+    return;
+  }
+  det.append("summary").html(`<code>${esc(t.path)}</code> <span style="color:#6a6a66">· ${t.n_rows.toLocaleString()} rows · written ${esc(t.modified)}${t.n_rows > t.rows.length ? ` · first ${t.rows.length} shown` : ""}</span>`);
+  dataTable(det.append("div").attr("class", "tblwrap"), t.columns, t.rows);
+}
+function dataTable(wrap, columns, data) {
+  const table = wrap.append("table").attr("class", "data");
+  let rows = data.slice(), sortCol = -1, asc = true;
+  const thead = table.append("thead").append("tr"), tbody = table.append("tbody");
+  columns.forEach((c, i) => thead.append("th").text(c).attr("title", "Sort").on("click", () => {
+    asc = sortCol === i ? !asc : true; sortCol = i;
+    rows.sort((a, b) => d3[asc ? "ascending" : "descending"](a[i], b[i])); draw();
+  }));
+  function draw() {
+    tbody.selectAll("tr").data(rows).join("tr").selectAll("td").data(r => r).join("td")
+      .attr("class", v => typeof v === "number" ? "num" : null).attr("title", v => v === null ? "" : String(v)).text(fmt);
+  }
+  draw();
+  // Right-align a header over a numeric column, so it sits above its figures.
+  thead.selectAll("th").classed("num", (c, i) => rows.length > 0 && typeof rows[0][i] === "number");
+}
+
+// ---- charts -----------------------------------------------------------------
+function renderChart(card, spec) {
+  if (spec.title) card.append("h3").text(spec.title);
+  if (spec.kind === "tiles") {
+    const t = card.append("div").attr("class", "tiles");
+    spec.data.forEach(([label, value]) => t.append("div").attr("class", "tile").html(`<b>${esc(value)}</b><span>${esc(label)}</span>`));
+  } else if (spec.kind === "bar") barChart(card, spec.data);
+  else if (spec.kind === "curves") curveChart(card, spec.curves, spec);
+  else if (spec.kind === "table") {
+    const cols = Object.keys(spec.rows[0] || {});
+    dataTable(card.append("div").attr("class", "tblwrap"), cols, spec.rows.map(r => cols.map(c => r[c])));
+  }
+  if (spec.note) card.append("p").attr("class", "note").text(spec.note);
+}
+function barChart(card, data) {
+  const W = 340, rowH = 17, left = Math.min(150, 8 + 6.4 * d3.max(data, d => d[0].length)), H = data.length * rowH + 22;
+  const x = d3.scaleLinear().domain([0, d3.max(data, d => d[1]) || 1]).nice().range([left, W - 38]);
+  const svg = card.append("svg").attr("viewBox", `0 0 ${W} ${H}`).style("width", "100%").style("max-width", `${W * 1.3}px`);
+  const g = svg.selectAll("g.bar").data(data).join("g").attr("class", "bar").attr("transform", (d, i) => `translate(0,${i * rowH})`);
+  g.append("text").attr("x", left - 5).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "end").style("font-size", "11px").text(d => d[0]);
+  g.append("rect").attr("x", left).attr("y", 2).attr("height", rowH - 4).attr("width", d => Math.max(0, x(d[1]) - left))
+    .attr("fill", d => CLASS_COLOUR[d[0]] || OUTCOME_COLOUR[d[0]] || "#3b6e8f");
+  g.append("text").attr("x", d => x(d[1]) + 4).attr("y", rowH / 2).attr("dy", "0.35em").style("font-size", "10.5px").attr("fill", "#6a6a66").text(d => d[1].toLocaleString());
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${data.length * rowH + 2})`).call(d3.axisBottom(x).ticks(4, "~s"));
+}
+function curveChart(card, curves, spec = {}) {
+  // Wall curves are in PGA; a chart can name another measure and range.
+  const xMax = spec.x_max ?? 1.5, xLabel = spec.x_label ?? "PGA (g)", unit = spec.unit ?? "g";
+  const W = 360, H = 230, m = { l: 36, r: 10, t: 8, b: 30 };
+  const x = d3.scaleLinear().domain([0, xMax]).range([m.l, W - m.r]);
+  const y = d3.scaleLinear().domain([0, 1]).range([H - m.b, m.t]);
+  const types = [...new Set(curves.map(c => c.wall_type))];
+  const colour = d3.scaleOrdinal(types, d3.schemeTableau10);
+  const bands = [...new Set(curves.map(c => c.band))], dashes = [null, "5 3", "2 2", "8 2 2 2"];
+  const dash = Object.fromEntries(bands.map((b, i) => [b, dashes[i % dashes.length]]));
+  const svg = card.append("svg").attr("viewBox", `0 0 ${W} ${H}`).style("width", "100%").style("max-width", `${W * 1.4}px`);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(6));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5));
+  svg.append("text").attr("x", W / 2).attr("y", H - 2).attr("text-anchor", "middle").style("font-size", "11px").attr("fill", "#6a6a66").text(xLabel);
+  const cdf = (pga, c) => pga <= 0 ? 0 : normCdf(Math.log(pga / c.theta) / c.beta);
+  const xs = d3.range(xMax / 300, xMax, xMax / 150);
+  const tip = d3.select("#tip");
+  svg.selectAll("path.c").data(curves).join("path").attr("class", "c")
+    .attr("d", c => d3.line()(xs.map(v => [x(v), y(cdf(v, c))])))
+    .attr("fill", "none").attr("stroke", c => colour(c.wall_type)).attr("stroke-width", 1.6).attr("stroke-dasharray", c => dash[c.band])
+    .on("mousemove", (ev, c) => tip.style("opacity", 1).style("left", ev.clientX + 12 + "px").style("top", ev.clientY + 12 + "px")
+      .html(`${esc(c.label)}<br>median ${c.theta.toFixed(3)} ${unit}, β ${c.beta.toFixed(3)}`))
+    .on("mouseleave", () => tip.style("opacity", 0));
+  const key = card.append("div").attr("class", "key").style("margin-left", 0);
+  types.forEach(t => key.append("span").html(`<i style="background:${colour(t)}"></i>${esc(t)}`));
+  key.append("span").text("· " + bands.map((b, i) => `${["solid", "dashed", "dotted", "dash-dot"][i % 4]} ${String(b).replaceAll("_", " ")}`).join(", "));
+}
+function normCdf(z) {
+  // Abramowitz and Stegun 26.2.17; ample for a plotted curve.
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - p : p;
+}
+
+// ---- maps -------------------------------------------------------------------
+function initMap(entry) {
+  const map = L.map(entry.mapDiv, { preferCanvas: true, zoomSnap: 0.25, maxZoom: 22 });
+  entry.map = map;
+  entry.basemap = "aerial";
+  entry.hillOn = true;
+  const ctl = entry.ctl;
+  ctl.append("h4").text("Layers");
+  const ordered = entry.step.layers.slice();
+  ordered.forEach(key => {
+    const st = LAYER_STYLE[key];
+    if (!st) return;
+    const lab = ctl.append("label");
+    lab.append("input").attr("type", "checkbox").property("checked", entry.visible.has(key)).on("change", function () {
+      if (this.checked) entry.visible.add(key); else entry.visible.delete(key);
+      drawSite(entry);
+    });
+    lab.append("span").text(st.name);
+    if (st.key) {
+      const k = ctl.append("div").attr("class", "key");
+      Object.entries(st.key).forEach(([n, c]) => k.append("span").html(`<i style="background:${c}"></i>${esc(n.replaceAll("_", " "))}`));
+    }
+    const rl = (R.raster_legends || {})[key];
+    if (st.kind === "image" && rl) {
+      ctl.append("div").attr("class", "key").html(
+        `<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,${rl.colors.join(",")})"></span> ${fmt(rl.vmin)} → ${fmt(rl.vmax)}${rl.note ? `<br><span>${esc(rl.note)}</span>` : ""}`);
+    }
+    if (st.legendHtml) ctl.append("div").attr("class", "key").html(st.legendHtml());
+    if (st.ramp) {
+      ctl.append("div").attr("class", "key").html(
+        `<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,${d3.range(0, 1.01, 0.25).map(v => PWALL(v)).join(",")})"></span> 0 → 1` +
+        (entry.step.id === "population" ? `<br><span>grey dotted = not walled this world</span>` : ""));
+    }
+  });
+  ctl.append("h4").text("Background");
+  const hl = ctl.append("label");
+  hl.append("input").attr("type", "checkbox").property("checked", true).on("change", function () { entry.hillOn = this.checked; drawSite(entry); });
+  hl.append("span").text("DEM hillshade (1 m)");
+  ctl.append("select").on("change", function () { entry.basemap = this.value; drawSite(entry); })
+    .selectAll("option").data(Object.keys(BASEMAPS)).join("option").attr("value", d => d).property("selected", d => d === "aerial").text(d => `basemap: ${d}`);
+  ctl.append("p").style("font-size", "11.5px").style("color", "#6a6a66").text("Click a feature for its attributes; click a wall unit or wall to trace it.");
+  drawSite(entry);
+}
+
+function drawSite(entry) {
+  if (!entry.map) return;
+  const map = entry.map, site = R.sites[SITE];
+  map.eachLayer(l => map.removeLayer(l));
+  const bm = BASEMAPS[entry.basemap];
+  if (bm) L.tileLayer(bm.url, { attribution: bm.attribution, maxNativeZoom: bm.max, maxZoom: 22 }).addTo(map);
+  if (entry.hillOn && site.hillshade) {
+    // In the tile pane, so it can multiply into the basemap: relief over the
+    // aerial rather than a grey sheet laid on top of it.
+    L.imageOverlay(`data:image/png;base64,${site.hillshade.png}`, site.hillshade.bounds,
+      { pane: "tilePane", className: bm ? "hill" : "", opacity: bm ? 0.85 : 1 }).addTo(map);
+  }
+  DRAW_ORDER.filter(k => entry.visible.has(k) && entry.step.layers.includes(k)).forEach(key => {
+    const data = site.layers[key], st = LAYER_STYLE[key];
+    if (!data || !st) return;
+    if (st.kind === "image") {
+      L.imageOverlay(`data:image/png;base64,${data.png}`, data.bounds, { opacity: st.opacity ?? 0.75, className: "raster" }).addTo(map);
+      return;
+    }
+    L.geoJSON(data, {
+      style: f => st.style(f.properties, entry.step.id),
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, st.style(f.properties, entry.step.id)),
+      onEachFeature: (f, layer) => {
+        layer.bindPopup(popupHtml(st.name, f.properties, st.trace));
+        if (st.trace) layer.on("click", () => { const id = f.properties[st.trace]; if (id) openTrace(id); });
+        if (entry.sectionCard && f.properties.pif_id !== undefined) layer.on("click", () => showSection(entry, f.properties.pif_id));
+      },
+    }).addTo(map);
+  });
+  // A step whose layers are at another scale than the chosen site (house-lot
+  // layers on the whole-pilot site) would show an empty map; say so instead.
+  const shown = entry.step.layers.filter(k => site.layers[k]).length;
+  if (!entry.hint) entry.hint = entry.ctl.append("p").attr("class", "hint").style("color", "#b3261e");
+  entry.hint.text(shown ? "" : "None of this step's layers are cut for this site. Pick another example site at the top.");
+  if (!entry.fitted || entry.fittedSite !== SITE) {
+    const b = site.hillshade ? L.latLngBounds(site.hillshade.bounds) : L.latLng(site.centre).toBounds(120);
+    map.fitBounds(b);
+    entry.fitted = true; entry.fittedSite = SITE;
+  }
+  // After the view is set: a vector layer added to a map with no view throws.
+  if (entry.sectionCard) {
+    // Keep the shown section if it is on this site, otherwise pick the site's
+    // first fill or cut pif, so the card is never empty when there is one.
+    const onSite = new Set(((site.layers.pifs || {}).features || []).map(f => String(f.properties.pif_id)));
+    if (!entry.sectionPif || !onSite.has(String(entry.sectionPif))) {
+      const ids = [...onSite].filter(id => R.sections[id]);
+      const rank = id => ({ fill: 0, cut: 1, cut_and_fill: 2 }[R.sections[id].metrics.cut_fill_class] ?? 3);
+      entry.sectionPif = ids.sort((a, b) => rank(a) - rank(b))[0] || null;
+    }
+    showSection(entry, entry.sectionPif);
+  }
+}
+function popupHtml(name, p, trace) {
+  const rows = Object.entries(p).map(([k, v]) => `<tr><td style="color:#6a6a66">${esc(k)}</td><td>${esc(fmt(v))}</td></tr>`).join("");
+  return `<b>${esc(name)}</b><table>${rows}</table>` + (trace && p[trace] ? `<div style="margin-top:4px"><a href="javascript:openTrace('${esc(p[trace])}')">Trace this wall →</a></div>` : "");
+}
+function lazyMaps() {
+  const io = new IntersectionObserver(entries => entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    const entry = MAPS.find(m => m.mapDiv === e.target);
+    if (entry && !entry.map) initMap(entry);
+    io.unobserve(e.target);
+  }), { rootMargin: "300px" });
+  MAPS.forEach(m => io.observe(m.mapDiv));
+}
+
+// ---- pip rule ---------------------------------------------------------------
+// The rule is applied here to the cells the generator read, with the drop and
+// offsets it passed from the code: a cell is a pip in this direction when it
+// stands more than need_m above each of the cells offsets_cells away downhill.
+function pipTests(ex, i) {
+  const z0 = ex.cells[i].z;
+  return ex.offsets_cells.map(k => {
+    const j = i + k, zj = j < ex.cells.length ? ex.cells[j].z : null;
+    const drop = z0 === null || zj === null ? null : z0 - zj;
+    return { k, j, drop, pass: drop !== null && drop > ex.need_m };
+  });
+}
+function pipRule(parent, ex) {
+  const pipIndex = ex.cells.findIndex(c => c.k === 0);
+  let chosen = pipIndex;
+  const grid = parent.append("div").attr("class", "section");
+  const chartDiv = grid.append("div"), side = grid.append("div");
+  const W = 640, m = { l: 44, r: 14, t: 14, b: 34 };
+  const zs = ex.cells.map(c => c.z).filter(z => z !== null);
+  const zMin = d3.min(zs) - 0.4, zMax = d3.max(zs) + 0.4;
+  const perM = (W - m.l - m.r) / (ex.cells[ex.cells.length - 1].along_m - ex.cells[0].along_m);
+  const plotH = Math.max(160, Math.min(300, (zMax - zMin) * perM));
+  const H = plotH + m.t + m.b, exaggeration = plotH / ((zMax - zMin) * perM);
+  const x = d3.scaleLinear().domain(d3.extent(ex.cells, c => c.along_m)).range([m.l, W - m.r]);
+  const y = d3.scaleLinear().domain([zMin, zMax]).range([H - m.b, m.t]);
+  const svg = chartDiv.append("svg").attr("viewBox", `0 0 ${W} ${H}`).style("width", "100%").style("max-width", `${W * 1.2}px`);
+  const valid = ex.cells.filter(c => c.z !== null);
+  svg.append("path").attr("d", d3.area().x(c => x(c.along_m)).y0(H - m.b).y1(c => y(c.z))(valid)).attr("fill", "#ece6da");
+  svg.append("path").attr("d", d3.line().x(c => x(c.along_m)).y(c => y(c.z))(valid)).attr("fill", "none").attr("stroke", "#5a4a32").attr("stroke-width", 1.4);
+  const tests = svg.append("g"), dots = svg.append("g");
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(10));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5));
+  svg.append("text").attr("x", W / 2).attr("y", H - 3).attr("text-anchor", "middle").style("font-size", "10.5px").attr("fill", "#6a6a66")
+    .text(`m along the fall direction (bearing ${ex.bearing_deg}°), one dot per DEM cell · ${exaggeration > 1.05 ? `vertical ×${exaggeration.toFixed(1)}` : "true scale"}`);
+  function draw() {
+    const results = pipTests(ex, chosen), c0 = ex.cells[chosen];
+    tests.html("");
+    if (c0.z !== null) {
+      // The threshold: the height a tested cell must be below.
+      tests.append("line").attr("x1", x(c0.along_m)).attr("x2", W - m.r).attr("y1", y(c0.z - ex.need_m)).attr("y2", y(c0.z - ex.need_m))
+        .attr("stroke", "#9a9a96").attr("stroke-dasharray", "4 3");
+      tests.append("text").attr("x", W - m.r).attr("y", y(c0.z - ex.need_m) - 4).attr("text-anchor", "end").style("font-size", "10px").attr("fill", "#6a6a66")
+        .text(`${ex.need_m.toFixed(2)} m below the tested cell`);
+      results.forEach(r => {
+        if (r.drop === null) return;
+        const cj = ex.cells[r.j], colour = r.pass ? "#1b7f4d" : "#c62828";
+        tests.append("line").attr("x1", x(cj.along_m)).attr("x2", x(cj.along_m)).attr("y1", y(c0.z)).attr("y2", y(cj.z))
+          .attr("stroke", colour).attr("stroke-width", 2.4);
+        tests.append("line").attr("x1", x(c0.along_m)).attr("x2", x(cj.along_m)).attr("y1", y(c0.z)).attr("y2", y(c0.z))
+          .attr("stroke", colour).attr("stroke-width", 0.8).attr("stroke-dasharray", "2 2");
+        tests.append("text").attr("x", x(cj.along_m) + 4).attr("y", (y(c0.z) + y(cj.z)) / 2).attr("dy", "0.35em").style("font-size", "10.5px").attr("fill", colour)
+          .text(`${r.k} cell${r.k > 1 ? "s" : ""}: ${r.drop.toFixed(2)} m ${r.pass ? "✔" : "✖"}`);
+      });
+    }
+    dots.selectAll("circle").data(ex.cells.filter(c => c.z !== null)).join("circle")
+      .attr("cx", c => x(c.along_m)).attr("cy", c => y(c.z)).attr("r", c => ex.cells.indexOf(c) === chosen ? 6 : 4)
+      .attr("fill", c => c.is_pip ? (CLASS_COLOUR[ex.cut_fill_class] || "#444") : "#fff").attr("stroke", "#111").attr("stroke-width", c => ex.cells.indexOf(c) === chosen ? 2 : 1)
+      .style("cursor", "pointer").on("click", (ev, c) => { chosen = ex.cells.indexOf(c); draw(); });
+    const verdict = results.every(r => r.pass);
+    side.html("");
+    side.append("div").html(`<b>Tested cell:</b> ${c0.k === 0 ? "the pip" : `${Math.abs(c0.k)} cell${Math.abs(c0.k) > 1 ? "s" : ""} ${c0.k < 0 ? "uphill of" : "downhill of"} the pip`}`);
+    side.append("div").attr("class", "verdict").style("margin", "6px 0").style("color", "#fff")
+      .style("background", verdict ? "#1b7f4d" : "#c62828").text(verdict ? "Passes all three: a pip in this direction" : "Fails: not a pip in this direction");
+    side.append("p").attr("class", "hint").html(
+      `A cell is a pip when it stands more than <b>${ex.drop_m} m</b> above each of the cells <b>${ex.offsets_cells.join(", ")}</b> cells away in one of the eight directions` +
+      ` (×1.41 along a diagonal, so ${(ex.drop_m * Math.SQRT2).toFixed(2)} m). All three must pass. ` +
+      `This one falls ${ex.diagonal ? "along a diagonal" : "along a row or column"}, so it needs ${ex.need_m.toFixed(2)} m. ` +
+      `Filled dots are cells ground step 3 recorded as pips of pif ${ex.pif_id} (${esc(ex.cut_fill_class ?? "")}); click any dot to test that cell instead. ` +
+      `The 1-cell test keeps out batters, whose drop is spread out; the 5-cell test keeps out blips. A cell is tested in all eight directions, and only the one it falls along is drawn (RW-A01).`);
+    side.append("p").attr("class", "hint").text(`Site: ${ex.site} · pip at NZTM ${ex.x.toFixed(0)}, ${ex.y.toFixed(0)}`);
+    linkify(side);
+  }
+  draw();
+}
+
+// ---- cross-sections ---------------------------------------------------------
+function showSection(entry, pifId) {
+  entry.sectionPif = pifId;
+  const card = entry.sectionCard.html("");
+  (entry.sectionLayers || []).forEach(l => entry.map.removeLayer(l));
+  entry.sectionLayers = [];
+  const sec = pifId !== null && pifId !== undefined ? R.sections[String(pifId)] : null;
+  if (!sec) {
+    card.append("p").attr("class", "hint").text("No pif with a walked face on this site. Click a pif or pip on the map to try another.");
+    return;
+  }
+  entry.sectionLayers.push(
+    L.polyline(sec.line, { color: "#111", weight: 2.5, dashArray: "8 5" }).bindTooltip(`section through pif ${sec.pif_id}`).addTo(entry.map),
+    L.circleMarker(sec.line[0], { radius: 4, color: "#111", fillColor: "#fff", fillOpacity: 1, weight: 2 }).bindTooltip("uphill end of the section").addTo(entry.map));
+  const grid = card.append("div").attr("class", "section");
+  sectionChart(grid.append("div"), sec, 640);
+  sectionMetrics(grid.append("div"), sec);
+}
+function sectionMetrics(parent, sec) {
+  const m = sec.metrics;
+  parent.append("div").html(`<b>pif ${sec.pif_id}</b> · <span style="color:${CLASS_COLOUR[m.cut_fill_class] || "#444"};font-weight:700">${esc(m.cut_fill_class)}</span>`);
+  const rows = [
+    ["pips", m.n_pips], ["face drop (m)", m.face_drop_m],
+    ["crest residual (m)", m.crest_residual_m], ["foot residual (m)", m.foot_residual_m],
+    ["excess drop (m)", m.excess_drop_m], ["uncertain below (m)", m.uncertain_below_m],
+    ["position (−1 cut … +1 fill)", m.position], ["fit scatter (m)", m.surface_scale_m],
+  ];
+  parent.append("table").html(rows.map(([k, v]) => `<tr><td style="color:#6a6a66">${esc(k)}</td><td>${esc(fmt(v))}</td></tr>`).join(""));
+  parent.append("p").attr("class", "hint").text(
+    "Residuals are the DEM minus the fitted surface, as medians over all the pif's pips. " +
+    "Excess drop = crest − foot residual; position = (crest + foot) ÷ excess drop. " +
+    "The section runs through one pip, so its bars can differ from the medians (RW-A05).");
+  linkify(parent);
+}
+function sectionChart(parent, sec, width) {
+  const xs = sec.along, m = { l: 40, r: 12, t: 12, b: 30 };
+  const W = width, plotW = W - m.l - m.r;
+  const zs = [...sec.ground, ...(sec.surface || []), ...sec.pips.map(p => p[1]), sec.foot[1], sec.crest[1]].filter(v => v !== null);
+  let zMin = d3.min(zs), zMax = d3.max(zs);
+  const pad = Math.max(0.5, (zMax - zMin) * 0.08); zMin -= pad; zMax += pad;
+  // True scale where it fits; otherwise exaggerate the vertical and say by how much.
+  const perM = plotW / (xs[xs.length - 1] - xs[0]);
+  const plotH = Math.max(140, Math.min(300, (zMax - zMin) * perM));
+  const exaggeration = plotH / ((zMax - zMin) * perM);
+  const H = plotH + m.t + m.b;
+  const x = d3.scaleLinear().domain([xs[0], xs[xs.length - 1]]).range([m.l, W - m.r]);
+  const y = d3.scaleLinear().domain([zMin, zMax]).range([H - m.b, m.t]);
+  const svg = parent.append("svg").attr("viewBox", `0 0 ${W} ${H}`).style("width", "100%").style("max-width", `${W * 1.2}px`);
+  const ground = xs.map((d, i) => [d, sec.ground[i]]).filter(p => p[1] !== null);
+  svg.append("path").attr("d", d3.area().x(p => x(p[0])).y0(H - m.b).y1(p => y(p[1]))(ground)).attr("fill", "#ece6da");
+  svg.append("path").attr("d", d3.line().x(p => x(p[0])).y(p => y(p[1]))(ground)).attr("fill", "none").attr("stroke", "#5a4a32").attr("stroke-width", 1.6);
+  if (sec.surface) {
+    const surf = xs.map((d, i) => [d, sec.surface[i]]);
+    svg.append("path").attr("d", d3.line().x(p => x(p[0])).y(p => y(p[1]))(surf)).attr("fill", "none")
+      .attr("stroke", "#2a78d6").attr("stroke-width", 1.6).attr("stroke-dasharray", "6 4");
+  }
+  const colour = CLASS_COLOUR[sec.metrics.cut_fill_class] || "#444";
+  svg.append("g").selectAll("circle").data(sec.pips).join("circle").attr("cx", p => x(p[0])).attr("cy", p => y(p[1])).attr("r", 2.6).attr("fill", colour).attr("opacity", 0.7);
+  // The two residuals at this pip: surface to ground at the crest and at the foot.
+  [["crest", sec.crest, sec.crest_surface], ["foot", sec.foot, sec.foot_surface]].forEach(([name, at, surfZ]) => {
+    const [d, z] = at;
+    if (surfZ !== null) {
+      svg.append("line").attr("x1", x(d)).attr("x2", x(d)).attr("y1", y(surfZ)).attr("y2", y(z))
+        .attr("stroke", z >= surfZ ? "#eb6834" : "#2a78d6").attr("stroke-width", 2.4);
+      svg.append("text").attr("x", x(d) + 5).attr("y", (y(surfZ) + y(z)) / 2).attr("dy", "0.35em").style("font-size", "10.5px")
+        .text(`${name} ${z - surfZ >= 0 ? "+" : ""}${(z - surfZ).toFixed(2)} m`);
+    }
+    svg.append("circle").attr("cx", x(d)).attr("cy", y(z)).attr("r", 4.5).attr("fill", name === "crest" ? colour : "#fff").attr("stroke", "#111").attr("stroke-width", 1.4);
+  });
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(8));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5));
+  svg.append("text").attr("x", W / 2).attr("y", H - 2).attr("text-anchor", "middle").style("font-size", "10.5px").attr("fill", "#6a6a66")
+    .text(`m along the section · uphill ← 0 = crest pip → downhill · ${exaggeration > 1.05 ? `vertical ×${exaggeration.toFixed(1)}` : "true scale"}`);
+  parent.append("div").attr("class", "key").style("margin-left", 0).html(
+    `<span><i style="background:#5a4a32"></i>1 m DEM</span><span><i style="background:#2a78d6"></i>ground step 5 fitted surface (dashed)</span>` +
+    `<span><i style="background:${colour}"></i>this pif's pips near the line</span><span>● crest pip ○ its foot</span>` +
+    `<span>bars: <i style="background:#eb6834"></i>above surface <i style="background:#2a78d6"></i>below</span>`);
+}
+
+// ---- trace drawer -----------------------------------------------------------
+function openTrace(unitId) {
+  const c = R.chains[unitId];
+  const body = d3.select("#tracebody").html("");
+  d3.select("#trace").classed("open", true);
+  if (!c) { body.append("p").text(`No chain for ${unitId}.`); return; }
+  const u = c.unit;
+  body.append("h3").text(`Wall unit ${u.wall_unit_id}`);
+  body.append("div").attr("class", "stamp").html(`<a href="#trace=${encodeURIComponent(u.wall_unit_id)}">link to this trace</a> · ids change when exposure rw step 6 reruns`);
+  body.append("div").attr("class", "stamp").text(`${u.unit_source} · ${u.cut_fill_class ?? "no class"} · ${fmt(u.height_m)} m high · ${fmt(u.length_m)} m long`);
+
+  const pifIds = (u.member_pif_ids || []).map(String).filter(id => R.sections[id]);
+  if (pifIds.length) {
+    body.append("h4").html(`2 · Cut or fill <a href="#step-cut_fill">↗</a>`);
+    const sec = R.sections[pifIds[0]];
+    sectionChart(body.append("div"), sec, 380);
+    body.append("p").attr("class", "hint").text(`pif ${sec.pif_id}: ${sec.metrics.cut_fill_class}, excess drop ${fmt(sec.metrics.excess_drop_m)} m, position ${fmt(sec.metrics.position)}` +
+      (pifIds.length > 1 ? ` · the unit has ${pifIds.length} pifs and takes its longest pif's class (RW-A06)` : ""));
+  }
+
+  body.append("h4").html(`3 · Probability of a wall <a href="#step-wall_units">↗</a>`);
+  waterfall(body, u);
+  if (u.wall_points !== null && u.wall_points !== undefined) {
+    // The bins that scored, as exposure rw step 6 wrote them in wall_points_explain.
+    const parts = (u.wall_points_explain || "").split("; ").filter(Boolean);
+    body.append("div").style("font-size", "12.5px").style("margin-top", "4px")
+      .html(`<b>${u.wall_points >= 0 ? "+" : ""}${fmt(u.wall_points)} points</b> (RW-A08)`);
+    if (parts.length) kv(body, parts.map(p => { const m = p.match(/^(.*) ([+-]\d+)$/); return m ? [m[1], m[2]] : [p, ""]; }));
+  }
+  const fl = body.append("div").attr("class", "flagrow").style("margin-top", "6px");
+  [["is_siz", "siz"], ["gns_wall", "GNS wall on it"], ["is_fill", "fill"], ["is_natural", "natural"], ["is_rock_cut", "rock cut"],
+   ["is_road_frontage", "road frontage"], ["is_property_boundary", "property boundary"], ["nzmm_wall", "NHC attrs: wall"], ["held_out", "claim held out"]]
+    .forEach(([k, label]) => fl.append("span").attr("class", `flag ${u[k] ? "on" : ""}`).text(label));
+  body.append("div").style("font-size", "12.5px").style("margin-top", "4px")
+    .text(`Claim report walls on property: ${fmt(u.claim_walls)} · property ${fmt(u.property_id)} · pifs ${fmt(u.n_pifs)}`);
+
+  body.append("h4").html(`4 · Draw and population <a href="#step-population">↗</a>`);
+  if (!c.walled) {
+    body.append("div").attr("class", "verdict").style("background", "#eee").text(`Not walled in world ${R.build.world_id}`);
+    body.append("p").style("font-size", "12.5px").text("Its slope is modelled bare in the zones and the realisation. The chain stops here for this world.");
+    return;
+  }
+  const w = c.wall;
+  if (!w) { body.append("p").text("Walled, but no drawn wall row joins it: the drawn walls may be from another run (see freshness)."); return; }
+  kv(body, [["rw_id", w.rw_id], ["claim_id", w.claim_id], ["insured", w.insured], ["size class", w.size_class], ["wall type", w.wall_type],
+            ["age bin", w.age_bin], ["position", w.wall_position], ["height (m)", w.height_m], ["flat land", w.is_flatland]]);
+  if (!w.insured) {
+    body.append("p").style("font-size", "12.5px").text("A drawn wall outside the insured population (RW-A19): it holds up its slope in the hazard, but vul and loss do not see it.");
+    return;
+  }
+  body.append("h4").html(`6 · Realisation ${R.build.realisation_id} <a href="#step-fragility">↗</a>`);
+  const oc = w.outcome;
+  body.append("div").attr("class", "verdict").style("background", OUTCOME_COLOUR[oc] || "#999").style("color", "#fff").text(oc ?? "no outcome row");
+  if (w.taken_by) body.append("div").style("font-size", "12.5px").text(`taken by ${w.taken_by}`);
+
+  body.append("h4").html(`7 · Damage flags <a href="#step-damage">↗</a>`);
+  const ff = body.append("div").attr("class", "flagrow");
+  ["is_damaged_by_shaking", "is_evacuated", "is_inundated"].forEach(k => ff.append("span").attr("class", `flag ${w[k] ? "on" : ""}`).text(k));
+  const anyFlag = ["is_damaged_by_shaking", "is_evacuated", "is_inundated"].some(k => w[k]);
+  const noRow = ["is_damaged_by_shaking", "is_evacuated", "is_inundated"].every(k => w[k] === null || w[k] === undefined);
+  body.append("div").attr("class", "verdict").style("margin-top", "6px")
+    .style("background", noRow ? "#eee" : anyFlag ? "#c62828" : "#1b7f4d").style("color", noRow ? "#1c1c1a" : "#fff")
+    .text(noRow ? "No loss input row (vul files may predate this population)" : anyFlag ? "Replaced (RW-A29)" : "Not damaged");
+  linkify(body);
+}
+function kv(parent, pairs) {
+  parent.append("table").html(pairs.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(fmt(v))}</td></tr>`).join(""));
+}
+function linkify(sel) { sel.selectAll("p").each(function () { this.innerHTML = linkAssumptions(this.innerHTML); }); }
+function closeTrace() { d3.select("#trace").classed("open", false); }
+function waterfall(parent, u) {
+  const stages = [
+    ["p_prior", u.p_prior, u.p_prior_basis === "gns_only" ? "flat gns_only value" : "points prior"],
+    ["p_floor", u.p_floor, u.p_floor_basis],
+    ["p_wall", u.p_wall, u.p_wall_basis],
+  ];
+  const W = 360, rowH = 26, left = 62, H = stages.length * rowH + 22;
+  const x = d3.scaleLinear().domain([0, 1]).range([left, W - 70]);
+  const svg = parent.append("svg").attr("viewBox", `0 0 ${W} ${H}`).style("width", "100%");
+  let prev = null;
+  stages.forEach(([name, v, basis], i) => {
+    const g = svg.append("g").attr("transform", `translate(0,${i * rowH})`);
+    g.append("text").attr("x", left - 6).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "end").style("font-size", "11.5px").text(name);
+    if (v === null || v === undefined) return;
+    const from = prev ?? 0;
+    g.append("rect").attr("x", x(Math.min(from, v))).attr("y", 4).attr("height", rowH - 8)
+      .attr("width", Math.max(2, Math.abs(x(v) - x(from)))).attr("fill", prev === null ? "#3b6e8f" : v > from ? "#ef6c00" : "#b4b4b0");
+    if (prev !== null) g.append("line").attr("x1", x(from)).attr("x2", x(from)).attr("y1", 0).attr("y2", rowH).attr("stroke", "#888").attr("stroke-dasharray", "2 2");
+    g.append("text").attr("x", x(Math.max(from, v)) + 4).attr("y", rowH / 2).attr("dy", "0.35em").style("font-size", "10.5px")
+      .text(`${v.toFixed(3)}${prev !== null && v === from ? " (no change)" : ""} · ${basis ?? ""}`);
+    prev = v;
+  });
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${stages.length * rowH + 2})`).call(d3.axisBottom(x).ticks(5));
+}
+
+// ---- assumptions + freshness ------------------------------------------------
+function renderAssumptionList(main) {
+  const sec = main.append("section").attr("class", "block").attr("id", "assumptions");
+  sec.append("h2").text("All assumptions");
+  sec.append("p").attr("class", "narr").text("Every numbered assumption in one list. Ids are permanent, so record decisions against them; a retired assumption keeps its number.");
+  const counts = d3.rollups(R.assumptions, v => v.length, a => a.status);
+  const bar = sec.append("div").attr("class", "chips");
+  let filter = null;
+  bar.append("span").attr("class", "chip").style("cursor", "pointer").text(`all (${R.assumptions.length})`).on("click", () => { filter = null; draw(); });
+  counts.forEach(([s, n]) => bar.append("span").attr("class", `st st-${s}`).style("cursor", "pointer").style("padding", "2px 9px").text(`${s} (${n})`).on("click", () => { filter = s; draw(); }));
+  const list = sec.append("div");
+  function draw() {
+    list.html("");
+    R.assumptions.filter(a => !filter || a.status === filter).forEach(a => {
+      const step = R.steps.find(s => s.id === a.step);
+      const box = list.append("div");
+      renderAssumption(box, a, false);
+      box.select(".src").append("span").html(step ? ` · Step <a href="#step-${step.id}">${step.number} ${esc(step.title.split(":")[0])}</a>` : "");
+    });
+  }
+  draw();
+}
+function renderFreshness(main) {
+  const sec = main.append("section").attr("class", "block").attr("id", "freshness");
+  sec.append("h2").text("Freshness and checks");
+  sec.append("p").attr("class", "narr").text("The wall work is moving, so this page can describe outputs from more than one run. Each check below compares two outputs. A failing check means the downstream step has not been rerun since its input changed, and any count built on it should not be trusted.");
+  const bad = R.checks.filter(c => !c.ok);
+  if (bad.length) sec.append("div").attr("class", "banner").text(`${bad.length} of ${R.checks.length} checks fail.`);
+  sec.append("ul").attr("class", "checks").selectAll("li").data(R.checks).join("li").attr("class", c => c.ok ? "ok" : "no").text(c => c.text);
+  const rows = Object.entries(R.files).map(([k, f]) => [k, f.path, f.exists ? f.modified : "NOT BUILT", f.rows ?? null, f.size_mb ?? null]);
+  renderTable(sec, { exists: true, path: "Every output the page reads", n_rows: rows.length, modified: R.build.built, columns: ["key", "path", "written", "rows", "MB"], rows });
+  sec.select("details").attr("open", true);
+}
+
+// ---- boot -------------------------------------------------------------------
+renderHeader();
+renderToc();
+const main = d3.select("#main");
+renderOverview(main);
+renderInputs(main);
+R.steps.forEach(s => renderStep(main, s));
+renderAssumptionList(main);
+renderFreshness(main);
+lazyMaps();
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeTrace(); });
+// A link ending #trace=<wall unit id> opens that wall's trace, so a reviewer can
+// point a colleague at one wall.
+const traceFromHash = () => { const m = location.hash.match(/^#trace=(.+)$/); if (m) openTrace(decodeURIComponent(m[1])); };
+window.addEventListener("hashchange", traceFromHash);
+traceFromHash();
+</script>
+</body>
+</html>

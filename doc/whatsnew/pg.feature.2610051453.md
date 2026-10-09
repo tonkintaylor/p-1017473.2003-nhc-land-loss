@@ -1,0 +1,1 @@
+The lateral spreading figure script now also writes a GeoPackage, `temp/hazard/liquefaction/lateral-spreading-lower-hutt.gpkg`, with the free faces, the near and middle zones, and one polygon per NLM cell carrying P(at least Major) before and after the correction, the change, the zone and the blend weight.

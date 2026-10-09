@@ -1,0 +1,9 @@
+wall_type,road_frontage_multiplier
+brick_rock,1.5
+reinforced_concrete_pre_1992,1.5
+crib_gabion,0.5
+timber_pole_pre_1992,1.0
+concrete_block,1.5
+timber_pole_post_1992,1.0
+garden_timber,0.3
+reinforced_concrete_post_1992,1.0

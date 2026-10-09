@@ -1,0 +1,1 @@
+Landslide step 8 now leaves out step 12 polygons whose representative point lies outside the extent. They sat in the DEM margin beyond the shaking grids, so they had no site class or PGV and were never drawn (1,212 of the pilot's world 0 polygons).

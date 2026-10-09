@@ -1,0 +1,1 @@
+The large-landslide realisation (landslide step 1) now places the coverage model's full failed area: `URBAN_AREA_SHARE` is 0, down from the 0.25 placeholder. The Hancox model does not count the cut, fill and wall failures the urban model draws, and the 700 m² lower bound already keeps the two populations apart.

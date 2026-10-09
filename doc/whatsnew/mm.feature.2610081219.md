@@ -1,0 +1,1 @@
+Rename the retaining wall types after the NHC costing tool wall rows (brick_rock, reinforced_concrete, crib_gabion, concrete_block, timber_pole_pre_1992, timber_pole_post_1992, garden_timber, engineered) and add a wall types table giving each its label and NHC rate row.

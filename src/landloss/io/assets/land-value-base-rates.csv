@@ -1,0 +1,5 @@
+ta_code,ta_name,valuation_date,rating_units,avg_capital_value_nzd,avg_land_value_nzd,index_to_2025_09,median_lot_size_m2,source_url
+044,Porirua City,2025-09-01,21481,830000,420000,1.0000,550,https://www.qv.co.nz/news/new-rating-valuations-on-the-way-for-porirua-2025/
+045,Upper Hutt City,2025-06-01,18474,776000,438000,0.9906,700,https://www.qv.co.nz/news/new-rating-valuations-upper-hutt-city/
+046,Lower Hutt City,2025-08-01,43576,775000,415000,0.9969,600,https://www.qv.co.nz/news/hutt-city-rating-valuations-updated-home-values-down-115-land-values-down-268/
+047,Wellington City,2024-09-01,82591,1086000,621000,0.9630,450,https://www.qv.co.nz/news/new-rating-valuations-for-wellington-city/

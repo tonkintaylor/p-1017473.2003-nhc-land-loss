@@ -1,0 +1,1 @@
+The urban slope realisation (landslide step 9) now draws one uniform per wall line, so a wall on polygons at several scales fails at the published rate, and only a failed urban polygon can be superseded by a large landslide.

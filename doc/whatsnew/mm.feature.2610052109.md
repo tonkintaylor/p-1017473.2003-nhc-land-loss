@@ -1,0 +1,1 @@
+The NZMM wall update in landslide step 12 is tempered by `BETA_NZMM_UPDATE_WEIGHT` (0.3). Where NZMM's count is the larger, a unit moves only that share of the way from its claims update to the full update on `BETA_NZMM_MIN_WALLS`, so an unreliable NZMM flag no longer counts as much as a claim report.

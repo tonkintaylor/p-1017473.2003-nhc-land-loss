@@ -1,0 +1,556 @@
+# Numbered assumptions of the landslide chain, shown in boxes on the reviewer
+# page. Same rules and statuses as reviewer/rw/assumptions.toml:
+#
+# Ids are permanent: append new assumptions with the next free number, and mark
+# one that no longer holds `status = "retired"` with a line on what replaced it,
+# rather than deleting or renumbering it. A review meeting records its decisions
+# against these ids.
+#
+# status is one of decided, beta, pending, adopted, check, retired (see the RW
+# file). `check` here mostly means the code has moved on and the status, plan
+# or method prose has not, or the reverse; the `text` says which.
+#
+# LS-A01 to LS-A29 are the large-failure population, LS-A30 onwards the urban
+# population, combined realisation and land damage. Where the retaining wall
+# register already holds an assumption, `see` names its RW id rather than
+# repeating it. First written 2026-10-07 from the code, configs and the pilot
+# outputs of that morning.
+
+# ------------------------------------------------------------ large failures
+
+[[assumptions]]
+id = "LS-A01"
+step = "coverage"
+title = "The large-failure route is not chosen"
+text = "Extend ESNZ, build a new model, or a portfolio (Nowicki Jessee 2018, Kritikos 2015, Hancox 1997, ESNZ, a Godt strength model, a bespoke refit). Today the chain runs Hancox model 3 alone."
+status = "pending"
+source = "hazard/landslide/status.md, Approach; potential-landslide-rebuild.md, 'How they combine'"
+
+[[assumptions]]
+id = "LS-A02"
+step = "coverage"
+title = "Each model keeps its own published calibration"
+text = "No model is scaled to Kaikōura or to a Marc total; Kaikōura, Marc et al. (2016) and the Hancox extent are tests reported beside each model, so the portfolio still measures model uncertainty."
+status = "decided"
+decided = "the lead, 2026-10-02"
+source = "potential-landslide-rebuild.md"
+
+[[assumptions]]
+id = "LS-A03"
+step = "coverage"
+title = "Hancox model 3 is the coverage landslide step 3 reads"
+text = "COVERAGE_MODEL = 'hancox_1997'. Kritikos (landslide step 8) and ESNZ are selectable but not run by gen_hazard."
+status = "decided"
+decided = "by configuration, 2026-10-07"
+source = "steps/s3_landslide_realisation/config.py (COVERAGE_MODEL)"
+
+[[assumptions]]
+id = "LS-A04"
+step = "large"
+title = "Large and urban split at {LARGE_MIN_SOURCE_AREA_M2} m² of source area"
+text = "Landslide step 3 draws only failures of {LARGE_MIN_SOURCE_AREA_M2} m² or more. 500 m² is the agreed working threshold; {LARGE_MIN_SOURCE_AREA_M2} m² is what is built. The review proposes keeping it as the large model's lower bound only, with the urban population defined by ground."
+status = "pending"
+source = "s3 config / constants (LARGE_MIN_SOURCE_AREA_M2)"
+
+[[assumptions]]
+id = "LS-A05"
+step = "large"
+title = "None of the large coverage is handed to the urban model"
+text = "URBAN_AREA_SHARE = {URBAN_AREA_SHARE}: Hancox does not count cut, fill and wall failures, and the 700 m² bound keeps the two populations apart. The landslide step 3 plan (phase 3) and the status 'Where it is now' bullet still quote 0.25."
+status = "check"
+decided = "the lead, 2026-10-07 (the value); prose not yet updated"
+source = "s3 config (URBAN_AREA_SHARE); s3 implementation plan; hazard/landslide/status.md"
+
+[[assumptions]]
+id = "LS-A06"
+step = "large"
+title = "Size exponent {SIZE_EXPONENT}"
+text = "Truncated power law on source area with exponent {SIZE_EXPONENT}, cited to Massey et al. (2020), which the project does not hold. The review proposes 1.88, the reviewed Kaikōura fit above 500 m² (Massey et al. 2018)."
+status = "pending"
+source = "s1_simulate_landslides.py (SIZE_EXPONENT)"
+
+[[assumptions]]
+id = "LS-A07"
+step = "large"
+title = "Largest single failure {MAX_SOURCE_AREA_M2} m²"
+text = "About the source area of Gold's 1855 Hutt Road slide (300,000 m³ through the volume-area law). landslide-notes.md and the s3 plan's exponent note still discuss a 3,000 m² cap."
+status = "check"
+decided = "the lead, 2026-10-02 (the value); notes not yet updated"
+source = "s3 config (MAX_SOURCE_AREA_M2); landslide-notes.md"
+
+[[assumptions]]
+id = "LS-A08"
+step = "large"
+title = "A Poisson count of failures per slope unit"
+text = "The count's mean is the unit's expected source area over the mean failure size (about 2,530 m² on 700 to 35,000 m²). The total area is set by the coverage, not by the size law."
+status = "beta"
+source = "s1_simulate_landslides.py (draw_counts, truncated_power_law_mean_m2)"
+
+[[assumptions]]
+id = "LS-A09"
+step = "large"
+title = "Hancox and Kritikos coverage is source coverage"
+text = "Their coverage is used as the source-area fraction directly (fraction 1); runout is added on top."
+status = "beta"
+source = "s3 (coverage_source_area_fraction)"
+
+[[assumptions]]
+id = "LS-A10"
+step = "large"
+title = "ESNZ source-area fraction {BETA_SOURCE_AREA_FRACTION}"
+text = "Only when COVERAGE_MODEL = 'esnz'. Back-calibrated in phase 1 to about 0.99% coverage. If the ESNZ grid keeps the Kaikōura model's centroid definition, the review proposes 0.4 to 1.0, which would raise the landslide step 3 loss up to four times."
+status = "pending"
+source = "constants (BETA_SOURCE_AREA_FRACTION); waits on the supplier (LS-A27)"
+
+[[assumptions]]
+id = "LS-A11"
+step = "large"
+title = "No large failure starts on NLM flatland"
+text = "Cells whose centre is in an NLM flatland piece of the ground map are masked out of every coverage. A source seeded on a slope is not clipped where it runs onto flat land."
+status = "decided"
+decided = "the lead, 2026-10-02"
+source = "s3 (mask_flatland); s2 eligibility"
+
+[[assumptions]]
+id = "LS-A12"
+step = "coverage"
+title = "MM7 threshold through a PGV-only MMI relation"
+text = "PGV becomes MM by Worden et al. (2012), capped at MM X; no failure below MM7 (Hancox's Wellington threshold). It never binds at the 2,500-year demand (pilot MM 9.3 to 10). The review notes significant landsliding starts at MM8 (Dowrick 2008)."
+status = "adopted"
+source = "hancox_1997 relationships (MM_THRESHOLD_WELLINGTON); shaking pgv.mmi_from_pgv"
+
+[[assumptions]]
+id = "LS-A13"
+step = "coverage"
+title = "Every site is {BETA_SITE_DISTANCE_KM} km from an Mw {BETA_SCENARIO_MW} interface event"
+text = "The modal NSHM 2022 deaggregation for Wellington. Read only by Hancox's distance envelope (274 km, so it clips nothing) and Marc's amount; never for the shaking itself (LS-A26)."
+status = "beta"
+source = "constants (BETA_SCENARIO_MW, BETA_SITE_DISTANCE_KM); landslide-notes.md, 'Forward-use scenario'"
+
+[[assumptions]]
+id = "LS-A14"
+step = "coverage"
+title = "Marc et al. (2016) event amount"
+text = "R0 22.5 km, reverse, all asperities onshore (an upper case), modal slope 22°, A_topo 1: 18.0 km² event-wide. To be replaced with the NSHM Hikurangi interface geometry."
+status = "beta"
+source = "s2 config (MARC_*)"
+
+[[assumptions]]
+id = "LS-A15"
+step = "coverage"
+title = "The study's share is its eligible area over Hancox's area affected"
+text = "Eligible ground / 11,912 km² (area affected at Mw 8.1), so the event total is averaged over a region of about 62 km radius. The pilot's share is 3,232 m², 0.047% of its area."
+status = "adopted"
+source = "landloss.hazard.landslide.models.hancox_1997 (model.run)"
+
+[[assumptions]]
+id = "LS-A16"
+step = "coverage"
+title = "Spread by the Hancox (2010) slope-class shares"
+text = "Shares 0.01, 0.09, 0.39, 0.34, 0.17 at edges 15.5°, 25.5°, 35.5°, 45.5°, each divided by its class's eligible area and capped at 1. A small extremely-steep class gets a high per-cell coverage (pilot maximum 0.50)."
+status = "adopted"
+source = "hancox_1997 relationships (SLOPE_SHARES)"
+
+[[assumptions]]
+id = "LS-A17"
+step = "coverage"
+title = "Kritikos settings and transfer curve"
+text = "Fuzzy gamma 0.9, TPI window 600 m (judgement), fault term 'mapped', transfer curve pooled from Northridge and Wenchuan (the two disagree 1.3 to 70 times at the same H, so the curve is a judgement). The Wenchuan total of 811 km² includes runout and is marked verify. Not run in gen_hazard."
+status = "beta"
+decided = "fault term: the lead, 2026-10-05"
+source = "steps/s8_kritikos_2015/config.py; models/kritikos_2015"
+
+[[assumptions]]
+id = "LS-A18"
+step = "slope_units"
+title = "Slope units localise, they do not size"
+text = "Half-basins with channels at 5 ha, aspect merge within 45°, units of 1 to 50 ha (Alvioli et al. 2016). A unit sets where a failure starts, not how big it is."
+status = "adopted"
+source = "steps/s1_slope_units/config.py"
+
+[[assumptions]]
+id = "LS-A19"
+step = "large"
+title = "Slope units are drawn independently"
+text = "Clustering only within a unit (the Poisson count and top-10 seeding); no correlation between units. Fault-distance clustering would apply only to a crustal rupture, not the interface scenario."
+status = "beta"
+source = "s3 implementation plan, phase 5"
+
+[[assumptions]]
+id = "LS-A20"
+step = "large"
+title = "Seeds are lifted towards crests"
+text = "Seed weight = coverage × (1 + {CREST_WEIGHT} · clip(TPI100 / 10 m, 0, 1)), chosen among the unit's 10 highest cells."
+status = "beta"
+source = "s3 config (CREST_WEIGHT, CREST_FULL_LIFT_M, SEED_CANDIDATE_CELLS)"
+
+[[assumptions]]
+id = "LS-A21"
+step = "large"
+title = "A source is an ellipse of aspect {SOURCE_ASPECT_RATIO} down the fall line"
+text = "Area-exact 64-gon, crest at the seed, not clipped to its unit. The 2:1 rests on one observation (Grapes 1997); the s3 plan proposes measuring it from the Kaikōura inventory."
+status = "beta"
+source = "s3 config (SOURCE_ASPECT_RATIO)"
+
+[[assumptions]]
+id = "LS-A22"
+step = "large"
+title = "Overlapping sources: the largest is kept"
+text = "Sources may not overlap; inundated polygons may. Whether the depth where two runouts overlap is the deeper or the sum is open."
+status = "pending"
+source = "s3 (drop_overlapping)"
+
+[[assumptions]]
+id = "LS-A23"
+step = "large"
+title = "Large runout is a rigid translation by slope"
+text = "The source ellipse moved 1 m (slope 10° or less) to 40 m (45° or more), whatever its size. Stands in until the de Vilder et al. (2022) reach angles, already used for the urban faces, replace it."
+status = "beta"
+source = "s3 config (MIN/MAX_DISPLACEMENT_*)"
+
+[[assumptions]]
+id = "LS-A24"
+step = "large"
+title = "Volume = 0.074 A^1.46"
+text = "Exponent from Massey et al. (2020), coefficient a Guzzetti et al. (2009) placeholder. Under-reads deep-seated failures and thick fills. The geometry.py docstring still describes a runout circle."
+status = "beta"
+source = "landloss/hazard/landslide/geometry.py (ALPHA, GAMMA)"
+
+[[assumptions]]
+id = "LS-A25"
+step = "realisation"
+title = "One realisation id is one earthquake across all hazards"
+text = "Shaking, large and urban landslides, and liquefaction share the realisation id; each draws its own stream from BASE_SEED 1017473."
+status = "decided"
+source = "constants (BASE_SEED); realisation_seed"
+
+[[assumptions]]
+id = "LS-A26"
+step = "coverage"
+title = "Demand is the TS1170.5 2,500-year field"
+text = "Per site class, scaled per realisation by one draw (shaking steps 4 and 5). Pilot PGA 0.93 to 1.70 g, PGV 1.08 to 1.90 m/s."
+status = "decided"
+decided = "T-26, closed 2026-10-02"
+source = "hazard shaking steps 3 to 5 (RETURN_PERIOD_YR)"
+
+[[assumptions]]
+id = "LS-A27"
+step = "coverage"
+title = "What an ESNZ cell's probability means is unknown"
+text = "'PGA2g' is read from the file name. Whether a cell's value is the probability a failure touches it, covers it or holds its centroid, and what shaking it is conditioned on, only the supplier can say. GNS SR2018/08 and SR2023/04 may answer it."
+status = "pending"
+source = "constants (EIL_PROBABILITY_SOURCE_PATH); hazard/landslide/status.md, Next 6"
+
+[[assumptions]]
+id = "LS-A28"
+step = "large"
+title = "Coarse grids repeated onto the 10 m grid"
+text = "The ESNZ 32 m and Kritikos 60 m cells are copied nearest-neighbour onto the 10 m cells they contain."
+status = "beta"
+source = "s3 (align_probability)"
+
+[[assumptions]]
+id = "LS-A29"
+step = "large"
+title = "The pilot exercises the code, not the model"
+text = "The pilot box is 54% flatland suburb, and Hancox expects about 1.3 large failures over it, so the 2026-10-07 draw placed none. Judge the large model on the full extent, or move the pilot onto hill country."
+status = "pending"
+source = "landslide-notes.md; hazard/landslide/status.md, Open decisions"
+
+# ---------------------------------------------------------- urban failures
+
+[[assumptions]]
+id = "LS-A30"
+step = "faces"
+title = "A face must drop {PIP_DROP_M} m to be found"
+text = "See RW-A01. A pip drops at least {PIP_DROP_M} m at 1, 3 and 5 cells in one of eight directions (scaled by 1.41 on diagonals)."
+status = "beta"
+see = "RW-A01"
+source = "instability_zones.py (PIP_DROP_M, PIP_OFFSETS_M)"
+
+[[assumptions]]
+id = "LS-A31"
+step = "faces"
+title = "Pifs and pieces"
+text = "See RW-A02 and RW-A03: join within 2 m, at least 3 pips and 3 m of spine, not mostly inside a building; cut into 3 to 50 m pieces."
+status = "decided"
+decided = "the lead, 2026-10-06"
+see = "RW-A02, RW-A03"
+source = "instability_zones.py; bend_split.py"
+
+[[assumptions]]
+id = "LS-A32"
+step = "fragility"
+title = "Unwalled median from the Kingsbury rating: the placeholder is still in code"
+text = "θ = θ0 · (θ150/θ0)^(R/150) on the continuous Kingsbury (1995) rating, β {LOCALISED_FRAGILITY_BETA}, with θ0 {LOCALISED_THETA_AT_ZERO_RATING_M_S} and θ150 {LOCALISED_THETA_AT_MAX_RATING_M_S} m/s: the placeholder. The adopted fit (θ0 2.46, θ150 0.492 m/s, β 0.724) ran on 2026-10-07 (urban-area-calibration-fit.csv) but is not ported. The fragility.py comment cites the rejected area fit (0.334 / 0.0668 / 1.01) as agreed, and the findings file still says the adopted fit has not run."
+status = "check"
+source = "urban/fragility.py (LOCALISED_THETA_*); constants (LOCALISED_FRAGILITY_BETA); validations/urban/urban_area_calibration_findings.md"
+
+[[assumptions]]
+id = "LS-A33"
+step = "faces"
+title = "Two-band slope table by ground group"
+text = "A pif is a siz if a pair of its points stands steeper than: below 3.5 m, 35°, 45°, 53°; from 3.5 m, 32°, 40°, 48° (soil-like, weak rock, stronger rock); with a near step of 0.7 m in soil and 3 m in rock. Fill is soil. Which NZGS Figure 35 row a rock reads waits on a weathering grade."
+status = "decided"
+decided = "the lead, 2026-10-02 and 2026-10-04"
+source = "io/assets/landslide-slope-thresholds.csv, landslide-seed-thresholds.csv"
+
+[[assumptions]]
+id = "LS-A34"
+step = "faces"
+title = "Siz test details not yet confirmed"
+text = "The 30 m cap on pair distance, the 1.41 diagonal scaling, the support points that give a vertical wall its height, and that every soil pif is a siz (all 4,447 on the pilot)."
+status = "pending"
+source = "instability_zones.py (MAX_PAIR_M); hazard/landslide/status.md, Open decisions"
+
+[[assumptions]]
+id = "LS-A35"
+step = "faces"
+title = "Elements grow to {BETA_GROW_ANGLE_DEG}°, every siz element kept"
+text = "Watershed growth from each siz piece down to a {BETA_GROW_ANGLE_DEG}° grow angle with a 3° tolerance; every element a siz grows is kept even where the keep rule would drop it, with a height of at least 0.5 m."
+status = "decided"
+decided = "the lead, 2026-10-02 and 2026-10-06"
+source = "slope_elements.py (BETA_GROW_ANGLE_DEG); instability_zones.py (keep_all, MIN_WALL_HEIGHT_M)"
+
+[[assumptions]]
+id = "LS-A36"
+step = "faces"
+title = "The urban domain is the whole DEM inside the coastline"
+text = "Ground step 3 finds faces everywhere on the DEM, masked only by the LINZ coastline; neither the 100 m building buffer of the old landslide step 6 (removed 2026-10-08, with its URBAN_BUILDING_DISTANCE_M constant) nor the NLM flatland mask is applied. The status Approach still says 'within 100 m of a building'."
+status = "check"
+source = "ground/steps/s3_instability_zones, s4_slope_faces; hazard/landslide/status.md"
+
+[[assumptions]]
+id = "LS-A37"
+step = "zones"
+title = "Evacuated width floor"
+text = "For every polygon, walled or unwalled, the evacuated ground runs at least max({BETA_MIN_EVACUATED_WIDTH_H} H, {BETA_MIN_EVACUATED_WIDTH_M} m) behind the crest. Every face type's own rule (LS-A38) gives a width at or below this with today's values, so this minimum is the width of every polygon, not just on the pilot. See RW-A20."
+status = "decided"
+decided = "the lead, 2026-10-06"
+see = "RW-A20"
+source = "slope_polygons.py (BETA_MIN_EVACUATED_WIDTH_H, BETA_MIN_EVACUATED_WIDTH_M)"
+
+[[assumptions]]
+id = "LS-A38"
+step = "zones"
+title = "Evacuated width and depth by face type"
+text = "Each face type's own width rule, which applies only where it is wider than the LS-A37 minimum, and with today's values it never is: a wall wedge H·tan(45 − φ′/2) on φ′ 42° (0.45 H); a fill bank {BETA_FILL_BANK_WIDTH_H} H (cases 0.25 and 0.65 H); a cut or natural bank the T-44 band of 0.5 m, or 1 m above 30°. Depth: planar slip for a wall, the same slip no deeper than the fill thickness for a fill bank (the lead, 2026-10-08), {COLLUVIUM_DEPTH_M} m colluvium for a cut or natural bank."
+status = "pending"
+source = "slope_polygons.py (element_depth_m, BETA_FILL_BANK_WIDTH_H, COLLUVIUM_DEPTH_M); faces plan phase 3"
+
+[[assumptions]]
+id = "LS-A39"
+step = "zones"
+title = "Long faces fail in segments of about {BETA_SEGMENT_VOLUME_M3} m³"
+text = "Cut along the contour, no segment shorter than H, because Wellington cut failures are 10² to 10⁴ m³ and none takes a whole road cut. Built; awaiting the lead's decision."
+status = "pending"
+source = "slope_polygons.py (BETA_SEGMENT_VOLUME_M3); faces plan phase 3"
+
+[[assumptions]]
+id = "LS-A40"
+step = "zones"
+title = "Stacks and overlapping polygons"
+text = "A free face over 50° and 3 m takes the stack above it; polygons may overlap for stacks and for disjoint catchments facing more than 90° apart, otherwise the nearest crest takes the ground."
+status = "pending"
+source = "slope_polygons.py (STACK_DOMINANT_*, BETA_FACING_APART_DEG); faces plan open decisions"
+
+[[assumptions]]
+id = "LS-A41"
+step = "zones"
+title = "Runout by Hunter and Fell's travel angles"
+text = "From the crest: where the ground below the toe is {BETA_STEEP_DOWNSLOPE_DEG}° or steeper (read over {BETA_DOWNSLOPE_WINDOW_H} H), H/L = 0.77 tan α2 + 0.087, which runs on down the slope; otherwise H/L = 0.78 (tan α_cut)^0.5 on the face's angle less the {BETA_DEM_RUN_SMEAR_M} m of run the DEM adds, no steeper than {BETA_MAX_CUT_ANGLE_DEG}°, laid out from the face's own toe. Replaces the de Vilder dry reach angle, which stopped every face flatter than about 42° at its toe. Held to {BETA_MAX_RUNOUT_H_FLAT}, {BETA_MAX_RUNOUT_H_MODERATE} or {BETA_MAX_RUNOUT_H_STEEP} H (ground below the toe under {BETA_MODERATE_DOWNSLOPE_DEG}°, to {BETA_STEEP_RUNOUT_DOWNSLOPE_DEG}°, steeper); the travel run held to a {BETA_MIN_DEPOSIT_DEPTH_M} m deposit, then the seismic distance of the polygon's Kingsbury zone added before the height cap (0.5, 0.5, 1, 2 and 3 m for very low to very high; LS-A61); one median length swept along the toe; no barriers. See RW-A21."
+status = "decided"
+decided = "the lead, 2026-10-07"
+see = "RW-A21"
+source = "slope_polygons.py (max_runout_h, BETA_MIN_DEPOSIT_DEPTH_M, BETA_SEISMIC_RUNOUT_M)"
+
+[[assumptions]]
+id = "LS-A61"
+step = "zones"
+title = "A seismic distance by Kingsbury zone"
+text = "Added to the travel angle's run past the toe, not by SRSS: 0.5 m very low and low, 1 m moderate, 2 m high, 3 m very high, set loosely for a Mw 7.5, 0.7 g earthquake because the zones are one geometry per world, not per earthquake. Replaces the 1 m strip every failure left; overrides the deposit depth cap; held to the height cap. The zone is scored in landslide step 4, as landslide step 5 scores it. A Newmark displacement (Jibson 2007) at that shaking is centimetres to about a metre, so the values are judgement. Pilot world 0: 18% of polygons at their height cap, 57% of those faces under 1 m."
+status = "decided"
+decided = "the lead, 2026-10-08"
+source = "slope_polygons.py (BETA_SEISMIC_RUNOUT_M, inundated_length_m)"
+
+[[assumptions]]
+id = "LS-A42"
+step = "zones"
+title = "A deposit spreads back over its own scar"
+text = "Until it is no deeper than {BETA_MAX_DEPOSIT_DEPTH_H} H or {BETA_MAX_DEPOSIT_DEPTH_SOURCE} times its source depth. The lead asked for the fix; the two limits are proposals. 3,138 of 5,850 polygons spread back, 72 over their whole scar."
+status = "beta"
+source = "slope_polygons.py (BETA_MAX_DEPOSIT_DEPTH_H, BETA_MAX_DEPOSIT_DEPTH_SOURCE)"
+
+[[assumptions]]
+id = "LS-A43"
+step = "zones"
+title = "Imminent ground to a {BETA_REPOSE_ANGLE_DEG}° repose line"
+text = "From the toe, capped at H / tan {BETA_REPOSE_ANGLE_DEG}°, at least the T-45 band; one median width per polygon (de Vilder et al. 2024 planning screen). Imminent ground is written but not counted downstream (T-45)."
+status = "pending"
+source = "slope_polygons.py (BETA_REPOSE_ANGLE_DEG)"
+
+[[assumptions]]
+id = "LS-A44"
+step = "fragility"
+title = "A wall holds its slope whether insured or not"
+text = "A polygon is walled if its unit drew a sloping wall in that world; uninsured walls set the wall state with a null rw_id."
+status = "decided"
+decided = "urban slope build contract, decision 36"
+source = "gen_urban_slope_fragility.py"
+
+[[assumptions]]
+id = "LS-A45"
+step = "fragility"
+title = "Wall curves by type and height class, ×{FILL_CAPACITY_FACTOR} fill, ×{CUT_CAPACITY_FACTOR} cut"
+text = "Koutsoupaki (2023) curves for the seven wall types by two height classes (split at {HEIGHT_CLASS_SPLIT_M} m; median PGA about 0.51 g to 1.29 g), DS2 read as replace. The fill and cut factors are judgement. The curves overpredict against Christchurch (Anderson 2015), which the lead accepted on 2026-10-02. (Was `check` while RW-A26 said every wall took one curve; RW-A26 is retired.)"
+status = "beta"
+see = "RW-A23, RW-A33"
+source = "wall_type_fragility (FILL_CAPACITY_FACTOR, CUT_CAPACITY_FACTOR); io/assets/retaining-wall-type-fragility.csv"
+
+[[assumptions]]
+id = "LS-A46"
+step = "fragility"
+title = "Wall medians converted from PGA to PGV"
+text = "At each site's TS1170.5 PGV/PGA ratio (pilot median 0.85 m/s per g). Exact while PGA and PGV scale by one draw; the alternative is to evaluate the wall curves in PGA in landslide step 6."
+status = "pending"
+source = "pgv_pga_ratio_m_s_per_g; hazard/landslide/status.md, Next 14"
+
+[[assumptions]]
+id = "LS-A47"
+step = "fragility"
+title = "Topographic amplification placeholder"
+text = "Every median is divided by 1 + 0.5 · max(TPI100 / 10, (slope − 30) / 30), clipped, at most {TOPOGRAPHIC_AMPLIFICATION_MAX}. It lifts 99.8% of pilot polygons (median 1.29 unwalled, 1.47 cut-walled). The review proposes 1.0 for most house-lot faces, by height and ridge or terrace setting (Brabhaharan 2018); not built."
+status = "beta"
+source = "urban/geometry.py (amplification_factor); constants (TOPOGRAPHIC_AMPLIFICATION_MAX)"
+
+[[assumptions]]
+id = "LS-A48"
+step = "fragility"
+title = "Rate setting multiplies every median"
+text = "Low 1.5, medium 1.0, high 1/1.5; the pilot runs medium. The review proposes bracketing antecedent wetness, up to two MM units, with separate factors for fill and the rest (Dellow and Hancox 2006)."
+status = "beta"
+source = "constants (URBAN_RATE_FACTORS); s5 config (URBAN_RATE)"
+
+[[assumptions]]
+id = "LS-A49"
+step = "fragility"
+title = "What the unwalled curve is calibrated to"
+text = "The Kaikōura area share (A16: 0.001 of non-flat ground at 0.15 g, weighted equal to the polygon anchors together) and polygon anchors A17 to A21. The Kingsbury anchors A01 to A15 are not fitted; A12 is an upper limit only. The review read A16, A19 and A21 as too strong and proposed the 2013 Cook Strait earthquakes as a low-demand anchor; neither change is made."
+status = "decided"
+decided = "the lead, 2026-10-07 (targets); anchor readings open"
+source = "io/assets/urban-fragility-anchors.csv; urban/area_calibration.py; .agents/plans/anchoring-and-calibrating-the-urban-fragilities.md"
+
+[[assumptions]]
+id = "LS-A50"
+step = "realisation"
+title = "One uniform per wall; a wall fails if any of its polygons fails"
+text = "See RW-A25."
+status = "decided"
+decided = "the lead, 2026-10-02"
+see = "RW-A25"
+source = "gen_urban_slope_realisation.py"
+
+[[assumptions]]
+id = "LS-A51"
+step = "realisation"
+title = "Unwalled polygons fail independently; no retrogression"
+text = "No spatial correlation between urban polygons. slope_polygons builds retrogression links with a conditional probability of {BETA_RETROGRESSION_P} (BETA_RETROGRESSION_P), but landslide step 6 never reads them."
+status = "check"
+source = "slope_polygons.py (conditional_failure_probability); gen_urban_slope_realisation.py"
+
+[[assumptions]]
+id = "LS-A52"
+step = "realisation"
+title = "Large failures supersede, larger urban failures absorb"
+text = "A failed urban polygon sharing more than 0.01 m² of evacuated ground with a large failure is superseded; survivors are then resolved largest first and a smaller overlapping one is absorbed. A polygon that did not fail stays standing even under a large slide. Evacuated ground never overlaps across the two populations; inundated and imminent ground may."
+status = "decided"
+decided = "urban slope build contract, decision 35"
+source = "gen_urban_slope_realisation.py (SHARED_GROUND_TOLERANCE_M2)"
+
+[[assumptions]]
+id = "LS-A53"
+step = "land"
+title = "Land damage is evacuated and inundated area in insured land"
+text = "Intersected with each property's insured land, the two kinds kept apart; inundated area unioned, depth area-weighted, imminent ground ignored (T-45). Pricing waits on the Rev10 schedule (L-15)."
+status = "decided"
+source = "vul/landslide/land/steps/s3_landslide_land_damage"
+
+[[assumptions]]
+id = "LS-A54"
+step = "fragility"
+title = "Wall position is fill or cut, nothing else"
+text = "A walled polygon is fill_wall where its unit is fill, otherwise cut_wall, so walls on natural or uncertain faces take the ×1.15 cut factor. Not stated in any method file."
+status = "check"
+source = "face_polygons (wall_position)"
+
+[[assumptions]]
+id = "LS-A55"
+step = "fragility"
+title = "Ground off the map is natural weathered rock"
+text = "An element off the ground map (about 15%) takes natural weathered rock, no prior failure and 4 m to groundwater for its Kingsbury rating."
+status = "beta"
+source = "face_polygons (BETA_OFF_MAP_GROUND)"
+
+[[assumptions]]
+id = "LS-A56"
+step = "faces"
+title = "Steps 6 and 7 are superseded, but step 6 still runs"
+text = "Banded slope and aspect patches had no published basis; the zones built by what is now ground step 4 and landslide step 4 replaced old step 7's polygons on 2026-10-06, and steps 6 and 7 were removed on 2026-10-08."
+status = "check"
+source = "gen_hazard.py; s6_urban_slope_realisation_method.md; s4_slope_faces plan phase 5"
+
+[[assumptions]]
+id = "LS-A57"
+step = "faces"
+title = "Wall height label"
+text = "The siz table column near_drop_p80_m holds the 0.7 quantile of near drops within 2 m (config: 0.7, 2 m). This resolves RW-A09's 'check'; the column name is misleading."
+status = "check"
+see = "RW-A09"
+source = "ground s4_slope_faces config; urban-slope-sizs table"
+
+[[assumptions]]
+id = "LS-A58"
+step = "ground"
+title = "Ground map by source precedence"
+text = "Each piece takes its material, modification, prior failure, groundwater and strength from the first source in the order SLIDE, 1:50k geology, NLM, WCC earthworks whose polygon contains it. The Wellington Fault sheared zone as crushed rock is proposed, not built."
+status = "beta"
+source = "landloss.hazard.landslide.ground_map; ground steps/s2_ground_map plan"
+
+[[assumptions]]
+id = "LS-A59"
+step = "ground"
+title = "Mixed fill read as its natural material, fill as the modification"
+text = "SLIDE's mixed fill classes take their natural material (colluvium ahead of rock) with fill as the modification; fill strength is the GNS analysis set (φ′ 42°, c′ 2 kPa). Rerun 2026-10-06: fill as material is 17%, fill as modification 74%. Status still says ground step 2 'needs a rerun to see the fill share fall from 71%'."
+status = "check"
+decided = "the lead, 2026-10-02"
+source = "ground_map.py; hazard/landslide/status.md"
+
+[[assumptions]]
+id = "LS-A60"
+step = "zones"
+title = "An unwalled bank evacuates far more than a walled face"
+text = "A walled face is cut on a planar slip, with a median depth of about 0.2 m and about 10 m³ on the pilot. With no wall, the same element is a bank: on fill the same slip, no deeper than the fill (since 2026-10-08; it took the whole fill thickness, a median of 2.0 m, before), elsewhere {COLLUVIUM_DEPTH_M} m of cover, a median of about 180 m³. The widths are the same, because the floor sets them all. So drawing a wall shrinks the ground a failure takes, while its curve makes failure more likely. Whether that is the intended trade has not been decided."
+status = "check"
+source = "slope_polygons.py (element_depth_m, planar_depth_m); urban-slope-zones-{walled,bare}-pilot medians, 2026-10-07"
+
+# ------------------------------------------------------------ walls
+
+[[assumptions]]
+id = "LS-A61"
+step = "walls"
+title = "Wall presence: points prior, GNS floor, claim update"
+text = "Each wall unit scores points on ten attributes (verticality, height, length, distance to a building, road frontage or boundary, cut/fill class, rock cut over 2 m, soil cut, wall age, NHC land attributes flag); every {BETA_WALL_POINTS_PER_DOUBLING} points doubles the odds from {BETA_WALL_BASE_P} at zero. A GNS-mapped wall lifts a unit to at least {BETA_GNS_WALL_UNIT_FLOOR} (GNS-only {BETA_GNS_ONLY_WALL_PROBABILITY}), and claim counts raise it further. Whether a face is walled sets both its curve and how much ground it evacuates (LS-A60)."
+status = "beta"
+note = "Every points value is judgement; the base, floor and GNS-only values are interim (the lead, 2026-10-07) until calibrated against the claim reports (T-50)."
+see = "RW-A08, RW-A10, RW-A11, RW-A13"
+source = "src/landloss/io/assets/wall-probability-points.csv; wall_units.gen_wall_points, gen_gns_floor, gen_wall_unit_probability"
+
+[[assumptions]]
+id = "LS-A62"
+step = "walls"
+title = "Wall type from age, height and road frontage"
+text = "Each drawn wall draws an age bin, moves one bin later with probability {BETA_WALL_REBUILT_SHARE}, and draws its type from the shares for that age bin and height band (under 1.5 m, 1.5 to 2.5 m, over 2.5 m), times the road frontage multipliers where it stands on one. The type picks the wall's fragility curve (LS-A45)."
+status = "pending"
+note = "The shares and multipliers are placeholders for Nick Peters' review."
+see = "RW-A16, RW-A17"
+source = "src/landloss/exposure/rw/wall_type.py; beta-retaining-wall-type-shares.csv; beta-retaining-wall-frontage-multipliers.csv"

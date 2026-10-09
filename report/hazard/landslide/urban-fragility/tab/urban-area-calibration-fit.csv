@@ -1,0 +1,5 @@
+curve,targets,theta_at_zero_rating_m_s,theta_at_max_rating_m_s,beta,rms_logit_residual
+adopted,"A16 on the whole non-flat pilot (weight 5) and A17-A21 (adopted, the lead 2026-10-07)",2.4598728159620853,0.49197456319241706,0.7240351548663154,0.7608176052137029
+committed,,3.0,0.6,0.6,
+area,A10-A12 on the whole non-flat pilot (rejected),0.39377586292008065,0.07875517258401613,1.0737466816047525,0.21744293791097982
+footprint,A10-A12 on the non-flat cells under a footprint (rejected),6.145109219315395,1.2290218438630789,2.0597919436993415,0.009122803567703331

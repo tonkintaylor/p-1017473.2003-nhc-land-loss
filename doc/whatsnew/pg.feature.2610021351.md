@@ -1,0 +1,1 @@
+Added the lateral spreading free-face layer, rebuilt from the National Liquefaction Model's own: named rivers, the river, lake, swamp and lagoon polygons of at least 5 ha, and the coast, written per extent by the new liquefaction step `s1_free_faces`, with a lower Hutt pilot box to run it over.

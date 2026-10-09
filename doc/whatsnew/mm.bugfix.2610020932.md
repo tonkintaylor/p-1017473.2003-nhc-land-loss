@@ -1,0 +1,1 @@
+Vul step 10 now writes its contract tables through `world_loss_input_path(table, world_id, realisation_id, pilot=...)`, and keeps the old `loss_input_path(table, realisation_id, pilot=...)`, deprecated, resolving world 0, so the loss module's calls no longer raise `TypeError` after the move to exposure worlds.

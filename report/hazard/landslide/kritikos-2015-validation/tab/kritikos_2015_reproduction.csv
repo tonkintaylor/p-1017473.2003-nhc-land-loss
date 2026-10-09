@@ -1,0 +1,19 @@
+event,case,auc,published_auc,difference
+northridge,base,0.867,0.904,-0.037
+northridge,slope > 5 deg,0.827,0.871,-0.044
+northridge,MMI >= 6,0.845,,
+northridge,gamma 0.8,0.868,,
+northridge,no fault term,0.848,,
+northridge,TPI window 300 m,0.867,,
+northridge,TPI window 1200 m,0.868,,
+northridge,study area +5 km,0.893,,
+northridge,study area +15 km,0.927,,
+wenchuan,base,0.831,0.839,-0.008
+wenchuan,slope > 5 deg,0.801,0.845,-0.044
+wenchuan,MMI >= 6,0.703,,
+wenchuan,gamma 0.8,0.83,,
+wenchuan,no fault term,0.893,,
+wenchuan,TPI window 300 m,0.831,,
+wenchuan,TPI window 1200 m,0.828,,
+wenchuan,study area +5 km,0.835,,
+wenchuan,study area +15 km,0.846,,

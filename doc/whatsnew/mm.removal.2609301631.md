@@ -1,0 +1,1 @@
+Retire shaking step `s1_pga_realisation` (superseded by `s4_pga_realisation`; its plan and method files remain as the record) and remove `constants.BETA_SITE_CLASS`, which nothing reads now that the site class comes per cell from Foster Vs30. The vulnerability damage state steps and `hazard/gen_hazard.py` now take PGA from step 4.

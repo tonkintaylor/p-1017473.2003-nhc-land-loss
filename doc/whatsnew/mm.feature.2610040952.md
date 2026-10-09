@@ -1,0 +1,1 @@
+Added `get_nz_coastline_polygons`, a reader for the LINZ NZ Coastlines and Islands Polygons (Topo 1:50k) layer, used to mask the sea from the DEM before slope elements are found. The stage D2 pilot examples now apply it, and the grow tolerance for free-faces is settled at 3°.

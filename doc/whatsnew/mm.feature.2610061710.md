@@ -1,0 +1,1 @@
+Landslide step 12 reads a wall's height as the 70th percentile of its pips' near drops within 2 m, up from the 60th, which had put 72% of the pilot's walled units under 1.5 m against 54% in Anderson et al.

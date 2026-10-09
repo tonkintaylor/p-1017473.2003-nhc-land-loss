@@ -1,0 +1,1 @@
+Record a pilot of extracting the SLIDE Wellington geomorphology maps from the GNS report PDF (93% pixel agreement with the vector layer on one sheet, so not needed) and note that the SLIDE Genesis layer has no reader yet.

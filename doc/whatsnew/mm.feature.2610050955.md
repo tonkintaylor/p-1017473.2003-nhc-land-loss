@@ -1,0 +1,1 @@
+Fit the Kritikos et al. (2015) transfer function from relative hazard to landslide coverage on the Northridge and Wenchuan inventories, commit the pooled curve as an `io` asset, have step 11 write a coverage raster, and let step 1 read it with `COVERAGE_MODEL = "kritikos_2015"`. The two events' curves disagree by 1.3 to 70 times, which the method file and findings record.

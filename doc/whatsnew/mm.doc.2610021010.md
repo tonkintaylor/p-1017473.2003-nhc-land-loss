@@ -1,0 +1,1 @@
+Document the four construction-age bins for retaining walls (before 1970, 1970 to June 1992, July 1992 to 2004, 2005 on) and the design and regulatory changes that open each, in `src/landloss/exposure/rw/assets/choice-of-rwt-bin-ages.md`, ahead of the per-suburb `rw_ages.csv`.

@@ -1,0 +1,27 @@
+attribute,bin,lower,upper,points,reason
+verticality,under 0.4,,0.4,-20,"A batter, not a step: the drop in the first cell is under 40% of the drop within three (GNS rate 0.13, x0.54)"
+verticality,0.4 to 0.5,0.4,0.5,-5,"Between a batter and a step"
+verticality,0.5 and over,0.5,,10,"A step: most of the drop is in the first cell (GNS rate up to 0.33)"
+height,under 1.0 m,,1.0,-5,"A low face (0.7 to 1.0 m) is less often a wall worth building"
+height,1.0 to 2.5 m,1.0,2.5,0,"The usual residential wall"
+height,2.5 to 5 m,2.5,5.0,5,"A tall face needs retaining; kept small because GNS sees tall walls more easily"
+height,5 to 8 m,5.0,8.0,-20,"Rarely retained in full on a residential lot (replaces the tall face taper)"
+height,8 m and over,8.0,,-60,"A cut slope or natural face, not a wall"
+length,under 5 m,,5.0,-5,"Often a fragment of a face (the lead, 2026-10-07)"
+length,5 m and over,5.0,,0,
+building,under 2 m,,2.0,10,"Walls hold house platforms (GNS rate 0.30 within 2 m)"
+building,2 to 5 m,2.0,5.0,5,
+building,5 to 20 m,5.0,20.0,0,
+building,20 m and over,20.0,,-20,"Far from a building (GNS rate 0.06 at 20 to 50 m); also where no building is within the search distance"
+setting,road_frontage,,,20,"Mostly within 2 m of a road parcel's boundary (GNS rate 0.48 against 0.20); below the raw value, as frontage walls are easy to see"
+setting,property_boundary,,,10,"Mostly within 2 m of a non-road property boundary (GNS rate 0.32 against 0.17)"
+class,fill,,,5,"Ground step 5 fill: the front of a platform"
+class,cut_and_fill,,,5,"Ground step 5 cut and fill: a benched face with fill at its crest"
+class,natural,,,-15,"Ground step 5 natural: a bank, not an earthwork (GNS rate 0.14)"
+rock_cut,cut in rock over 2.0 m,2.0,,-20,"A cut in unweathered or moderately weathered rock deeper than 2.0 m stands unsupported (the lead, 2026-10-07)"
+soil_cut,cut in soil,,,10,"A cut in soil (alluvium, loess, colluvium, fill, or highly or completely weathered or crushed rock) needs retaining (the lead, 2026-10-07)"
+age,pre_1970,,,-10,"Share of the property's walls before 1970"
+age,1970_1991,,,-5,"Share 1970 to 1991"
+age,1992_2004,,,0,"Share 1992 to 2004"
+age,2005_on,,,10,"Share 2005 on"
+nhc_land_attrs,flagged,,,5,"NHC land attributes says the property has a retaining wall: a yes/no with no count, agreeing with GNS no better than chance (kappa 0.03)"

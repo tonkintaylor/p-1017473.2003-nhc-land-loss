@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NHC land loss viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --ink: #1c1c1a; --muted: #6a6a66; --line: #dcdcd8; --surface: #fcfcfb;
+    --panel: #f4f4f1; --accent: #3b6e8f; --cap: #b23a48;
+    --liq: #2a78d6; --wall: #eb6834; --both: #1baf7a; --none: #b4b4b0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface); color: var(--ink);
+    font: 14px/1.5 -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+  header {
+    padding: 12px 20px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  header .title { flex: 1 1 320px; }
+  h1 { margin: 0; font-size: 19px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  #drop {
+    flex: 1 1 320px; border: 2px dashed var(--line); border-radius: 8px;
+    padding: 12px 16px; text-align: center; color: var(--muted); background: #fff;
+    cursor: pointer;
+  }
+  #drop.over { border-color: var(--accent); background: #eef4f8; color: var(--ink); }
+  main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 320px; }
+  @media (max-width: 1180px) {
+    main { grid-template-columns: 240px minmax(0, 1fr); }
+    #summary { grid-column: 2; border-left: none; border-top: 1px solid var(--line); }
+  }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+    #summary { grid-column: 1; }
+  }
+  aside { padding: 14px 16px 40px; background: var(--panel); }
+  #config { border-right: 1px solid var(--line); }
+  #summary { border-left: 1px solid var(--line); min-width: 0; }
+  /* The panel is a fixed width, so a long claim id or ratings line has to wrap
+     inside it rather than push the panel wider than the screen. */
+  #claimDetail table { table-layout: fixed; }
+  #claimDetail td.n { width: 46%; white-space: normal; overflow-wrap: anywhere; }
+  #claimDetail code { word-break: break-all; }
+  #capSummary th { white-space: normal; }
+  section { padding: 16px 20px 40px; min-width: 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); margin: 18px 0 8px; }
+  h2:first-child { margin-top: 0; }
+  label { display: block; font-size: 12.5px; margin: 9px 0 2px; }
+  input[type=number], input[type=text], select {
+    width: 100%; padding: 5px 7px; border: 1px solid var(--line);
+    border-radius: 4px; background: #fffbe6; font: inherit;
+  }
+  input.sens { background: #eaf2f7; }
+  select { background: #fff; }
+  button {
+    font: inherit; font-size: 12.5px; padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--accent); background: #fff; color: var(--accent); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #fff; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 8px; background: #fff; }
+  .card + .card, .charts { margin-top: 14px; }
+  .card h3 { margin: 0 0 2px; font-size: 13px; }
+  .card p { margin: 0 0 4px; font-size: 11.5px; color: var(--muted); }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .charts .card { margin-top: 0; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; margin: 4px 0 0; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+  .bar rect { shape-rendering: crispEdges; }
+  .axis text { font-size: 10.5px; fill: var(--muted); }
+  .axis path, .axis line { stroke: #cfcfca; }
+  .capline { stroke: var(--cap); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  .caplabel { font-size: 10.5px; fill: var(--cap); font-weight: 600; }
+  #capEditor { display: none; margin: 6px 0 2px; }
+  #capEditor.open { display: flex; }
+  #capEditor input { flex: 1 1 220px; background: #fff; }
+  .tip {
+    position: fixed; pointer-events: none; background: #23231f; color: #fff;
+    padding: 6px 9px; border-radius: 5px; font-size: 12px; opacity: 0;
+    transition: opacity .08s; max-width: 260px; z-index: 9;
+  }
+  .note { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+  .big { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 11.5px; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.total td { font-weight: 600; }
+  .up { color: var(--cap); } .down { color: var(--both); }
+  .basisbar { height: 6px; background: var(--accent); border-radius: 3px; }
+  #map { height: 460px; border-radius: 6px; z-index: 0; }
+  .leaflet-container { font: inherit; background: #f0efed; }
+  .leaflet-control-attribution { font-size: 10px; }
+  .mapsettings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 12px; margin-bottom: 8px; }
+  .mapsettings label { margin-top: 2px; }
+  .empty { color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>NHC land loss viewer</h1>
+    <div class="sub">Every settlement is computed here, in the browser &mdash; move a setting
+      and the whole portfolio answers. Nothing is uploaded.</div>
+  </div>
+  <div id="drop">Drop the viewer CSV here, or click to choose</div>
+  <input type="file" id="file" accept=".csv" hidden>
+</header>
+
+<main>
+<aside id="config">
+  <h2>Cover</h2>
+  <label>Area cap (m²)<input type="number" id="areaCap" value="4000" step="100"></label>
+  <label>Retaining wall sub-cap, per dwelling, excl GST
+    <input type="number" id="rwSub" value="50000" step="1000"></label>
+  <label>Bridge / culvert sub-cap, per dwelling, excl GST
+    <input type="number" id="bcSub" value="25000" step="1000"></label>
+
+  <h2>Excess</h2>
+  <label>Per dwelling ($)
+    <input type="number" id="exEach" value="500" step="100" min="0"></label>
+  <label>Ceiling ($)<input type="number" id="exCeil" value="5000" step="500"></label>
+
+  <h2>Costs</h2>
+  <label>Replacement spec uplift
+    <input type="number" id="spec" value="0.20" step="0.05"></label>
+  <label>Professional fees per wall claim, excl GST
+    <input type="number" id="fees" value="5100" step="100"></label>
+  <label>Spoil removal ($/m³, excl GST)
+    <input type="number" id="spoilRate" value="150" step="10"></label>
+
+  <h2>Sensitivity</h2>
+  <label>Retaining wall rates &times;
+    <input class="sens" type="number" id="wallScale" value="1" step="0.1" min="0"></label>
+  <label>Land value &times;
+    <input class="sens" type="number" id="landScale" value="1" step="0.1" min="0"></label>
+  <div class="note">Yellow fields are the policy settings; blue fields scale the model's
+    own estimates, to see how far an answer leans on them. The wall rates set both what a
+    wall costs to replace and what it was worth, since both come from the same rate.
+    Every figure is GST-inclusive at 15%. Everything else in the CSV is fixed by
+    exposure and vulnerability.</div>
+</aside>
+
+<section>
+  <div class="card">
+    <div class="row" style="justify-content: space-between">
+      <h3>Claims by <span id="histTitle">repair cost</span>, against the land cap scenarios</h3>
+      <div class="row">
+        <select id="histOf" style="width: auto">
+          <option value="repair">Repair cost</option>
+          <option value="settlement">Settlement under the Act</option>
+        </select>
+        <button id="editCaps">Update cap settings</button>
+      </div>
+    </div>
+    <p>Each dashed line is a land cap scenario, labelled with the share of claims above it.
+      Only properties with damage are counted as claims, including those the excess zeroes. Stacked by claim type; log scale.</p>
+    <div id="capEditor" class="row">
+      <input type="text" id="capList" aria-label="Land caps in dollars, comma separated">
+      <select id="capMode" style="width: auto">
+        <option value="replace">The cap replaces the Act's land cover cap</option>
+        <option value="overlay">The cap limits the Act's land cover cap</option>
+      </select>
+      <button class="primary" id="applyCaps">Apply</button>
+    </div>
+    <div id="hMain"></div><div class="legend" id="legend"></div>
+  </div>
+
+  <div class="charts">
+    <div class="card"><h3>Repair cost by line</h3><p>Where the money goes.</p><div id="hLines"></div></div>
+    <div class="card"><h3>Claims by land cover cap</h3><p>The ceiling the Act builds.</p><div id="hCap"></div></div>
+  </div>
+
+  <div class="card">
+    <h3>Where the claims are</h3>
+    <div class="mapsettings">
+      <label>Colour the dots by
+        <select id="colourBy">
+          <option value="type">Claim type</option>
+          <option value="basis">How it settled under the Act</option>
+          <option value="settlement">Settlement amount</option>
+          <option value="repair">Repair cost</option>
+          <option value="cap">Land cover cap</option>
+          <option value="has_damaged_wall">Has a damaged retaining wall</option>
+          <option value="has_new_wall">Needs a new wall built</option>
+          <option value="has_liquefaction">Has liquefaction damage</option>
+          <option value="access">Construction access rating</option>
+        </select></label>
+      <label>Show
+        <select id="showDots">
+          <option value="claims">Claims (properties with damage)</option>
+          <option value="all">Every insured property</option>
+          <option value="paid">Claims paid anything</option>
+          <option value="capped">Claims capped by the Act</option>
+        </select></label>
+      <label>Basemap
+        <select id="basemap">
+          <option value="grey">Light grey &mdash; best under the dots</option>
+          <option value="aerial">Aerial imagery</option>
+          <option value="topo">Topographic</option>
+          <option value="osm">OpenStreetMap</option>
+          <option value="none">None &mdash; works offline</option>
+        </select></label>
+      <label>Dot size
+        <input type="number" id="dotSize" value="3.4" step="0.4" min="1" max="10" style="background:#fff"></label>
+    </div>
+    <p>Each dot is a property; click one to see how it settled. The basemap is fetched from a
+      tile server, so it needs internet &mdash; choose <i>None</i> to work entirely offline.
+      No claim data ever leaves this page.</p>
+    <div id="map"></div><div class="legend" id="mapLegend"></div>
+  </div>
+</section>
+
+<aside id="summary">
+  <h2>Under the Act as it stands</h2>
+  <div id="actSummary" class="empty">Load a CSV to begin.</div>
+  <h2>Under each land cap</h2>
+  <div id="capSummary"></div>
+  <h2>Selected claim</h2>
+  <div id="claimDetail" class="empty">Click a dot on the map.</div>
+</aside>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const TYPE = {liq: "Liquefaction only", wall: "Retaining wall only", both: "Both", none: "No damage"};
+// Literal hex rather than var(--liq): Leaflet paints the dots onto a canvas,
+// and a canvas cannot resolve a CSS custom property -- it just loses the fill.
+const HUE = {liq: "#2a78d6", wall: "#eb6834", both: "#1baf7a", none: "#b4b4b0",
+             accent: "#3b6e8f", cap: "#b23a48"};
+const TYPE_FILL = {[TYPE.liq]: HUE.liq, [TYPE.wall]: HUE.wall, [TYPE.both]: HUE.both, [TYPE.none]: HUE.none};
+const STACK = [TYPE.liq, TYPE.wall, TYPE.both];
+const BASES = ["Paid the repair cost", "Capped", "Excess took it all"];
+// GST is fixed rather than a control (T-86): the Act compares every amount
+// GST-inclusive at 15%, and landloss.loss.policy.GST_RATE fixes the same rate.
+const GST_RATE = 0.15;
+// The land cap scenarios NHC is weighing, from Bridget Attwood's document. A
+// placeholder set until the scenarios are confirmed; "Update cap settings"
+// changes them on the page.
+const DEFAULT_CAPS = [15000, 30000, 90000, 120000];
+const tip = d3.select("#tip");
+let RAW = [], ROWS = [], CAPS = DEFAULT_CAPS.slice(), SELECTED = null;
+
+const num = id => +document.getElementById(id).value;
+const val = id => document.getElementById(id).value;
+const nz = d => d == null || d === "" ? 0 : +d;
+const money = d3.format("$,.0f");
+const short = d3.format("$~s");
+const count = d3.format(",.0f");
+const pct = d3.format(".0%");
+
+function settings() {
+  return {
+    areaCap: num("areaCap"), rwSub: num("rwSub"), bcSub: num("bcSub"),
+    exEach: num("exEach"), exCeil: num("exCeil"),
+    spec: num("spec"), fees: num("fees"), spoilRate: num("spoilRate"),
+    wallScale: num("wallScale"), landScale: num("landScale"),
+  };
+}
+
+// The same arithmetic landloss.loss.settlement does. Kept deliberately literal
+// so it can be read against the module rather than trusted. At both scales of
+// one it is the module's answer; gen_viewer_data.py checks that before writing
+// the CSV.
+function settle(r, s) {
+  const gst = 1 + GST_RATE, spec = 1 + s.spec, mult = 1 + nz(r.site_multiplier);
+  const dwellings = Math.max(1, nz(r.dwellings));
+
+  const udv = nz(r.wall_value_excl_gst) * gst * s.wallScale;
+  const wall = nz(r.replacement_face_m2) * nz(r.replacement_rate_excl_gst)
+    * gst * mult * spec * s.wallScale;
+  const newWall = nz(r.new_wall_face_m2) * nz(r.new_wall_rate_excl_gst)
+    * gst * mult * spec * s.wallScale;
+  const spoil = nz(r.spoil_m3) * s.spoilRate * gst;
+  const walled = nz(r.has_damaged_wall) > 0 || nz(r.has_new_wall) > 0;
+  const fees = walled ? s.fees * mult * gst : 0;
+  const liq = nz(r.liq_cost_excl_gst) * gst;
+  const crossing = nz(r.has_crossing) > 0 ? s.bcSub * gst * dwellings : 0;
+
+  const landValue = Math.min(nz(r.damaged_area_m2), s.areaCap)
+    * nz(r.land_rate_incl_gst) * s.landScale;
+  const rwLimit = s.rwSub * gst * dwellings;
+  const cap = landValue + Math.min(udv, rwLimit) + crossing;
+
+  const repair = wall + newWall + spoil + fees + liq + crossing;
+  const payable = Math.min(repair, cap);
+  // The excess a claim would pay if anything were payable, kept apart so each
+  // cap scenario can apply it to its own payable amount.
+  const excessIf = Math.min(dwellings * s.exEach, s.exCeil);
+  const excess = payable > 0 ? excessIf : 0;
+  const settlement = Math.max(0, payable - excess);
+  // A claim exists only where there is damage, whether or not the excess then
+  // takes it all. Liquefaction damage is a state worse than None: every flat
+  // property draws a state, and None still carries the Canterbury average of
+  // $200 -- non-claimants averaged in at $0 -- so its cost cannot be the test.
+  // A CSV written before liq_state was carried falls back on the cost.
+  const liqDamage = r.liq_state != null ? nz(r.has_liquefaction) > 0 : liq > 0;
+  const claimed = walled || liqDamage || crossing > 0;
+
+  const type = liqDamage && walled ? TYPE.both : liqDamage ? TYPE.liq : walled ? TYPE.wall : TYPE.none;
+  const basis = settlement <= 0 ? "Excess took it all"
+    : repair <= cap ? "Paid the repair cost" : "Capped";
+  return {...r, udv, wall, newWall, spoil, fees, liq, crossing, landValue, cap,
+          repair, payable, excessIf, excess, settlement, claimed, type, basis};
+}
+
+// One claim's settlement under a land cap of `k`. "replace" is the scheme NHC
+// is weighing: the cap stands in for the Act's land cover cap, so the land is
+// no longer valued and a claim is paid its repair cost up to the cap. "overlay"
+// keeps the Act's cap and limits it further, which is what
+// PolicySettings.total_cap_nzd does in the loss module.
+function settleUnderCap(r, k, mode) {
+  const payable = mode === "replace" ? Math.min(r.repair, k) : Math.min(r.repair, r.cap, k);
+  return Math.max(0, payable - (payable > 0 ? r.excessIf : 0));
+}
+
+function capScenarios(rows, mode, value) {
+  const claims = rows.filter(r => r.claimed);
+  const act = d3.sum(rows, r => r.settlement);
+  return CAPS.map(k => {
+    const total = d3.sum(claims, r => settleUnderCap(r, k, mode));
+    const above = claims.filter(r => value(r) > k).length;
+    return {k, total, above, share: above / Math.max(1, claims.length), delta: total - act};
+  });
+}
+
+// ---- main histogram -------------------------------------------------------
+// A log scale, because claims run from a few hundred dollars to over a million
+// and a linear one puts every cap line in the first bar.
+function mainHistogram(sel, rows, value, scenarios) {
+  const box = d3.select(sel).html("");
+  const shown = rows.filter(r => r.claimed && value(r) > 0);
+  if (!shown.length) { box.append("p").attr("class", "empty").text("No claims to show."); return; }
+  const W = box.node().clientWidth || 600, H = 300;
+  const m = {t: 34, r: 14, b: 34, l: 46};
+  const lo = Math.max(100, d3.min(shown, value)), hi = Math.max(lo * 10, d3.max(shown, value));
+  const x = d3.scaleLog().domain([lo, hi]).range([m.l, W - m.r]).clamp(true);
+  const edges = d3.range(41).map(i => lo * Math.pow(hi / lo, i / 40));
+  const bins = edges.slice(0, -1).map((a, i) => {
+    const b = edges[i + 1];
+    const inside = shown.filter(r => {
+      const v = Math.min(Math.max(value(r), lo), hi);
+      return v >= a && (v < b || (i === 39 && v <= b));
+    });
+    const o = {a, b, total: inside.length};
+    STACK.forEach(t => o[t] = inside.filter(r => r.type === t).length);
+    return o;
+  });
+  const y = d3.scaleLinear().domain([0, d3.max(bins, d => d.total) || 1]).nice()
+              .range([H - m.b, m.t]);
+  const svg = box.append("svg").attr("width", W).attr("height", H);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
+     .call(d3.axisBottom(x).ticks(6, "$~s"));
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
+     .call(d3.axisLeft(y).ticks(5).tickFormat(count));
+
+  const series = d3.stack().keys(STACK)(bins);
+  svg.append("g").selectAll("g").data(series).join("g")
+    .attr("fill", d => TYPE_FILL[d.key])
+    .selectAll("rect").data(d => d.map(v => ({...v, key: d.key}))).join("rect")
+      .attr("class", "bar").attr("x", d => x(d.data.a) + 0.5)
+      .attr("width", d => Math.max(1, x(d.data.b) - x(d.data.a) - 1))
+      .attr("y", d => y(d[1])).attr("height", d => Math.max(0, y(d[0]) - y(d[1])))
+      .on("mousemove", (e, d) => show(e,
+        `${d.key}<br>${count(d[1] - d[0])} claims, ${money(d.data.a)} to ${money(d.data.b)}`))
+      .on("mouseleave", hide);
+
+  scenarios.forEach((s, i) => {
+    const cx = x(s.k);
+    if (s.k < lo || s.k > hi) return;
+    svg.append("line").attr("class", "capline")
+       .attr("x1", cx).attr("x2", cx).attr("y1", m.t - 4).attr("y2", H - m.b);
+    // Stagger the labels so neighbouring caps do not print over each other.
+    svg.append("text").attr("class", "caplabel")
+       .attr("x", cx + 3).attr("y", m.t - 20 + (i % 2) * 12)
+       .text(`${short(s.k)} · ${pct(s.share)} above`);
+  });
+}
+
+function lines(sel, rows) {
+  const parts = [
+    ["Walls replaced", d3.sum(rows, r => r.wall)],
+    ["New walls", d3.sum(rows, r => r.newWall)],
+    ["Spoil", d3.sum(rows, r => r.spoil)],
+    ["Fees", d3.sum(rows, r => r.fees)],
+    ["Liquefaction", d3.sum(rows, r => r.liq)],
+    ["Crossings", d3.sum(rows, r => r.crossing)],
+  ];
+  const box = d3.select(sel).html("");
+  const W = box.node().clientWidth || 360, H = 190, m = {t: 6, r: 8, b: 44, l: 52};
+  const svg = box.append("svg").attr("width", W).attr("height", H);
+  const x = d3.scaleBand().domain(parts.map(d => d[0])).range([m.l, W - m.r]).padding(0.18);
+  const y = d3.scaleLinear().domain([0, d3.max(parts, d => d[1]) || 1]).nice().range([H - m.b, m.t]);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
+     .call(d3.axisBottom(x)).selectAll("text")
+     .attr("transform", "rotate(-32)").style("text-anchor", "end");
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
+     .call(d3.axisLeft(y).ticks(4).tickFormat(short));
+  svg.append("g").selectAll("rect").data(parts).join("rect")
+    .attr("fill", HUE.accent).attr("x", d => x(d[0])).attr("width", x.bandwidth())
+    .attr("y", d => y(d[1])).attr("height", d => Math.max(0, y(0) - y(d[1])))
+    .on("mousemove", (e, d) => show(e, `${d[0]}<br>${money(d[1])}`)).on("mouseleave", hide);
+}
+
+function capBands(sel, rows) {
+  const edges = [100000, 250000, 500000, 750000, 1e6, 2e6];
+  const label = v => v >= 1e6 ? `${v / 1e6}m` : `${v / 1e3}k`;
+  const bs = edges.map((hi, i) => ({lo: i ? edges[i - 1] : 0, hi}))
+    .concat([{lo: edges[edges.length - 1], hi: Infinity}])
+    .map(b => {
+      const inside = rows.filter(r => r.cap > b.lo && r.cap <= b.hi);
+      const o = {key: b.hi === Infinity ? `over ${label(b.lo)}` : `${label(b.lo)}-${label(b.hi)}`,
+                 total: inside.length};
+      STACK.forEach(t => o[t] = inside.filter(r => r.type === t).length);
+      return o;
+    });
+  const box = d3.select(sel).html("");
+  const W = box.node().clientWidth || 360, H = 190, m = {t: 6, r: 8, b: 44, l: 44};
+  const svg = box.append("svg").attr("width", W).attr("height", H);
+  const x = d3.scaleBand().domain(bs.map(d => d.key)).range([m.l, W - m.r]).padding(0.04);
+  const y = d3.scaleLinear().domain([0, d3.max(bs, d => d.total) || 1]).nice().range([H - m.b, m.t]);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
+     .call(d3.axisBottom(x)).selectAll("text")
+     .attr("transform", "rotate(-32)").style("text-anchor", "end");
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
+     .call(d3.axisLeft(y).ticks(4).tickFormat(count));
+  svg.append("g").selectAll("g").data(d3.stack().keys(STACK)(bs)).join("g")
+    .attr("fill", d => TYPE_FILL[d.key])
+    .selectAll("rect").data(d => d.map(v => ({...v, key: d.key}))).join("rect")
+      .attr("class", "bar").attr("x", d => x(d.data.key)).attr("width", x.bandwidth())
+      .attr("y", d => y(d[1])).attr("height", d => Math.max(0, y(d[0]) - y(d[1])))
+      .attr("stroke", "#fff").attr("stroke-width", 1)
+      .on("mousemove", (e, d) => show(e, `${d.key}<br>${count(d[1] - d[0])} claims in ${d.data.key}`))
+      .on("mouseleave", hide);
+}
+
+// ---- summary panel --------------------------------------------------------
+function actSummary(rows) {
+  const paid = rows.filter(r => r.settlement > 0);
+  const claims = rows.filter(r => r.claimed);
+  const undamaged = rows.length - claims.length;
+  const total = d3.sum(rows, r => r.settlement);
+  const byBasis = BASES.map(b => [b, claims.filter(r => r.basis === b).length]);
+  const most = d3.max(byBasis, d => d[1]) || 1;
+  d3.select("#actSummary").attr("class", null).html(
+    `<div class="big">${money(total)}</div>
+     <div class="note" style="margin-top:0">total settlement, ${count(paid.length)} of
+       ${count(claims.length)} claims paid</div>
+     <table style="margin-top:8px">
+       <tr><td>Total repair cost</td><td class="n">${money(d3.sum(rows, r => r.repair))}</td></tr>
+       <tr><td>Average per claim paid</td><td class="n">${money(total / Math.max(1, paid.length))}</td></tr>
+       <tr><td>Average over every claim</td><td class="n">${money(total / Math.max(1, claims.length))}</td></tr>
+     </table>
+     <h2 style="margin-top:14px">How the claims settle</h2>
+     <table>${byBasis.map(([b, n]) => `
+       <tr><td>${b}<div class="basisbar" style="width:${100 * n / most}%"></div></td>
+           <td class="n">${count(n)}</td>
+           <td class="n">${pct(n / Math.max(1, claims.length))}</td></tr>`).join("")}
+     </table>
+     <div class="note">A claim is a property with damage. ${count(undamaged)} more insured
+       properties have none &mdash; hill land the landslides missed, or flat land in the
+       None liquefaction state, which still carries the Canterbury average cost but has
+       nothing to claim for &mdash; and are left out of every count.</div>`);
+}
+
+function capSummary(scenarios, mode, histOf) {
+  const what = histOf === "repair" ? "repair cost" : "Act settlement";
+  d3.select("#capSummary").html(
+    `<table>
+       <tr><th>Cap</th><th class="n">Claims above</th><th class="n">Total settlement</th>
+           <th class="n">vs the Act</th></tr>
+       ${scenarios.map(s => `
+       <tr><td>${money(s.k)}</td>
+           <td class="n">${count(s.above)} (${pct(s.share)})</td>
+           <td class="n">${short(s.total)}</td>
+           <td class="n ${s.delta > 0 ? "up" : "down"}">${s.delta > 0 ? "+" : ""}${short(s.delta)}</td></tr>`).join("")}
+     </table>
+     <div class="note">"Claims above" counts claims whose ${what} is over the cap.
+       ${mode === "replace"
+         ? "The cap <b>replaces</b> the Act's land cover cap: land is no longer valued and each claim is paid its repair cost up to the cap, less the excess."
+         : "The cap <b>limits</b> the Act's land cover cap, as PolicySettings.total_cap_nzd does in the loss module, so it can only lower a settlement."}
+     </div>`);
+}
+
+function claimDetail(r, mode) {
+  if (!r) return;
+  const lines = [
+    ["Claim", `<code>${r.claim_id ?? ""}</code>`],
+    ["Type", r.type], ["Dwellings", count(Math.max(1, nz(r.dwellings)))],
+    ["Damaged land", `${d3.format(",.1f")(nz(r.damaged_area_m2))} m²`],
+    ["Land rate (incl GST)", `${money(nz(r.land_rate_incl_gst))}/m²`],
+    ["Site ratings (access, earthworks, constructability)",
+     `${r.access ?? "-"}, ${r.earthworks ?? "-"}, ${r.constructability ?? "-"} &rarr; &times;${d3.format(".2f")(1 + nz(r.site_multiplier))}`],
+    ["<b>Land cover cap</b>", ""],
+    ["Value of the damaged land", money(r.landValue)],
+    ["Damaged walls' value", money(r.udv)],
+    ["Bridges and culverts", money(r.crossing)],
+    ["Cap", `<b>${money(r.cap)}</b>`],
+    ["<b>Repair cost</b>", ""],
+    ["Walls replaced", money(r.wall)], ["New wall built", money(r.newWall)],
+    ["Spoil removal", money(r.spoil)], ["Professional fees", money(r.fees)],
+    ["Liquefaction", money(r.liq)], ["Crossings", money(r.crossing)],
+    ["Repair cost", `<b>${money(r.repair)}</b>`],
+    ["<b>Settlement under the Act</b>", ""],
+    ["Lesser of repair and cap", money(r.payable)], ["Excess", money(r.excess)],
+    ["Settlement", `<b>${money(r.settlement)}</b>`], ["How it settled", r.basis],
+  ];
+  const caps = CAPS.map(k => [`Under a ${money(k)} cap`, money(settleUnderCap(r, k, mode))]);
+  d3.select("#claimDetail").attr("class", null).html(
+    `<table>${lines.concat([["<b>Under each land cap</b>", ""]], caps).map(([k, v]) =>
+      v === "" ? `<tr><td colspan="2" style="padding-top:8px">${k}</td></tr>`
+               : `<tr><td>${k}</td><td class="n">${v}</td></tr>`).join("")}</table>`);
+}
+
+// ---- map ----------------------------------------------------------------
+// Every basemap here is key-free. CARTO's tiles now want an API key, and a key
+// embedded in a file handed to a client is a problem of its own.
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const BASEMAPS = {
+  grey: {
+    url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+    attribution: "Esri, HERE, Garmin, &copy; OpenStreetMap contributors", max: 16,
+  },
+  aerial: {
+    url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+    attribution: "Esri, Maxar, Earthstar Geographics", max: 19,
+  },
+  topo: {
+    url: `${ESRI}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: "Esri, HERE, Garmin, &copy; OpenStreetMap contributors", max: 19,
+  },
+  osm: {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "&copy; OpenStreetMap contributors", max: 19,
+  },
+};
+let MAP = null, TILES = null, TILE_KEY = null, DOTS = null, MARKERS = null;
+
+// How a dot is coloured, and the legend that names the colours. Kept apart from
+// the drawing so the same rule serves the map and its key.
+function colouring(rows, mode) {
+  if (mode === "type") {
+    return [d => TYPE_FILL[d.type],
+            STACK.concat(TYPE.none).map(t => [t, TYPE_FILL[t]])];
+  }
+  if (mode === "basis") {
+    const c = d3.scaleOrdinal().domain(BASES).range([HUE.liq, HUE.wall, HUE.none]);
+    return [d => d.claimed ? c(d.basis) : HUE.none,
+            BASES.map(t => [t, c(t)])];
+  }
+  if (mode === "settlement" || mode === "cap" || mode === "repair") {
+    const key = mode;
+    const sorted = rows.map(r => r[key]).sort(d3.ascending);
+    const max = d3.quantile(sorted, 0.97) || 1;
+    const c = d3.scaleSequential(d3.interpolateBlues).domain([0, max]);
+    return [d => c(Math.min(d[key], max)),
+            [["$0", c(0)], [money(max / 2), c(max / 2)], [money(max) + "+", c(max)]]];
+  }
+  const vals = Array.from(new Set(rows.map(r => String(r[mode])))).sort();
+  const c = d3.scaleOrdinal().domain(vals)
+    .range([HUE.none, HUE.liq, HUE.wall, HUE.both]);
+  return [d => c(String(d[mode])), vals.map(v => [v, c(v)])];
+}
+
+function visible(r, which) {
+  if (which === "claims") return r.claimed;
+  if (which === "paid") return r.settlement > 0;
+  if (which === "capped") return r.basis === "Capped";
+  return true;
+}
+
+function drawMap(rows) {
+  const lon = d3.extent(rows, r => +r.lon), lat = d3.extent(rows, r => +r.lat);
+  if (!MAP) {
+    MAP = L.map("map", {preferCanvas: true, zoomSnap: 0.25});
+    MAP.fitBounds([[lat[0], lon[0]], [lat[1], lon[1]]], {padding: [18, 18]});
+  }
+
+  // Tiles are the one thing here that reaches the internet, so they are a
+  // choice rather than a given. "None" leaves a blank ground and the page
+  // still works with no network at all. They are swapped only when the choice
+  // changes, so restyling the dots does not refetch them.
+  const want = val("basemap");
+  if (want !== TILE_KEY) {
+    if (TILES) { MAP.removeLayer(TILES); TILES = null; }
+    if (BASEMAPS[want]) {
+      TILES = L.tileLayer(BASEMAPS[want].url, {
+        attribution: BASEMAPS[want].attribution, maxZoom: BASEMAPS[want].max,
+      }).addTo(MAP);
+    }
+    TILE_KEY = want;
+  }
+
+  const [fill, legend] = colouring(rows, val("colourBy"));
+  const which = val("showDots"), radius = num("dotSize") || 3.4;
+
+  // Markers are built once per file and restyled after that. Rebuilding them
+  // on every keystroke is what made the controls crawl at region scale, and
+  // `bindTooltip` was the worst of it -- one tooltip object per claim, a
+  // hundred thousand of them. One shared handler reads the row off the marker
+  // instead, and nothing is allocated on hover.
+  if (!MARKERS || MARKERS.length !== rows.length) {
+    if (DOTS) MAP.removeLayer(DOTS);
+    MARKERS = rows.map(r => L.circleMarker([+r.lat, +r.lon], {
+      radius, weight: 0.6, color: "#ffffff", opacity: 0.9, fillOpacity: 0.85,
+    }).on("mouseover", onDot).on("mouseout", hide).on("click", onClick));
+    DOTS = L.layerGroup(MARKERS).addTo(MAP);
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const on = visible(rows[i], which), picked = i === SELECTED;
+    MARKERS[i].claim = rows[i];
+    MARKERS[i].index = i;
+    MARKERS[i].setStyle({
+      fillColor: fill(rows[i]), radius: picked ? radius * 2 : radius,
+      opacity: on ? 0.9 : 0, fillOpacity: on ? 0.85 : 0,
+      color: picked ? "#1c1c1a" : "#ffffff", weight: picked ? 2 : 0.6,
+    });
+  }
+
+  d3.select("#mapLegend").html(legend.map(([label, colour]) =>
+    `<span><i style="background:${colour}"></i>${label}</span>`).join(""));
+}
+
+function onDot(e) {
+  const r = e.target.claim;
+  if (!visible(r, val("showDots"))) return;
+  show(e.originalEvent,
+    `<b>${r.type}</b><br>settled ${money(r.settlement)}<br>` +
+    `repair ${money(r.repair)} &middot; cap ${money(r.cap)}<br>${r.basis}`);
+}
+
+function onClick(e) {
+  if (!visible(e.target.claim, val("showDots"))) return;
+  SELECTED = e.target.index;
+  render({resettle: false});
+}
+
+function show(e, html) {
+  tip.html(html).style("opacity", 1)
+     .style("left", (e.clientX + 13) + "px").style("top", (e.clientY + 13) + "px");
+}
+const hide = () => tip.style("opacity", 0);
+
+// ---- render -------------------------------------------------------------
+function render({resettle = true} = {}) {
+  if (!RAW.length) return;
+  if (resettle || !ROWS.length) {
+    const s = settings();
+    ROWS = RAW.map(r => settle(r, s));
+  }
+  const rows = ROWS;
+  const mode = val("capMode"), histOf = val("histOf");
+  const value = histOf === "repair" ? r => r.repair : r => r.settlement;
+  const scenarios = capScenarios(rows, mode, value);
+
+  d3.select("#histTitle").text(histOf === "repair" ? "repair cost" : "settlement under the Act");
+  mainHistogram("#hMain", rows, value, scenarios);
+  d3.select("#legend").html(STACK.map(t =>
+    `<span><i style="background:${TYPE_FILL[t]}"></i>${t}</span>`).join("") +
+    `<span><i style="background:${HUE.cap}"></i>Land cap scenario</span>`);
+  lines("#hLines", rows);
+  capBands("#hCap", rows.filter(r => r.cap > 0));
+  actSummary(rows);
+  capSummary(scenarios, mode, histOf);
+  claimDetail(SELECTED == null ? null : rows[SELECTED], mode);
+  drawMap(rows);
+}
+
+// Typing "12500" in a box is five keystrokes. Without this the page settles the
+// whole portfolio five times and throws four of the answers away, which at
+// region scale is most of a second each.
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+const rerender = debounce(() => render(), 180);
+
+function load(text) {
+  RAW = d3.csvParse(text, d3.autoType);
+  MARKERS = null;
+  ROWS = [];
+  SELECTED = null;
+  document.getElementById("drop").textContent = `${RAW.length.toLocaleString()} claims loaded`;
+  render();
+}
+
+// The caps are edited as one list and applied together, rather than redrawn on
+// every keystroke, because a half-typed cap is a different scenario.
+function applyCaps() {
+  const parsed = val("capList").split(/[,\s]+/).map(Number).filter(v => v > 0);
+  CAPS = parsed.length ? Array.from(new Set(parsed)).sort(d3.ascending) : DEFAULT_CAPS.slice();
+  document.getElementById("capList").value = CAPS.join(", ");
+  render({resettle: false});
+}
+document.getElementById("capList").value = CAPS.join(", ");
+document.getElementById("editCaps").onclick = () =>
+  document.getElementById("capEditor").classList.toggle("open");
+document.getElementById("applyCaps").onclick = applyCaps;
+document.getElementById("capList").addEventListener("keydown", e => { if (e.key === "Enter") applyCaps(); });
+
+const drop = document.getElementById("drop"), file = document.getElementById("file");
+drop.onclick = () => file.click();
+file.onchange = e => e.target.files[0].text().then(load);
+["dragenter", "dragover"].forEach(n => drop.addEventListener(n, e => {
+  e.preventDefault(); drop.classList.add("over");
+}));
+["dragleave", "drop"].forEach(n => drop.addEventListener(n, e => {
+  e.preventDefault(); drop.classList.remove("over");
+}));
+drop.addEventListener("drop", e => e.dataTransfer.files[0].text().then(load));
+// A policy or sensitivity control changes the answer, so it re-settles --
+// debounced, because it is the expensive one. Everything else changes what is
+// shown rather than what is owed, so it repaints only.
+d3.selectAll("#config input").on("input", rerender);
+d3.selectAll("#colourBy, #basemap, #showDots, #dotSize, #histOf, #capMode")
+  .on("input", () => render({resettle: false}));
+window.addEventListener("resize", debounce(() => RAW.length && render({resettle: false}), 200));
+</script>
+</body>
+</html>
