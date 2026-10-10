@@ -309,7 +309,7 @@ def ground_map_frame():
             "modification": ["natural"],
             "geology_value": [susceptibility.GEOLOGY_COLLUVIUM_OR_ALLUVIUM],
             "prior_failure": ["none"],
-            "gw_depth_m": [4.0],
+            "gw_depth_class": ["well_drained"],
         },
         geometry=[square(0, 0, 200)],
         crs=constants.DEFAULT_CRS,

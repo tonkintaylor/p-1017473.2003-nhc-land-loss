@@ -47,7 +47,7 @@
     geology, prior failure and groundwater of the ground map piece under
     most of the element; an element off the ground map, or on a piece with
     no geology, takes `BETA_OFF_MAP_GROUND` (natural weathered rock, no prior
-    failure, 4 m to groundwater; 15% of the pilot's elements);
+    failure, the well drained groundwater class (the 4 m default); 15% of the pilot's elements);
   - a polygon whose representative point lies outside the extent's box
     (`get_area_of_interest(extent)`) is left out before the ids are minted:
     landslide step 4 grows its elements on a DEM read about 200 m wider than the

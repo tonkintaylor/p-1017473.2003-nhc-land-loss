@@ -1,0 +1,1 @@
+The end-to-end QGIS build (`qgis/gen_qgis_e2e_build.py`) draws the insured culverts and bridges, the culverts and bridges by what damaged them (shaking, landslide, both or neither), and every pif face by ground step 5's cut or fill class. Its slope layer is the 10 m slope, since ground step 1 no longer builds a 3 m one.

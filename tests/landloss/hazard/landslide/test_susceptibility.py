@@ -21,6 +21,7 @@ from landloss.hazard.landslide.susceptibility import (
     cut_angle_value,
     geology_value_from_material,
     groundwater_value,
+    groundwater_value_from_class,
     slope_angle_value,
     slope_height_value,
     susceptibility_rating,
@@ -235,6 +236,37 @@ def test_the_assumed_off_footprint_depth_is_well_drained():
     assumed = 4.0
 
     assert groundwater_value(np.array([assumed]))[0] == GROUNDWATER_WELL_DRAINED
+
+
+def test_groundwater_factor_from_the_class_scores_each_class():
+    classes = np.array(["saturated", "poorly_drained", "well_drained"], dtype=object)
+
+    np.testing.assert_allclose(
+        groundwater_value_from_class(classes),
+        [GROUNDWATER_SATURATED, GROUNDWATER_POORLY_DRAINED, GROUNDWATER_WELL_DRAINED],
+    )
+
+
+def test_groundwater_factor_from_the_class_agrees_with_the_depth_away_from_the_breaks():
+    for depth_m, name in [
+        (0.5, "saturated"),
+        (2.0, "poorly_drained"),
+        (4.0, "well_drained"),
+    ]:
+        assert (
+            groundwater_value_from_class(np.array([name], dtype=object))[0]
+            == groundwater_value(np.array([depth_m]))[0]
+        )
+
+
+def test_a_missing_groundwater_class_stays_unknown_and_an_unknown_one_is_refused():
+    classes = np.array([None, np.nan, "saturated"], dtype=object)
+    scored = groundwater_value_from_class(classes)
+
+    assert np.isnan(scored[:2]).all()
+    assert scored[2] == GROUNDWATER_SATURATED
+    with pytest.raises(ValueError, match="boggy"):
+        groundwater_value_from_class(np.array(["boggy"], dtype=object))
 
 
 def test_unknown_groundwater_depth_stays_unknown():

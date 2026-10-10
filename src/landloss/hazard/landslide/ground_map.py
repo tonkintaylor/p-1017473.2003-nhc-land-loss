@@ -13,9 +13,9 @@ layer whose boundaries are unioned into one planar partition, and each piece of
 that partition takes its attributes from the first source, in precedence order,
 whose polygon contains the piece's representative point. Where no source
 reaches, the defaults are ``unknown`` material, ``natural`` modification, no
-prior failure and an assumed groundwater depth. The precedence per attribute
-is section 9.3 of ``.agents/plans/urban-slope-build-contract.md``; the
-vocabulary is section 9.1 and the source mappings section 9.2.
+prior failure and the groundwater class of an assumed depth. The precedence
+per attribute is section 9.3 of ``.agents/plans/urban-slope-build-contract.md``;
+the vocabulary is section 9.1 and the source mappings section 9.2.
 
 Two of the attributes follow from ``material`` by lookup rather than from a
 source: the Kingsbury geology factor value [kingsbury_1995] through
@@ -87,11 +87,17 @@ MATERIALS = (
 # mark a rock cut, which stands unsupported.
 ROCK_MATERIALS = ("rock", "rock_uw_mw", "rock_hw_cw", "rock_crushed")
 MODIFICATIONS = ("cut", "fill", NATURAL, UNKNOWN)
+
+# The integer codes the thresholded residual is classed to, so a raster of it is
+# one byte a cell. Natural is 0, which is also the value polygonising leaves out.
+MODIFICATION_CODES = {NATURAL: 0, "cut": 1, "fill": 2}
 PRIOR_FAILURES = ("relict", "recent", NO_PRIOR_FAILURE)
-GW_DEPTH_CLASSES = ("saturated", "poorly_drained", "well_drained")
+# The groundwater classes are the ones the Kingsbury factor scores, in
+# susceptibility, so the two cannot drift apart.
+GW_DEPTH_CLASSES = tuple(susceptibility.GROUNDWATER_CLASS_VALUES)
 CONFIDENCES = ("high", "medium", "low")
 
-# The source name written where the groundwater depth comes from the NLM grid.
+# The source name written where the groundwater class comes from the NLM grid.
 NLM_GWD_SOURCE = "nlm_gwd"
 
 # The attributes a GroundSource may supply, and the columns each writes.
@@ -99,7 +105,7 @@ ATTRIBUTES = (
     "material",
     "modification",
     "prior_failure",
-    "gw_depth_m",
+    "gw_depth_class",
     "fill_thickness_m",
 )
 
@@ -360,7 +366,7 @@ class GroundSource:
             column, for example ``"slide_materials"``.
         frame: The polygons, carrying ``column``, in a projected system.
         column: The column of ``frame`` holding the attribute, already in the
-            vocabulary of ``attribute`` (or in metres for the two depths).
+            vocabulary of ``attribute`` (or in metres for the fill thickness).
         attribute: Which attribute the source supplies, one of
             :data:`ATTRIBUTES`.
         confidence: The confidence written beside the attribute, one of
@@ -508,14 +514,48 @@ def modification_from_wcc(kind: pd.Series) -> pd.Series:
     return _map_classes(kind, WCC_MODIFICATIONS, "earthworks kind(s)")
 
 
+def modification_codes_from_residual(
+    residual_m: npt.NDArray[np.floating], *, threshold_m: float
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.bool_]]:
+    """Class the cut-and-fill residual as cut, fill or natural ground, as codes.
+
+    The residual is the 1 m surface minus a coarser one, negative where the
+    ground has been cut below its surroundings and positive where it stands
+    above them (``landloss.common.utils.terrain.cut_fill_residual``). The
+    classes are the integer codes of :data:`MODIFICATION_CODES`, not strings,
+    so a large grid is held as one byte a cell.
+
+    Args:
+        residual_m: The residual, in metres.
+        threshold_m: The magnitude beyond which the residual marks a cut or a
+            fill; between the two the ground is natural.
+
+    Returns:
+        The code per cell and a mask that is true where the residual is NaN.
+        The code at a NaN cell is the natural one and means nothing; read the
+        mask.
+
+    Raises:
+        ValueError: If the threshold is not positive.
+    """
+    if threshold_m <= 0:
+        msg = f"threshold_m has to be positive, not {threshold_m}"
+        raise ValueError(msg)
+    residual_m = np.asarray(residual_m)
+    codes = np.full(residual_m.shape, MODIFICATION_CODES[NATURAL], dtype=np.uint8)
+    codes[residual_m < -threshold_m] = MODIFICATION_CODES["cut"]
+    codes[residual_m > threshold_m] = MODIFICATION_CODES["fill"]
+    return codes, np.isnan(residual_m)
+
+
 def modification_from_residual(
     residual_m: npt.NDArray[np.floating], *, threshold_m: float
 ) -> npt.NDArray[np.object_]:
     """Class the cut-and-fill residual as cut, fill or natural ground.
 
-    The residual is the 1 m surface minus a coarser one, negative where the
-    ground has been cut below its surroundings and positive where it stands
-    above them (``landloss.common.utils.terrain.cut_fill_residual``).
+    The names of the codes :func:`modification_codes_from_residual` gives, so
+    there is one classing. This builds an object array, so it is for a few
+    cells; a large grid stays as codes.
 
     Args:
         residual_m: The residual, in metres.
@@ -529,14 +569,14 @@ def modification_from_residual(
     Raises:
         ValueError: If the threshold is not positive.
     """
-    if threshold_m <= 0:
-        msg = f"threshold_m has to be positive, not {threshold_m}"
-        raise ValueError(msg)
-    residual_m = np.asarray(residual_m, dtype=float)
-    classed = np.full(residual_m.shape, NATURAL, dtype=object)
-    classed[residual_m < -threshold_m] = "cut"
-    classed[residual_m > threshold_m] = "fill"
-    classed[np.isnan(residual_m)] = UNKNOWN
+    codes, nodata = modification_codes_from_residual(
+        residual_m, threshold_m=threshold_m
+    )
+    names = np.empty(len(MODIFICATION_CODES), dtype=object)
+    for name, code in MODIFICATION_CODES.items():
+        names[code] = name
+    classed = names[codes]
+    classed[nodata] = UNKNOWN
     return classed
 
 
@@ -582,9 +622,12 @@ def gw_depth_class_from_depth(
 
     The breaks are this study's reading of Kingsbury's three drainage
     conditions [kingsbury_1995], held in
-    :mod:`landloss.hazard.landslide.susceptibility`: saturated at or above
-    ``GROUNDWATER_SATURATED_DEPTH_M``, poorly drained at or above
-    ``GROUNDWATER_POORLY_DRAINED_DEPTH_M``, well drained below.
+    :mod:`landloss.hazard.landslide.susceptibility`: saturated at a depth of
+    ``GROUNDWATER_SATURATED_DEPTH_M`` deep, poorly drained from there to
+    ``GROUNDWATER_POORLY_DRAINED_DEPTH_M``, well drained from there down. A
+    depth exactly on a break takes the deeper class, which is the convention of
+    :func:`~landloss.hazard.landslide.susceptibility.groundwater_value`, so a
+    class scores what the depth it came from would have scored.
 
     Args:
         depth_m: Depth to groundwater in metres below ground.
@@ -594,10 +637,10 @@ def gw_depth_class_from_depth(
     """
     depth_m = np.asarray(depth_m, dtype=float)
     classed = np.full(depth_m.shape, "well_drained", dtype=object)
-    classed[depth_m <= susceptibility.GROUNDWATER_POORLY_DRAINED_DEPTH_M] = (
+    classed[depth_m < susceptibility.GROUNDWATER_POORLY_DRAINED_DEPTH_M] = (
         "poorly_drained"
     )
-    classed[depth_m <= susceptibility.GROUNDWATER_SATURATED_DEPTH_M] = "saturated"
+    classed[depth_m < susceptibility.GROUNDWATER_SATURATED_DEPTH_M] = "saturated"
     classed[np.isnan(depth_m)] = None
     return classed
 
@@ -761,12 +804,34 @@ def _check_sources(sources: Sequence[GroundSource]) -> None:
             msg = f"Source {source.name!r} has no column {source.column!r}"
             raise ValueError(msg)
         _check_projected(source.frame, f"source {source.name!r}")
+        if source.attribute == "gw_depth_class":
+            unknown = set(source.frame[source.column].dropna().unique()) - set(
+                GW_DEPTH_CLASSES
+            )
+            if unknown:
+                msg = (
+                    f"Source {source.name!r} has groundwater class(es) "
+                    f"{', '.join(repr(c) for c in sorted(unknown))}; "
+                    f"known: {', '.join(GW_DEPTH_CLASSES)}"
+                )
+                raise ValueError(msg)
+
+
+# shapely's type ids for a Polygon and a MultiPolygon.
+POLYGONAL_TYPE_IDS = (3, 6)
 
 
 def _planar_partition(
     extent: shapely.Polygon, frames: Sequence[gpd.GeoDataFrame], crs: str
 ) -> gpd.GeoDataFrame:
-    """Cut the extent into the faces formed by every frame's polygon boundaries."""
+    """Cut the extent into the faces formed by every frame's polygon boundaries.
+
+    The boundaries are taken from each geometry's polygonal parts. A clip can
+    return a polygon inside a GeometryCollection, beside the stray lines and
+    points where it touched the clipping edge, and a collection has no boundary
+    of its own: read whole, its polygon would leave no edge in the map and the
+    pieces either side of it would merge.
+    """
     linework = [extent.boundary]
     for frame in frames:
         if frame.empty:
@@ -775,7 +840,12 @@ def _planar_partition(
         touching = geometries[geometries.intersects(extent)]
         if touching.empty:
             continue
-        linework.append(shapely.intersection(touching.boundary.union_all(), extent))
+        parts = shapely.get_parts(touching.to_numpy())
+        polygonal = parts[np.isin(shapely.get_type_id(parts), POLYGONAL_TYPE_IDS)]
+        if not len(polygonal):
+            continue
+        edges = shapely.union_all(shapely.boundary(polygonal))
+        linework.append(shapely.intersection(edges, extent))
     noded = shapely.union_all(linework)
     faces = shapely.get_parts(shapely.polygonize(np.array([noded])))
     pieces = gpd.GeoDataFrame(geometry=faces, crs=crs)
@@ -853,8 +923,8 @@ def build_ground_map(
     contains the face's representative point, so the order of ``sources`` is
     the precedence (contract section 9.3). Where no source reaches, the
     material is ``unknown``, the modification ``natural``, the prior failure
-    ``none``, the groundwater depth ``default_gw_depth_m`` with source
-    :data:`ASSUMED`, and the fill thickness NaN. A fill thickness is kept only
+    ``none``, the groundwater class of the depth ``default_gw_depth_m`` with
+    source :data:`ASSUMED`, and the fill thickness NaN. A fill thickness is kept only
     on pieces whose modification is ``fill``. Pieces whose only material source
     says water are dropped: open water is not ground.
 
@@ -864,7 +934,9 @@ def build_ground_map(
         flatland: The NLM flatland polygons; a piece whose representative
             point lies in one is ``is_flatland``.
         default_gw_depth_m: The depth to groundwater assumed off the modelled
-            footprint, in metres.
+            footprint, in metres. The map carries only its class, taken here
+            with :func:`gw_depth_class_from_depth`, the one place the default
+            is classed.
         crs: The projected system to work and return in.
 
     Returns:
@@ -872,19 +944,26 @@ def build_ground_map(
         ``ground_id`` and ``area_m2``, which the step mints and measures:
         ``material``, ``material_source``, ``material_confidence``,
         ``modification``, ``modification_source``, ``modification_confidence``,
-        ``is_flatland``, ``flatland_version``, ``gw_depth_m``,
-        ``gw_depth_class``, ``gw_source``, ``prior_failure``,
+        ``is_flatland``, ``flatland_version``, ``gw_depth_class``,
+        ``gw_source``, ``prior_failure``,
         ``prior_failure_source``, ``fill_thickness_m``, ``geology_value``,
         ``c_kpa``, ``phi_deg``, ``unit_weight_kn_m3``, ``strength_source``,
         ``geometry``.
 
     Raises:
         ValueError: If a source supplies an attribute or confidence outside the
-            vocabulary, lacks its column, or any frame is in a geographic
-            system.
+            vocabulary, lacks its column, carries a groundwater class outside
+            :data:`GW_DEPTH_CLASSES`, any frame is in a geographic system, or
+            ``default_gw_depth_m`` is not a depth.
     """
     _check_sources(sources)
     _check_projected(flatland, "flatland")
+    default_gw_depth_class = gw_depth_class_from_depth(
+        np.array([default_gw_depth_m], dtype=float)
+    )[0]
+    if default_gw_depth_class is None:
+        msg = f"default_gw_depth_m is {default_gw_depth_m}, which is not a depth"
+        raise ValueError(msg)
 
     pieces = _planar_partition(extent, [*(s.frame for s in sources), flatland], crs)
     points = pieces.representative_point()
@@ -898,14 +977,13 @@ def build_ground_map(
     prior_failure, prior_failure_source, _, _ = _fill_by_precedence(
         points, sources, "prior_failure", default=NO_PRIOR_FAILURE, crs=crs
     )
-    gw_depth, gw_source, _, _ = _fill_by_precedence(
-        points, sources, "gw_depth_m", default=default_gw_depth_m, crs=crs
+    gw_depth_class, gw_source, _, _ = _fill_by_precedence(
+        points, sources, "gw_depth_class", default=default_gw_depth_class, crs=crs
     )
     fill_thickness, _, _, _ = _fill_by_precedence(
         points, sources, "fill_thickness_m", default=np.nan, crs=crs
     )
 
-    gw_depth = gw_depth.astype(float)
     fill_thickness = fill_thickness.astype(float).where(modification == "fill")
 
     on_flatland = _lookup(points, flatland.assign(_flat=True), "_flat", crs).reindex(
@@ -924,8 +1002,7 @@ def build_ground_map(
             "modification_confidence": modification_confidence,
             "is_flatland": on_flatland.astype(bool),
             "flatland_version": constants.FLATLAND_NLM_VERSION,
-            "gw_depth_m": gw_depth,
-            "gw_depth_class": gw_depth_class_from_depth(gw_depth.to_numpy()),
+            "gw_depth_class": gw_depth_class,
             "gw_source": gw_source,
             "prior_failure": prior_failure,
             "prior_failure_source": prior_failure_source,

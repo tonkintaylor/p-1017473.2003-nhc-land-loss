@@ -122,6 +122,15 @@ GROUNDWATER_DEPTH_VALUES = (
     GROUNDWATER_WELL_DRAINED,
 )
 
+# The factor each named drainage class scores, for a caller holding the class
+# rather than the depth (the ground map carries only the class). The names are
+# the ground map's ``gw_depth_class`` vocabulary, saturated first.
+GROUNDWATER_CLASS_VALUES = {
+    "saturated": GROUNDWATER_SATURATED,
+    "poorly_drained": GROUNDWATER_POORLY_DRAINED,
+    "well_drained": GROUNDWATER_WELL_DRAINED,
+}
+
 # Kingsbury's geology classes against the National Liquefaction Model's ``l3_yp``
 # material class, which is the finest of the model's three nested
 # classifications that this study has a use for. The coarser ``l2_geomorphology``
@@ -304,6 +313,39 @@ def groundwater_value(
         depth is NaN.
     """
     return _classify(depth_m, GROUNDWATER_DEPTH_BREAKS_M, GROUNDWATER_DEPTH_VALUES)
+
+
+def groundwater_value_from_class(
+    classes: npt.NDArray[np.object_],
+) -> npt.NDArray[np.floating]:
+    """Score the groundwater factor, F_groundwater, from the drainage class.
+
+    The class-holding twin of :func:`groundwater_value`: the classes are the
+    ones the depth breaks of :data:`GROUNDWATER_DEPTH_BREAKS_M` make, so a
+    class scores what a depth in it scores. A depth exactly on a break takes
+    the deeper class in both, so the two routes score every depth alike.
+
+    Args:
+        classes: ``saturated``, ``poorly_drained`` or ``well_drained`` per
+            value. A caller filling a gap does so before calling, as for
+            :func:`groundwater_value`.
+
+    Returns:
+        The factor value, 0 (well drained) to 10 (saturated), NaN where the
+        class is missing.
+
+    Raises:
+        ValueError: If a class is not one of the three.
+    """
+    classes = pd.Series(np.asarray(classes, dtype=object))
+    unknown = set(classes.dropna().unique()) - set(GROUNDWATER_CLASS_VALUES)
+    if unknown:
+        msg = (
+            f"{', '.join(repr(c) for c in sorted(unknown))} are not groundwater "
+            f"classes; known: {', '.join(repr(c) for c in GROUNDWATER_CLASS_VALUES)}"
+        )
+        raise ValueError(msg)
+    return classes.map(GROUNDWATER_CLASS_VALUES).to_numpy(dtype=float)
 
 
 def geology_value_from_material(materials: pd.Series) -> pd.Series:

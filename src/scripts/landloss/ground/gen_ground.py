@@ -70,7 +70,12 @@ def main(*, extent):
                     extent=extent,
                     use_cached_layers=ground_map_config.USE_CACHED_LAYERS,
                     default_gw_depth_m=ground_map_config.DEFAULT_GROUNDWATER_DEPTH_M,
+                    groundwater_simplify_m=ground_map_config.GROUNDWATER_SIMPLIFY_M,
                     residual_modification_threshold_m=ground_map_config.RESIDUAL_MODIFICATION_THRESHOLD_M,
+                    residual_class_cell_m=ground_map_config.RESIDUAL_CLASS_CELL_M,
+                    residual_min_patch_m2=ground_map_config.RESIDUAL_MIN_PATCH_M2,
+                    residual_simplify_m=ground_map_config.RESIDUAL_SIMPLIFY_M,
+                    thickness_strip_cells=ground_map_config.THICKNESS_STRIP_CELLS,
                 ),
             ),
             (

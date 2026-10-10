@@ -48,7 +48,7 @@ def test_the_kingsbury_factors_follow_the_polygon_attributes():
             "face_height_10m": [12.0, 12.0, 12.0],
             "geology_value": [4.0, 10.0, np.nan],
             "prior_failure": ["none", "relict", "recent"],
-            "gw_depth_m": [4.0, 2.0, 0.5],
+            "gw_depth_class": ["well_drained", "poorly_drained", "saturated"],
         }
     )
 
@@ -72,10 +72,25 @@ def test_an_unknown_prior_failure_is_refused():
             "face_height_10m": [12.0],
             "geology_value": [4.0],
             "prior_failure": ["ancient"],
-            "gw_depth_m": [4.0],
+            "gw_depth_class": ["well_drained"],
         }
     )
     with pytest.raises(ValueError, match="ancient"):
+        geometry.kingsbury_factors(polygons)
+
+
+def test_an_unknown_groundwater_class_is_refused():
+    polygons = pd.DataFrame(
+        {
+            "slope_degrees": [50.0],
+            "modification": ["cut"],
+            "face_height_10m": [12.0],
+            "geology_value": [4.0],
+            "prior_failure": ["none"],
+            "gw_depth_class": ["boggy"],
+        }
+    )
+    with pytest.raises(ValueError, match="boggy"):
         geometry.kingsbury_factors(polygons)
 
 

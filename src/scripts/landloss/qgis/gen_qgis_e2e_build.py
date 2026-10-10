@@ -18,6 +18,10 @@ derived for QGIS to draw them:
   of the model file's five, which is points);
 - the vul land table split to the properties with evacuated or inundated
   ground, so its bands spread over the damaged ones;
+- the culverts and bridges of the two vul contract tables in one layer, by
+  structure and by what damaged them (shaking, landslide, both or neither);
+- every pif face of ground step 4's siz table drawn on its spine, with ground
+  step 5's cut or fill class (the siz table carries two geometry columns);
 - 5 m contours of the 3 m DEM.
 
 Every other layer points at the file its step wrote, through that step's own
@@ -38,6 +42,9 @@ import pandas as pd
 from landloss.hazard.landslide.urban import realisation as urban
 from landloss.hazard.landslide.urban.fragility import lognormal_failure_probability
 from landloss.io.area_of_interest import extent_suffix, get_area_of_interest
+from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population.gen_crossing_population import (
+    crossing_population_path,
+)
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     driveway_path,
     insured_land_path,
@@ -55,6 +62,12 @@ from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
 )
 from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
+)
+from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import (
+    siz_table_path,
+)
+from scripts.landloss.ground.steps.s5_pif_cut_fill.gen_pif_cut_fill import (
+    pif_cut_fill_path,
 )
 from scripts.landloss.hazard.landslide.steps.s2_hancox_1997.gen_hancox_1997_coverage import (
     coverage_path as hancox_coverage_path,
@@ -143,6 +156,34 @@ WALL_TYPE_COLOUR = {
     "timber_pole_post_1992": ["#2e7d32", "Timber pole, July 1992 on"],
     "garden_timber": ["#f9a825", "Garden timber"],
     "reinforced_concrete_post_1992": ["#6a1b9a", "Reinforced concrete, July 1992 on"],
+}
+GW_DEPTH_CLASS_COLOUR = {
+    "saturated": ["#08519c", "Saturated (1 m or less)"],
+    "poorly_drained": ["#6baed6", "Poorly drained (1 to 3 m)"],
+    "well_drained": ["#eff3ff", "Well drained (deeper than 3 m)"],
+}
+# Ground step 5's classes, in the order of its rule (s5_pif_cut_fill_method.md).
+CUT_FILL_CLASS_COLOUR = {
+    "cut": ["#d7301f", "Cut"],
+    "fill": ["#2b8cbe", "Fill"],
+    "cut_and_fill": ["#8856a7", "Cut and fill"],
+    "uncertain": ["#fdae61", "Uncertain (excess drop within two scales)"],
+    "natural": ["#1a9850", "Natural (excess drop up to 1 m)"],
+    "unknown": ["#969696", "Unknown (too few cells to fit a surface)"],
+}
+CROSSING_COLOUR = {
+    "bridge_shaking": ["#b71c1c", "Bridge, damaged by shaking"],
+    "bridge_landslide": ["#e65100", "Bridge, evacuated or inundated"],
+    "bridge_shaking_and_landslide": ["#4a148c", "Bridge, both"],
+    "bridge_none": ["#1b5e20", "Bridge, not damaged"],
+    "culvert_shaking": ["#ef5350", "Culvert, damaged by shaking"],
+    "culvert_landslide": ["#ffa726", "Culvert, evacuated or inundated"],
+    "culvert_shaking_and_landslide": ["#ab47bc", "Culvert, both"],
+    "culvert_none": ["#66bb6a", "Culvert, not damaged"],
+}
+STRUCTURE_COLOUR = {
+    "bridge": ["#37474f", "Bridge"],
+    "culvert": ["#00838f", "Culvert"],
 }
 LD_STATE_CLASSES = {
     "1": ["#3AB04A", "1 None observed"],
@@ -239,6 +280,59 @@ def gen_trigger_probability(model, pgv_file):
     )
 
 
+def gen_crossing_damage(bridges, culverts):
+    """The culverts and bridges of the two vul tables, with what damaged each.
+
+    A bridge's shaking flag is ``is_damaged_by_shaking`` and a culvert's is
+    ``is_damaged`` (its shaking damage state is replace); landslide damage is
+    either being evacuated or inundated.
+    """
+    frame = pd.concat(
+        [
+            bridges.rename(
+                columns={"bridge_id": "crossing_id", "is_damaged_by_shaking": "shaking"}
+            ).assign(structure="bridge"),
+            culverts.rename(
+                columns={"culvert_id": "crossing_id", "is_damaged": "shaking"}
+            ).assign(structure="culvert"),
+        ],
+        ignore_index=True,
+    )
+    shaking = frame["shaking"].astype(bool)
+    landslide = frame["is_evacuated"].astype(bool) | frame["is_inundated"].astype(bool)
+    cause = pd.Series("none", index=frame.index)
+    cause[shaking & ~landslide] = "shaking"
+    cause[~shaking & landslide] = "landslide"
+    cause[shaking & landslide] = "shaking_and_landslide"
+    columns = ["crossing_id", "claim_id", "structure", "shaking"]
+    return gpd.GeoDataFrame(
+        frame[[*columns, "is_evacuated", "is_inundated"]].assign(
+            outcome=frame["structure"] + "_" + cause
+        ),
+        geometry=frame.geometry.values,
+        crs=bridges.crs,
+    )
+
+
+def gen_face_classes(sizs, cut_fill):
+    """Every pif face on its spine, with ground step 5's cut or fill class.
+
+    QGIS would draw the siz table's first geometry column, the pip cells as
+    points, so the faces are written again with the spine as their only one.
+    A pif with no spine is left out and counted.
+    """
+    faces = sizs[["is_siz", "n_pips", "ground_modification"]].join(
+        cut_fill[["face_drop_m", "excess_drop_m", "position", "cut_fill_class"]]
+    )
+    faces = gpd.GeoDataFrame(
+        faces, geometry=gpd.GeoSeries(sizs["spine"]).values, crs=sizs.crs
+    )
+    keep = faces.geometry.notna() & ~faces.geometry.is_empty
+    if not keep.all():
+        print(f"{(~keep).sum():,} pif faces have no spine and are left out")
+    return faces[keep].reset_index()
+
+
 def cost_layers(claims, suffix, layout):
     """One layer per cost, each holding only the claims with that cost."""
     layers = []
@@ -262,9 +356,26 @@ def cost_layers(claims, suffix, layout):
     return layers
 
 
-def vul_layers(land_file, rw_file, suffix, layout):
-    """The vul contract tables: walls replaced, and the damage per property."""
+def vul_layers(land_file, rw_file, crossing_files, suffix, layout):
+    """The vul contract tables: walls replaced, crossings, and damage per property."""
     layers = []
+    if all(present(file) for file in crossing_files):
+        crossings = gen_crossing_damage(
+            *(gpd.read_parquet(file) for file in crossing_files)
+        )
+        file = layout.write(crossings, f"vul-crossing-damage{suffix}.geoparquet")
+        damaged = (~crossings["outcome"].str.endswith("_none")).sum()
+        layers.append(
+            {
+                "path": str(file),
+                "name": f"Vul · culverts and bridges, {damaged:,} of {len(crossings):,} damaged",
+                "geometry": "line",
+                "field": "outcome",
+                "categories": CROSSING_COLOUR,
+                "width": 1.6,
+                "checked": False,
+            }
+        )
     if present(rw_file):
         layers.append(
             {
@@ -431,12 +542,32 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix, layout):
     return layers
 
 
-def ground_layers(extent, layout):
-    """The ground model: material and groundwater depth."""
+def ground_layers(extent, suffix, layout):
+    """The pif faces by cut or fill, and the ground model's material and groundwater."""
+    layers = []
+    sizs_file = layout.find(siz_table_path(extent=extent))
+    cut_fill_file = layout.find(pif_cut_fill_path(extent=extent))
+    if present(sizs_file) and present(cut_fill_file):
+        faces = gen_face_classes(
+            gpd.read_parquet(sizs_file), pd.read_parquet(cut_fill_file)
+        )
+        file = layout.write(faces, f"pif-face-cut-fill{suffix}.geoparquet")
+        layers.append(
+            {
+                "path": str(file),
+                "name": f"Ground · pif faces by cut or fill class, {len(faces):,} faces",
+                "geometry": "line",
+                "field": "cut_fill_class",
+                "categories": CUT_FILL_CLASS_COLOUR,
+                "width": 0.8,
+                "checked": False,
+            }
+        )
     ground = layout.find(ground_map_path(extent=extent))
     if not present(ground):
-        return []
+        return layers
     return [
+        *layers,
         {
             "path": str(ground),
             "name": "Ground model · material",
@@ -447,19 +578,17 @@ def ground_layers(extent, layout):
         },
         {
             "path": str(ground),
-            "name": "Ground model · groundwater depth (m)",
-            "field": "gw_depth_m",
-            "cmap": "Blues_r",
-            "bins": 6,
-            "bin_mode": "quantile",
+            "name": "Ground model · groundwater class",
+            "field": "gw_depth_class",
+            "categories": GW_DEPTH_CLASS_COLOUR,
             "outline": "#00000000",
             "checked": False,
         },
     ]
 
 
-def exposure_layers(*, extent, world_id, layout):
-    """The walls, the insured land and the values on it."""
+def exposure_layers(*, extent, world_id, realisation_id, layout):
+    """The walls, the crossings, the insured land and the values on it."""
     specs = [
         (
             layout.find(wall_population_path(world_id, extent=extent)),
@@ -481,6 +610,16 @@ def exposure_layers(*, extent, world_id, layout):
                 "bins": 6,
                 "bin_mode": "quantile",
                 "width": 0.8,
+            },
+        ),
+        (
+            layout.find(crossing_population_path(realisation_id, extent=extent)),
+            {
+                "name": "Exposure · insured culverts and bridges",
+                "geometry": "line",
+                "field": "structure",
+                "categories": STRUCTURE_COLOUR,
+                "width": 1.2,
             },
         ),
         (
@@ -555,13 +694,14 @@ def context_layers(*, extent, suffix, contour_step_m, contour_index_m, layout):
                 "checked": False,
             },
         ]
-    slope = layout.find(slope_path(3, extent=extent))
+    # Ground step 1 builds no slope finer than 10 m (SLOPE_RESOLUTIONS_M).
+    slope = layout.find(slope_path(10, extent=extent))
     if present(slope):
         layers.insert(
             1,
             {
                 "path": str(slope),
-                "name": "Context · slope 3 m (degrees)",
+                "name": "Context · slope 10 m (degrees)",
                 "style": "slope",
                 "checked": False,
             },
@@ -591,14 +731,20 @@ def main(
     layers += vul_layers(
         layout.find(world_loss_input_path("land", w, r, extent=extent)),
         layout.find(world_loss_input_path("rw", w, r, extent=extent)),
+        [
+            layout.find(world_loss_input_path(table, w, r, extent=extent))
+            for table in ("bridges", "culverts")
+        ],
         suffix,
         layout,
     )
     layers += hazard_layers(
         extent=extent, world_id=w, realisation_id=r, suffix=suffix, layout=layout
     )
-    layers += ground_layers(extent, layout)
-    layers += exposure_layers(extent=extent, world_id=w, layout=layout)
+    layers += ground_layers(extent, suffix, layout)
+    layers += exposure_layers(
+        extent=extent, world_id=w, realisation_id=r, layout=layout
+    )
     layers += context_layers(
         extent=extent,
         suffix=suffix,

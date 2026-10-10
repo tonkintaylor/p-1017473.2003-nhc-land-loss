@@ -487,7 +487,7 @@ source = "face_polygons (wall_position)"
 id = "LS-A55"
 step = "fragility"
 title = "Ground off the map is natural weathered rock"
-text = "An element off the ground map (about 15%) takes natural weathered rock, no prior failure and 4 m to groundwater for its Kingsbury rating."
+text = "An element off the ground map (about 15%) takes natural weathered rock, no prior failure and the well drained groundwater class (the 4 m default) for its Kingsbury rating."
 status = "beta"
 source = "face_polygons (BETA_OFF_MAP_GROUND)"
 

@@ -136,18 +136,19 @@ def kingsbury_factors(polygons: pd.DataFrame) -> dict[str, npt.NDArray[np.floati
     ``cut``, ``SIDLING_FILL_VALUE`` where ``fill``, else 0; height
     ``slope_height_value(face_height_10m, slope_degrees)``; geology the
     ground map's ``geology_value``; landslides from ``prior_failure``;
-    groundwater ``groundwater_value(gw_depth_m)``.
+    groundwater ``groundwater_value_from_class(gw_depth_class)``.
 
     Args:
         polygons: Rows carrying ``slope_degrees``, ``modification``,
             ``face_height_10m``, ``geology_value``, ``prior_failure`` and
-            ``gw_depth_m``.
+            ``gw_depth_class``.
 
     Returns:
         The six factor arrays, keyed by the rating function's argument names.
 
     Raises:
-        ValueError: If a ``prior_failure`` value is not in the vocabulary.
+        ValueError: If a ``prior_failure`` value is not in the vocabulary, or a
+            ``gw_depth_class`` is not one of the three groundwater classes.
     """
     slope = polygons[SLOPE_COLUMN].to_numpy(dtype=float)
     modification = polygons["modification"].to_numpy()
@@ -173,8 +174,8 @@ def kingsbury_factors(polygons: pd.DataFrame) -> dict[str, npt.NDArray[np.floati
         ),
         "geology": polygons["geology_value"].to_numpy(dtype=float),
         "landslides": prior.map(PRIOR_FAILURE_LANDSLIDE_VALUES).to_numpy(dtype=float),
-        "groundwater": susceptibility.groundwater_value(
-            polygons["gw_depth_m"].to_numpy(dtype=float)
+        "groundwater": susceptibility.groundwater_value_from_class(
+            polygons["gw_depth_class"].to_numpy(dtype=object)
         ),
     }
 

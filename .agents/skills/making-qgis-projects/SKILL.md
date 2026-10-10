@@ -325,11 +325,11 @@ The legend, top down. Keep this order and these groups when extending it:
 | Group | Layers |
 |---|---|
 | Cost | total settlement (on), total repair, landslide (land repair + spoil removal), retaining wall repair, liquefaction land repair. Per claim on its insured land, only claims with that cost, fixed NZD bands, claim count and total in the name |
-| Vul | walls damaged by shaking (true/false), evacuated and inundated insured area (non-zero properties, 8 quantile bands), liquefaction land damage state per property |
+| Vul | culverts and bridges by what damaged them (shaking, landslide, both, neither), walls damaged by shaking (true/false), evacuated and inundated insured area (non-zero properties, 8 quantile bands), liquefaction land damage state per property |
 | Hazard | landslide realisation by land class (on), urban potential evacuated ground by probability of triggering, urban fragility θ, Hancox areal coverage on the house probability bands, liquefaction P(state 2) and P(state 3) as 100 m cells, drawn liquefaction state, lateral spread zones, PGV, PGA, site class |
-| Ground model | material, groundwater depth |
-| Exposure | insured walls by type, wall candidates by `p_wall`, insured land by land rate, address land value, driveways |
-| Context | contours 5 m with 25 m index (on), slope 3 m, DEM 3 m, Esri satellite (on) |
+| Ground model | pif faces on their spines by ground step 5 cut or fill class, material, groundwater class |
+| Exposure | insured walls by type, wall candidates by `p_wall`, insured culverts and bridges, insured land by land rate, address land value, driveways |
+| Context | contours 5 m with 25 m index (on), slope 10 m, DEM 3 m, Esri satellite (on) |
 
 A few of these need explaining to the person reading the map:
 

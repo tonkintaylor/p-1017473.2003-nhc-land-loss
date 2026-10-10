@@ -282,7 +282,7 @@ tables = []
 checked = "2026-10-07"
 narrative = """
 One planar partition of the extent. Each piece takes its material,
-modification, prior failure, groundwater depth and strength set from the first
+modification, prior failure, groundwater class and strength set from the first
 source in a precedence order (SLIDE, then 1:50k geology, NLM, WCC earthworks)
 whose polygon contains it (LS-A58).
 

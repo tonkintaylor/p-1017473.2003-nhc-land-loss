@@ -223,7 +223,7 @@ GROUND_COLUMNS = [
     "modification",
     "is_flatland",
     "prior_failure",
-    "gw_depth_m",
+    "gw_depth_class",
 ]
 UNIT_COLUMNS = [
     "unit_id",

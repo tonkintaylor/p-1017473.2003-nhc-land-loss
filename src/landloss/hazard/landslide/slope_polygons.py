@@ -2027,7 +2027,7 @@ def build_slope_polygons(
             depth; missing elements take the slip plane alone.
         element_ground: Per element (indexed by label), the ground the
             Kingsbury zone is scored on: ``modification``, ``geology_value``,
-            ``prior_failure`` and ``gw_depth_m``
+            ``prior_failure`` and ``gw_depth_class``
             (:func:`landloss.hazard.landslide.urban.face_polygons.ground_of_elements`).
             None scores no zone, and every polygon takes
             :data:`BETA_SEISMIC_RUNOUT_UNRATED_M`.
