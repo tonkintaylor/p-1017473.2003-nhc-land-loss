@@ -983,6 +983,102 @@
       "Phase": "4",
       "Source": "Wgtn land model sense check 2026-10-05",
       "Status": "Open"
+    },
+    {
+      "ID": "T-144",
+      "Task": "Send Bridget Attwood the loss viewer and results for all four territorial authorities (or three if one is not finished) by Monday 2026-10-12, emailing her that morning on how it is tracking.",
+      "Owner": "Maxim Millen, Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-145",
+      "Task": "Sense-check the model outputs before they are sent to Bridget Attwood.",
+      "Owner": "Virginie Lacrosse, John Leeves",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-146",
+      "Task": "Review the loss viewer on Monday 2026-10-12 and send any changes NHC needs that day, as Bridget Attwood is on leave on Tuesday.",
+      "Owner": "Bridget Attwood",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-147",
+      "Task": "Issue the final model and the draft five-page report, without appendices, on Wednesday 2026-10-14, then finalise the report over the following ten days or so.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-148",
+      "Task": "Revise the process overview diagram for the report so it shows the inputs apply to both landslides and liquefaction, with a short appendix explaining the technical basis of each step.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-149",
+      "Task": "Add a loss viewer map option showing the claims limited by the land area cap (the minimum-sized site), following the cap set on the page.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-150",
+      "Task": "Email the team an explanation of the minimum-sized site rule, so it can be implemented correctly.",
+      "Owner": "Bridget Attwood",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-151",
+      "Task": "Break the results down by capital value band so Bridget Attwood can speak to equity (who is most affected by the caps), agreeing the approach internally first.",
+      "Owner": "Virginie Lacrosse, Maxim Millen",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-152",
+      "Task": "Send John Leeves the contact details of Andrew Parkin at QV.",
+      "Owner": "Mike Tyson",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-153",
+      "Task": "Ask Andrew Parkin at QV for a rule of thumb splitting a section's land value between the land under the dwelling, the land within about 8 m of it, and the rest.",
+      "Owner": "John Leeves",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-154",
+      "Task": "Add the further LINZ waterways, such as the Porirua Stream, to the lateral spreading free faces in the next build, before Wednesday 2026-10-14.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-155",
+      "Task": "Agree which model changes to make after Wednesday 2026-10-14 and before the board, against the remaining budget.",
+      "Owner": "Maxim Millen, John Leeves, Virginie Lacrosse",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -1495,6 +1591,27 @@
       "Limitation": "The fitted inundated rate is near zero ($1.28 per m2), so a liquefaction claim's cost is mostly the fixed per-claim cost and the ground lost matters little. The no-SVA multiplier of 2.9 raises it only to about $3.70 per m2, far below a contractor rate for removing ejecta, so the toggle understates what clearing without volunteers would cost (L-40).",
       "Affects": "vul/liquefaction/land, loss",
       "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-76",
+      "Limitation": "Culverts and bridges are probably undercounted, particularly in Lower Hutt, so their losses, which liquefaction would add to, are likely understated.",
+      "Affects": "exposure/culverts_bridges, loss",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-77",
+      "Limitation": "Losses are given as a single central estimate, with no low or high scenarios for landslide rates or retaining wall numbers. Agreed to keep it simple, since the study tests the policy rather than where landslides will occur.",
+      "Affects": "loss, report",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Accepted"
+    },
+    {
+      "ID": "L-78",
+      "Limitation": "NHC has no rule for valuing part of a section for a landslide claim: adjusted rating values are only used for uniform land with flooding or inundation, and land claims are settled on repair cost, so the model's land rate rests on T+T's own rule.",
+      "Affects": "exposure/land value, loss",
+      "Source": "Wgtn Land Model 2026-10-09",
       "Status": "Open"
     }
   ],
