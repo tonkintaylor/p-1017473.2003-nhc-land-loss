@@ -23,8 +23,9 @@ REBUILD = False
 
 # The urban model runs within this many metres of a LINZ building outline (the
 # lead, 2026-10-01, building-urban-slope-failure-and-retaining-wall-models.md;
-# restored 2026-10-08): a pif most of whose pips are further than this from
-# every building is dropped, and a tile with no cell within reach is skipped.
+# restored 2026-10-08): only the pips within this of a building are joined into
+# pifs (the lead, 2026-10-09), a pif most of whose pips are on a building is
+# dropped, and a tile with no cell within reach is skipped.
 BUILDING_REACH_M = 100.0
 
 # A 1 m DEM holding more cells than this is searched tile by tile (tiled.py
@@ -42,6 +43,19 @@ TILE_CORE_M = 3_000.0
 # piece (at most 50 m) with fall lines of at most 30 m, so the margin can come
 # down once the tiles own pieces rather than parents (the plan, phase 2).
 TILE_MARGIN_M = 750.0
+
+# A tile is searched only on the bounds of its building outlines grown by
+# BUILDING_REACH_M and this many metres more, not on its whole window (the
+# lead, 2026-10-09): the pifs' fall lines, the elements grown from them and
+# their catchments read past the pips. None searches the whole tile.
+TILE_CROP_PAD_M = 100.0
+
+# How many tiles are found at once, each in its own process. Each tile is
+# written to disk when done and dropped from memory, and a stopped run resumes
+# from the tiles not yet done. A 3 km tile with its margin is 4.5 by 4.5 km at
+# 1 m; its found elements alone pickle to about 0.9 GB, so allow several GB per
+# worker. Set 1 to run the tiles in order in this process.
+TILE_WORKERS = 4
 
 # No saw-tooth walls (the lead, 2026-10-06): each wall unit's line, the line
 # exposure rw step 6 draws and the figures show, keeps at most WALL_MAX_BENDS

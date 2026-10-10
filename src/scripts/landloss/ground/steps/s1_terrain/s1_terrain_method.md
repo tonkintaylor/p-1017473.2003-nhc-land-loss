@@ -2,8 +2,13 @@
 
 ## DEM, slope and aspect (`gen_multiscale_slope.py`)
 
-- The step builds a DEM, a slope raster and an aspect raster at each cell size
-  in `RESOLUTIONS_M` in `config.py` — 1, 3, 10, 30, 50 and 100 m — and is run
+- The step builds a DEM at each cell size in `RESOLUTIONS_M` in `config.py` —
+  1, 3, 10, 30, 50 and 100 m — and a slope raster and an aspect raster at each
+  in `SLOPE_RESOLUTIONS_M` — 10, 30, 50 and 100 m. The 1 m and 3 m slope and
+  aspect are not built (the lead, 2026-10-09): nothing in the pipeline reads
+  them, and over Upper Hutt the two at 1 m alone were 8.8 GB.
+  `fig_multiscale_slope.py` draws every size in `RESOLUTIONS_M` and stops with
+  a message naming `SLOPE_RESOLUTIONS_M` if one is missing. The step is run
   by `gen_multiscale_slope.py`, which `gen_ground.py` runs first ("s1, multiscale
   slope and aspect"). The script takes no command line arguments;
   `config.py` is read in its `if __name__ == "__main__":` block and passed into

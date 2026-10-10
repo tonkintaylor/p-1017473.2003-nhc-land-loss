@@ -23,7 +23,7 @@ fit and are to be refitted and frozen before the full runs (Phase 3).
 - [x] Refit against the claimant-only Canterbury means, all six states weighted
       by claim count, with the drop-out on (**T-65**, 2026-10-08).
 - [ ] Set the no-SVA multiplier on feedback (**Q-18**). It is 2.9 from public
-      figures for now, which barely moves a near-zero inundated rate (**L-69**).
+      figures for now, which barely moves a near-zero inundated rate (**L-75**).
 - [ ] Decide whether None should carry the fixed cost when it claims. It is now
       fitted and anchors the fixed cost, priced at $1,094 on average against a
       Canterbury mean of $922.
@@ -50,6 +50,6 @@ From the review of 2026-10-08; the register carries the detail.
 ## Potential future improvements
 
 - Price inundated land in the no-SVA case from a contractor rate for removing
-  ejecta rather than a multiplier on the fitted rate (**L-69**, **I-25**).
+  ejecta rather than a multiplier on the fitted rate (**L-75**, **I-25**).
 - Fit against Canterbury section sizes rather than Wellington's, if the
   observed damage database can supply mean areas per state.

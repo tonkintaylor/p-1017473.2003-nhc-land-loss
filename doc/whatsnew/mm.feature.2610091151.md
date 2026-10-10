@@ -1,0 +1,1 @@
+Ground step 5 (pif cut and fill) reads the 1 m DEM a block of pifs at a time instead of whole, and takes each pip's fall direction from the siz table instead of finding the pips again. The classes are the same as before (checked over Porirua), and the step now fits in memory over a territorial authority.

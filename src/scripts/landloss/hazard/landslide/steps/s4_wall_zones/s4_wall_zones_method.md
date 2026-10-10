@@ -8,7 +8,9 @@
   draws. Its output is under `temp/hazard/landslide/`, with
   `extent_suffix(extent)` on each name.
 - It reads the found elements ground step 3 kept (`urban-slope-found.pkl`,
-  `read_found()`), the 1 m DEM of ground step 1 and the ground map of ground
+  `read_found()`), stored without their terrain layers, and rebuilds them on
+  the same sea-masked DEM, whole or tile by tile
+  (`slope_elements.restore_elements`); the 1 m DEM of ground step 1 and the ground map of ground
   step 2, the siz table of ground step 4, and the wall units and the draws of
   exposure rw step 6 (`wall_units_path()`, `wall_draws_path()`). It refuses to
   run if the found elements or the siz table are newer than the wall units,

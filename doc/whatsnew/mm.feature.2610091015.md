@@ -1,0 +1,1 @@
+The end-to-end QGIS build can be pointed at a copy of a run's outputs with `RESULTS_DIR` in `src/scripts/landloss/qgis/config.py`; the project is then written into that folder with its derived layers in `qgis/`.

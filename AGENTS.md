@@ -235,6 +235,9 @@ before making decisions about methodology, outputs, or what belongs in the tool:
   Portal must not be scraped, and what to ask NHC for instead.
 - `.agents/context/code-structure.md` — the five analysis modules, the library and
   scripts split, and the causes of financial land loss the model represents.
+- `.agents/context/task-review-process.md` — how the lead's module-by-module
+  task review is run: where items are gathered from, the categories, and where
+  each outcome is recorded.
 
 The live register of tasks, limitations and future improvements is
 `.agents/context/register.json`. It renders to a workbook in the OneDrive project

@@ -32,8 +32,12 @@ chosen in `research/cut_fill/pif_cut_fill.md` (the lead,
       lands (`.agents/plans/running-per-territorial-authority.md`). The fit
       reads 20 m past each pif, so a tile needs a 35 m margin (the 15 m walk and
       the 20 m fit).
-- [ ] If a full run is too slow, split the pifs into spatial chunks over worker
-      processes; each chunk needs only its DEM window and face mask.
+- [x] Read the DEM a block of pifs at a time rather than whole, and take each
+      pip's fall direction from the siz table rather than finding the pips
+      again (2026-10-09, before the Upper Hutt run); identical classes over
+      Porirua.
+- [ ] If a full run is too slow, run the blocks over worker processes; each
+      needs only its DEM window.
 
 ## Phase 3 — Feed the wall probability
 

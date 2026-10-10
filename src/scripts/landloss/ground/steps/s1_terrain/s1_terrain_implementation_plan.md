@@ -137,6 +137,9 @@ from this step's 1 m DEM. Reviewed against `temp/gns_review/` on 2026-10-02.
       weathering grade (ground step 2 plan, phase 3) would read them
       [nzgs_2025_torlesse] (`nzgs2025-u7c2-F01`).
 
+- [x] Build the slope and the aspect only at `SLOPE_RESOLUTIONS_M` (10 m and
+      coarser); the DEM is still built at every size (2026-10-09).
+
 ## Potential future improvements
 
 - Tile the full-extent run (phase 2) rather than carrying 1 m grids whole.

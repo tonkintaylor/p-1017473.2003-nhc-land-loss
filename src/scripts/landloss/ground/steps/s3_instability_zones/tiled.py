@@ -22,15 +22,19 @@ wall drawn on it reaches every tile it is seen in. A pif cut short by the edge
 of a margin matches nothing and is dropped there.
 """
 
+import math
+import os
 import pickle
+import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import rasterio
 import shapely
-from rasterio import features
+from rasterio import features, windows
 from rasterio.transform import Affine
 
 from landloss.common.utils import tiles
@@ -41,9 +45,18 @@ from landloss.hazard.landslide.instability_zones import (
     find_instability_zones,
     with_walls,
 )
-from landloss.hazard.landslide.slope_elements import rasterise_ground_map
+from landloss.hazard.landslide.slope_elements import (
+    COARSE_SLOPE_M,
+    rasterise_ground_map,
+    restore_elements,
+    store_elements,
+)
 from landloss.hazard.landslide.slope_polygons import build_slope_polygons
 from landloss.hazard.landslide.wall_units import gen_element_walls
+from scripts.landloss.ground.steps.s3_instability_zones.grid import (
+    element_polygons,
+    grid_table,
+)
 
 # How finely a pip's coordinates are compared between two tiles, in metres. A
 # pip is a cell centre, so two tiles agree to far better than this.
@@ -100,10 +113,15 @@ def tile_inputs(dem_file, tile, *, land, ground_map, buildings):
     window = tiles.read_window(dem_file, tile.outer)
     dem = window.to_numpy().astype("float64")
     transform = window.rio.transform()
-    minx, miny, maxx, maxy = window.rio.bounds()
-    on_land = _burn(land.cx[minx:maxx, miny:maxy], transform, dem.shape)
+    bounds = window.rio.bounds()
+    minx, miny, maxx, maxy = bounds
+    # The ground map and the coastline are cut to the window before they are
+    # burned: a burn costs time in the polygons' vertices, and over Upper Hutt
+    # burning the whole units took three minutes a tile.
+    margin = 2 * abs(transform.a)
+    on_land = _burn(tiles.clip_to_window(land, bounds, margin), transform, dem.shape)
     dem = np.where(on_land, dem, np.nan)
-    near = ground_map.cx[minx:maxx, miny:maxy]
+    near = tiles.clip_to_window(ground_map, bounds, margin)
     group, position = rasterise_ground_map(
         near, transform, dem.shape, fill_as_soil=True
     )
@@ -242,30 +260,185 @@ def _to_whole_grid(frame, tile):
 
 
 def read_tile_found(found_tile):
-    """The ``SlopeElements`` one tile found."""
+    """The ``StoredSlopeElements`` one tile found (:func:`restore_elements` rebuilds them)."""
     with found_tile.path.open("rb") as file:
         # Written by this step's own run under temp/, not an outside file.
         return pickle.load(file)  # noqa: S301
 
 
 def write_tile_found(found, path):
-    """Keep one tile's ``SlopeElements`` for the wall zones pass."""
+    """Keep one tile's stored elements (``store_elements``) for the wall zones pass."""
+    _write_pickle(found, path)
+
+
+def _write_pickle(value, path):
+    """Pickle to a temporary file and rename it, so a killed run leaves no half file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as file:
-        pickle.dump(found, file, protocol=pickle.HIGHEST_PROTOCOL)
+    partial = path.with_name(f"{path.name}.partial")
+    with partial.open("wb") as file:
+        pickle.dump(value, file, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(partial, path)
 
 
-def find_tile(dem_file, tile, *, inputs, find_settings, building_reach_m):
-    """Find one tile's pips, pifs, sizs and elements.
+def tile_record_path(found_path):
+    """Where a tile's stitch inputs are kept, beside its found elements.
+
+    Written last, so it existing means the tile is done.
+    """
+    return found_path.with_name(f"{found_path.stem}-record.pkl")
+
+
+def read_tile_record(found_path):
+    """A done tile's ``table``, ``elements`` and ``owned``, or None if it was skipped."""
+    with tile_record_path(found_path).open("rb") as file:
+        # Written by this step's own run under temp/, not an outside file.
+        return pickle.load(file)  # noqa: S301
+
+
+# The layers a worker's tiles read, set once per process by start_worker.
+_worker_inputs = {}
+
+
+def start_worker(ground_map_file, land, buildings):
+    """Read the layers every tile reads, once per worker process."""
+    _worker_inputs.update(
+        land=land, buildings=buildings, ground_map=gpd.read_parquet(ground_map_file)
+    )
+
+
+def end_worker():
+    """Let go of the layers :func:`start_worker` read."""
+    _worker_inputs.clear()
+
+
+def build_tile(
+    tile,
+    *,
+    dem_file,
+    found_path,
+    find_settings,
+    table_settings,
+    building_reach_m,
+    crop_pad_m,
+):
+    """Find one tile and keep everything the stitch needs from it on disk.
+
+    Runs in a worker process after :func:`start_worker`. Writes the tile's
+    elements, stored without their terrain layers (``store_elements``), to
+    ``found_path`` and then its record
+    (:func:`tile_record_path`): the tile cut down to the window it was searched
+    on (:func:`crop_tile`), the siz table with its grid columns, the element
+    polygons and the local parent ids it owns, or None for a skipped tile. A
+    stopped run resumes from the tiles with no record.
 
     Returns:
-        ``(zones, dem, transform)``, or None for a tile with no land within
+        A summary for the progress line: ``tile``, ``skipped``, ``n_pifs``,
+        ``n_elements`` and ``seconds``.
+    """
+    start = time.perf_counter()
+    found = find_tile(
+        dem_file,
+        tile,
+        inputs=_worker_inputs,
+        find_settings=find_settings,
+        building_reach_m=building_reach_m,
+        crop_pad_m=crop_pad_m,
+    )
+    summary = {"tile": tile, "skipped": found is None, "n_pifs": 0, "n_elements": 0}
+    if found is None:
+        _write_pickle(None, tile_record_path(found_path))
+    else:
+        zones, dem, transform, cropped = found
+        table = grid_table(zones, dem, transform, **table_settings)
+        write_tile_found(store_elements(zones.found), found_path)
+        record = {
+            "tile": cropped,
+            "table": table,
+            "elements": element_polygons(zones.found, transform),
+            "owned": owned_parents(table, tile.core_bounds),
+        }
+        _write_pickle(record, tile_record_path(found_path))
+        summary |= {
+            "n_pifs": len(table),
+            "n_elements": len(zones.found.elements),
+            "cells": dem.size,
+            "tile_cells": tile.outer.width * tile.outer.height,
+        }
+    return summary | {"seconds": time.perf_counter() - start}
+
+
+def crop_tile(tile, raster_transform, buildings, *, reach_m, pad_m):
+    """The tile with its outer window cut down to the ground near its buildings.
+
+    The window is the bounds of the building outlines on the tile, grown by
+    ``reach_m`` and ``pad_m`` and kept within the tile's own window. It starts
+    on the whole grid's blocks of :data:`COARSE_SLOPE_M` cells, as every tile
+    does (:func:`landloss.common.utils.tiles.tile_grid`). Every pip lies within
+    ``reach_m`` of a building, and the ``pad_m`` beyond is the ground the pifs'
+    tests, the elements' growth and their catchments read past their pips. The
+    core, and so what the tile owns, is not changed.
+
+    Args:
+        tile: The tile.
+        raster_transform: The whole DEM's transform.
+        buildings: The LINZ building outlines.
+        reach_m: How far from a building a pip may lie.
+        pad_m: How much further the window reaches; None keeps the whole tile.
+
+    Returns:
+        The cut-down tile, or None if no building outline is on the tile.
+    """
+    outer = tile.outer
+    minx, miny, maxx, maxy = tiles.window_bounds(outer, raster_transform)
+    near = buildings.cx[minx:maxx, miny:maxy]
+    if near.empty:
+        return None
+    if pad_m is None:
+        return tile
+    cell = raster_transform.a
+    block = max(round(COARSE_SLOPE_M / cell), 1)
+    grow = reach_m + pad_m
+    west, south, east, north = near.total_bounds
+    col0 = math.floor((west - grow - raster_transform.c) / cell) // block * block
+    row0 = math.floor((raster_transform.f - north - grow) / cell) // block * block
+    col1 = math.ceil((east + grow - raster_transform.c) / cell)
+    row1 = math.ceil((raster_transform.f - south + grow) / cell)
+    col0, row0 = max(col0, outer.col_off), max(row0, outer.row_off)
+    col1 = min(col1, outer.col_off + outer.width)
+    row1 = min(row1, outer.row_off + outer.height)
+    return replace(tile, outer=windows.Window(col0, row0, col1 - col0, row1 - row0))
+
+
+def find_tile(
+    dem_file, tile, *, inputs, find_settings, building_reach_m, crop_pad_m=None
+):
+    """Find one tile's pips, pifs, sizs and elements.
+
+    The tile is searched on its window cut down to the ground near its
+    buildings (:func:`crop_tile`), and its pips are only those within
+    ``building_reach_m`` of a building outline.
+
+    Returns:
+        ``(zones, dem, transform, tile)``, with the cut-down tile whose outer
+        window the grids are on, or None for a tile with no land within
         ``building_reach_m`` of a building outline.
     """
-    dem, transform, group, position, on_building = tile_inputs(dem_file, tile, **inputs)
-    exclude = on_building | beyond_reach(
-        on_building, abs(transform.a), building_reach_m
+    with rasterio.open(dem_file) as raster:
+        raster_transform = raster.transform
+    cropped = crop_tile(
+        tile,
+        raster_transform,
+        inputs["buildings"],
+        reach_m=building_reach_m,
+        pad_m=crop_pad_m,
     )
+    if cropped is None:
+        return None
+    dem, transform, group, position, on_building = tile_inputs(
+        dem_file, cropped, **inputs
+    )
+    within = ~beyond_reach(on_building, abs(transform.a), building_reach_m)
+    exclude = on_building | ~within
     if not np.isfinite(dem[~exclude]).any():
         return None
     zones = find_instability_zones(
@@ -274,9 +447,10 @@ def find_tile(dem_file, tile, *, inputs, find_settings, building_reach_m):
         transform,
         categories={"ground_row": position},
         exclude=exclude,
+        pip_area=within,
         **find_settings,
     )
-    return zones, dem, transform
+    return zones, dem, transform, cropped
 
 
 @dataclass
@@ -296,6 +470,30 @@ def line_keys(found, first_new_label):
         for label, unit in added["wall_unit_id"].items()
         if pd.notna(unit)
     }
+
+
+def units_on_no_tile(found, units):
+    """The wall units no searched tile builds: owned by no tile that read them.
+
+    A tile is searched only near its buildings (:func:`crop_tile`) and a tile
+    with none is skipped, so a wall unit far from every building is on no
+    tile's window and gets no line or forced element.
+
+    Args:
+        found: The :class:`TiledFound`.
+        units: The wall units, with their lines as geometry.
+
+    Returns:
+        The rows of ``units`` on no tile.
+    """
+    reached = np.zeros(len(units), dtype=bool)
+    for found_tile in found.tiles:
+        tile = found_tile.tile
+        outer = shapely.box(*tiles.window_bounds(tile.outer, found.transform))
+        reached |= tiles.owned_by(units, tile.core_bounds) & np.asarray(
+            units.geometry.intersects(outer)
+        )
+    return units[~reached]
 
 
 def zones_tile(
@@ -340,7 +538,7 @@ def zones_tile(
     """
     tile = found_tile.tile
     dem, transform, group, position, _ = tile_inputs(dem_file, tile, **inputs)
-    found = read_tile_found(found_tile)
+    found = restore_elements(read_tile_found(found_tile), dem, abs(transform.a))
     elements = found.elements.copy()
     keys = dict(found_tile.element_keys)
     elements["siz_id"] = [keys.get(label, (None, 0))[1] for label in elements.index]

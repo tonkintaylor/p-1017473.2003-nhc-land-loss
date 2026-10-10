@@ -961,6 +961,14 @@
       "Status": "Open"
     },
     {
+      "ID": "T-143",
+      "Task": "Validate the shaking demand by comparing the mean modelled PGA per site class with the NSHM values for that class, as a script under hazard/shaking/validations/, to check the Foster et al. (2019) classes are paired with the right TS1170.5 demand; needed for the final model.",
+      "Owner": "Unassigned",
+      "Phase": "Unassigned",
+      "Source": "Shaking task review 2026-10-09",
+      "Status": "Open"
+    },
+    {
       "ID": "T-116",
       "Task": "Produce a spreadsheet version of the loss calculation for NHC, simplified from the loss viewer.",
       "Owner": "Unassigned",
@@ -1427,6 +1435,13 @@
       "Status": "Open"
     },
     {
+      "ID": "L-69",
+      "Limitation": "The TS1170.5 demand grid cells are about 9.9 km across and each realisation scales the whole field by one multiplier, so within a cell PGA and PGV change only where the site class does. Variation between assets in one realisation comes mostly from the fragility draw rather than from the shaking.",
+      "Affects": "Shaking hazard: PGA and PGV demand and realisations (hazard/shaking s3_pgv, s4_pga_realisation, s5_pgv_realisation)",
+      "Source": "Maxim Millen, shaking task review 2026-10-09",
+      "Status": "Open"
+    },
+    {
       "ID": "L-60",
       "Limitation": "A wall on the property but beyond 8 m of the dwelling that supports insured land attracts the retaining wall sub-cap, while a wall outside the property boundary does not (see L-65).",
       "Affects": "loss",
@@ -1438,13 +1453,6 @@
       "Limitation": "A wall crossing two properties is taken as split between each property's cap, which is believed but not yet confirmed to be how the model handles it.",
       "Affects": "exposure/rw, loss",
       "Source": "Wgtn Land Model 2026-10-07",
-      "Status": "Open"
-    },
-    {
-      "ID": "L-69",
-      "Limitation": "The fitted inundated rate is near zero ($1.28 per m2), so a liquefaction claim's cost is mostly the fixed per-claim cost and the ground lost matters little. The no-SVA multiplier of 2.9 raises it only to about $3.70 per m2, far below a contractor rate for removing ejecta, so the toggle understates what clearing without volunteers would cost (L-40).",
-      "Affects": "vul/liquefaction/land, loss",
-      "Source": "Liquefaction repair rate review 2026-10-08",
       "Status": "Open"
     },
     {
@@ -1480,6 +1488,13 @@
       "Limitation": "The Canterbury liquefaction costs are brought from 2010/2011 to today's dollars by a placeholder factor of 1.42, on instruction: the Stats NZ construction Labour Cost Index from the March 2011 to the December 2025 quarter (L-23). It follows pay rates only, not the plant and materials a land repair also uses.",
       "Affects": "loss, loss viewer",
       "Source": "Liquefaction cost escalation 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-75",
+      "Limitation": "The fitted inundated rate is near zero ($1.28 per m2), so a liquefaction claim's cost is mostly the fixed per-claim cost and the ground lost matters little. The no-SVA multiplier of 2.9 raises it only to about $3.70 per m2, far below a contractor rate for removing ejecta, so the toggle understates what clearing without volunteers would cost (L-40).",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Liquefaction repair rate review 2026-10-08",
       "Status": "Open"
     }
   ],
@@ -1678,7 +1693,7 @@
     {
       "ID": "I-25",
       "Improvement": "Price inundated land in the no-SVA case from a contractor rate for removing ejecta, such as the study's rate sheet, keeping the fitted rate for the case with volunteers.",
-      "Rationale": "A multiplier on a near-zero fitted rate cannot show what clearing without volunteers costs (L-69).",
+      "Rationale": "A multiplier on a near-zero fitted rate cannot show what clearing without volunteers costs (L-75).",
       "Phase": "2",
       "Source": "Liquefaction repair rate review 2026-10-08",
       "Status": "Parked"

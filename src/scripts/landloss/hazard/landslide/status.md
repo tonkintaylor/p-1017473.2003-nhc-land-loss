@@ -21,7 +21,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05 (now exposure rw step 6); the per-zone fragility is next.
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-09
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -390,6 +390,11 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
   deprecated and is to be retired; the shared slope table is now the two-band
   one, so the old pilot and toy figure scripts read it too.
+- **Landslide step 4 (2026-10-09)** rebuilds ground step 3's found elements
+  from a compact store, recomputing their terrain layers from the DEM, and
+  reads back each tile's window cut down to its buildings; on the tiled
+  Porirua pilot its wall elements and zones were unchanged. It prints how
+  many wall units with no element lie on no searched tile.
 - **Step 12, urban slope faces (stage D3, 2026-10-04; since 2026-10-08 split into
   ground step 4, exposure rw step 6 and landslide step 4).**
   `ground/steps/s4_slope_faces/gen_slope_faces.py` (then

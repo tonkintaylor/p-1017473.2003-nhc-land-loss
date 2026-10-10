@@ -14,6 +14,12 @@ EXTENT = "wlg-pilot"
 WORLD_ID = 0
 REALISATION_ID = 0
 
+# A copy of a run's outputs to build over, such as
+# "U:/<user>/land-loss/results/porirua", or None for the files each step wrote.
+# Each layer is the file of the same name anywhere under this folder, and the
+# project is written into it, with its derived layers in qgis/ beside it.
+RESULTS_DIR = None
+
 # Contours drawn from the 3 m DEM: every CONTOUR_STEP_M, brighter every
 # CONTOUR_INDEX_M.
 CONTOUR_STEP_M = 5.0

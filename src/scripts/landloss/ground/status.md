@@ -21,7 +21,8 @@ then the code. The landslide chain that reads it is in
   `gen_all.py`; the extent is in `config.py`). Outputs go under `temp/ground/`
   and figures and tables under `report/ground/`.
 - [x] **Terrain (step 1).** A 1 m LiDAR DEM from LINZ, block-averaged to 3, 10,
-  30, 50 and 100 m, with Horn's slope and the downhill aspect at each, and the
+  30, 50 and 100 m, with Horn's slope and the downhill aspect at 10 m and
+  coarser (not 1 or 3 m since 2026-10-09: nothing read them), and the
   cut and fill residuals and the 100 m topographic position derived from them
   (`steps/s1_terrain/s1_terrain_method.md`).
 - [x] **Ground map (step 2).** One non-probabilistic polygon map of material,
@@ -58,15 +59,22 @@ then the code. The landslide chain that reads it is in
   whole grid's siz table. Since 2026-10-08 it searches only within 100 m of a
   building outline (the 2026-10-01 domain) and skips tiles with no land within
   reach. On the Wellington pilot that took the 6,220 pif pieces to 5,865 and
-  the 4,790 sizs to 4,657, and the step ran in 44 s.
-  The Wellington City run stopped on empty tile 4,8 on 2026-10-09; the polygon
-  constructor now retains the empty geometry schema, verified against that
-  saved tile. The city-wide search has not yet been rerun after this fix.
+  the 4,790 sizs to 4,657, and the step ran in 44 s. Since 2026-10-09 only the
+  pips within reach are joined into pifs (2% more pifs and sizs and 11% more
+  element area on the Porirua pilot), each tile is searched only near its
+  buildings, the ground map is cut to each tile before it is burned, and the
+  tiles run in parallel and resume after a stop. A rural Upper Hutt tile fell
+  from 6 to 12 min to a few seconds and an urban one from 6 min to 31 s. The
+  Upper Hutt run stopped in step 3 on 2026-10-09 and has not been restarted.
+  The found elements are now kept without their terrain layers, which
+  landslide step 4 recomputes: about 3% of the old file size, same zones.
 - **Step 4** reads T+T's 71 manually mapped walls beside the GNS mapped walls
   (2026-10-08). On 2026-10-08 the pilot had 4,790 sizs, 98 `low_height` and
   1,332 other pieces, and 859 GNS-only pieces (4,884 sizs and 91 `low_height`
   with the pairs test on 2026-10-07).
-- **Step 5** classed 12,015 pifs on 2026-10-05 in 9.6 s: 2,198 cut, 1,472 cut
+- **Step 5** reads the DEM a block of pifs at a time since 2026-10-09, so it
+  fits over a territorial authority; over Porirua it gave the whole-grid
+  classes exactly (69,643 pifs, 349 s, 2.5 GB). It classed 12,015 pifs on 2026-10-05 in 9.6 s: 2,198 cut, 1,472 cut
   and fill, 768 fill, 1,093 uncertain, 6,481 natural and 3 unknown. The class
   is a local reading against the platforms around a face, not a map of large
   earthworks. On the 6,220 pieces (2026-10-08, 8.7 s): 1,877 cut, 1,089 cut and

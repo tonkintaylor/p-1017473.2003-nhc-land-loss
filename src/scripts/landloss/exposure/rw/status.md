@@ -31,7 +31,7 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   and give each type its own curve, in place of the condition axis
   (`.agents/plans/assigning-retaining-wall-types.md`). The seven type curves
   are set (the lead, 2026-10-06; two height classes from 2026-10-07), and the
-  draw is built in step 6 but not yet run on the pilot (Next, 7). Nick
+  draw is built in step 6 but not yet run on the pilot. Nick
   Peters and John Leeves reviewed the shares on 2026-10-07, and the lead
   applied their changes on 2026-10-08 (**T-118**).
 - [~] **Identify where walls are, as lines, with a probability on each**
@@ -386,48 +386,40 @@ What this module owes the retaining wall table `loss` reads
    0, earthquake 0, with the claim layer rebuilt that morning and the renamed
    wall types): 3,340 walls drawn on 5,747 candidates, 1,886 kept on insured
    land; 1,410 of them fail with their polygon and 1,718 carry a damage flag.
-2. **Rerun the pilot chain downstream of exposure step 6** (vul and the loss
-   inputs), so they read the wall-unit population of 2026-10-05 rather than
-   the one drawn from the lines.
-3. Rerun ground steps 4 and 5 and then exposure rw step 6 over the pilot, for the
+2. Rerun ground steps 4 and 5 and then exposure rw step 6 over the pilot, for the
    new wall height and class prior, and recheck the size classes and the
    share under 1.5 m against Anderson et al. [anderson_2015] (54%).
-4. Landslide step 5's edge join is repaired: landslide steps 5 and 6 read
+3. Landslide step 5's edge join is repaired: landslide steps 5 and 6 read
    landslide step 4's zones, which carry the wall unit ids, and the old step 7
    lines are removed (2026-10-08).
-5. Add walls on the flat land: every wall unit is a face of sloping ground.
-6. Tie a wall on a property boundary, which is one unit on each side, so one
+4. Add walls on the flat land: every wall unit is a face of sloping ground.
+5. Tie a wall on a property boundary, which is one unit on each side, so one
    draw serves both, or count it on both.
-7. **Run `gen_wall_age.py` from the console** (it reads the QV roll on T:),
-   then rerun step 6's population and the pilot chain, so the drawn walls
-   carry their age bin and wall type (wall types plan, phase 3).
-8. Done 2026-10-08: the type shares (`beta-retaining-wall-type-shares.csv`)
+6. Done 2026-10-08: the type shares (`beta-retaining-wall-type-shares.csv`)
    follow the 2026-10-07 review by Nick Peters and John Leeves (**T-118**).
    On 2026-10-08 the lead renamed `engineered` to
    `reinforced_concrete_post_1992` and `reinforced_concrete` to
    `reinforced_concrete_pre_1992` (**T-119**), and moved four wall type curves
    (wall types plan). The frontage multipliers
    are still to be reviewed (wall types plan, phase 4).
-9. Bring subdivision age into `p_wall`.
-10. Calibrate the wall units' weights on the held-out claims, GNS and the
+7. Bring subdivision age into `p_wall`.
+8. Calibrate the wall units' weights on the held-out claims, GNS and the
    strata once **T-50** is complete (Wall datasets, above).
-11. Record where the collected input datasets are held, so the inputs are
+9. Record where the collected input datasets are held, so the inputs are
     reproducible.
-12. Delete the two height-range constants once the loss owner has moved the
+10. Delete the two height-range constants once the loss owner has moved the
     pricing test (**I-14**).
-13. Possibly correlate the wall draw between nearby units, so a wall makes its
+11. Possibly correlate the wall draw between nearby units, so a wall makes its
     neighbours likelier while each unit keeps its `p_wall`: a Gaussian copula
     whose correlation reaches zero at a set range (spherical or Wendland),
     factored once per cluster of nearby units, so milliseconds per world. The
     claim update's assumption of independent units on a property is accepted
     (the lead, 2026-10-06). It changes every world's draw.
-14. Add a background population of low walls, since the count is probably
+12. Add a background population of low walls, since the count is probably
     much too low; wall numbers were raised by about 40% in the meantime
     (**T-121**, 2026-10-07).
-15. Compare the drawn type mix with the claim reports' (about 2,000 reports:
+13. Compare the drawn type mix with the claim reports' (about 2,000 reports:
     53% timber, 16% concrete, 15% masonry or block, 6% crib) (**T-120**).
-16. Send John Leeves and Nick Peters a figure of how often each wall type
-    fails beside how often slopes fail (**T-137**).
 
 ## Validation
 

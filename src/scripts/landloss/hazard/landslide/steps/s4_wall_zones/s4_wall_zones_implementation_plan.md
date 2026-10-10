@@ -63,6 +63,10 @@ the wall placement as a whole is `.agents/plans/placing-retaining-walls-on-pifs.
       tiled zones identical to the whole grid's.
 - [ ] Run over Porirua, then the other three territorial authorities; a
       process pool over the tiles.
+- [ ] Run the tiles in parallel, keep each on disk and resume after a stop,
+      and cut the repeated work per tile: the spec is
+      `doc/specs/optimise-landslide-s4-wall-zones/spec.md` (2026-10-09; over
+      Upper Hutt the one-process tile pass was heading for 5 to 6 hours).
 - [ ] Rerun the pilots with the fall-line siz test and the zones built from
       the new elements, and record the counts in the method file.
 - [ ] A fragility per element, and the share of urban ground in a polygon that

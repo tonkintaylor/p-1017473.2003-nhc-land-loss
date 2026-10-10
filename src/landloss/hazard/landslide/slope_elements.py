@@ -510,6 +510,91 @@ class SlopeElements:
     layers: TerrainLayers
 
 
+@dataclass(frozen=True)
+class StoredSlopeElements:
+    """Slope elements as kept on disk: the element and edge cells, no terrain layers.
+
+    A :class:`SlopeElements` holds two full grids and five float terrain
+    layers over the grid it was found on, nearly all of it zeros or a pure
+    function of the DEM. This keeps only the cells on an element or on its
+    edge, and :func:`restore_elements` recomputes the layers from the same DEM,
+    so the restored object is the one that was stored.
+
+    Attributes:
+        shape: The grid's ``(rows, columns)``.
+        cells: The flat index of every cell on an element or its edge.
+        labels: :attr:`SlopeElements.labels` at those cells.
+        edge_roles: :attr:`SlopeElements.edge_roles` at those cells.
+        elements: As in :class:`SlopeElements`.
+        stack_links: As in :class:`SlopeElements`.
+        catchments: As in :class:`SlopeElements`.
+        catchment_transform: As in :class:`SlopeElements`.
+        drainage_links: As in :class:`SlopeElements`.
+    """
+
+    shape: tuple[int, int]
+    cells: NDArray[np.int64]
+    labels: NDArray[np.int32]
+    edge_roles: NDArray[np.uint8]
+    elements: pd.DataFrame
+    stack_links: pd.DataFrame
+    catchments: NDArray[np.int32]
+    catchment_transform: Affine
+    drainage_links: pd.DataFrame
+
+
+def store_elements(found: SlopeElements) -> StoredSlopeElements:
+    """Keep the slope elements' cells and tables, dropping the terrain layers."""
+    kept = (found.labels != OUTSIDE) | (found.edge_roles != 0)
+    cells = np.flatnonzero(kept)
+    return StoredSlopeElements(
+        shape=found.labels.shape,
+        cells=cells,
+        labels=found.labels.ravel()[cells],
+        edge_roles=found.edge_roles.ravel()[cells],
+        elements=found.elements,
+        stack_links=found.stack_links,
+        catchments=found.catchments,
+        catchment_transform=found.catchment_transform,
+        drainage_links=found.drainage_links,
+    )
+
+
+def restore_elements(
+    stored: StoredSlopeElements, dem: NDArray[np.float64], cell_size_m: float
+) -> SlopeElements:
+    """Rebuild the slope elements :func:`store_elements` kept, on their DEM.
+
+    Args:
+        stored: The stored elements.
+        dem: The DEM they were found on, as it was searched (the sea masked).
+        cell_size_m: Its cell size.
+
+    Returns:
+        The slope elements, with the terrain layers recomputed from ``dem``.
+
+    Raises:
+        ValueError: If the DEM is not on the stored grid.
+    """
+    if dem.shape != tuple(stored.shape):
+        msg = f"The DEM is {dem.shape}, the stored elements {tuple(stored.shape)}."
+        raise ValueError(msg)
+    labels = np.full(stored.shape, OUTSIDE, dtype=stored.labels.dtype)
+    labels.ravel()[stored.cells] = stored.labels
+    edge_roles = np.zeros(stored.shape, dtype=stored.edge_roles.dtype)
+    edge_roles.ravel()[stored.cells] = stored.edge_roles
+    return SlopeElements(
+        labels=labels,
+        edge_roles=edge_roles,
+        elements=stored.elements,
+        stack_links=stored.stack_links,
+        catchments=stored.catchments,
+        catchment_transform=stored.catchment_transform,
+        drainage_links=stored.drainage_links,
+        layers=terrain_layers(dem, cell_size_m),
+    )
+
+
 def ground_group_codes(materials: ArrayLike) -> NDArray[np.int8]:
     """Map ground map materials onto ground group codes.
 

@@ -82,11 +82,19 @@
   (`.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md`)
   and restored on 2026-10-08 after the face-based search had dropped it. The
   cells further than that from every outline, centre to centre
-  (`instability_zones.beyond_reach`, a Euclidean distance transform), are
-  added to the `exclude` grid, so a pif most of whose pips are out of reach is
-  dropped as one on a roof is; its pips stay pips, and the DEM, the growth and
-  the drops still read every cell. A tile with no land within reach is skipped
-  before its search (`tiled.find_tile`), and `find_tiled` prints how many.
+  (`instability_zones.beyond_reach`, a Euclidean distance transform), hold no
+  pips: since 2026-10-09 (the lead) a pip out of reach is dropped before the
+  pips are joined into pifs (`pip_area` of `find_instability_zones`), so a pif
+  stops at the edge of the reach. Before, a pif was dropped whole when most of
+  its pips were out of reach and kept whole otherwise; on the Porirua pilot the
+  new rule keeps 2% more pifs and sizs and 7% more pips, from the near half of
+  long faces that run out of reach, with 11% more element area. The cells out
+  of reach are still in the `exclude` grid (a no-op now). The growth and the
+  drops read every cell of the grid searched. A tile is searched only on the
+  bounds of its building outlines grown by the reach and `TILE_CROP_PAD_M`
+  (100 m) more (`tiled.crop_tile`; see Tiles below), and a tile with no
+  building outline is skipped before its search (`tiled.find_tile`);
+  `find_tiled` prints how many.
   The NLM flatland half of that domain is not applied: flat-land walls are
   found here too.
 - Every siz is a wall candidate and a wall must have a polygon (the lead,
@@ -130,6 +138,14 @@
   (`urban-slope-elements.parquet`), and the siz table's grid columns to
   `grid_sizs_path` (`urban-slope-grid-sizs.parquet`). Ground step 4 reads the
   wall evidence onto that table; landslide step 4 reads the found elements.
+- The found elements are kept without their terrain layers
+  (`slope_elements.store_elements`, since 2026-10-09): only the cells on an
+  element or its edge, with their labels and edge flags, the element and link
+  tables and the catchments. Landslide step 4 rebuilds them on the same DEM
+  (`slope_elements.restore_elements`), recomputing the five terrain layers,
+  which were 88% of each file. The Porirua pilot's tile files fell from 951 MB
+  to 31 MB and its untiled file from 474 MB to 8 MB, and landslide step 4's
+  wall elements and zones were unchanged.
 - Each run writes a record of what it was built from
   (`urban-slope-instability-zones{suffix}.json`, `built_from()`): the
   settings, the size and modification time of the 1 m DEM and the ground map,
@@ -160,15 +176,40 @@ stitched tables:
   sits on the whole grid's. Each tile masks the sea, burns the ground map and
   the building outlines on its own window, is skipped if no land on it is within
   `BUILDING_REACH_M` of a building, and runs `find_instability_zones` and
-  the grid columns of the siz table (`grid_table()`); its elements are pickled
+  the grid columns of the siz table (`grid.grid_table()`); its elements are pickled
   per tile under `urban-slope-found{suffix}-tiles/`, and
   `urban-slope-found{suffix}.pkl` holds a `tiled.TiledFound` index instead of
   the elements.
 - A tile with land but no grown elements produces an empty polygon table with
-  an explicit geometry column, CRS and element attributes (`element_polygons`),
-  so it can still be stitched with the populated tiles. Per-tile pickles are
-  written during the search but are not reused to resume a failed search;
-  restarting this step recalculates its tiles.
+  an explicit geometry column, CRS and element attributes
+  (`grid.element_polygons`), so it can still be stitched with the populated
+  tiles.
+- A tile's window is cut down to the bounds of its building outlines grown by
+  `BUILDING_REACH_M` and `TILE_CROP_PAD_M` (`tiled.crop_tile`), starting on the
+  whole grid's 3 m blocks; its core, and so what it owns, is unchanged. The
+  record keeps the cut-down tile, so landslide step 4 reads the same window
+  back. The pad is the ground the fall lines, the growth and the catchments
+  read past the pips: on the Porirua pilot in four 1.65 km tiles (2026-10-09)
+  the run with a 100 m pad gave the same 2,394 pifs, sizs and element polygons
+  as the run on whole tiles. A wall unit with no element (a GNS-mapped wall)
+  on no tile's cut-down window gets no forced element; landslide step 4 prints
+  how many (`tiled.units_on_no_tile`).
+- Each tile is built by `tiled.build_tile` in its own worker process,
+  `config.TILE_WORKERS` (4) at once (`run_tiles()`; 1 runs them in order
+  without a pool). Each worker reads the ground map once (`tiled.start_worker`).
+  A tile writes its elements and then its record, `tile-RR-CC-record.pkl`:
+  its siz table with the grid columns, its element polygons and the parents it
+  owns, or None for a skipped tile. Both are written to a `.partial` file and
+  renamed, so a record on disk means the tile is done. The stitch reads back
+  only the records, never a tile's grids.
+- A run that stops resumes from the tiles with no record. The tiles folder
+  holds the run's record (`built-from.json`, as `built_from()`); a run whose
+  record differs, or `config.REBUILD`, clears the folder's tiles first
+  (`keep_or_clear_tiles()`). So any edit to the search code (`SEARCH_CODE`,
+  which includes `tiled.py` and `grid.py`) restarts the tiling from the first
+  tile. On the Porirua pilot with 1.2 km cores (2026-10-09) the stitched table
+  and elements were identical on 1 worker, on 3 workers, and after a run
+  killed after 3 of 9 tiles and resumed.
 - A pif belongs to the tile whose core holds the centre of its parent's pips
   (`tiled.owned_parents`), so a parent and its pieces come from the one tile
   that saw it whole: the longest parent on the pilots spans 636 m. Global pif

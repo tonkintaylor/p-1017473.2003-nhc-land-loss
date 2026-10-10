@@ -21,11 +21,16 @@ derived for QGIS to draw them:
 - 5 m contours of the 3 m DEM.
 
 Every other layer points at the file its step wrote, through that step's own
-path function. The legend runs Cost, Vul, Hazard, Ground model, Exposure and
+path function. Set ``RESULTS_DIR`` in ``config.py`` to build over a copy of a
+run's outputs instead: each layer is then the file of the same name in that
+folder, and the project is written into it with its derived layers in
+``qgis/``. The legend runs Cost, Vul, Hazard, Ground model, Exposure and
 Context, top down, over Esri satellite imagery. Run the whole pipeline
 (``gen_all.py``) and the loss module (``loss/gen_loss.py``) for the extent
 first; a missing output is skipped with a warning, never built here.
 """
+
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -161,12 +166,40 @@ CONTOUR_COLOUR = {
 PROPERTY_OUTLINE = {"outline": "#55555580", "width": 0.1}
 
 
-def write(frame, name):
-    """Write one derived layer beside the project and return its path."""
-    path = OUT_DIR / name
-    frame.to_parquet(path)
-    print(f"wrote {path.name}: {len(frame):,} rows")
-    return path
+class Layout:
+    """Where the layers are read from and where the project is written.
+
+    With no results folder, every layer is the file its step wrote and the
+    project goes in ``OUT_DIR``. With one, a copy of a run's outputs such as
+    ``U:/<user>/land-loss/results/porirua``, each layer is the file of the same
+    name anywhere under it, and the project goes in the folder itself with its
+    derived layers in ``qgis/`` beside it.
+    """
+
+    def __init__(self, results_dir):
+        self.results_dir = None if results_dir is None else Path(results_dir)
+        if self.results_dir is None:
+            self.project_dir = self.derived_dir = OUT_DIR
+            self._files = {}
+        else:
+            self.project_dir = self.results_dir
+            self.derived_dir = self.results_dir / "qgis"
+            self._files = {
+                f.name: f for f in self.results_dir.rglob("*") if f.is_file()
+            }
+
+    def find(self, path):
+        """The layer a step's path function names, in this layout."""
+        if self.results_dir is None:
+            return path
+        return self._files.get(path.name, self.results_dir / path.name)
+
+    def write(self, frame, name):
+        """Write one derived layer beside the project and return its path."""
+        path = self.derived_dir / name
+        frame.to_parquet(path)
+        print(f"wrote {path}: {len(frame):,} rows")
+        return path
 
 
 def present(path):
@@ -206,12 +239,12 @@ def gen_trigger_probability(model, pgv_file):
     )
 
 
-def cost_layers(claims, suffix):
+def cost_layers(claims, suffix, layout):
     """One layer per cost, each holding only the claims with that cost."""
     layers = []
     for column, name, checked in COST_LAYERS:
         some = claims[claims[column] > 0]
-        file = write(
+        file = layout.write(
             some, f"cost-{column.removesuffix('_incl_gst_nzd')}{suffix}.geoparquet"
         )
         layers.append(
@@ -229,7 +262,7 @@ def cost_layers(claims, suffix):
     return layers
 
 
-def vul_layers(land_file, rw_file, suffix):
+def vul_layers(land_file, rw_file, suffix, layout):
     """The vul contract tables: walls replaced, and the damage per property."""
     layers = []
     if present(rw_file):
@@ -255,7 +288,7 @@ def vul_layers(land_file, rw_file, suffix):
         ("inundated_insured_area", "inundated insured area (m²)", "PuBu"),
     ]:
         hit = land[land[column] > 0]
-        file = write(hit, f"vul-{column}{suffix}.geoparquet")
+        file = layout.write(hit, f"vul-{column}{suffix}.geoparquet")
         layers.append(
             {
                 "path": str(file),
@@ -281,11 +314,11 @@ def vul_layers(land_file, rw_file, suffix):
     return layers
 
 
-def hazard_layers(*, extent, world_id, realisation_id, suffix):
+def hazard_layers(*, extent, world_id, realisation_id, suffix, layout):
     """The landslide, liquefaction and shaking layers of one earthquake."""
     w, r = world_id, realisation_id
     layers = []
-    realisation = combined_realisation_path(w, r, extent=extent)
+    realisation = layout.find(combined_realisation_path(w, r, extent=extent))
     if present(realisation):
         layers.append(
             {
@@ -298,11 +331,11 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix):
                 "checked": True,
             }
         )
-    model_file = urban_slope_model_path(w, extent=extent)
-    if present(model_file) and present(pgv_path(r, extent=extent)):
+    model_file = layout.find(urban_slope_model_path(w, extent=extent))
+    if present(model_file) and present(layout.find(pgv_path(r, extent=extent))):
         model = gpd.read_parquet(model_file)
-        trigger = write(
-            gen_trigger_probability(model, pgv_path(r, extent=extent)),
+        trigger = layout.write(
+            gen_trigger_probability(model, layout.find(pgv_path(r, extent=extent))),
             f"urban-trigger-probability-w{w:03d}-r{r:03d}{suffix}.geoparquet",
         )
         polygons = gpd.GeoDataFrame(
@@ -310,7 +343,7 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix):
             geometry=model.geometry.values,
             crs=model.crs,
         )
-        model_copy = write(
+        model_copy = layout.write(
             polygons, f"urban-slope-model-w{w:03d}-polygons{suffix}.geoparquet"
         )
         layers += [
@@ -336,22 +369,22 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix):
         ]
     rasters = [
         (
-            hancox_coverage_path(r, extent=extent),
+            layout.find(hancox_coverage_path(r, extent=extent)),
             "Hazard · large failures: probability a point fails (Hancox 1997 areal coverage)",
             {"style": "eil_probability"},
         ),
         (
-            beta_probability_path("Minor", extent=extent),
+            layout.find(beta_probability_path("Minor", extent=extent)),
             "Hazard · liquefaction P(land damage state 2, minor), 100 m cells",
             {"style": "cmap", "cmap": "YlGnBu", "min": 0, "max": 0.5, "steps": 10},
         ),
         (
-            beta_probability_path("Moderate", extent=extent),
+            layout.find(beta_probability_path("Moderate", extent=extent)),
             "Hazard · liquefaction P(land damage state 3, moderate), 100 m cells",
             {"style": "cmap", "cmap": "YlOrBr", "min": 0, "max": 0.5, "steps": 10},
         ),
         (
-            ld_state_path(r, extent=extent),
+            layout.find(ld_state_path(r, extent=extent)),
             "Hazard · liquefaction land damage state drawn (100 m)",
             {"style": "classes", "classes": LD_STATE_CLASSES},
         ),
@@ -361,7 +394,7 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix):
         for path, name, style in rasters
         if present(path)
     ]
-    zones = ls_zones_path(extent=extent)
+    zones = layout.find(ls_zones_path(extent=extent))
     if present(zones):
         layers.append(
             {
@@ -375,17 +408,17 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix):
         )
     shaking = [
         (
-            pgv_path(r, extent=extent),
+            layout.find(pgv_path(r, extent=extent)),
             "Hazard · PGV (m/s)",
             {"style": "cmap", "cmap": "viridis", "min": 0.5, "max": 2.5, "steps": 8},
         ),
         (
-            pga_path(r, extent=extent),
+            layout.find(pga_path(r, extent=extent)),
             "Hazard · PGA (g)",
             {"style": "cmap", "cmap": "viridis", "min": 0.5, "max": 2.5, "steps": 8},
         ),
         (
-            site_class_path(extent=extent),
+            layout.find(site_class_path(extent=extent)),
             "Hazard · TS1170.5 site class (100 m)",
             {"style": "classes", "classes": SITE_CLASSES},
         ),
@@ -398,9 +431,9 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix):
     return layers
 
 
-def ground_layers(extent):
+def ground_layers(extent, layout):
     """The ground model: material and groundwater depth."""
-    ground = ground_map_path(extent=extent)
+    ground = layout.find(ground_map_path(extent=extent))
     if not present(ground):
         return []
     return [
@@ -425,11 +458,11 @@ def ground_layers(extent):
     ]
 
 
-def exposure_layers(*, extent, world_id):
+def exposure_layers(*, extent, world_id, layout):
     """The walls, the insured land and the values on it."""
     specs = [
         (
-            wall_population_path(world_id, extent=extent),
+            layout.find(wall_population_path(world_id, extent=extent)),
             {
                 "name": f"Exposure · insured retaining walls by type (w{world_id:03d})",
                 "geometry": "line",
@@ -439,7 +472,7 @@ def exposure_layers(*, extent, world_id):
             },
         ),
         (
-            wall_probability_path(extent=extent),
+            layout.find(wall_probability_path(extent=extent)),
             {
                 "name": "Exposure · wall candidates by p_wall",
                 "geometry": "line",
@@ -451,7 +484,7 @@ def exposure_layers(*, extent, world_id):
             },
         ),
         (
-            insured_land_path(extent=extent),
+            layout.find(insured_land_path(extent=extent)),
             {
                 "name": "Exposure · insured land by land rate incl GST (NZD/m²)",
                 "field": "land_rate_incl_gst_nzd_per_m2",
@@ -463,7 +496,7 @@ def exposure_layers(*, extent, world_id):
             },
         ),
         (
-            land_value_path(extent=extent),
+            layout.find(land_value_path(extent=extent)),
             {
                 "name": "Exposure · address land value (NZD)",
                 "geometry": "point",
@@ -475,7 +508,7 @@ def exposure_layers(*, extent, world_id):
             },
         ),
         (
-            driveway_path(extent=extent),
+            layout.find(driveway_path(extent=extent)),
             {
                 "name": "Exposure · driveways",
                 "color": "#9e9e9e",
@@ -491,12 +524,12 @@ def exposure_layers(*, extent, world_id):
     ]
 
 
-def context_layers(*, extent, suffix, contour_step_m, contour_index_m):
+def context_layers(*, extent, suffix, contour_step_m, contour_index_m, layout):
     """Contours, slope and the DEM, over satellite imagery."""
-    dem3 = dem_path(3, extent=extent)
+    dem3 = layout.find(dem_path(3, extent=extent))
     layers = []
     if present(dem3):
-        contours = write(
+        contours = layout.write(
             landslide.gen_contours(
                 dem3, step_m=contour_step_m, index_m=contour_index_m
             ),
@@ -522,7 +555,7 @@ def context_layers(*, extent, suffix, contour_step_m, contour_index_m):
                 "checked": False,
             },
         ]
-    slope = slope_path(3, extent=extent)
+    slope = layout.find(slope_path(3, extent=extent))
     if present(slope):
         layers.insert(
             1,
@@ -536,41 +569,48 @@ def context_layers(*, extent, suffix, contour_step_m, contour_index_m):
     return [*layers, {"basemap": "esri_imagery", "checked": True}]
 
 
-def main(*, extent, world_id, realisation_id, contour_step_m, contour_index_m):
+def main(
+    *, extent, world_id, realisation_id, contour_step_m, contour_index_m, results_dir
+):
     """Write the derived layers and the project."""
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    layout = Layout(results_dir)
+    layout.derived_dir.mkdir(parents=True, exist_ok=True)
     suffix = extent_suffix(extent)
     w, r = world_id, realisation_id
 
     layers = []
-    settlement_file = settlement_path(w, r, extent=extent)
-    land_file = insured_land_path(extent=extent)
+    settlement_file = layout.find(settlement_path(w, r, extent=extent))
+    land_file = layout.find(insured_land_path(extent=extent))
     if present(settlement_file) and present(land_file):
         claims = gen_claim_costs(
             pd.read_parquet(settlement_file), gpd.read_parquet(land_file)
         )
-        layers += cost_layers(claims, suffix)
+        layers += cost_layers(claims, suffix, layout)
     else:
         print("WARNING: run loss/gen_loss.py for this extent to get the cost layers")
     layers += vul_layers(
-        world_loss_input_path("land", w, r, extent=extent),
-        world_loss_input_path("rw", w, r, extent=extent),
+        layout.find(world_loss_input_path("land", w, r, extent=extent)),
+        layout.find(world_loss_input_path("rw", w, r, extent=extent)),
         suffix,
+        layout,
     )
-    layers += hazard_layers(extent=extent, world_id=w, realisation_id=r, suffix=suffix)
-    layers += ground_layers(extent)
-    layers += exposure_layers(extent=extent, world_id=w)
+    layers += hazard_layers(
+        extent=extent, world_id=w, realisation_id=r, suffix=suffix, layout=layout
+    )
+    layers += ground_layers(extent, layout)
+    layers += exposure_layers(extent=extent, world_id=w, layout=layout)
     layers += context_layers(
         extent=extent,
         suffix=suffix,
         contour_step_m=contour_step_m,
         contour_index_m=contour_index_m,
+        layout=layout,
     )
 
     area = get_area_of_interest(extent)
     spec = {
         "title": f"End-to-end build - {extent} (w{w:03d} r{r:03d})",
-        "out": str(OUT_DIR / f"e2e_build{suffix}.qgs"),
+        "out": str(layout.project_dir / f"e2e_build{suffix}.qgs"),
         "source": "local",
         "crs": f"EPSG:{NZTM}",
         "layers": layers,
@@ -587,4 +627,5 @@ if __name__ == "__main__":
         realisation_id=config.REALISATION_ID,
         contour_step_m=config.CONTOUR_STEP_M,
         contour_index_m=config.CONTOUR_INDEX_M,
+        results_dir=config.RESULTS_DIR,
     )

@@ -1,4 +1,4 @@
-"""Ground step 1: build a DEM, a slope and an aspect raster at each of several cell sizes.
+"""Ground step 1: build a DEM at each of several cell sizes, and a slope and an aspect at most.
 
     uv run --frozen python src/scripts/landloss/ground/steps/s1_terrain/gen_multiscale_slope.py
 
@@ -11,8 +11,10 @@ Slope is a property of the length it is measured over, and the models this
 study leans on were calibrated at different ones: Kingsbury's slope classes
 against a 20 m contour model, the global earthquake-induced landslide models
 against 30 m and coarser grids, and the urban faces are found on the 1 m DEM.
-So the slope is built at each cell size in config.py
-rather than at one and reused.
+So the slope is built at each cell size in config.py's
+``SLOPE_RESOLUTIONS_M`` rather than at one and reused; the DEM is built at
+every one of ``RESOLUTIONS_M``. The 1 m and 3 m slope and aspect are not built
+by default: nothing in the pipeline reads them.
 
 Only the finest DEM, 1 m, is fetched from LINZ. Every coarser one is the block
 mean of it, from :func:`landloss.common.utils.terrain.block_mean`, because
@@ -270,17 +272,26 @@ def describe_aspect(aspect):
     )
 
 
-def main(*, extent, resolutions_m, use_cached_dem):
-    """Build a DEM, a slope and an aspect at each cell size over the extent.
+def main(*, extent, resolutions_m, slope_resolutions_m, use_cached_dem):
+    """Build a DEM at each cell size over the extent, and a slope and an aspect at some.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
-        resolutions_m: The cell sizes to build at, in metres. Each has to be a
-            whole multiple of the finest.
+        resolutions_m: The cell sizes to build a DEM at, in metres. Each has to
+            be a whole multiple of the finest.
+        slope_resolutions_m: The cell sizes, from ``resolutions_m``, to build a
+            slope and an aspect at too.
         use_cached_dem: Whether to reuse an already-fetched elevation model.
+
+    Raises:
+        ValueError: If a slope cell size is not one of ``resolutions_m``.
     """
     finest, factors = check_resolutions(resolutions_m)
+    unknown = sorted(set(slope_resolutions_m) - set(resolutions_m))
+    if unknown:
+        msg = f"Slope cell sizes {unknown} m are not in the DEM cell sizes {resolutions_m}."
+        raise ValueError(msg)
     # The step every grid tiles exactly. The coarsest cell alone is not enough:
     # 100 m snapping leaves a 2,900 m side that 30 m cells cannot fill.
     step = math.lcm(*(int(resolution) for resolution in resolutions_m))
@@ -299,16 +310,18 @@ def main(*, extent, resolutions_m, use_cached_dem):
     for resolution_m, factor in factors.items():
         print(f"\nBuilding {resolution_m:g} m ...", flush=True)
         dem = fine_dem if factor == 1 else block_mean(fine_dem, factor)
-        slope = slope_degrees(dem, cell_size(dem))
-        aspect = downhill_azimuth_degrees(dem, cell_size(dem))
-
+        if resolution_m in slope_resolutions_m:
+            slope = slope_degrees(dem, cell_size(dem))
+            aspect = downhill_azimuth_degrees(dem, cell_size(dem))
+            slope = trim_to_extent(slope, snapped)
+            aspect = trim_to_extent(aspect, snapped)
         dem = trim_to_extent(dem, snapped)
-        slope = trim_to_extent(slope, snapped)
-        aspect = trim_to_extent(aspect, snapped)
+        written.append(write_raster(dem, dem_path(resolution_m, extent=extent)))
+        if resolution_m not in slope_resolutions_m:
+            print("  DEM only: no slope or aspect at this cell size")
+            continue
         describe_slope(slope, dem, resolution_m)
         describe_aspect(aspect)
-
-        written.append(write_raster(dem, dem_path(resolution_m, extent=extent)))
         written.append(write_raster(slope, slope_path(resolution_m, extent=extent)))
         written.append(write_raster(aspect, aspect_path(resolution_m, extent=extent)))
 
@@ -321,5 +334,6 @@ if __name__ == "__main__":
     main(
         extent=config.EXTENT,
         resolutions_m=config.RESOLUTIONS_M,
+        slope_resolutions_m=config.SLOPE_RESOLUTIONS_M,
         use_cached_dem=config.USE_CACHED_DEM,
     )
