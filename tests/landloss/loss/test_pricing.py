@@ -46,6 +46,7 @@ from landloss.loss.pricing import (
     construction_type,
     inundation_volume_m3,
     landslide_wall_length_m,
+    professional_fees_incl_gst_nzd,
     replacement_construction_type,
     replacement_rate_excl_gst_nzd_per_m2,
     timber_pole_rate_excl_gst_nzd_per_m2,
@@ -824,3 +825,20 @@ def test_the_invented_wall_is_wider_than_the_ground_is_deep():
 def test_the_invented_wall_refuses_a_negative_area():
     with pytest.raises(ValueError, match="must be finite and not negative"):
         landslide_wall_length_m([-1.0])
+
+
+def test_fees_are_a_fifth_of_the_wall_cost_above_the_floor():
+    assert professional_fees_incl_gst_nzd(100_000.0, policy=ACT) == pytest.approx(
+        20_000.0
+    )
+
+
+def test_fees_never_fall_below_the_costing_tools_total():
+    # $5,100 before GST, with no site multiplier on the floor.
+    fees = professional_fees_incl_gst_nzd(np.array([0.0, 10_000.0]), policy=ACT)
+    assert fees == pytest.approx([5_100.0 * 1.15] * 2)
+
+
+def test_a_negative_wall_cost_is_refused():
+    with pytest.raises(ValueError, match="wall_cost_incl_gst_nzd"):
+        professional_fees_incl_gst_nzd(-1.0, policy=ACT)

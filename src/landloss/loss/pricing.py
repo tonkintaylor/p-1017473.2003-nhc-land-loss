@@ -342,6 +342,12 @@ PROFESSIONAL_FEES_EXCL_GST_NZD = {
 }
 PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD = sum(PROFESSIONAL_FEES_EXCL_GST_NZD.values())
 
+# Professional fees as a share of the walls they are for (Perrie Gilbert,
+# 2026-10-12): 20% of what the claim's walls cost to build, with the costing
+# tool's own fee total as the floor. A large wall needs more design, engineering
+# and supervision than the flat fee allows; a small one still needs a consent.
+PROFESSIONAL_FEES_SHARE = 0.20
+
 # What a Canterbury liquefaction land cost in 2010/2011 dollars is multiplied by
 # to bring it to today's, **a placeholder on instruction** (L-23): the growth in
 # construction labour costs since the February 2011 earthquake.
@@ -462,22 +468,20 @@ def inundation_volume_m3(
 
 
 def professional_fees_incl_gst_nzd(
+    wall_cost_incl_gst_nzd: np.ndarray | float,
     *,
-    ratings: SiteRatings,
     policy: PolicySettings,
-    fees_excl_gst_nzd: float = PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
+    share: float = PROFESSIONAL_FEES_SHARE,
+    floor_excl_gst_nzd: float = PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
 ) -> np.ndarray:
     """Return a claim's professional fees, including GST.
 
     Consent, design, engineering, health and safety, project management and
-    survey, summed from :data:`PROFESSIONAL_FEES_EXCL_GST_NZD`. Mileage is
-    excluded on instruction.
-
-    **The site multiplier applies to the fees too.** They are added before it,
-    so a difficult site costs more to design, consent and manage as well as more
-    to build, which is the reading agreed on 2026-09-24. They do not carry the
-    specification uplift: that is about the wall being built to a better
-    standard, not about the paperwork around it.
+    survey: :data:`PROFESSIONAL_FEES_SHARE` of what the claim's walls cost to
+    build, as built -- site multiplier, specification uplift and all -- and
+    never less than the costing tool's own total,
+    :data:`PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD`, which takes no multiplier.
+    Mileage is excluded on instruction.
 
     **Fees are per claim, not per wall or per cost line.** A claim gets one
     consent, one design and one survey however many walls stand on it, so this
@@ -486,15 +490,24 @@ def professional_fees_incl_gst_nzd(
     designed and consented.
 
     Args:
-        ratings: How hard the site is to work on.
+        wall_cost_incl_gst_nzd: What the claim's walls cost to build, failed and
+            invented together, including GST.
         policy: The settings this scenario runs under, which carry the GST rate.
-        fees_excl_gst_nzd: The fees before GST, defaulting to the tool's own.
+        share: The fees as a share of the wall cost.
+        floor_excl_gst_nzd: The least the fees can be, before GST.
 
     Returns:
         The fees in GST-inclusive dollars, one per claim.
+
+    Raises:
+        ValueError: If any wall cost is negative or not finite.
     """
-    scaled = fees_excl_gst_nzd * (1.0 + ratings.multiplier)
-    return np.asarray(scaled, dtype=float) * (1.0 + policy.gst_rate)
+    cost = np.asarray(wall_cost_incl_gst_nzd, dtype=float)
+    if not np.all(np.isfinite(cost)) or np.any(cost < 0):
+        msg = "wall_cost_incl_gst_nzd must be finite and not negative"
+        raise ValueError(msg)
+    floor = floor_excl_gst_nzd * (1.0 + policy.gst_rate)
+    return np.maximum(share * cost, floor)
 
 
 def inundation_removal_cost_incl_gst_nzd(

@@ -25,9 +25,9 @@ assumption named here:
   in size class, length or both where the ground needs more wall.
 - **Professional fees are charged once per claim that involves a wall** --
   consent, design, engineering, health and safety, project management and
-  survey, $5,100 excluding GST from the costing tool's own fee table. They are
-  added before the site multiplier, so a difficult site costs more to design and
-  consent as well as more to build. A wall is what gets designed and consented:
+  survey: 20% of what the claim's walls cost to build, never less than $5,100
+  excluding GST, the costing tool's own fee total (2026-10-12). A wall is what
+  gets designed and consented:
   clearing spoil on its own does not attract them, and neither does a Canterbury
   liquefaction cost, that being a settled amount rather than a works estimate.
 - **Landslide spoil is cleared at a rate per cubic metre**, on top of whatever
@@ -821,12 +821,13 @@ def main(*, extent, world_ids, realisation_ids):
             # no survey. Nor does a Canterbury liquefaction cost, which is what NHC
             # settled rather than a works estimate, so it already stands for
             # everything that claim cost.
-            works = (claims[WALL_REPAIR_COLUMN] > 0) | (claims[LAND_REPAIR_COLUMN] > 0)
+            # They are a share of what the walls cost to build, failed and
+            # invented together, with the tool's fee total as the floor.
+            wall_cost = claims[WALL_REPAIR_COLUMN] + claims[LAND_REPAIR_COLUMN]
+            works = wall_cost > 0
             claims[FEES_COLUMN] = np.where(
                 works,
-                professional_fees_incl_gst_nzd(
-                    ratings=ratings_for(claims.reset_index(), ratings), policy=policy
-                ),
+                professional_fees_incl_gst_nzd(wall_cost.to_numpy(), policy=policy),
                 0.0,
             )
 

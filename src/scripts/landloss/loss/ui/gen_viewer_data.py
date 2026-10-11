@@ -12,12 +12,16 @@ scenarios are two CSVs dragged onto the same page.
 **What the CSV carries is everything the settlement does not decide.** Areas,
 rates, wall geometry, the Canterbury cost, who has what damage -- all fixed by
 exposure and vul. What it deliberately leaves out is every figure the Act sets:
-the caps, the sub-caps, the excess, the fees, the specification uplift. Those
-are the controls, so a number that moves when a control moves is not in this
-file. GST is left out too but is not a control: the page fixes it at
-:data:`~landloss.loss.policy.GST_RATE`, as the module does. The page also
-scales the wall rates and the land value, to show how far an answer leans on
-them; at a scale of one each, it is the module's answer.
+the caps, the sub-caps, the excess, the fees, the specification uplift. Most
+are the page's controls, so a number that moves when a control moves is not in
+this file; the professional fees and the spoil removal rate are fixed on the
+page at the costing tool's figures rather than offered as controls. GST is
+not a control either: the page works wholly excluding GST (2026-10-12), backing
+it out of the land rate, while the module settles GST-inclusive as the Act
+compares; :func:`settled_in_python` checks the two agree at the module's rate.
+The page also scales the wall rates and the land value, to show how far an
+answer leans on them; at a scale of one each, it is the module's answer, less
+GST.
 
 The land cap scenarios NHC is weighing are drawn over the main histogram, with
 the share of claims above each cap and the total settled under it. Those are
@@ -49,6 +53,7 @@ from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
     LIQ_COST_ESCALATION,
+    PROFESSIONAL_FEES_SHARE,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
     timber_pole_rate_excl_gst_nzd_per_m2,
@@ -452,20 +457,24 @@ def viewer_rows(
     )
 
 
-def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFrame:
+def settled_in_python(
+    rows: pd.DataFrame, policy: PolicySettings, *, gst_rate: float | None = None
+) -> pd.DataFrame:
     """Settle the viewer's rows the way the page will, as a check on it.
 
     A transcription of the JavaScript, kept here so the page can be shown to
-    disagree with the module rather than trusted not to.
+    disagree with the module rather than trusted not to. The page runs it with
+    no GST; the check runs it at the module's rate, where the two must agree.
 
     Args:
         rows: The viewer's rows.
         policy: The settings the page opens on.
+        gst_rate: The GST rate to settle at; the module's when not given.
 
     Returns:
         The cap, repair cost and settlement per claim.
     """
-    gst = 1.0 + policy.gst_rate
+    gst = 1.0 + (policy.gst_rate if gst_rate is None else gst_rate)
     spec = 1.0 + policy.replacement_spec_uplift
     mult = 1.0 + rows["site_multiplier"]
 
@@ -482,18 +491,28 @@ def settled_in_python(rows: pd.DataFrame, policy: PolicySettings) -> pd.DataFram
     )
     spoil = rows["spoil_m3"] * INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3 * gst
     walled = (rows["has_damaged_wall"] > 0) | (rows["has_new_wall"] > 0)
-    fees = np.where(walled, PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD * mult * gst, 0.0)
-    crossing_limit = rows["has_crossing"] * policy.bridge_culvert_limit_nzd(
-        rows["dwellings"]
+    fees = np.where(
+        walled,
+        np.maximum(
+            PROFESSIONAL_FEES_SHARE * (wall + new_wall),
+            PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD * gst,
+        ),
+        0.0,
+    )
+    crossing_limit = (
+        rows["has_crossing"]
+        * policy.bridge_culvert_limit_nzd(rows["dwellings"])
+        * gst
+        / (1.0 + policy.gst_rate)
     )
 
-    land_value = (
-        np.minimum(rows["damaged_area_m2"], policy.area_cap_m2)
-        * rows["land_rate_incl_gst"]
-    )
+    land_rate = rows["land_rate_incl_gst"] / (1.0 + policy.gst_rate) * gst
+    land_value = np.minimum(rows["damaged_area_m2"], policy.area_cap_m2) * land_rate
+    # The sub-caps are stated before GST; the policy's limits carry it.
+    to_page = gst / (1.0 + policy.gst_rate)
     cap = (
         land_value
-        + np.minimum(udv, policy.retaining_wall_limit_nzd(rows["dwellings"]))
+        + np.minimum(udv, policy.retaining_wall_limit_nzd(rows["dwellings"]) * to_page)
         + crossing_limit
     )
     liq = rows["liq_cost_excl_gst"] * LIQ_COST_ESCALATION * gst
