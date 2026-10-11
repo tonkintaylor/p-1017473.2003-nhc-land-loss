@@ -21,6 +21,23 @@ EXTENT = "wlg-pilot"
 # fetch them again.
 USE_CACHED_LAYERS = True
 
+# Whether to build every tile again even when the kept tiles' record matches:
+# the found elements, the wall units and draws, the scenarios and worlds, and the
+# code that builds a tile. Leave False; a stopped run resumes from the tiles
+# already kept. Set True after a change the record cannot see, such as replacing
+# a cached LINZ layer by hand. USE_CACHED_LAYERS False rebuilds every tile by
+# itself, since fetching the layers again may change them. Only an extent ground step 3
+# searched in tiles keeps tiles.
+REBUILD = False
+
+# How many tiles are built at once, each in its own process, over an extent
+# ground step 3 searched in tiles. Each worker reads the ground map, the
+# coastline and the building outlines once, and holds one tile's zones at a
+# time, which it writes to disk when done; allow several GB per worker (the
+# ground map alone is about 4.6 GB over Upper Hutt). Set 1 to build the tiles in
+# order in this process. It does not change the result.
+TILE_WORKERS = 4
+
 # The exposure worlds to build the zones for: the worlds exposure rw step 6
 # draws. Change them in that step's config.py; this step follows.
 WORLD_IDS = wall_population_config.WORLD_IDS

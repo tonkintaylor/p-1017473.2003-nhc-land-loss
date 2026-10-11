@@ -177,8 +177,9 @@
 
 Over an extent whose 1 m DEM holds more than ground step 3's
 `config.MAX_UNTILED_CELLS` cells (every territorial authority; no pilot) the
-zones are built tile by tile (`build_tiled()`, on `tiled.py` in ground step 3),
-and the tiling of the grid pass is described in `s3_instability_zones_method.md`:
+zones are built tile by tile (`build_tiled()` in `gen_wall_zones.py`, on
+`tiled.zones_tile` in ground step 3), and the tiling of the grid pass is
+described in `s3_instability_zones_method.md`:
 
 - A line or forced element is keyed by its wall unit and belongs to the tile
   whose core holds the unit's line; a zone polygon belongs to its element's
@@ -189,5 +190,104 @@ and the tiling of the grid pass is described in `s3_instability_zones_method.md`
 
 The tiled zones are not yet identical to the whole grid's; see the plan's
 phase 3 for the comparison on the Porirua pilot.
+
+### Workers, kept tiles and the resume
+
+Implemented 2026-10-11 from `doc/specs/optimise-landslide-s4-wall-zones/spec.md`
+(FR-001 to FR-007); the settings are `TILE_WORKERS` and `REBUILD` in `config.py`.
+
+- **Workers.** `run_tiles()` builds the tiles in a `ProcessPoolExecutor`, at most
+  `TILE_WORKERS` at once, as ground step 3 does; 1 builds them in order in the
+  console's own process. Each worker reads the layers every tile reads once, in
+  `zone_tiles.start_worker()` (the ground map from its file, and the coastline,
+  building outlines, wall units, the lineless units, the scenarios' walled flags
+  and the found index as arguments). The tile builder, `zone_tiles.build_zone_tile()`,
+  and the functions it passes to `tiled.zones_tile` (`fill_by_element`,
+  `ground_rows`, `with_forced`, `zone_polygons`, `drawn_areas`) are in
+  `zone_tiles.py`, importable, so a worker on Windows can run them although
+  `gen_wall_zones.py` is run as a script; `gen_wall_zones.py` imports them back
+  for the whole-extent pass.
+- **Kept tiles.** Each tile's `tiled.TileZones` is pickled to a temporary file and
+  renamed (`zone_tiles.write_tile_zones()`), and dropped from memory, under
+  `temp/hazard/landslide/urban-slope-zones-tiles{extent_suffix}/tile-RR-CC.pkl`.
+  A tile file existing means the tile is done, so a killed run leaves no half
+  tile; a tile that fails leaves the others kept.
+- **Stitch.** `read_kept_tiles()` reads the kept tiles in the found index's tile
+  order, so the element and polygon numbers, and the rule that the first tile
+  claims a shared element, do not depend on which worker finished first.
+  `tiled.label_keys`, `stitch_elements` and `stitch_zones` are unchanged.
+- **Record.** The folder holds `built-from.json` (`built_from()`): the SHA-256 of
+  the found index, the wall units file and the draws file; the size and time
+  modified of the 1 m DEM, the ground map, the elements file and each tile's
+  found elements; the scenarios, world ids and the fill modification name
+  (`tile_settings()`); and the SHA-256 of the source of every module and function
+  that builds a tile (`TILE_CODE`: `zone_tiles`, `tiled`, `tiles`, the landslide
+  library modules the tile reads, including `geometry`, `susceptibility`,
+  `ground_map`, `pif_cut_fill`, `wall_candidates`, `urban.fragility` and
+  `domain.constants`, ground step 3's `grid`, and the lineless and world
+  helpers). A run with the same record builds only the tiles not kept; a
+  different record, `REBUILD`, `USE_CACHED_LAYERS` False (the LINZ layers are not
+  in the record) or a record file cut short by a killed run clears the folder and
+  builds every tile (`keep_or_clear_tiles()`, which writes the record through a
+  temporary file). The scenario sharing swaps `tiled.build_slope_polygons` for the
+  length of a tile and puts it back, whatever happens
+  (`sharing_between_scenarios()`). `TILE_WORKERS` is not in the record: it does not
+  change the result.
+- **Progress.** One line per finished tile: its number of the tiles to build, its
+  row and column, its own elements, its own time and the time in all.
+- **Check.** On the Porirua pilot in four 1.65 km tiles the wall elements and
+  every scenario's zones were identical (attributes equal, geometries within
+  1e-6 m) on 1 worker, on 3 workers, and on 2 workers after two kept tiles were
+  deleted and the step run again. Over Porirua (39 tiles of 3 km, 4 workers)
+  the step took 582 s against about 3.7 hours one tile after another, and its
+  outputs were identical to the one-process run's. The peak memory of a worker over Upper Hutt
+  (SC-004) is not yet measured.
+
+### Less work per tile
+
+A profile of one-worker Porirua pilot tiles (cProfile) put three quarters of a
+tile in `polygon_geometries`, drawing and smoothing every polygon of every
+scenario, a fifth in `build_slope_polygons` and a tenth in `restore_elements`.
+Each change below leaves the outputs as they were (the pilot comparison against
+the earlier run passed for every file on 1 and on 3 workers):
+
+- **Draw only what the tile keeps.** `zone_tiles.with_forced(skip=...)` does not
+  draw the polygons of grown elements whose pif another tile owns
+  (`build_zone_tile` names them from the found tile's keys); the tile threw
+  their zones away after drawing them. The forced polygons are still numbered
+  after every built polygon.
+- **Draw a cell set once.** `polygon_geometries(cache=...)` keeps each outline by
+  its cells (and, for the imminent band, the evacuated cells), so a polygon whose
+  cells are the same under another scenario, as most are, is not drawn again,
+  and the evacuated outline the imminent band is cut from is the one just drawn.
+  `zone_polygons(outlines=...)` passes one dict through a tile's scenarios.
+  The outline is a function of the cells alone, so the geometry is unchanged.
+- **One GDAL environment per zone.** `polygon_geometries` draws its polygons
+  inside one `rasterio.Env`, rather than opening one per polygon.
+- **Share the rays.** `build_slope_polygons(shared=...)` keeps the rays set out
+  from the crest cells and each cell's distance below its crest, which do not
+  read `element_type`, so the scenarios of a tile (which differ only by
+  `with_walls`) work them out once. `zone_tiles.sharing_between_scenarios()`
+  passes the dict for the length of a tile by swapping the builder `tiled.zones_tile`
+  calls, because `zones_tile` is ground step 3's code and a change to it would
+  change that step's record.
+
+Own time of each Porirua pilot tile on one worker, before and after (s):
+
+| Tile | Elements | Before | After |
+| --- | --- | --- | --- |
+| 0,0 | 250 | 27 | 9 |
+| 0,1 | 345 | 36 | 10 |
+| 1,0 | 378 | 33 | 10 |
+| 1,1 | 775 | 45 | 16 |
+
+The step takes 46 s on one worker (144 s before) and 30 s on three (76 s before).
+
+Building only the margin elements an owned zone needs (FR-008) is not done. On
+every pilot tile, in the bare and the walled scenario, the owned elements'
+evacuated, imminent and inundated cells and their polygon attributes were
+identical when the margin elements were left out altogether, so what the margin
+adds is time (about 1.5 times the owned elements' build) and not zones. It is
+not done because it is not provably exact and saves little: see the plan.
 
 Potential future improvements: see `s4_wall_zones_implementation_plan.md`.

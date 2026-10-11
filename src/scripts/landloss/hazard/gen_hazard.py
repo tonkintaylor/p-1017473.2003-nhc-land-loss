@@ -175,6 +175,8 @@ def main(*, extent, realisation_ids, world_ids):
                     extent=extent,
                     use_cached_layers=wall_zones_config.USE_CACHED_LAYERS,
                     world_ids=world_ids,
+                    rebuild=wall_zones_config.REBUILD,
+                    tile_workers=wall_zones_config.TILE_WORKERS,
                 ),
             ),
             (

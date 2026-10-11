@@ -61,12 +61,33 @@ the wall placement as a whole is `.agents/plans/placing-retaining-walls-on-pifs.
       `build_slope_polygons` is not yet found.
 - [ ] Find what in `build_slope_polygons` reads beyond a tile, and make the
       tiled zones identical to the whole grid's.
-- [ ] Run over Porirua, then the other three territorial authorities; a
+- [~] Run over Porirua, then the other three territorial authorities; a
       process pool over the tiles.
-- [ ] Run the tiles in parallel, keep each on disk and resume after a stop,
-      and cut the repeated work per tile: the spec is
-      `doc/specs/optimise-landslide-s4-wall-zones/spec.md` (2026-10-09; over
-      Upper Hutt the one-process tile pass was heading for 5 to 6 hours).
+      *2026-10-11: Porirua's 39 tiles on 4 workers in 582 s (the one-process
+      pass took about 3.7 hours on 2026-10-10), every zones file and the wall
+      elements identical to that run's, and every landslide and vul output
+      after them too.*
+- [x] Run the tiles in parallel, keep each on disk and resume after a stop
+      (spec FR-001 to FR-007, 2026-10-11): `TILE_WORKERS` and `REBUILD` in
+      `config.py`, `run_tiles()`, `keep_or_clear_tiles()` and `built_from()` in
+      `gen_wall_zones.py`, the worker and tile builder in `zone_tiles.py`;
+      identical outputs on 1 and 3 workers and after a resume on the Porirua
+      pilot, and unit tests in `tests/landloss/hazard/landslide/test_wall_zone_tiles.py`.
+      The spec is `doc/specs/optimise-landslide-s4-wall-zones/spec.md` (2026-10-09;
+      over Upper Hutt the one-process tile pass was heading for 5 to 6 hours).
+- [x] Cut the repeated work per tile (spec FR-009, 2026-10-11): only the owned
+      elements' polygons are drawn, outlines are drawn once per cell set across a
+      tile's scenarios, and the rays and crest distances are shared between
+      scenarios (see "Less work per tile" in the method file). Pilot tiles on one
+      worker went from 27, 36, 33 and 45 s to 9, 10, 10 and 16 s, outputs identical
+      on 1 and 3 workers. The Upper Hutt measurements (SC-003, SC-004) are open.
+- [ ] Build only the margin elements an owned zone needs (spec FR-008), once the
+      lead has answered FR-010. On the Porirua pilot dropping every margin element
+      gave the same owned zones, but `build_slope_polygons` is a fifth of a tile now
+      and the rule is not provable (what reads beyond a tile: the evacuated
+      band's width behind the crest, stacks the rays climb, and the drainage
+      links `_contest` follows), so a rule needs a radius and a check on a dense
+      Upper Hutt tile first; it would cut a tile by about a tenth.
 - [ ] Rerun the pilots with the fall-line siz test and the zones built from
       the new elements, and record the counts in the method file.
 - [ ] A fragility per element, and the share of urban ground in a polygon that

@@ -21,7 +21,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05 (now exposure rw step 6); the per-zone fragility is next.
 
-**Updated:** 2026-10-09
+**Updated:** 2026-10-11
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -152,8 +152,14 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   (`.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, a
   skeleton for the reviewer to develop).
 - [x] Draw the urban failures per world and earthquake (landslide step 6).
-- [ ] Run per territorial authority, tiled, with the static layers built once
-  (`.agents/plans/running-per-territorial-authority.md`).
+- [~] Run per territorial authority, tiled, with the static layers built once
+  (`.agents/plans/running-per-territorial-authority.md`). Landslide step 4's
+  tiles now build on `TILE_WORKERS` processes, are kept on disk and resume after
+  a stop (2026-10-11); identical to the one-process run on the Porirua pilot,
+  and over Porirua in 10 minutes rather than about 3.7 hours, with every
+  landslide and vul output unchanged.
+  Each tile now does about a third of the work it did (repeated drawing and
+  rays shared, 144 s to 46 s on one worker); Upper Hutt time and memory are next.
 
 **Demand and scenario.** The demand is the TS1170.5 2,500-year field as the
 standard gives it, per site class (**T-26**, closed 2026-10-02). Where a model
@@ -390,6 +396,14 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
   deprecated and is to be retired; the shared slope table is now the two-band
   one, so the old pilot and toy figure scripts read it too.
+- **Landslide step 4 tiles in parallel (2026-10-11)**: `TILE_WORKERS` worker
+  processes, each tile kept on disk as built and a stopped run resumed from the
+  tiles not yet built, cleared when the record (found elements, wall units and
+  draws, scenarios, settings, code) changes; outputs unchanged on the Porirua
+  pilot (spec `doc/specs/optimise-landslide-s4-wall-zones/spec.md`). Each tile
+  also draws only the polygons it keeps, draws a cell set once across the
+  scenarios and shares the rays between them (same outputs, about three times
+  faster: 144 s to 46 s on one worker).
 - **Landslide step 4 (2026-10-09)** rebuilds ground step 3's found elements
   from a compact store, recomputing their terrain layers from the DEM, and
   reads back each tile's window cut down to its buildings; on the tiled
