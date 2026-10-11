@@ -46,7 +46,7 @@
 - **Retaining walls**, one row per insured wall, **spined on the world's wall
   population** (`build_rw_table(walls, states, flags)`), so a wall on sloping
   ground, which the shaking step never sees, appears beside the flat-land walls
-  it does: `rw_id`, `claim_id`, `rw_size`, `rw_length`,
+  it does: `rw_id`, `claim_id`, `rw_size`, `rw_type`, `rw_height`, `rw_length`,
   `is_damaged_by_shaking`, `is_evacuated` and `is_inundated`.
   `is_damaged_by_shaking` is true when the shaking step's damage state is
   replace **or** the wall landslide step's flag is set (a sloping wall whose

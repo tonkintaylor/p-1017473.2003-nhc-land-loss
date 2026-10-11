@@ -15,10 +15,11 @@ difference between them is the site allowance::
 
 Access, earthworks and constructability are what it costs to work on this
 particular site; they are not part of what the wall cost to build, so they have
-no place in undepreciated value. Two things follow. Repair cost can never come
-out below UDV, because the multiplier is never negative -- which is the
-direction the two are known to run, though here it holds by construction rather
-than by evidence. And nothing about age or condition enters UDV at all:
+no place in undepreciated value. Two things follow. For the same construction,
+repair cost can never come out below UDV, because the multiplier is never
+negative -- though here it holds by construction rather than by evidence. A
+wall rebuilt as a cheaper type than the one that failed (T-122) can come out
+below it. And nothing about age or condition enters UDV at all:
 undepreciated means no deduction for age, so a twenty-year-old wall and a new
 one of the same construction and size are worth the same.
 
@@ -69,12 +70,14 @@ obtained rather than because it was decided against:
   ``min(repair, cap)`` less the excess, so understating repair can only lower a
   settlement, never raise it. Carried as **L-34**; the same-rate approach is the
   agreed basis meanwhile, not a stand-in for something better specified.
-- **Which wall type a modelled wall is.** The rates are keyed on construction
-  type, and :mod:`landloss.exposure.rw.beta_population` emits a size class and
-  an initial condition instead. Until the study settles that mapping, a share
-  of walls is priced as concrete and the rest as a timber pole wall whose pile
-  size is set by its height, :data:`TIMBER_POLE_HEIGHT_BANDS_M` -- see the note
-  on it below, because the choice of type moves the answer further than
+- **Whether the rate rows the wall types are mapped to are the right ones.**
+  Exposure draws each wall one of eight types and a retained height, and each
+  type is priced at the costing tool row ``retaining-wall-types.csv`` names
+  for it (:func:`construction_type`); the two timber pole types take their pile
+  size from the height. Two rows are proposals awaiting the lead --
+  ``garden_timber`` on the 175 mm pole rather than Sleepers, and
+  ``reinforced_concrete_post_1992`` on MSE rather than Soil Nail -- and the
+  rates span a factor of 21, so the mapping moves the answer further than
   anything else in this module.
 - **Enabling works, and the compliance items.** Chris Ewens was explicit that
   the wall rates carry no enabling works allowance. Whether enabling works is a
@@ -86,11 +89,12 @@ The rates and the multiplier table came from the costing tool itself; the
 meeting they were walked through at is ``.agents/context/nhc-costing-tool.md``.
 """
 
-import hashlib
 from dataclasses import dataclass
+from functools import cache
 
 import numpy as np
 
+from landloss.hazard.landslide.urban.wall_type_fragility import load_wall_types
 from landloss.loss.policy import PolicySettings
 
 # Retaining wall rates in dollars per square metre of wall face, **excluding
@@ -133,18 +137,22 @@ WALL_RATE_EXCL_GST_NZD_PER_M2 = {
 # months, so a run made long after this date is pricing on stale figures.
 WALL_RATES_AS_AT = "2026-09-23"
 
-# The beta's stand-in for a construction type. Nothing maps a modelled wall onto
-# one of the 29 types, so a share of walls is priced as concrete and the rest as
-# timber pole, with the pile size set by the wall's height
+# The costing tool row ``retaining-wall-types.csv`` gives a timber pole wall
+# type: no single row, but the pile its height calls for
 # (:data:`TIMBER_POLE_HEIGHT_BANDS_M`).
+TIMBER_POLE_BY_HEIGHT = "Timber Pole: 175mm SED to 350mm SED, by height"
+
+# The wall types a failed wall is rebuilt as, rather than as a timber pole wall
+# (T-122; Wgtn Land Model 2026-10-07, confirmed by Perrie Gilbert 2026-10-12).
+# Reinforced masonry block walls and sprayed concrete walls go back like for
+# like; everything else -- brick, stone, stacked concrete blocks, crib, old
+# poured concrete, garden timber -- is rebuilt as the timber pole wall its
+# height calls for. Undepreciated value is always the failed type's.
 #
-# The point is a **spread, not a mean**. Every wall at one rate gives a
-# population with no cheap walls and no dear ones, so no wall ever approaches a
-# sub-cap and the question of whether the sub-caps bind is answered by the
-# averaging rather than by the evidence. Agreed with Maxim Millen on 2026-09-24.
-# **The share is assumed.**
-BETA_CONCRETE_SHARE = 0.30
-BETA_CONCRETE_WALL_TYPE = "Reinforced Concrete"
+# No wall type is sprayed concrete yet (T-119); add it here when one is.
+# `concrete_block` is taken as reinforced block masonry throughout, so stacked
+# unreinforced blocks belong under `brick_rock`, the gravity masonry type.
+REPLACED_IN_KIND = frozenset({"concrete_block"})
 
 EASY = "E"
 MODERATE = "M"
@@ -168,16 +176,12 @@ MAX_SITE_MULTIPLIER = 3 * RATING_MARKUP[DIFFICULT]
 # family in the tool and are deliberately left out.
 #
 # **The bands are assumed**, set on 2026-09-30 as a first cut rather than taken
-# from a design guide. Every wall of a size class is priced at one height
-# (:data:`BETA_SIZE_CLASS_HEIGHT_M`), so each class lands in one band -- small
-# on 175 mm, medium on 250 mm, large on 300 mm -- and the 350 mm rate is not
-# reached until heights are drawn rather than set (**I-14**).
+# from a design guide. An existing wall is priced at the height exposure drew
+# for it; a wall invented for a landslide at its size class's set height
+# (:data:`BETA_SIZE_CLASS_HEIGHT_M`).
 #
-# What the stand-in costs: the tool's rates span a factor of 21, so a population
-# that is really part steel is priced well below what it would settle at.
-# Initial condition does not move the rate at all -- condition belongs to
-# whether the wall fails, which is `vul`'s question, not to what replacing it
-# costs.
+# Age and condition do not move the rate -- they belong to whether the wall
+# fails, which is `vul`'s question, not to what replacing it costs.
 TIMBER_POLE_HEIGHT_BANDS_M = (
     (1.0, "Timber Pole: 175mm SED"),
     (2.0, "Timber Pole: 250mm SED"),
@@ -185,9 +189,9 @@ TIMBER_POLE_HEIGHT_BANDS_M = (
     (np.inf, "Timber Pole: 350mm SED"),
 )
 
-# The retained height each size class is priced at. `vul` sends a size class and
-# a length, and the rate is charged on wall face, so a band has to become a
-# height before anything can be priced.
+# The retained height each size class is priced at. An existing wall carries its
+# own height from exposure; this is for a size class with no wall behind it --
+# the wall a landslide needs, which is a class before it is a height.
 #
 # Each is the midpoint of what its class can actually contain. The class bands
 # in `landloss.exposure.rw.beta_population` are small below 1 m, medium 1 to
@@ -802,53 +806,6 @@ def timber_pole_rate_excl_gst_nzd_per_m2(height_m: np.ndarray | float) -> np.nda
     return wall_rate_excl_gst_nzd_per_m2(timber_pole_wall_type(height_m))
 
 
-def beta_wall_rate_excl_gst_nzd_per_m2(
-    rw_id: np.ndarray | str, height_m: np.ndarray | float
-) -> np.ndarray:
-    """Return the rate each wall is priced at, concrete or timber pole.
-
-    :data:`BETA_CONCRETE_SHARE` of walls are priced as
-    :data:`BETA_CONCRETE_WALL_TYPE`. The rest are timber pole walls whose pile
-    size is **set by the wall's height**, through
-    :func:`timber_pole_rate_excl_gst_nzd_per_m2`.
-
-    **Which walls are concrete is decided by their own id, not by a random
-    draw.** The id is hashed to a fraction, and a wall is concrete where that
-    fraction falls below the share. So the same wall is the same construction
-    every run, on any machine, whatever order the walls arrive in and however
-    many there are -- none of which is true of a seeded generator. Nothing about
-    the wall other than its id bears on it, which is the honest position:
-    nothing in the data says what a wall is made of.
-
-    Args:
-        rw_id: The wall identifier, scalar or array.
-        height_m: Retained height of each wall, shaped like ``rw_id``.
-
-    Returns:
-        The rate for each wall, excluding GST.
-
-    Raises:
-        ValueError: If any height is negative or not finite.
-    """
-    ids = np.atleast_1d(np.asarray(rw_id, dtype=object))
-    heights = np.broadcast_to(
-        np.atleast_1d(np.asarray(height_m, dtype=float)), ids.shape
-    )
-    draws = np.array(
-        [
-            int.from_bytes(
-                hashlib.blake2b(str(value).encode(), digest_size=8).digest(), "big"
-            )
-            / 2**64
-            for value in ids
-        ]
-    )
-    concrete = WALL_RATE_EXCL_GST_NZD_PER_M2[BETA_CONCRETE_WALL_TYPE]
-    timber = timber_pole_rate_excl_gst_nzd_per_m2(heights)
-    rates = np.where(draws < BETA_CONCRETE_SHARE, concrete, timber)
-    return rates if np.ndim(rw_id) else rates[0]
-
-
 def wall_rate_excl_gst_nzd_per_m2(wall_type: np.ndarray | str) -> np.ndarray:
     """Return the square metre rate for a wall type, excluding GST.
 
@@ -874,6 +831,112 @@ def wall_rate_excl_gst_nzd_per_m2(wall_type: np.ndarray | str) -> np.ndarray:
         [WALL_RATE_EXCL_GST_NZD_PER_M2[value] for value in flat], dtype=float
     )
     return rates.reshape(types.shape)
+
+
+@cache
+def _rate_items() -> dict[str, str]:
+    """Return the costing tool row each wall type is priced at."""
+    table = load_wall_types()
+    return dict(zip(table["wall_type"], table["nhc_rate_item"], strict=True))
+
+
+def construction_type(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the costing tool row a wall of this type and height is priced at.
+
+    The row ``retaining-wall-types.csv`` names for the type, except that the two
+    timber pole types take the pile their height calls for
+    (:func:`timber_pole_wall_type`).
+
+    Args:
+        wall_type: The wall type exposure drew, one of
+            :data:`~landloss.hazard.landslide.urban.wall_type_fragility.WALL_TYPES`.
+        height_m: Retained height of the wall, shaped like ``wall_type``.
+
+    Returns:
+        The construction type, named as :data:`WALL_RATE_EXCL_GST_NZD_PER_M2`
+        keys it, shaped like ``wall_type``.
+
+    Raises:
+        ValueError: If a wall type is not one of the eight, or a height is
+            negative or not finite.
+    """
+    types = np.asarray(wall_type, dtype=object)
+    heights = np.broadcast_to(np.asarray(height_m, dtype=float), types.shape)
+    items = _rate_items()
+    unknown = sorted({str(value) for value in types.ravel()} - set(items))
+    if unknown:
+        msg = f"unknown wall type(s): {', '.join(repr(value) for value in unknown)}"
+        raise ValueError(msg)
+    rows = np.vectorize(items.__getitem__, otypes=[object])(types)
+    by_height = rows == TIMBER_POLE_BY_HEIGHT
+    return np.where(by_height, timber_pole_wall_type(heights), rows).astype(str)
+
+
+def wall_type_rate_excl_gst_nzd_per_m2(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the square metre rate for a wall of this type and height, excl GST.
+
+    Args:
+        wall_type: The wall type exposure drew.
+        height_m: Retained height of the wall, shaped like ``wall_type``.
+
+    Returns:
+        The rate in GST-exclusive dollars per square metre of wall face.
+
+    Raises:
+        ValueError: As :func:`construction_type`.
+    """
+    return wall_rate_excl_gst_nzd_per_m2(construction_type(wall_type, height_m))
+
+
+def replacement_construction_type(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the costing tool row a failed wall is rebuilt as.
+
+    A wall of a type in :data:`REPLACED_IN_KIND` is rebuilt as itself
+    (:func:`construction_type`); any other is rebuilt as the timber pole wall
+    its height calls for (:func:`timber_pole_wall_type`).
+
+    Args:
+        wall_type: The type that failed.
+        height_m: Retained height of the replacement, shaped like ``wall_type``.
+
+    Returns:
+        The construction type, named as :data:`WALL_RATE_EXCL_GST_NZD_PER_M2`
+        keys it, shaped like ``wall_type``.
+
+    Raises:
+        ValueError: As :func:`construction_type`.
+    """
+    types = np.asarray(wall_type, dtype=object)
+    heights = np.broadcast_to(np.asarray(height_m, dtype=float), types.shape)
+    own = construction_type(types, heights)
+    in_kind = np.isin(types.astype(str), list(REPLACED_IN_KIND))
+    return np.where(in_kind, own, timber_pole_wall_type(heights)).astype(str)
+
+
+def replacement_rate_excl_gst_nzd_per_m2(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the square metre rate a failed wall is rebuilt at, excluding GST.
+
+    Args:
+        wall_type: The type that failed.
+        height_m: Retained height of the replacement, shaped like ``wall_type``.
+
+    Returns:
+        The rate in GST-exclusive dollars per square metre of wall face.
+
+    Raises:
+        ValueError: As :func:`construction_type`.
+    """
+    return wall_rate_excl_gst_nzd_per_m2(
+        replacement_construction_type(wall_type, height_m)
+    )
 
 
 def beta_wall_height_m(rw_size: np.ndarray | str) -> np.ndarray:
@@ -1049,10 +1112,12 @@ def wall_udv_incl_gst_nzd(
     earthworks and constructability are what it costs to work on this
     particular site, not part of what the wall cost to build.
 
-    Two consequences worth holding on to. Repair cost can never come out below
-    UDV, because the multiplier is never negative -- the direction the two are
-    known to run, here by construction rather than by evidence. And **no age or
-    condition enters**: undepreciated means no deduction for age, so a
+    Two consequences worth holding on to. For a wall rebuilt in kind, repair
+    cost can never come out below UDV, because the multiplier is never
+    negative. A wall rebuilt as timber pole (T-122,
+    :func:`replacement_rate_excl_gst_nzd_per_m2`) can: a brick or concrete wall
+    is valued at its own dearer rate and repaired at the timber one. And **no
+    age or condition enters**: undepreciated means no deduction for age, so a
     twenty-year-old wall and a new one of the same construction and size have
     the same value.
 
@@ -1096,16 +1161,10 @@ def beta_wall_repair_cost_incl_gst_nzd(
 ) -> np.ndarray:
     """Return what it costs to replace a wall of unknown type, including GST.
 
-    The rate is passed in because nothing yet says which of the tool's 29
-    construction types a modelled wall is. An existing wall takes
-    :func:`beta_wall_rate_excl_gst_nzd_per_m2`, which mixes a concrete share
-    in; a wall invented for a landslide takes
+    The rate is passed in rather than a construction type. A failed wall takes
+    :func:`replacement_rate_excl_gst_nzd_per_m2` on its type and replacement
+    height; a wall invented for a landslide has no type of its own and takes
     :func:`timber_pole_rate_excl_gst_nzd_per_m2` on its height.
-
-    The ``beta`` prefix is the same one
-    :mod:`landloss.exposure.rw.beta_population` carries and means the same
-    thing: this is deleted once the study settles the mapping, and no result
-    from it is evidence about Wellington.
 
     Args:
         face_area_m2: Area of wall face, from :func:`wall_face_area_m2`.
@@ -1139,13 +1198,12 @@ def beta_wall_udv_incl_gst_nzd(
     """Return the undepreciated value of a wall of unknown type, including GST.
 
     :func:`wall_udv_incl_gst_nzd` on a rate passed in, for the same reason
-    :func:`beta_wall_repair_cost_incl_gst_nzd` exists: nothing yet says which
-    of the tool's 29 construction types a modelled wall is.
+    :func:`beta_wall_repair_cost_incl_gst_nzd` takes one.
 
     Args:
         face_area_m2: Area of wall face, from :func:`beta_wall_face_area_m2`.
         rate_excl_gst_nzd_per_m2: The square metre rate, excluding GST. Pass
-            :func:`beta_wall_rate_excl_gst_nzd_per_m2` so a wall is valued at
+            :func:`wall_type_rate_excl_gst_nzd_per_m2` so a wall is valued at
             the rate its repair is priced at.
         policy: The settings this scenario runs under.
 

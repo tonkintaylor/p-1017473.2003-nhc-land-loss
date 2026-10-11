@@ -10,7 +10,7 @@ from landloss.domain.loss_contract import (
     LAND_COLUMNS,
     RW_COLUMNS,
 )
-from landloss.loss.pricing import beta_wall_height_m
+from landloss.loss.pricing import wall_type_rate_excl_gst_nzd_per_m2
 from landloss.vul.landslide.land.damaged_area import UNION_AREA_COLUMN
 from landloss.vul.loss_input import (
     build_crossing_tables,
@@ -68,6 +68,8 @@ def walls():
             "rw_id": ["1-RW01", "1-RW02", "2-RW01"],
             "claim_id": [1, 1, 2],
             "size_class": ["small", "large", "medium"],
+            "wall_type": ["garden_timber", "concrete_block", "timber_pole_pre_1992"],
+            "height_m": [0.8, 2.7, 1.6],
             "length_m": [12, 30, 8],
             "is_flatland": [True, True, False],
         },
@@ -176,6 +178,12 @@ def test_the_rw_table_is_spined_on_the_population_in_its_order():
     assert rw["rw_id"].tolist() == ["1-RW01", "1-RW02", "2-RW01"]
     assert rw["claim_id"].tolist() == [1, 1, 2]
     assert rw["rw_size"].tolist() == ["small", "large", "medium"]
+    assert rw["rw_type"].tolist() == [
+        "garden_timber",
+        "concrete_block",
+        "timber_pole_pre_1992",
+    ]
+    assert rw["rw_height"].tolist() == [0.8, 2.7, 1.6]
     assert rw["rw_length"].dtype == np.float64
     assert rw["rw_length"].tolist() == [12.0, 30.0, 8.0]
     assert rw.crs == CRS
@@ -266,7 +274,9 @@ def test_no_crossings_gives_two_empty_tables_with_the_full_schema():
     assert bridges["is_evacuated"].dtype == bool
 
 
-def test_the_rw_sizes_are_ones_the_loss_module_prices():
+def test_the_rw_types_and_heights_are_ones_the_loss_module_prices():
     rw = build_rw_table(walls(), wall_states(), wall_flags())
-    heights = beta_wall_height_m(rw["rw_size"].to_numpy())
-    assert heights.shape == (3,)
+    rates = wall_type_rate_excl_gst_nzd_per_m2(
+        rw["rw_type"].to_numpy(), rw["rw_height"].to_numpy()
+    )
+    assert rates.shape == (3,)

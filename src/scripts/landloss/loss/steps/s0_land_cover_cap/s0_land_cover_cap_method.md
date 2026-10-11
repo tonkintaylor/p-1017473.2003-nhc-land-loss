@@ -60,14 +60,13 @@
 - **Culverts and bridges contribute nothing.** Nothing prices a crossing yet, so
   a claim whose only damaged structure is a culvert caps on its land alone. The
   run prints how many there were so the gap is visible in the output.
-- **Every wall is priced at the beta wall rate**, because nothing maps a
-  modelled wall onto a construction type: 30% of walls, chosen by id, as
-  reinforced concrete and the rest as timber pole, with the pile size set by
-  height (`TIMBER_POLE_HEIGHT_BANDS_M`) — small walls on 175 mm SED, medium on
-  250 mm, large on 300 mm. The rates span a factor of 21, so this is the
-  largest single assumption in the wall half of the cap.
-- Wall height comes from the size class, not from the wall: 0.75 m, 1.75 m and
-  2.75 m for small, medium and large. Face area is that height by `rw_length`.
+- **Every wall is priced at its own type and height**, `rw_type` and
+  `rw_height` as exposure drew them: the type at the costing tool row
+  `retaining-wall-types.csv` names for it, the two timber pole types on the pile
+  their height calls for (`TIMBER_POLE_HEIGHT_BANDS_M`). The rates span a factor
+  of 21, so the mapping is the largest single assumption in the wall half of the
+  cap.
+- Face area is `rw_height` by `rw_length`.
 
 ## Output
 

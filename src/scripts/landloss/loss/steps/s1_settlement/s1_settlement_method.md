@@ -12,10 +12,15 @@
 
 Every line rests on an assumption, and each is named here rather than buried.
 
-- **A damaged retaining wall** is replaced: beta wall rate × face area ×
-  (1 + site multiplier). The rate is concrete for 30% of walls (chosen by id)
-  and otherwise the timber pole rate for the wall's height. Face area is the
-  size class's set height by `rw_length`.
+- **A damaged retaining wall** is replaced: rate × face area × (1 + site
+  multiplier) × (1 + specification uplift). It is rebuilt as a timber pole wall
+  on the pile its height calls for, whatever failed -- brick, stone, stacked
+  blocks, crib, old poured concrete, garden timber -- except that a concrete
+  block wall goes back as concrete block (**T-122**, 2026-10-07 and
+  2026-10-12). Sprayed concrete would also go back in kind, but no wall type is
+  sprayed concrete yet (**T-119**). Face area is `rw_height` by `rw_length`, or
+  the taller and longer wall a slip on the claim needs. Undepreciated value, in
+  step 0, stays at the failed type's rate.
 - **One wall per property.** Where a retaining wall is already there it is
   assumed damaged, is replaced, and that replacement is the whole of the wall
   cost; where there is none, one is invented for the ground. The two are never
@@ -93,8 +98,8 @@ their bands marked as invented.
 - **The Canterbury costs are 2010/2011 dollars and are not inflated**, only
   grossed up for GST. They are compared against land values and wall rates in
   today's dollars. Nothing in the repository supplies an index to correct it.
-- Every wall is the beta wall rate; no construction type is modelled, and the
-  timber pole height bands are assumed.
+- Each wall type's costing tool row is a mapping, two of whose rows await the
+  lead, and the timber pole height bands are assumed.
 - **T-27**: the Canterbury rates may already include retaining wall damage, in
   which case a claim carrying both a liquefaction state and a damaged wall is
   charged for the wall twice. 107 pilot claims carry both.

@@ -45,10 +45,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from landloss.loss.pricing import (
-    BETA_CONCRETE_SHARE,
-    PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
-)
+from landloss.loss.pricing import PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD
 from scripts.landloss.paths import CLAIM_REPORTS_EXTRACTED_DIR, RESEARCH_DIR
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -346,9 +343,9 @@ def main() -> int:
     )
     concrete = counts.reindex(["concrete", "masonry/block", "crib"]).fillna(0).sum()
     lines.append(
-        f"The loss module prices {BETA_CONCRETE_SHARE:.0%} of walls as concrete; "
-        f"concrete, block and crib walls are {concrete / counts.sum():.0%} of the "
-        "walls reported here."
+        "The loss module prices each wall at the rate of the type exposure drew "
+        f"for it; concrete, block and crib walls are {concrete / counts.sum():.0%} "
+        "of the walls reported here."
     )
     lines.append("")
     for column, title in (

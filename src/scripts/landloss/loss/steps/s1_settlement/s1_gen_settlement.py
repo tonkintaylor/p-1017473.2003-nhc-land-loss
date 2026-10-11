@@ -74,9 +74,10 @@ from landloss.domain.loss_contract import (
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_COST_COLUMN,
     REALISATION_ID_COLUMN,
-    RW_ID_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
 )
 from landloss.io.area_of_interest import extent_suffix
 from landloss.loss import claims as loss_claims
@@ -87,7 +88,6 @@ from landloss.loss.pricing import (
     SiteRatings,
     beta_wall_face_area_m2,
     beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_repair_cost_incl_gst_nzd,
     classify_constructability,
     classify_construction_access,
@@ -97,7 +97,9 @@ from landloss.loss.pricing import (
     inundation_volume_m3,
     landslide_wall_length_m,
     professional_fees_incl_gst_nzd,
+    replacement_rate_excl_gst_nzd_per_m2,
     timber_pole_rate_excl_gst_nzd_per_m2,
+    wall_face_area_m2,
 )
 from landloss.loss.settlement import DamagedClaim, settle
 from landloss.vul.loss_input import WORLD_ID_COLUMN
@@ -306,17 +308,19 @@ def landslide_ground_by_claim(land: pd.DataFrame) -> pd.DataFrame:
 
 def replacement_wall_shape(
     damaged: pd.DataFrame, ground: pd.DataFrame
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return the size class and length each damaged wall is replaced at.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the size class, height and length each wall is replaced at.
 
     **A replacement is never smaller than the wall it replaces, but a landslide
     can make it larger.** Where the claim also has landslide ground, the wall a
     slip of that extent would need is worked out exactly as for a property with
     no wall -- :func:`classify_landslide_wall_size` and
     :func:`landslide_wall_length_m` -- and the replacement takes the **larger of
-    the two in each dimension**: the larger size class and the longer length.
-    Ground that needed a two-metre wall still does, and a slip wider than the
-    wall it broke needs a wall that spans it.
+    the two in each dimension**: the larger size class, the taller height and
+    the longer length. The wall keeps its own height unless the slip's size
+    class sets a taller one (:func:`beta_wall_height_m`). Ground that needed a
+    two-metre wall still does, and a slip wider than the wall it broke needs a
+    wall that spans it.
 
     Where a claim carries several damaged walls, only its largest by face area
     is compared with the slip. The slip is one piece of ground and wants one
@@ -328,15 +332,16 @@ def replacement_wall_shape(
         ground: :func:`landslide_ground_by_claim`.
 
     Returns:
-        The replacement size class and length, one each per row of ``damaged``,
-        in its order.
+        The replacement size class, height and length, one each per row of
+        ``damaged``, in its order.
     """
     size = damaged[RW_SIZE_COLUMN].str.lower().to_numpy(dtype=object)
+    height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float).copy()
     length = damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float).copy()
     area = ground["area"].reindex(damaged[CLAIM_ID_COLUMN]).fillna(0.0).to_numpy()
     volume = ground["volume"].reindex(damaged[CLAIM_ID_COLUMN]).fillna(0.0).to_numpy()
 
-    face = beta_wall_face_area_m2(size, length)
+    face = wall_face_area_m2(height, length)
     largest = (
         pd.Series(face, index=damaged.index)
         .groupby(damaged[CLAIM_ID_COLUMN].to_numpy())
@@ -345,7 +350,7 @@ def replacement_wall_shape(
     )
     held = largest & (area > 0)
     if not held.any():
-        return size, length
+        return size, height, length
 
     rank = {name: order for order, name in enumerate(SIZE_CLASSES)}
     slip_size = classify_landslide_wall_size(area[held], volume[held])
@@ -354,8 +359,9 @@ def replacement_wall_shape(
         max(existing, slip, key=rank.__getitem__)
         for existing, slip in zip(size[held], slip_size, strict=True)
     ]
+    height[held] = np.maximum(height[held], beta_wall_height_m(slip_size))
     length[held] = np.maximum(length[held], slip_length)
-    return size, length
+    return size, height, length
 
 
 def wall_repair_by_claim(
@@ -370,12 +376,13 @@ def wall_repair_by_claim(
     Each wall is replaced at :func:`replacement_wall_shape` -- as it was, or
     larger where a landslide on the claim calls for more wall.
 
-    The construction does not change with the size: a wall step 0 values as
-    concrete is replaced in concrete, since which walls are concrete is decided
-    by the wall's id. A timber pole wall takes the pile its **replacement**
-    height calls for, so a wall enlarged from medium to large goes from the
-    250 mm to the 300 mm pile. Undepreciated value stays on the wall as it was,
-    in step 0, because that is what the property had.
+    A failed wall is rebuilt as a timber pole wall, on the pile its
+    **replacement** height calls for, unless its type is rebuilt in kind
+    (:data:`~landloss.loss.pricing.REPLACED_IN_KIND`, T-122): a brick wall goes
+    back as timber pole, a concrete block wall as concrete block. So a 1.8 m
+    wall enlarged to 2.75 m goes from the 250 mm to the 300 mm pile.
+    Undepreciated value stays on the wall as it was, at its own type, in step 0,
+    because that is what the property had.
 
     Args:
         rw: The contract's retaining wall table.
@@ -402,10 +409,10 @@ def wall_repair_by_claim(
                 WALL_ENLARGED_COLUMN,
             ]
         )
-    size, length = replacement_wall_shape(damaged, ground)
-    face_area = beta_wall_face_area_m2(size, length)
-    rate = beta_wall_rate_excl_gst_nzd_per_m2(
-        damaged[RW_ID_COLUMN].to_numpy(), beta_wall_height_m(size)
+    size, height, length = replacement_wall_shape(damaged, ground)
+    face_area = wall_face_area_m2(height, length)
+    rate = replacement_rate_excl_gst_nzd_per_m2(
+        damaged[RW_TYPE_COLUMN].to_numpy(), height
     )
     cost = beta_wall_repair_cost_incl_gst_nzd(
         face_area,
@@ -413,7 +420,7 @@ def wall_repair_by_claim(
         rate_excl_gst_nzd_per_m2=rate,
         policy=policy,
     )
-    enlarged = (size != damaged[RW_SIZE_COLUMN].str.lower().to_numpy()) | (
+    enlarged = (height > damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)) | (
         length > damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float)
     )
     rank = {name: order for order, name in enumerate(SIZE_CLASSES)}

@@ -50,6 +50,12 @@ EVACUATED_AREA_COLUMN = "evacuated_area"
 
 # Retaining wall, culvert and bridge columns, asset-pricing-approach.md section 1.
 RW_SIZE_COLUMN = "rw_size"
+# The wall's type, one of the eight of
+# landloss.hazard.landslide.urban.wall_type_fragility.WALL_TYPES, and its
+# retained height in metres, as exposure drew them. Loss prices the wall from
+# both (landloss.loss.pricing.wall_type_rate_excl_gst_nzd_per_m2).
+RW_TYPE_COLUMN = "rw_type"
+RW_HEIGHT_COLUMN = "rw_height"
 RW_LENGTH_COLUMN = "rw_length"
 IS_DAMAGED_BY_SHAKING_COLUMN = "is_damaged_by_shaking"
 IS_EVACUATED_COLUMN = "is_evacuated"
@@ -79,6 +85,8 @@ RW_COLUMNS = (
     RW_ID_COLUMN,
     CLAIM_ID_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
     IS_DAMAGED_BY_SHAKING_COLUMN,
     IS_EVACUATED_COLUMN,

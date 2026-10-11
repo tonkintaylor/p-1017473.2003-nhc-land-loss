@@ -51,9 +51,11 @@ from landloss.domain.loss_contract import (
     LIQ_LD_COST_COLUMN,
     LIQ_LD_STATE_COLUMN,
     RW_COLUMNS,
+    RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
     TOTAL_INSURED_LAND_AREA_COLUMN,
     check_contract_columns,
 )
@@ -86,6 +88,8 @@ WORLD_ID_COLUMN = "world_id"
 
 # Exposure's column names for what the contract renames.
 SIZE_CLASS_COLUMN = "size_class"
+WALL_TYPE_COLUMN = "wall_type"
+HEIGHT_COLUMN = "height_m"
 LENGTH_COLUMN = "length_m"
 ASSET_COLUMN = "asset"
 
@@ -230,7 +234,8 @@ def build_rw_table(
 
     Args:
         walls: The world's wall population, carrying ``rw_id``, ``claim_id``,
-            ``size_class``, ``length_m`` and the line geometry.
+            ``size_class``, ``wall_type``, ``height_m``, ``length_m`` and the
+            line geometry.
         states: The shaking step's ``damage_state`` per ``rw_id``, for the
             flat-land walls only. A wall with no row has no shaking damage
             from this source.
@@ -267,6 +272,8 @@ def build_rw_table(
             RW_ID_COLUMN: walls[RW_ID_COLUMN],
             CLAIM_ID_COLUMN: walls[CLAIM_ID_COLUMN],
             RW_SIZE_COLUMN: walls[SIZE_CLASS_COLUMN],
+            RW_TYPE_COLUMN: walls[WALL_TYPE_COLUMN],
+            RW_HEIGHT_COLUMN: walls[HEIGHT_COLUMN].astype("float64"),
             RW_LENGTH_COLUMN: walls[LENGTH_COLUMN].astype("float64"),
             "geometry": walls.geometry,
         },

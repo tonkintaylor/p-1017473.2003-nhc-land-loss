@@ -9,6 +9,10 @@ from landloss.exposure.rw.beta_population import (
     SMALL_MAX_HEIGHT_M,
     classify_wall_size,
 )
+from landloss.hazard.landslide.urban.wall_type_fragility import (
+    WALL_TYPES,
+    load_wall_types,
+)
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
@@ -26,26 +30,30 @@ from landloss.loss.pricing import (
     MODERATE_ACCESS_MAX_DRIVEWAY_M,
     MODERATE_CONSTRUCTABILITY_MAX_SLOPE_DEG,
     MODERATE_INUNDATION_MAX_VOLUME_M3,
+    REPLACED_IN_KIND,
     SMALL_LANDSLIDE_MAX_AREA_M2,
     TIMBER_POLE_HEIGHT_BANDS_M,
     WALL_RATE_EXCL_GST_NZD_PER_M2,
     SiteRatings,
     beta_wall_face_area_m2,
     beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_repair_cost_incl_gst_nzd,
     beta_wall_udv_incl_gst_nzd,
     classify_constructability,
     classify_construction_access,
     classify_inundation_earthworks,
     classify_landslide_wall_size,
+    construction_type,
     inundation_volume_m3,
     landslide_wall_length_m,
+    replacement_construction_type,
+    replacement_rate_excl_gst_nzd_per_m2,
     timber_pole_rate_excl_gst_nzd_per_m2,
     timber_pole_wall_type,
     wall_face_area_m2,
     wall_rate_excl_gst_nzd_per_m2,
     wall_repair_cost_incl_gst_nzd,
+    wall_type_rate_excl_gst_nzd_per_m2,
     wall_udv_incl_gst_nzd,
 )
 
@@ -324,30 +332,83 @@ def test_the_timber_pole_refuses_a_negative_height():
     ],
 )
 def test_each_size_class_lands_on_one_timber_pole(size_class, expected):
-    # Every wall of a class is priced at one set height, so the class alone
-    # picks the pile -- and the 350 mm pile is never reached.
+    # A wall invented for a landslide is priced at its class's set height, so
+    # the class alone picks the pile.
     assert timber_pole_wall_type(beta_wall_height_m(size_class)) == expected
 
 
-def test_a_timber_wall_is_priced_on_its_height_and_a_concrete_one_is_not():
-    ids = np.array([f"rw{i}" for i in range(200)])
-    small = beta_wall_rate_excl_gst_nzd_per_m2(ids, np.full(ids.shape, 0.75))
-    large = beta_wall_rate_excl_gst_nzd_per_m2(ids, np.full(ids.shape, 2.75))
-    concrete = small == WALL_RATE_EXCL_GST_NZD_PER_M2["Reinforced Concrete"]
-    # The same walls are concrete whatever their height, since that is the id's
-    # to decide.
-    assert np.array_equal(
-        concrete, large == WALL_RATE_EXCL_GST_NZD_PER_M2["Reinforced Concrete"]
-    )
-    assert 0 < concrete.sum() < len(ids)
-    assert small[~concrete] == pytest.approx(643.19)
-    assert large[~concrete] == pytest.approx(798.80)
+def test_every_wall_type_is_priced_at_a_row_the_costing_tool_carries():
+    types = np.array(WALL_TYPES)
+    for height in (0.5, 1.5, 2.5, 3.5):
+        rows = construction_type(types, np.full(types.shape, height))
+        assert set(rows) <= set(WALL_RATE_EXCL_GST_NZD_PER_M2)
 
 
-def test_the_wall_rate_is_the_same_for_the_same_wall_every_call():
-    assert beta_wall_rate_excl_gst_nzd_per_m2("rw1", 1.75) == pytest.approx(
-        beta_wall_rate_excl_gst_nzd_per_m2(np.array(["rw0", "rw1"]), 1.75)[1]
+def test_a_wall_type_takes_the_row_the_wall_types_table_names():
+    table = load_wall_types().set_index("wall_type")["nhc_rate_item"]
+    assert construction_type("brick_rock", 1.0) == table["brick_rock"]
+    assert construction_type("concrete_block", 2.6) == "Concrete Block"
+    assert construction_type("crib_gabion", 1.2) == "Concrete Crib"
+
+
+@pytest.mark.parametrize("wall_type", ["timber_pole_pre_1992", "timber_pole_post_1992"])
+def test_a_timber_pole_type_takes_the_pile_its_height_calls_for(wall_type):
+    heights = np.array([0.8, 1.4, 2.2, 3.1])
+    assert construction_type(np.full(4, wall_type), heights).tolist() == [
+        "Timber Pole: 175mm SED",
+        "Timber Pole: 250mm SED",
+        "Timber Pole: 300mm SED",
+        "Timber Pole: 350mm SED",
+    ]
+
+
+def test_a_non_timber_type_is_priced_the_same_at_any_height():
+    rates = wall_type_rate_excl_gst_nzd_per_m2(
+        np.full(3, "reinforced_concrete_pre_1992"), np.array([0.5, 1.5, 3.0])
     )
+    assert rates == pytest.approx([1_224.08] * 3)
+
+
+def test_the_rate_follows_the_type_and_height_elementwise():
+    rates = wall_type_rate_excl_gst_nzd_per_m2(
+        np.array(["garden_timber", "timber_pole_pre_1992", "brick_rock"]),
+        np.array([0.6, 2.4, 1.0]),
+    )
+    assert rates == pytest.approx([643.19, 798.80, 1_130.08])
+
+
+@pytest.mark.parametrize(
+    "wall_type", [t for t in WALL_TYPES if t not in REPLACED_IN_KIND]
+)
+def test_a_failed_wall_is_rebuilt_as_timber_pole_on_its_height(wall_type):
+    heights = np.array([0.8, 1.4, 2.2, 3.1])
+    assert replacement_construction_type(np.full(4, wall_type), heights).tolist() == [
+        timber_pole_wall_type(height) for height in heights
+    ]
+
+
+def test_a_concrete_block_wall_is_rebuilt_in_kind():
+    assert "concrete_block" in REPLACED_IN_KIND
+    assert replacement_construction_type("concrete_block", 2.0) == "Concrete Block"
+
+
+def test_a_brick_wall_is_valued_as_brick_but_rebuilt_as_timber_pole():
+    # T-122: what the property had sets the value, not what replaces it.
+    assert wall_type_rate_excl_gst_nzd_per_m2("brick_rock", 1.5) == pytest.approx(
+        1_130.08
+    )
+    assert replacement_rate_excl_gst_nzd_per_m2("brick_rock", 1.5) == pytest.approx(
+        744.69
+    )
+
+
+def test_every_type_rebuilt_in_kind_is_a_wall_type():
+    assert set(REPLACED_IN_KIND) <= set(WALL_TYPES)
+
+
+def test_an_unknown_drawn_wall_type_is_refused():
+    with pytest.raises(ValueError, match="unknown wall type"):
+        construction_type("papier_mache", 1.0)
 
 
 def test_beta_cost_is_the_rate_by_area_by_multiplier_grossed_up():

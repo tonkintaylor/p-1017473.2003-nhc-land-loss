@@ -47,17 +47,17 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LIQ_LD_AREA_COLUMN,
     LIQ_LD_STATE_COLUMN,
-    RW_ID_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
     TOTAL_INSURED_LAND_AREA_COLUMN,
 )
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
-    beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
+    wall_type_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
@@ -891,6 +891,7 @@ BLOCKS = [
         [
             ("rw_cause", "What damaged it", WALL_CAUSE_COLUMN, None, 18),
             ("rw_size", "RTW size", "wall_size", None, 11),
+            ("rw_type", "RTW type", "wall_type", None, 18),
             ("rw_height", "RTW height (m)", "wall_height_m", "0.00", 12),
             ("rw_length", "RTW length (m)", "wall_length_m", AREA, 12),
             ("rw_rate", "RTW rate ($/m2)", "wall_rate_excl_gst", RATE, 12),
@@ -1489,20 +1490,34 @@ def wall_shape(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFra
     order = pd.Categorical(
         damaged[RW_SIZE_COLUMN], categories=list(BETA_SIZE_CLASS_HEIGHT_M), ordered=True
     )
+    height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)
+    face = height * damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float)
+    rate = wall_type_rate_excl_gst_nzd_per_m2(
+        damaged[RW_TYPE_COLUMN].to_numpy(), height
+    )
     damaged = damaged.assign(
         _order=order,
-        _rate=beta_wall_rate_excl_gst_nzd_per_m2(
-            damaged[RW_ID_COLUMN].to_numpy(),
-            beta_wall_height_m(damaged[RW_SIZE_COLUMN].to_numpy()),
-        ),
+        _face=face,
+        _bare=face * rate,
         _cause=wall_damage_cause(damaged),
     )
     grouped = damaged.groupby(CLAIM_ID_COLUMN)
+    length = grouped[RW_LENGTH_COLUMN].sum()
+    face_total = grouped["_face"].sum()
+    # A claim's walls on one row: the height is length-weighted and the rate
+    # face-weighted, so height x length x rate is still the claim's bare wall
+    # value however many walls of however many types it has.
     out = pd.DataFrame(
         {
             "wall_size": grouped["_order"].max().astype(str),
-            "wall_length_m": grouped[RW_LENGTH_COLUMN].sum(),
-            "wall_rate_excl_gst": grouped["_rate"].max(),
+            "wall_type": grouped[RW_TYPE_COLUMN].agg(
+                lambda types: ", ".join(sorted(set(types)))
+            ),
+            "wall_height_m": (face_total / length).where(length > 0, 0.0),
+            "wall_length_m": length,
+            "wall_rate_excl_gst": (grouped["_bare"].sum() / face_total).where(
+                face_total > 0, 0.0
+            ),
             WALL_CAUSE_COLUMN: grouped["_cause"].agg(
                 lambda causes: ", ".join(sorted(set(causes)))
             ),
@@ -1525,13 +1540,12 @@ def main(*, extent, world_ids, realisation_ids):
 
     walls = wall_shape(world_id, realisation_id, extent=extent).reindex(claims.index)
     claims["wall_size"] = walls["wall_size"].fillna("none")
+    claims["wall_type"] = walls["wall_type"].fillna("none")
+    claims["wall_height_m"] = walls["wall_height_m"].fillna(0.0)
     claims["wall_length_m"] = walls["wall_length_m"].fillna(0.0)
     claims["wall_rate_excl_gst"] = walls["wall_rate_excl_gst"].fillna(0.0)
     claims[WALL_CAUSE_COLUMN] = walls[WALL_CAUSE_COLUMN].fillna(
         "no wall on the property"
-    )
-    claims["wall_height_m"] = (
-        claims["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     )
     areas = land_areas_by_claim(world_id, realisation_id, extent=extent).reindex(
         claims.index

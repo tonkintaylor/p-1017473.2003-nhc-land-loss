@@ -23,9 +23,13 @@
       are compared against present-day land values today, which understates
       them by however much construction has risen. Needs an index nobody has
       supplied.
-- [ ] Replace the beta flat wall rate with a mapping from size class and
-      condition onto a construction type. The rates span a factor of 21, so this
-      moves the answer more than every proxy here put together.
+- [x] Replace the beta flat wall rate with a mapping onto a construction type:
+      each wall valued at the row its drawn type is mapped to, at its drawn
+      height (2026-10-12).
+- [x] Rebuild a failed wall as timber pole, except concrete block, which goes
+      back in kind (**T-122**, 2026-10-12).
+- [ ] Rebuild a sprayed concrete wall in kind, once a sprayed concrete wall
+      type exists (**T-119**).
 - [ ] Replace the rating proxies with the real thing, or confirm them. The duty
       geotechnical report supplies all three for a real claim (**Q-10**).
 - [ ] Distinguish a claim with no driveway routed from one with a short

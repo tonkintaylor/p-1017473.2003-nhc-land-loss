@@ -41,6 +41,8 @@ def test_tuples_hold_the_exact_contract_strings():
         "rw_id",
         "claim_id",
         "rw_size",
+        "rw_type",
+        "rw_height",
         "rw_length",
         "is_damaged_by_shaking",
         "is_evacuated",

@@ -1868,6 +1868,14 @@
       "Phase": "2",
       "Source": "Liquefaction repair rate review 2026-10-08",
       "Status": "Parked"
+    },
+    {
+      "ID": "I-29",
+      "Improvement": "Remap the retaining wall types to how a wall is rebuilt: a gravity masonry type for brick, stone and stacked concrete blocks, a reinforced block masonry type, and a sprayed concrete type (T-119), with the type shares and fragilities following.",
+      "Rationale": "The replacement rule (T-122) rebuilds reinforced block and sprayed concrete in kind and everything else as timber pole, but concrete_block mixes reinforced and stacked blocks and no type is sprayed concrete, so the rule cannot yet be applied exactly.",
+      "Phase": "Future",
+      "Source": "Wall replacement rule, Perrie Gilbert 2026-10-12",
+      "Status": "Parked"
     }
   ],
   "Questions": [

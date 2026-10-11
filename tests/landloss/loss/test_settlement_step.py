@@ -24,17 +24,19 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_COST_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
 )
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     LIQ_COST_ESCALATION,
     beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
     classify_landslide_wall_size,
     landslide_wall_length_m,
+    wall_type_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     ACCESS_COLUMN,
@@ -156,13 +158,25 @@ def test_a_claim_with_no_landslide_ground_builds_nothing(ratings):
 # ---------------------------------------------------------------------------
 
 
-def walls(*shapes: tuple[str, float], claim: str = CLAIM) -> pd.DataFrame:
-    """Return damaged walls on one claim, each a (size class, length) pair."""
+# The type every wall below is, unless a test says otherwise: a timber pole
+# type, so its rate moves with its height.
+WALL_TYPE = "timber_pole_post_1992"
+
+
+def walls(
+    *shapes: tuple[str, float], claim: str = CLAIM, wall_type: str = WALL_TYPE
+) -> pd.DataFrame:
+    """Return damaged walls on one claim, each a (size class, length) pair.
+
+    Each is as tall as its class's set height.
+    """
     return pd.DataFrame(
         {
             CLAIM_ID_COLUMN: [claim] * len(shapes),
             RW_ID_COLUMN: [f"rw{i}" for i in range(len(shapes))],
             RW_SIZE_COLUMN: [size for size, _ in shapes],
+            RW_TYPE_COLUMN: [wall_type] * len(shapes),
+            RW_HEIGHT_COLUMN: [float(beta_wall_height_m(size)) for size, _ in shapes],
             RW_LENGTH_COLUMN: [length for _, length in shapes],
             IS_DAMAGED_BY_SHAKING_COLUMN: [True] * len(shapes),
             IS_EVACUATED_COLUMN: [False] * len(shapes),
@@ -186,23 +200,25 @@ def slip(area_m2: float) -> pd.DataFrame:
 
 
 def test_a_wall_with_no_slip_is_replaced_as_it_was():
-    size, length = replacement_wall_shape(walls(("medium", 7.0)), slip(0.0))
+    size, height, length = replacement_wall_shape(walls(("medium", 7.0)), slip(0.0))
     assert list(size) == ["medium"]
+    assert height == pytest.approx([1.75])
     assert length == pytest.approx([7.0])
 
 
 def test_a_replacement_is_never_smaller_than_the_wall_it_replaces():
     # A 1.4 m2 slip wants a small wall 5.7 m long; the 18.7 m medium wall
     # beside it is replaced as it was.
-    size, length = replacement_wall_shape(walls(("medium", 18.7)), slip(1.4))
+    size, _height, length = replacement_wall_shape(walls(("medium", 18.7)), slip(1.4))
     assert list(size) == ["medium"]
     assert length == pytest.approx([18.7])
 
 
 def test_a_large_slip_enlarges_the_replacement_in_both_dimensions():
     area = 208.8
-    size, length = replacement_wall_shape(walls(("medium", 9.6)), slip(area))
+    size, height, length = replacement_wall_shape(walls(("medium", 9.6)), slip(area))
     assert list(size) == list(classify_landslide_wall_size([area], [0.0])) == ["large"]
+    assert height == pytest.approx([beta_wall_height_m("large")])
     assert length == pytest.approx(landslide_wall_length_m(area))
     assert length[0] > 9.6
 
@@ -210,14 +226,14 @@ def test_a_large_slip_enlarges_the_replacement_in_both_dimensions():
 def test_each_dimension_takes_the_larger_on_its_own():
     # The slip wants a medium wall 8.8 m long; the large wall there is 8.2 m.
     # The replacement keeps the larger class and takes the longer length.
-    size, length = replacement_wall_shape(walls(("large", 8.2)), slip(11.6))
+    size, _height, length = replacement_wall_shape(walls(("large", 8.2)), slip(11.6))
     assert list(size) == ["large"]
     assert length == pytest.approx(landslide_wall_length_m(11.6))
 
 
 def test_only_the_largest_of_several_walls_is_sized_against_the_slip():
     # The slip is one piece of ground and wants one wall.
-    size, length = replacement_wall_shape(
+    size, _height, length = replacement_wall_shape(
         walls(("small", 4.0), ("medium", 6.0)), slip(208.8)
     )
     assert list(size) == ["small", "large"]
@@ -240,11 +256,38 @@ def test_an_enlarged_wall_costs_more_and_is_priced_on_its_new_height(ratings):
     assert grown[REPLACEMENT_WALL_LENGTH_COLUMN] == pytest.approx(
         landslide_wall_length_m(208.8)
     )
-    # Concrete stays concrete, and a timber wall takes the pile its new height
-    # calls for -- either way, the rate of wall rw0 at the large height.
+    # A timber pole wall takes the pile its new height calls for.
     assert grown[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(
-        beta_wall_rate_excl_gst_nzd_per_m2("rw0", beta_wall_height_m("large"))
+        wall_type_rate_excl_gst_nzd_per_m2(WALL_TYPE, beta_wall_height_m("large"))
     )
+    assert grown[REPLACEMENT_WALL_RATE_COLUMN] > kept[REPLACEMENT_WALL_RATE_COLUMN]
+
+
+def test_a_wall_keeps_its_own_height_when_the_slip_needs_less():
+    shaped = walls(("large", 8.0)).assign(**{RW_HEIGHT_COLUMN: 3.2})
+    _, height, _ = replacement_wall_shape(shaped, slip(11.6))
+    assert height == pytest.approx([3.2])
+
+
+def test_a_concrete_block_wall_is_rebuilt_in_kind(ratings):
+    out = wall_repair_by_claim(
+        walls(("medium", 9.6), wall_type="concrete_block"),
+        ratings,
+        ground=slip(0.0),
+        policy=PolicySettings(),
+    ).loc[CLAIM]
+    assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(1_010.58)
+
+
+def test_a_brick_wall_is_rebuilt_as_timber_pole(ratings):
+    out = wall_repair_by_claim(
+        walls(("medium", 9.6), wall_type="brick_rock"),
+        ratings,
+        ground=slip(0.0),
+        policy=PolicySettings(),
+    ).loc[CLAIM]
+    # 1.75 m takes the 250 mm pile, not the mortar bed rock rate.
+    assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(744.69)
 
 
 def test_a_claim_with_several_walls_reports_a_face_weighted_rate(ratings):
@@ -255,8 +298,8 @@ def test_a_claim_with_several_walls_reports_a_face_weighted_rate(ratings):
         policy=PolicySettings(),
     ).loc[CLAIM]
     faces = np.array([0.75 * 4.0, 2.75 * 6.0])
-    rates = beta_wall_rate_excl_gst_nzd_per_m2(
-        np.array(["rw0", "rw1"]), np.array([0.75, 2.75])
+    rates = wall_type_rate_excl_gst_nzd_per_m2(
+        np.array([WALL_TYPE, WALL_TYPE]), np.array([0.75, 2.75])
     )
     assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(
         (faces * rates).sum() / faces.sum()

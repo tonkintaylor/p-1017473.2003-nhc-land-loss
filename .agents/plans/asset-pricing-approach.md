@@ -50,8 +50,9 @@ property's QV land value in three tiers (`landloss.loss.qv_land_value`,
 contract's `$/m2 market value`.
 
 **Retaining walls** — one row per insured wall: `rw_id`, `claim_id`, `rw_size`
-(small, medium or large), `rw_length`, and three damage flags,
-`is_damaged_by_shaking`, `is_evacuated`, `is_inundated`.
+(small, medium or large), `rw_type` (one of the eight wall types) and
+`rw_height` (retained height in metres, both added 2026-10-12), `rw_length`, and
+three damage flags, `is_damaged_by_shaking`, `is_evacuated`, `is_inundated`.
 
 **Culverts** — `culvert_id`, `claim_id`, `is_inundated`, `is_damaged`.
 
@@ -88,7 +89,9 @@ Four things the contract does not carry, each of which `loss` needs:
 - **No wall height.** The rates are charged per square metre of wall face, which
   is retained height by length; `rw_length` arrives and `rw_size` is a band, so
   `loss` turns a size class into a height. Settled for now as **set values** of
-  0.75 m, 1.75 m and 2.75 m — see section 1.1.
+  0.75 m, 1.75 m and 2.75 m — see section 1.1. *Resolved 2026-10-12: the table
+  now carries `rw_type` and `rw_height`, and an existing wall is priced at its
+  own; the set values remain for a wall invented for a landslide.*
 - **No `cost_year` or `rate_basis`.** The earlier contract carried both. Their
   absence reads as every rate being stated at one cost year, which is worth
   confirming before a rate from a different year is mixed in.

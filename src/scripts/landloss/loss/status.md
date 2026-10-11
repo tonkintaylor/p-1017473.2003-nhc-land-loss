@@ -73,10 +73,18 @@ The settlement core is built and is the only part that needed no upstream data.
   at 0%, 5% and 10% to a ceiling of 30%. A wall's repair cost is rate × face
   area × (1 + multiplier), grossed up to GST-inclusive. This closed **Q-03** and
   **Q-04**.
-- Nothing maps a modelled wall onto a construction type, so 30% of walls
-  (chosen by id) are priced as reinforced concrete and the rest as timber pole,
-  with the pile set by height (`TIMBER_POLE_HEIGHT_BANDS_M`, 2026-09-30): below
-  1 m is 175 mm SED, 1–2 m is 250 mm, 2–3 m is 300 mm, 3 m and above is 350 mm.
+- Since 2026-10-12 each wall is priced at its own type and height, as exposure
+  drew them and vul carries them (`rw_type`, `rw_height`). The type takes the
+  costing tool row `retaining-wall-types.csv` names for it
+  (`landloss.loss.pricing.construction_type`); the two timber pole types take
+  the pile their height calls for (`TIMBER_POLE_HEIGHT_BANDS_M`, 2026-09-30):
+  below 1 m is 175 mm SED, 1–2 m is 250 mm, 2–3 m is 300 mm, 3 m and above is
+  350 mm. This replaced a 30% concrete share chosen by id. That rate sets the
+  undepreciated value; the repair rebuilds the wall as timber pole on its
+  height unless it is concrete block, which goes back in kind (**T-122**,
+  `REPLACED_IN_KIND`).
+- (Superseded 2026-10-12.) Before then, 30% of walls (chosen by id) were priced
+  as reinforced concrete and the rest as timber pole.
   With set heights per size class, small is $643.19, medium $744.69 and large
   $798.80 per m² excluding GST, and the 350 mm rate is never reached. A wall
   invented for a landslide takes the same timber rate for its height. Size
@@ -123,9 +131,11 @@ The settlement core is built and is the only part that needed no upstream data.
 
 ## Next
 
-1. Replace the beta wall rate with a real mapping from size class and initial
-   condition onto a construction type. The rates span a factor of 21, so this
-   decides more of the answer than anything else in the module.
+1. ~~Replace the beta wall rate with a real mapping onto a construction
+   type~~ — **done** 2026-10-12: each wall is priced at the row its drawn type
+   is mapped to, at its drawn height. Two rows await the lead
+   (`garden_timber` on the 175 mm pole, `reinforced_concrete_post_1992` on
+   MSE).
 2. Generate the three site ratings, without which no wall prices at all
    (**Q-10**).
 3. Price culverts and bridges.
@@ -193,19 +203,17 @@ The settlement core is built and is the only part that needed no upstream data.
   refuses a count below one rather than
   reading a zero as "no cover", so the gap fails loudly instead of quietly
   halving caps.
-- **Which wall types the study runs.** The costing tool prices 29 construction
-  types and `vul` hands over a size class, so something has to choose. The team
-  agreed at the costing tool demo to run three types with simple numbers; which
-  three is not recorded. A 30% concrete share and a timber pole rate banded by
-  height stand in, which prices a population that is really part steel below
-  what it would settle at. The height bands are themselves assumed.
-- **Whether a set height per size class is enough (I-14).** `vul` sends
-  `rw_size` and `rw_length`, and the rate is charged on wall face, so a band has
-  to become a height. Settled for now as 0.75 m, 1.75 m and 2.75 m — the middle
-  of what each class can contain, given the population draws over 0.4 to 3.0 m.
-  A size class therefore carries no variation of its own, so the spread in wall
-  cost comes from length and the site ratings alone. Drawing within the band, or
-  taking the height off the slope, would add it back.
+- **Which costing tool row each wall type is priced at.** Exposure draws one of
+  eight wall types per wall and `vul` carries it as `rw_type`; each is priced at
+  the row `retaining-wall-types.csv` names. Two rows are proposals awaiting the
+  lead: `garden_timber` on the 175 mm timber pole rather than Sleepers, and
+  `reinforced_concrete_post_1992` on MSE rather than Soil Nail. The timber pole
+  height bands are assumed.
+- **Wall height (I-14).** An existing wall is priced at the height exposure drew
+  for it, `rw_height`, the DEM face height of its line. A wall invented for a
+  landslide still takes its size class's set height, 0.75 m, 1.75 m or 2.75 m,
+  and a replacement a slip enlarges takes the taller of its own height and the
+  slip's class height.
 - **How the per-cause damage flags combine (Q-06, Q-09).** A wall carries a flag
   each for shaking, evacuation and inundation. Since a damaged structure is
   replaced rather than repaired, any flag being true is one replacement, not

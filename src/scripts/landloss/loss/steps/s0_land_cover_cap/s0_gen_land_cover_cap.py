@@ -45,9 +45,9 @@ import pandas as pd
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
     REALISATION_ID_COLUMN,
-    RW_ID_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
-    RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
 )
 from landloss.exposure.land.land_value import load_base_rates
 from landloss.io.area_of_interest import extent_suffix
@@ -56,10 +56,9 @@ from landloss.loss import claims as loss_claims
 from landloss.loss import qv_land_value
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
-    beta_wall_face_area_m2,
-    beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_udv_incl_gst_nzd,
+    wall_face_area_m2,
+    wall_type_rate_excl_gst_nzd_per_m2,
 )
 from landloss.loss.settlement import (
     area_cap_bound,
@@ -181,20 +180,18 @@ def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
     damaged = loss_claims.damaged_walls(rw)
     if damaged.empty:
         return pd.Series(dtype=float)
-    face_area = beta_wall_face_area_m2(
-        damaged[RW_SIZE_COLUMN].to_numpy(), damaged[RW_LENGTH_COLUMN].to_numpy()
-    )
+    height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)
+    face_area = wall_face_area_m2(height, damaged[RW_LENGTH_COLUMN].to_numpy())
     walls = pd.DataFrame(
         {
             CLAIM_ID_COLUMN: damaged[CLAIM_ID_COLUMN].to_numpy(),
-            # The same per-wall rate the repair cost uses. A concrete wall
-            # valued at the timber rate would understate the cap while the
-            # repair understated nothing, which is a bias with no basis.
+            # The same per-wall rate the repair cost uses, from the wall's own
+            # type and height. A wall valued at one rate and repaired at
+            # another would bias the cap against the repair with no basis.
             "udv": beta_wall_udv_incl_gst_nzd(
                 face_area,
-                rate_excl_gst_nzd_per_m2=beta_wall_rate_excl_gst_nzd_per_m2(
-                    damaged[RW_ID_COLUMN].to_numpy(),
-                    beta_wall_height_m(damaged[RW_SIZE_COLUMN].to_numpy()),
+                rate_excl_gst_nzd_per_m2=wall_type_rate_excl_gst_nzd_per_m2(
+                    damaged[RW_TYPE_COLUMN].to_numpy(), height
                 ),
                 policy=policy,
             ),
