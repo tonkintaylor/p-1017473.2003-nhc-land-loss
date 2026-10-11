@@ -67,7 +67,9 @@ from landloss.domain.loss_contract import (
 from landloss.exposure.land.extent import (
     AREA_COLUMN,
     DWELLING_COUNT_COLUMN,
-    LAND_RATE_INCL_GST_COLUMN,
+    FOOTPRINT_AREA_COLUMN,
+    PROPERTY_AREA_COLUMN,
+    SUBURB_COLUMN,
 )
 from landloss.exposure.rw import population, wall_probability
 from landloss.exposure.rw.age import AGE_BINS
@@ -251,6 +253,11 @@ INSURED_LAND = {
     "L0000001": (CLAIM_1, rect(-5, -5, 40, 35)),
     "L0000002": (CLAIM_2, rect(50, -30, 100, -8)),
 }
+# Exposure land step 5's building footprints, one per claim, inside its land.
+FOOTPRINTS = {
+    CLAIM_1: rect(0, 0, 10, 10),
+    CLAIM_2: rect(60, -25, 70, -15),
+}
 
 LARGE_EVACUATED = rect(55, -5, 95, 20)
 LARGE_INUNDATED = rect(55, -12, 95, -5)
@@ -340,11 +347,24 @@ def make_insured_land():
         {
             LAND_ID_COLUMN: land_ids,
             CLAIM_ID_COLUMN: [INSURED_LAND[k][0] for k in land_ids],
-            LAND_RATE_INCL_GST_COLUMN: [500.0, 400.0],
             AREA_COLUMN: [g.area for g in geometries],
+            PROPERTY_AREA_COLUMN: [g.area for g in geometries],
+            FOOTPRINT_AREA_COLUMN: [
+                FOOTPRINTS[INSURED_LAND[k][0]].area for k in land_ids
+            ],
             DWELLING_COUNT_COLUMN: np.array([1, 1], dtype=np.int64),
+            SUBURB_COLUMN: "Kelburn",
         },
         geometry=geometries,
+        crs=constants.DEFAULT_CRS,
+    )
+
+
+def make_footprints():
+    """Exposure land step 5's building footprints, merged per claim."""
+    return gpd.GeoDataFrame(
+        {CLAIM_ID_COLUMN: list(FOOTPRINTS)},
+        geometry=list(FOOTPRINTS.values()),
         crs=constants.DEFAULT_CRS,
     )
 
@@ -542,6 +562,7 @@ def run_chain(root):
     insured = write(
         make_insured_land(), gen_insured_land.insured_land_path(extent=extent)
     )
+    write(make_footprints(), gen_insured_land.footprints_path(extent=extent))
     large = write(
         make_large_rows(),
         s1_simulate_landslides.realisation_path(

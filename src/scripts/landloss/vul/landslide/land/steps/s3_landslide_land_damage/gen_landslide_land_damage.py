@@ -46,13 +46,16 @@ from landloss.hazard.landslide.land_class import LAND_CLASS_COLUMN
 from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.landslide.land.damaged_area import (
     AREA_COLUMNS,
+    FOOTPRINT_AREA_COLUMN,
     IGNORED_LAND_CLASSES,
     UNION_AREA_COLUMN,
     check_within_insured_area,
     damaged_area_per_property,
+    footprint_damaged_area,
 )
 from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
+    footprints_path,
     insured_land_path,
 )
 from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
@@ -126,6 +129,10 @@ def describe_damage(damaged, insured):
         f"  union of both: {union_total:,.0f} m2 total; summing the two would "
         f"have counted {class_total - union_total:,.0f} m2 twice"
     )
+    if FOOTPRINT_AREA_COLUMN in damaged.columns:
+        under = damaged[FOOTPRINT_AREA_COLUMN].sum()
+        share = under / union_total if union_total else 0.0
+        print(f"  under a building footprint: {under:,.0f} m2 ({share:.0%})")
     over = check_within_insured_area(damaged, insured, id_column=LAND_ID_COLUMN)
     if over.empty:
         print("  no polygon carries more damaged ground than it has insured land")
@@ -146,6 +153,14 @@ def main(*, extent, world_ids, realisation_ids):
     """
     insured = gpd.read_parquet(insured_land_path(extent=extent))
     claim_of_land = insured.set_index(LAND_ID_COLUMN)[CLAIM_ID_COLUMN]
+    # The footprints are per claim and the land per polygon. One polygon per
+    # claim today, so the footprint goes to the claim's first polygon.
+    footprints = gpd.read_parquet(footprints_path(extent=extent))
+    first_land = insured.drop_duplicates(CLAIM_ID_COLUMN).set_index(CLAIM_ID_COLUMN)[
+        LAND_ID_COLUMN
+    ]
+    footprints[LAND_ID_COLUMN] = footprints[CLAIM_ID_COLUMN].map(first_land)
+    footprints = footprints.dropna(subset=[LAND_ID_COLUMN])
 
     for world_id in world_ids:
         for realisation_id in realisation_ids:
@@ -162,6 +177,13 @@ def main(*, extent, world_ids, realisation_ids):
             )
             damaged.insert(
                 1, CLAIM_ID_COLUMN, damaged[LAND_ID_COLUMN].map(claim_of_land)
+            )
+            # Ground under the house is valued at the full rate in loss.
+            on_footprint = footprint_damaged_area(
+                footprints, landslides, id_column=LAND_ID_COLUMN
+            )
+            damaged[FOOTPRINT_AREA_COLUMN] = (
+                damaged[LAND_ID_COLUMN].map(on_footprint).fillna(0.0)
             )
             damaged.insert(0, REALISATION_ID_COLUMN, realisation_id)
             damaged.insert(1, WORLD_ID_COLUMN, world_id)

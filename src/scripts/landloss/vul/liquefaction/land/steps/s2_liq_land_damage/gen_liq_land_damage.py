@@ -72,7 +72,6 @@ import pandas as pd
 from landloss.common.utils.terrain import sample_at_points
 from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LAND_ID_COLUMN
-from landloss.exposure.land.extent import LAND_RATE_INCL_GST_COLUMN
 from landloss.hazard.realisation import realisation_seed
 from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.liquefaction.costs import (
@@ -288,9 +287,6 @@ def main(
                 EVACUATED_AREA_COLUMN: evacuated,
                 INUNDATED_AREA_COLUMN: inundated,
                 DAMAGED_AREA_COLUMN: damaged,
-                LAND_RATE_INCL_GST_COLUMN: insured[
-                    LAND_RATE_INCL_GST_COLUMN
-                ].to_numpy(),
                 "cost_nzd": cost,
                 AREA_COST_COLUMN: area_cost,
                 "rate_basis": RATE_BASIS,

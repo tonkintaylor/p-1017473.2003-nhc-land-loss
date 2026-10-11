@@ -26,9 +26,10 @@ def insured():
         {
             "land_id": ["1-L01", "2-L01"],
             "claim_id": [1, 2],
-            "land_rate_excl_gst_nzd_per_m2": [500.0, 700.0],
-            "land_rate_incl_gst_nzd_per_m2": [575.0, 805.0],
             "area_m2": [400.0, 900.0],
+            "property_area_m2": [600.0, 900.0],
+            "footprint_area_m2": [120.0, 200.0],
+            "suburb_locality": ["Kelburn", "Karori"],
             "dwelling_count": [1, 2],
         },
         geometry=[box(0, 0, 20, 20), box(100, 0, 130, 30)],
@@ -55,6 +56,7 @@ def landslide():
             "inundated_area_m2": [150.0],
             UNION_AREA_COLUMN: [200.0],
             "inundated_depth_m": [1.5],
+            "landslide_footprint_area_m2": [30.0],
         }
     )
 
@@ -128,8 +130,11 @@ def test_the_land_table_carries_the_contract_columns_and_the_extras():
     assert list(land.columns) == [*LAND_COLUMNS, "dwelling_count", "geometry"]
     assert land.crs == CRS
     assert land["Liq_LD_state"].tolist() == [3, 1]
-    # Only the GST-inclusive rate is handed on.
-    assert land["$/m2 market value"].tolist() == [575.0, 805.0]
+    # No land value: loss values the land from where it lies.
+    assert land["footprint_area"].tolist() == [120.0, 200.0]
+    assert land["property_area"].tolist() == [600.0, 900.0]
+    assert land["suburb"].tolist() == ["Kelburn", "Karori"]
+    assert land["land_slide_footprint_area"].tolist() == [30.0, 0.0]
     assert land["total_insured_land_area"].tolist() == [400.0, 900.0]
 
 

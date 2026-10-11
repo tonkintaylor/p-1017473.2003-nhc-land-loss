@@ -31,11 +31,11 @@
   insured land.
 - **Land**, one row per insured land polygon, spined on the insured land so a
   polygon no hazard reached still appears:
-  - columns `land_id`, `claim_id`, `$/m2 market value` (the exposure land
-    rate including GST, `land_rate_incl_gst_nzd_per_m2`; the exclusive rate
-    stays in the exposure file), `Liq_LD_state`, `total_insured_land_area`,
+  - columns `land_id`, `claim_id`, `Liq_LD_state`, `total_insured_land_area`,
     `land_slide_total_insured_land_area`, `inundated_insured_area`,
-    `inundated_mean_depth` and `evacuated_area`;
+    `inundated_mean_depth`, `evacuated_area`, `footprint_area`,
+    `property_area`, `land_slide_footprint_area` and `suburb`. No land value:
+    `loss` values the land from these (`landloss.loss.qv_land_value`);
   - `land_slide_total_insured_land_area` is the union of evacuated and
     inundated ground from vul step 3, not their sum;
   - landslide areas default to zero where no landslide reached the polygon,

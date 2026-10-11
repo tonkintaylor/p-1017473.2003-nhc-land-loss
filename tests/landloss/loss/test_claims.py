@@ -15,6 +15,7 @@ from landloss.loss.claims import (
     land_by_claim,
 )
 from landloss.loss.policy import PolicySettings
+from landloss.loss.qv_land_value import DAMAGED_LAND_RATE_COLUMN
 from landloss.loss.settlement import DamagedClaim, settle
 
 ACT = PolicySettings()
@@ -149,14 +150,14 @@ def test_the_sub_caps_and_the_excess_scale_with_dwellings():
 
 def land_table(rows):
     """Build a land table from (claim, liquefied area, total area, landslide
-    area, market rate, dwellings)."""
+    area, damaged land rate, dwellings)."""
     return pd.DataFrame(
         {
             CLAIM_ID_COLUMN: [row[0] for row in rows],
             loss_contract.LIQ_LD_AREA_COLUMN: [row[1] for row in rows],
             loss_contract.TOTAL_INSURED_LAND_AREA_COLUMN: [row[2] for row in rows],
             loss_contract.LANDSLIDE_AREA_COLUMN: [row[3] for row in rows],
-            loss_contract.MARKET_VALUE_COLUMN: [row[4] for row in rows],
+            DAMAGED_LAND_RATE_COLUMN: [row[4] for row in rows],
             DWELLING_COUNT_COLUMN: [row[5] for row in rows],
         }
     )

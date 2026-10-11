@@ -486,8 +486,8 @@ def exposure_layers(*, extent, world_id, layout):
         (
             layout.find(insured_land_path(extent=extent)),
             {
-                "name": "Exposure · insured land by land rate incl GST (NZD/m²)",
-                "field": "land_rate_incl_gst_nzd_per_m2",
+                "name": "Exposure · insured land by building footprint (m²)",
+                "field": "footprint_area_m2",
                 "cmap": "turbo",
                 "bins": 8,
                 "bin_mode": "quantile",

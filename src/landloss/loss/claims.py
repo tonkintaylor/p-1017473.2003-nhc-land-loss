@@ -58,8 +58,8 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
-    MARKET_VALUE_COLUMN,
 )
+from landloss.loss.qv_land_value import DAMAGED_LAND_RATE_COLUMN
 
 # The claim key, and the count written against it by the dwellings-per-property
 # step. These must match what `landloss.exposure.land.extent` writes; see the
@@ -160,8 +160,8 @@ def dwelling_counts(
 
 
 # What `land_by_claim` writes. The rate carries `_incl_gst_` because that is the
-# basis the Act compares on and the basis `settle` expects; `vul` sends it as
-# `$/m2 market value`, which says nothing about GST.
+# basis the Act compares on and the basis `settle` expects. It is averaged from
+# the per-row rate `landloss.loss.qv_land_value.damaged_land_rates` adds.
 DAMAGED_AREA_COLUMN = "damaged_area_m2"
 LAND_RATE_COLUMN = "land_rate_incl_gst_nzd_per_m2"
 
@@ -225,7 +225,9 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
     own rate.
 
     Args:
-        land: The contract's land table, one row per insured land polygon.
+        land: The contract's land table, one row per insured land polygon,
+            with the rate its damaged land is valued at added by
+            :func:`~landloss.loss.qv_land_value.damaged_land_rates`.
 
     Returns:
         A frame indexed by ``claim_id``, carrying
@@ -236,7 +238,7 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
         ValueError: If a column the calculation needs is missing, or if a
             claim's polygons disagree about the dwelling count.
     """
-    for column in (CLAIM_ID_COLUMN, MARKET_VALUE_COLUMN, DWELLING_COUNT_COLUMN):
+    for column in (CLAIM_ID_COLUMN, DAMAGED_LAND_RATE_COLUMN, DWELLING_COUNT_COLUMN):
         if column not in land.columns:
             msg = f"the land table carries no {column!r} column"
             raise ValueError(msg)
@@ -245,7 +247,9 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
         {
             CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
             DAMAGED_AREA_COLUMN: damaged_area_m2(land),
-            MARKET_VALUE_COLUMN: land[MARKET_VALUE_COLUMN].to_numpy(dtype=float),
+            DAMAGED_LAND_RATE_COLUMN: land[DAMAGED_LAND_RATE_COLUMN].to_numpy(
+                dtype=float
+            ),
             DWELLING_COUNT_COLUMN: land[DWELLING_COUNT_COLUMN].to_numpy(),
         }
     )
@@ -258,14 +262,14 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
         )
         raise ValueError(msg)
 
-    rows["_valued"] = rows[DAMAGED_AREA_COLUMN] * rows[MARKET_VALUE_COLUMN]
+    rows["_valued"] = rows[DAMAGED_AREA_COLUMN] * rows[DAMAGED_LAND_RATE_COLUMN]
     grouped = rows.groupby(CLAIM_ID_COLUMN)
     claims = grouped.agg(
         **{
             DAMAGED_AREA_COLUMN: (DAMAGED_AREA_COLUMN, "sum"),
             DWELLING_COUNT_COLUMN: (DWELLING_COUNT_COLUMN, "first"),
             "_valued": ("_valued", "sum"),
-            "_mean_rate": (MARKET_VALUE_COLUMN, "mean"),
+            "_mean_rate": (DAMAGED_LAND_RATE_COLUMN, "mean"),
         }
     )
     area = claims[DAMAGED_AREA_COLUMN]

@@ -22,7 +22,16 @@ CULVERT_ID_COLUMN = "culvert_id"
 BRIDGE_ID_COLUMN = "bridge_id"
 
 # Land table columns, asset-pricing-approach.md section 1.
-MARKET_VALUE_COLUMN = "$/m2 market value"
+#
+# No land value: the loss module values land itself, from the QV rating roll
+# (landloss.loss.qv_land_value). What it needs from vul is where the land lies:
+# the claim property's footprint, insured and whole areas, how much of the
+# landslide ground fell on the footprint, and the suburb, which a property not
+# on the roll is valued at the median of. The areas are m2.
+LAND_FOOTPRINT_AREA_COLUMN = "footprint_area"
+LAND_PROPERTY_AREA_COLUMN = "property_area"
+LANDSLIDE_FOOTPRINT_AREA_COLUMN = "land_slide_footprint_area"
+LAND_SUBURB_COLUMN = "suburb"
 LIQ_LD_STATE_COLUMN = "Liq_LD_state"
 # The Canterbury settled cost the state indexes, carried so that `loss` has a
 # land repair cost to compare a cap against. **2010/2011 dollars excluding
@@ -53,7 +62,6 @@ IS_DAMAGED_COLUMN = "is_damaged"
 LAND_COLUMNS = (
     LAND_ID_COLUMN,
     CLAIM_ID_COLUMN,
-    MARKET_VALUE_COLUMN,
     LIQ_LD_STATE_COLUMN,
     LIQ_LD_COST_COLUMN,
     LIQ_LD_AREA_COLUMN,
@@ -62,6 +70,10 @@ LAND_COLUMNS = (
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
     EVACUATED_AREA_COLUMN,
+    LAND_FOOTPRINT_AREA_COLUMN,
+    LAND_PROPERTY_AREA_COLUMN,
+    LANDSLIDE_FOOTPRINT_AREA_COLUMN,
+    LAND_SUBURB_COLUMN,
 )
 RW_COLUMNS = (
     RW_ID_COLUMN,

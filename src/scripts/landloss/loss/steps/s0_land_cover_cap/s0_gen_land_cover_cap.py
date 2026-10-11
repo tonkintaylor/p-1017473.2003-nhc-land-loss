@@ -49,8 +49,11 @@ from landloss.domain.loss_contract import (
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
 )
+from landloss.exposure.land.land_value import load_base_rates
 from landloss.io.area_of_interest import extent_suffix
+from landloss.io.qv_rating_roll import get_qv_rating_roll
 from landloss.loss import claims as loss_claims
+from landloss.loss import qv_land_value
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     beta_wall_face_area_m2,
@@ -66,6 +69,9 @@ from landloss.loss.settlement import (
     structure_sub_cap_bound,
 )
 from landloss.vul.loss_input import WORLD_ID_COLUMN
+from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
+    valuation_links_path,
+)
 from scripts.landloss.loss.steps.s0_land_cover_cap import config
 from scripts.landloss.paths import TEMP_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
@@ -113,6 +119,47 @@ def land_cover_cap_path(world_id: int, realisation_id: int, *, extent: str) -> P
     suffix = extent_suffix(extent)
     stem = f"{OUT_STEM}-w{world_id:03d}-r{realisation_id:03d}"
     return WORK_DIR / f"{stem}{suffix}.parquet"
+
+
+def load_qv_land_values(*, extent: str) -> pd.Series:
+    """Return the indexed QV land value of each claim property, read from T:.
+
+    Read once per run: the roll does not change between realisations.
+
+    Args:
+        extent: The extent the run is over, which names the valuation links
+            exposure wrote.
+
+    Returns:
+        The land value in dollars excluding GST, indexed by claim id, for the
+        claims whose value can be read off the roll.
+    """
+    links = pd.read_parquet(valuation_links_path(extent=extent))
+    print("Reading the QV rating roll from T: ...", flush=True)
+    values = qv_land_value.qv_land_value_by_claim(
+        get_qv_rating_roll(), links, load_base_rates()
+    )
+    return values[qv_land_value.QV_LAND_VALUE_COLUMN]
+
+
+def value_land(land: pd.DataFrame, qv_values: pd.Series) -> pd.DataFrame:
+    """Return the land table with the rate its damaged land is valued at.
+
+    Args:
+        land: The contract's land table.
+        qv_values: From :func:`load_qv_land_values`.
+
+    Returns:
+        ``land`` with the rates of
+        :func:`~landloss.loss.qv_land_value.damaged_land_rates` added.
+    """
+    values = qv_land_value.claim_land_values(land, qv_values)
+    sources = values[qv_land_value.VALUE_SOURCE_COLUMN].value_counts()
+    print(
+        "  Land valued from: "
+        + ", ".join(f"{source} {count:,}" for source, count in sources.items())
+    )
+    return qv_land_value.damaged_land_rates(land, values)
 
 
 def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
@@ -268,6 +315,7 @@ def main(*, extent, world_ids, realisation_ids):
         realisation_ids: Which modelled earthquakes to cap.
     """
     policy = PolicySettings()
+    qv_values = load_qv_land_values(extent=extent)
 
     for world_id in world_ids:
         for realisation_id in realisation_ids:
@@ -282,7 +330,7 @@ def main(*, extent, world_ids, realisation_ids):
                 for name in LOSS_TABLES
             }
 
-            caps = loss_claims.land_by_claim(tables["land"])
+            caps = loss_claims.land_by_claim(value_land(tables["land"], qv_values))
             caps[RW_UDV_COLUMN] = (
                 wall_udv_by_claim(tables["rw"], policy=policy)
                 .reindex(caps.index)

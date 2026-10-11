@@ -41,12 +41,15 @@ from landloss.domain.loss_contract import (
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LAND_COLUMNS,
+    LAND_FOOTPRINT_AREA_COLUMN,
     LAND_ID_COLUMN,
+    LAND_PROPERTY_AREA_COLUMN,
+    LAND_SUBURB_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_FOOTPRINT_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
     LIQ_LD_COST_COLUMN,
     LIQ_LD_STATE_COLUMN,
-    MARKET_VALUE_COLUMN,
     RW_COLUMNS,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
@@ -58,7 +61,9 @@ from landloss.exposure.culverts_bridges.crossings import BRIDGE, CULVERT
 from landloss.exposure.land.extent import (
     AREA_COLUMN,
     DWELLING_COUNT_COLUMN,
-    LAND_RATE_INCL_GST_COLUMN,
+    FOOTPRINT_AREA_COLUMN,
+    PROPERTY_AREA_COLUMN,
+    SUBURB_COLUMN,
 )
 from landloss.vul.landslide.land.damaged_area import (
     AREA_COLUMNS,
@@ -66,6 +71,9 @@ from landloss.vul.landslide.land.damaged_area import (
     EVACUATED,
     INUNDATED,
     UNION_AREA_COLUMN,
+)
+from landloss.vul.landslide.land.damaged_area import (
+    FOOTPRINT_AREA_COLUMN as SLIDE_FOOTPRINT_COLUMN,
 )
 from landloss.vul.shaking.fragility import DAMAGE_STATE_COLUMN, REPLACE
 
@@ -144,16 +152,17 @@ def build_land_table(
     """Assemble the land table, one row per insured land polygon.
 
     Args:
-        insured: The insured land, carrying ``land_id``, ``claim_id``, the land
-            rate including GST, the polygon area and the dwelling count. Only
-            the GST-inclusive rate is handed on, as the market value.
+        insured: The insured land, carrying ``land_id``, ``claim_id``, the
+            polygon, footprint and property areas, the suburb and the dwelling
+            count. No land value: the loss module values the land itself.
         liquefaction: The liquefaction land damage state, settled cost and
             damaged area per ``land_id``. Land without a row keeps a missing
             state, no cost and no damaged area. The cost is 2010/2011
             dollars excluding GST, as the Canterbury rates are stated; `loss`
             puts it on the Act's basis.
-        landslide: The landslide land step's areas and inundated depth per
-            ``land_id``. Land without a row has no damaged area.
+        landslide: The landslide land step's areas, inundated depth and the
+            damaged ground under the footprint per ``land_id``. Land without a
+            row has no damaged area.
         ld_state_column: The damage state's column in ``liquefaction``.
         ld_cost_column: The settled cost's column in ``liquefaction``.
         ld_area_column: The damaged area's column in ``liquefaction``.
@@ -184,7 +193,6 @@ def build_land_table(
         {
             LAND_ID_COLUMN: land_ids,
             CLAIM_ID_COLUMN: insured[CLAIM_ID_COLUMN],
-            MARKET_VALUE_COLUMN: insured[LAND_RATE_INCL_GST_COLUMN].astype("float64"),
             LIQ_LD_STATE_COLUMN: land_ids.map(states),
             LIQ_LD_COST_COLUMN: land_ids.map(costs).astype("float64").fillna(0.0),
             LIQ_LD_AREA_COLUMN: land_ids.map(liquefied_areas)
@@ -195,6 +203,12 @@ def build_land_table(
             INUNDATED_AREA_COLUMN: from_slides(AREA_COLUMNS[INUNDATED], 0.0),
             INUNDATED_MEAN_DEPTH_COLUMN: from_slides(DEPTH_COLUMNS[INUNDATED], None),
             EVACUATED_AREA_COLUMN: from_slides(AREA_COLUMNS[EVACUATED], 0.0),
+            LAND_FOOTPRINT_AREA_COLUMN: insured[FOOTPRINT_AREA_COLUMN].astype(
+                "float64"
+            ),
+            LAND_PROPERTY_AREA_COLUMN: insured[PROPERTY_AREA_COLUMN].astype("float64"),
+            LANDSLIDE_FOOTPRINT_AREA_COLUMN: from_slides(SLIDE_FOOTPRINT_COLUMN, 0.0),
+            LAND_SUBURB_COLUMN: insured[SUBURB_COLUMN],
             DWELLING_COUNT_COLUMN: insured[DWELLING_COUNT_COLUMN],
             "geometry": insured.geometry,
         },

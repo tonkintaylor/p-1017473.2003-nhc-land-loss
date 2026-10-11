@@ -55,12 +55,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [x] Supply a `land_id` per insured land polygon, `<claim_id>-L01`, minted in
   `steps/s5_insured_land_extent/`.
 - [x] Supply `claim_id`, the LINZ property boundary's identifier.
-- [~] Supply the `$/m2 market value`, written both sides of GST as
-  `land_rate_excl_gst_nzd_per_m2` and `land_rate_incl_gst_nzd_per_m2` by
-  `landloss.domain.gst.add_gst`; only the inclusive rate reaches `loss`. Still
-  the mean of the address rates (`Next` 2), each now divided by its measured
-  section rather than an assumed lot, and step 2's rate is assumed to exclude
-  GST.
+- [x] ~~Supply the `$/m2 market value`.~~ Dropped 2026-10-11: `loss` values
+  the land itself from the QV roll (`landloss.loss.qv_land_value`). Exposure
+  supplies what that needs instead: the footprint area and layer, the property
+  area, the suburb and the valuation references per claim.
 - [x] Supply `total_insured_land_area`, written as `area_m2`.
 - [x] Supply coordinates, as the insured land polygon.
 - [x] Supply `dwelling_count`. The contract omits it, but `loss` needs it for

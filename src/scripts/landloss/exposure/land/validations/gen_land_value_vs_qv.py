@@ -59,11 +59,7 @@ from matplotlib.ticker import FuncFormatter, NullFormatter
 from landloss.domain import constants
 from landloss.exposure.land.extent import (
     CLAIM_ID_COLUMN,
-    NON_CLAIM_SOURCES,
-    SOURCE_COLUMN,
-    SOURCE_ID_COLUMN,
     build_claim_properties,
-    stack_representatives,
 )
 from landloss.exposure.land.land_value import (
     COMMON_VALUATION_DATE,
@@ -73,13 +69,17 @@ from landloss.exposure.land.land_value import (
 from landloss.exposure.land.landform import LANDFORM_COLUMN
 from landloss.exposure.land.residential_use import (
     DWELLING_USES,
-    USE_PRECEDENCE,
-    VALUATION_REFERENCE_COLUMN,
-    classify_property_category,
+    claim_ids_by_valuation_reference,
 )
 from landloss.io.area_of_interest import extent_suffix, get_study_areas
-from landloss.io.qv_rating_roll import get_qv_rating_roll, linz_valuation_reference
+from landloss.io.qv_rating_roll import get_qv_rating_roll
 from landloss.io.readers import get_nz_property_boundaries
+from landloss.loss.qv_land_value import (
+    QV_LAND_VALUE_COLUMN,
+    QV_UNITS_COLUMN,
+    QV_USE_COLUMN,
+    qv_land_value_by_claim,
+)
 from scripts.landloss.exposure.land.steps.s2_land_value.s4_estimate_land_value import (
     resolve_extent,
 )
@@ -103,10 +103,10 @@ DPI = 200
 RULE = "-" * 72
 
 MODEL_COLUMN = "model_land_value_nzd"
-QV_COLUMN = "qv_land_value_indexed_nzd"
+QV_COLUMN = QV_LAND_VALUE_COLUMN
 RATIO_COLUMN = "model_over_qv"
-USE_COLUMN = "property_use"
-UNITS_COLUMN = "qv_rating_units"
+USE_COLUMN = QV_USE_COLUMN
+UNITS_COLUMN = QV_UNITS_COLUMN
 
 # Within this factor of the roll either way counts as close, for the share the
 # run reports. 1.25 is about the spread between neighbouring sections on the
@@ -126,110 +126,6 @@ TA_COLOURS = {
     "Upper Hutt City": "#ef6c00",
     "Porirua City": "#6a1b9a",
 }
-
-
-def claim_ids_by_valuation_reference(boundaries):
-    """Return each valuation reference with the claim property it belongs to.
-
-    The same link as ``property_use``: a boundary joins its stack's
-    representative, whose ``source_id`` is the claim id
-    ``build_claim_properties`` mints.
-
-    Args:
-        boundaries: The LINZ property boundaries, on a unique index.
-
-    Returns:
-        One row per distinct (valuation reference, claim id) pair.
-    """
-    claimable = boundaries[~boundaries[SOURCE_COLUMN].isin(NON_CLAIM_SOURCES)]
-    claimable = claimable.reset_index(drop=True)
-    stack = stack_representatives(claimable)
-    linked = pd.DataFrame(
-        {
-            VALUATION_REFERENCE_COLUMN: claimable[
-                VALUATION_REFERENCE_COLUMN
-            ].to_numpy(),
-            CLAIM_ID_COLUMN: claimable.loc[
-                stack.to_numpy(), SOURCE_ID_COLUMN
-            ].to_numpy(),
-        }
-    )
-    # pandas joins a missing key to every other missing key.
-    linked = linked[linked[VALUATION_REFERENCE_COLUMN].notna()]
-    return linked.drop_duplicates()
-
-
-def qv_by_property(roll, links, base_rates):
-    """Return the roll's indexed land value summed over each claim property.
-
-    Args:
-        roll: The QV rating roll, from ``get_qv_rating_roll``.
-        links: From :func:`claim_ids_by_valuation_reference`.
-        base_rates: The land value base rates, carrying each authority's index.
-
-    Returns:
-        Indexed by claim id: the indexed land value, the number of rating units
-        and the property's broad use.
-    """
-    index = base_rates.assign(
-        district=base_rates["ta_code"].astype(str).str.zfill(3).str[-2:]
-    ).set_index("district")["index_to_2025_09"]
-    units = pd.DataFrame(
-        {
-            VALUATION_REFERENCE_COLUMN: linz_valuation_reference(roll),
-            "land_value": roll["land_value"].astype("Float64"),
-            "factor": roll["district_ta_code"].map(index).astype("Float64"),
-            "use": classify_property_category(roll["property_category"]),
-        }
-    ).dropna(subset=[VALUATION_REFERENCE_COLUMN])
-    units = units.drop_duplicates(VALUATION_REFERENCE_COLUMN)
-
-    joined = links.merge(units, on=VALUATION_REFERENCE_COLUMN, how="inner")
-
-    # A unit on two claim properties cannot be split between them, so neither
-    # property is comparable.
-    spread = joined.groupby(VALUATION_REFERENCE_COLUMN)[CLAIM_ID_COLUMN].nunique()
-    split_refs = spread.index[spread > 1]
-    split_claims = set(
-        joined.loc[joined[VALUATION_REFERENCE_COLUMN].isin(split_refs), CLAIM_ID_COLUMN]
-    )
-    print(
-        f"  {len(split_refs):,} rating units span more than one claim property; "
-        f"the {len(split_claims):,} properties they touch are left out"
-    )
-    joined = joined[~joined[CLAIM_ID_COLUMN].isin(split_claims)]
-
-    # A property with any unit missing its value or index would be under-counted.
-    incomplete = set(
-        joined.loc[
-            joined["land_value"].isna() | joined["factor"].isna(), CLAIM_ID_COLUMN
-        ]
-    )
-    if incomplete:
-        print(
-            f"  {len(incomplete):,} properties have a unit with no land value or "
-            "no index factor and are left out"
-        )
-    joined = joined[~joined[CLAIM_ID_COLUMN].isin(incomplete)]
-
-    rank = {use: order for order, use in enumerate(USE_PRECEDENCE)}
-    joined = joined.assign(
-        indexed=joined["land_value"] * joined["factor"],
-        rank=joined["use"].map(rank).fillna(len(rank)),
-    )
-    grouped = joined.groupby(CLAIM_ID_COLUMN)
-    first_use = (
-        joined.sort_values([CLAIM_ID_COLUMN, "rank"], kind="stable")
-        .drop_duplicates(CLAIM_ID_COLUMN)
-        .set_index(CLAIM_ID_COLUMN)["use"]
-    )
-    return pd.DataFrame(
-        {
-            QV_COLUMN: grouped["indexed"].sum().astype(float),
-            UNITS_COLUMN: grouped.size(),
-            USE_COLUMN: first_use,
-        }
-    )
 
 
 def model_by_property(valued, properties):
@@ -569,7 +465,7 @@ def main(*, extent, dwelling_uses_only, min_suburb_properties):
 
     print("Reading the QV rating roll (sensitive) ...", flush=True)
     links = claim_ids_by_valuation_reference(boundaries)
-    qv = qv_by_property(get_qv_rating_roll(), links, load_base_rates())
+    qv = qv_land_value_by_claim(get_qv_rating_roll(), links, load_base_rates())
 
     compared = model.join(qv, how="inner")
     print(f"  {len(compared):,} of {len(model):,} valued properties found on the roll")

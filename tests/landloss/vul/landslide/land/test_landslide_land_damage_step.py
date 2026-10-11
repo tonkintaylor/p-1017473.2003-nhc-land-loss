@@ -41,12 +41,22 @@ def insured_land():
         {
             "land_id": [land_id for land_id, _, _ in LAND],
             "claim_id": [claim_id for _, claim_id, _ in LAND],
-            "land_rate_excl_gst_nzd_per_m2": 500.0,
-            "land_rate_incl_gst_nzd_per_m2": 575.0,
             "area_m2": [geometry.area for _, _, geometry in LAND],
             "dwelling_count": 1,
         },
         geometry=[geometry for _, _, geometry in LAND],
+        crs=CRS,
+    )
+
+
+def footprints():
+    """A 5 by 5 m building in the south west corner of each polygon."""
+    return gpd.GeoDataFrame(
+        {"claim_id": [claim_id for _, claim_id, _ in LAND]},
+        geometry=[
+            box(geometry.bounds[0], 0, geometry.bounds[0] + 5, 5)
+            for _, _, geometry in LAND
+        ],
         crs=CRS,
     )
 
@@ -111,6 +121,7 @@ def synthetic_run(tmp_path, monkeypatch):
     land_path = gen_insured_land.insured_land_path(extent="wlg-pilot")
     land_path.parent.mkdir(parents=True)
     insured_land().to_parquet(land_path)
+    footprints().to_parquet(gen_insured_land.footprints_path(extent="wlg-pilot"))
 
     for world_id in (0, 1):
         slides = combined_realisation(world_id, 0)
@@ -170,6 +181,7 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
         "landslide_area_m2",
         "evacuated_depth_m",
         "inundated_depth_m",
+        "landslide_footprint_area_m2",
         "cause_evacuated",
         "cause_inundated",
     ]
@@ -196,6 +208,8 @@ def test_both_populations_are_measured_and_imminent_ground_is_not(synthetic_run)
     # The east half is buried by the large runout and the urban one: once.
     assert first["inundated_area_m2"] == pytest.approx(200.0)
     assert first["landslide_area_m2"] == pytest.approx(400.0)
+    # The building in the corner is all under the evacuated ground.
+    assert first["landslide_footprint_area_m2"] == pytest.approx(25.0)
     assert first["evacuated_depth_m"] == pytest.approx(2.0)
     # Two landslides of equal footprint on the same ground: the mean depth.
     assert first["inundated_depth_m"] == pytest.approx(1.25)

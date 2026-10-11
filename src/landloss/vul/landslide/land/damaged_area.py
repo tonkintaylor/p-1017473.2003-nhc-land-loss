@@ -68,6 +68,9 @@ DEPTH_COLUMNS = {
 # is both evacuated and inundated counts once. This is what the contract's
 # land_slide_total_insured_land_area is.
 UNION_AREA_COLUMN = "landslide_area_m2"
+# The part of that ground under the claim's buildings, which the loss module
+# values at the full rate of its land value tiers (landloss.loss.qv_land_value).
+FOOTPRINT_AREA_COLUMN = "landslide_footprint_area_m2"
 
 
 def _overlay(
@@ -212,6 +215,31 @@ def damaged_area_per_property(
     union = _union_area(insured, landslides, id_column)
     damaged[UNION_AREA_COLUMN] = damaged[id_column].map(union).fillna(0.0)
     return damaged[order].sort_values(id_column, kind="stable").reset_index(drop=True)
+
+
+def footprint_damaged_area(
+    footprints: gpd.GeoDataFrame,
+    landslides: gpd.GeoDataFrame,
+    *,
+    id_column: str = CLAIM_ID_COLUMN,
+) -> pd.Series:
+    """Return the ground either kind of landslide takes under each footprint.
+
+    Measured on the union, as :data:`UNION_AREA_COLUMN` is, so a footprint two
+    landslides both reached counts once and the result never exceeds it.
+
+    Args:
+        footprints: The buildings on each property, merged per property and
+            carrying ``id_column``.
+        landslides: The hazard module's polygons, carrying
+            :data:`LAND_CLASS_COLUMN`.
+        id_column: The property identifier.
+
+    Returns:
+        The area in m2, indexed by ``id_column``, for every footprint a
+        landslide reached; a footprint no landslide reached is absent.
+    """
+    return _union_area(footprints, landslides, id_column).rename(FOOTPRINT_AREA_COLUMN)
 
 
 def check_within_insured_area(

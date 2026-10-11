@@ -59,9 +59,10 @@ def insured_land():
         {
             "land_id": ["C01-L01", "C02-L01"],
             "claim_id": ["C01", "C02"],
-            "land_rate_excl_gst_nzd_per_m2": [500.0, 700.0],
-            "land_rate_incl_gst_nzd_per_m2": [575.0, 805.0],
             "area_m2": [400.0, 900.0],
+            "property_area_m2": [600.0, 900.0],
+            "footprint_area_m2": [120.0, 200.0],
+            "suburb_locality": ["Kelburn", "Karori"],
             "dwelling_count": [1, 2],
         },
         geometry=[box(0, 0, 20, 20), box(100, 0, 130, 30)],
@@ -95,6 +96,7 @@ def landslide_land_damage(world_id=0, realisation_id=0):
             "landslide_area_m2": [200.0],
             "evacuated_depth_m": [2.0],
             "inundated_depth_m": [1.5],
+            "landslide_footprint_area_m2": [30.0],
             "cause_evacuated": [str(constants.Cause.LANDSLIDE_EVACUATED)],
             "cause_inundated": [str(constants.Cause.LANDSLIDE_INUNDATED)],
         }

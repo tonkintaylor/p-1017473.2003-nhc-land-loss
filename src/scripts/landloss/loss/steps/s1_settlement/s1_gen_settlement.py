@@ -106,6 +106,8 @@ from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import 
     HAS_CROSSING_COLUMN,
     RW_UDV_COLUMN,
     land_cover_cap_path,
+    load_qv_land_values,
+    value_land,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.paths import TEMP_DIR
@@ -719,6 +721,7 @@ def main(*, extent, world_ids, realisation_ids):
         realisation_ids: Which modelled earthquakes to settle.
     """
     policy = PolicySettings()
+    qv_values = load_qv_land_values(extent=extent)
 
     for world_id in world_ids:
         for realisation_id in realisation_ids:
@@ -732,7 +735,8 @@ def main(*, extent, world_ids, realisation_ids):
                 )
                 for name in LOSS_TABLES
             }
-            land, rw = tables["land"], tables["rw"]
+            land = value_land(tables["land"], qv_values)
+            rw = tables["rw"]
 
             claims = loss_claims.land_by_claim(land)
             ratings = site_ratings_by_claim(land, extent=extent)

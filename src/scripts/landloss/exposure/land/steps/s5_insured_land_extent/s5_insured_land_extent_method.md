@@ -19,15 +19,18 @@
   no insured land at all. The module docstring of
   `src/landloss/exposure/land/extent.py` sets out the reasoning and what each
   part of it costs.
-- The written layer carries `land_id`, `claim_id`,
-  `land_rate_excl_gst_nzd_per_m2`, `land_rate_incl_gst_nzd_per_m2`, `area_m2`,
-  `property_area_m2`, `building_count`, `dwelling_count` and the polygon, in
-  that order.
-- **The land rate is written both sides of GST.** Step 2's rate is taken as
-  excluding GST and grossed up by `landloss.domain.gst.add_gst`, at `GST_RATE`
-  of 15%, in `gen_insured_land.py`. Only the inclusive rate is handed to the
-  loss module, as the land table's `$/m2 market value`
-  (`landloss.vul.loss_input.build_land_table`).
+- The written layer carries `land_id`, `claim_id`, `area_m2`,
+  `property_area_m2`, `footprint_area_m2`, `building_count`, `dwelling_count`,
+  `suburb_locality` and the polygon, in that order.
+- **No land rate is written.** Since 2026-10-11 the loss module values damaged
+  land itself, from each property's QV land value in three tiers
+  (`src/scripts/landloss/loss/qv_land_value_method.md`). This step writes what
+  that needs beside the insured land: each claim's building footprint, merged
+  per claim, as `claim-footprints<suffix>.geoparquet` (vul's landslide step
+  measures the damaged ground under it); the valuation references on each claim
+  property as `claim-valuation-links<suffix>.parquet` (references and claim ids
+  only, nothing of the roll); and the suburb most of the claim's addresses stand
+  in, which a property not on the roll is valued at the median of.
 - **`land_id` is minted here**, in `gen_insured_land.py`, by
   `landloss.exposure.asset_ids.mint_asset_ids` with `LAND_ID_SUFFIX`. It has the
   form `<claim_id>-L01`, numbered from 1 within the claim over the frame already
@@ -37,7 +40,7 @@
   names come from `landloss.domain.loss_contract`, which `extent.py` and
   `driveways.py` also import `CLAIM_ID_COLUMN` from.
 - **`address_id` stops here.** It is used only inside this step, to carry the
-  step 2 rate onto a property through the address-to-claim rows. Nothing
+  suburb onto a property through the address-to-claim rows. Nothing
   downstream of this step is keyed on `address_id`; every later exposure and
   vulnerability output is keyed on `claim_id` and the asset's own id.
 - **Claim properties** come from `build_claim_properties`, which reads the LINZ

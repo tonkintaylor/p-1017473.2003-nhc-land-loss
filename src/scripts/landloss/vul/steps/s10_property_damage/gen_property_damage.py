@@ -5,8 +5,9 @@ hand loss four tables per exposure world and earthquake, each row carrying its
 own asset id, the ``claim_id`` of the LINZ property it belongs to and its
 coordinates:
 
-- **land**, one row per insured land polygon, with its market value rate, its
-  liquefaction land damage state and its landslide damaged areas;
+- **land**, one row per insured land polygon, with its liquefaction land
+  damage state, its landslide damaged areas and what loss values the land
+  from: the footprint, property area and suburb;
 - **rw**, one row per insured retaining wall, with its size, length, shaking
   damage and landslide flags;
 - **culverts** and **bridges**, split from the detected crossings by structure
