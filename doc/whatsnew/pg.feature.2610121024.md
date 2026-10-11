@@ -1,0 +1,1 @@
+The loss viewer can show the whole region: `gen_viewer_region.py` stacks the four territorial authorities' viewer CSVs into one, refusing CSVs built at different commits or a claim counted in two authorities, and the page gains a territorial authority filter that the totals, charts and map all follow.
