@@ -22,8 +22,11 @@ fit and are to be refitted and frozen before the full runs (Phase 3).
       hands it to the loss module (2026-10-08).
 - [x] Refit against the claimant-only Canterbury means, all six states weighted
       by claim count, with the drop-out on (**T-65**, 2026-10-08).
-- [ ] Set the no-SVA multiplier on feedback (**Q-18**). It is 2.9 from public
-      figures for now, which barely moves a near-zero inundated rate (**L-75**).
+- [x] ~~Set the no-SVA multiplier on feedback (**Q-18**)~~ -- replaced on
+      2026-10-12 by a volunteer allowance: the first 250 m² of each site's
+      ejecta cleared for nothing with the SVA, all of it paid without.
+- [ ] Confirm the 250 m² volunteer allowance; the Canterbury medians fit about
+      as well from 200 m² to 300 m².
 - [ ] Decide whether None should carry the fixed cost when it claims. It is now
       fitted and anchors the fixed cost, priced at $1,094 on average against a
       Canterbury mean of $922.

@@ -70,9 +70,11 @@
 - **Each claim is also priced from its ground lost** (**T-57**), as
   `area_cost_nzd`: `REPAIR_RATES` in `config.py` per m² of inundated and of
   evacuated land plus a fixed cost per claim, fitted to the Canterbury means by
-  step 3. Setting `NO_SVA` raises the inundated rate by
-  `NO_SVA_INUNDATED_MULTIPLIER`, a placeholder (**Q-18**), for clearing ejecta
-  without the Student Volunteer Army (**L-40**). It is zero where there is no
+  step 3. With the Student Volunteer Army out, as in Canterbury, the first
+  `volunteer_cleared_m2` (250 m²) of each site's ejecta is cleared for nothing;
+  setting `NO_SVA` pays for all of it (**L-40**). The None state costs nothing
+  (2026-10-12). `inundated_cost_nzd` is the clearing part as run, beside it with
+  and without volunteers, for the loss viewer's switch. It is zero where there is no
   claim. **The loss module still settles on `cost_nzd`, the lookup**;
   `area_cost_nzd` rides beside it until it is chosen to replace it.
 - Costs are looked up, not modelled, by `landloss.vul.liquefaction.costs`. They

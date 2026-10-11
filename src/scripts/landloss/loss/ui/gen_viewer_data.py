@@ -85,6 +85,9 @@ from scripts.landloss.vul.landslide.rw.steps.s11_wall_landslide_damage import (
     gen_wall_landslide_damage as wall_landslide,
 )
 from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage import (
+    config as liq_config,
+)
+from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage import (
     gen_liq_land_damage as liq_land,
 )
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
@@ -144,6 +147,41 @@ def claim_points(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
         .groupby(CLAIM_ID_COLUMN)
         .first()
     )
+
+
+def liquefaction_ejecta(realisation_id: int, *, extent: str) -> pd.DataFrame:
+    """Return the part of each claim's liquefaction cost that is clearing ejecta.
+
+    So the page can switch the Student Volunteer Army on and off without the
+    model being rerun: it takes out the part the run priced and puts in the
+    part with or without volunteers. 2010/2011 dollars excluding GST, as the
+    liquefaction cost the CSV carries. A step 2 run from before the parts were
+    written gives none, and the page's switch then changes nothing.
+
+    Args:
+        realisation_id: The modelled earthquake.
+        extent: The extent the run is over.
+
+    Returns:
+        Indexed by claim id: the clearing cost as the run priced it, with
+        volunteers and without, and whether the run had them.
+    """
+    damage = pd.read_parquet(
+        liq_land.liq_land_damage_path(realisation_id, extent=extent)
+    )
+    columns = {
+        "liq_inundated_cost_excl_gst": liq_land.INUNDATED_COST_COLUMN,
+        "liq_inundated_cost_sva_excl_gst": liq_land.INUNDATED_COST_SVA_COLUMN,
+        "liq_inundated_cost_no_sva_excl_gst": liq_land.INUNDATED_COST_NO_SVA_COLUMN,
+    }
+    if not set(columns.values()) <= set(damage.columns):
+        return pd.DataFrame(columns=[*columns, "liq_sva"])
+    grouped = damage.groupby(CLAIM_ID_COLUMN)
+    out = pd.DataFrame(
+        {name: grouped[source].sum() for name, source in columns.items()}
+    )
+    out["liq_sva"] = grouped[liq_land.SVA_COLUMN].first().astype(int)
+    return out
 
 
 def liquefaction_states(
@@ -570,6 +608,15 @@ def main(*, extent, world_ids, realisation_ids):
         ["evacuated_m2", "inundated_m2"]
     ].fillna(0.0)
     rows["cause"] = rows["cause"].fillna("")
+    ejecta = liquefaction_ejecta(realisation_id, extent=extent)
+    rows = rows.join(ejecta)
+    for column in (
+        "liq_inundated_cost_excl_gst",
+        "liq_inundated_cost_sva_excl_gst",
+        "liq_inundated_cost_no_sva_excl_gst",
+    ):
+        rows[column] = rows[column].fillna(0.0).round(6)
+    rows["liq_sva"] = rows["liq_sva"].fillna(int(not liq_config.NO_SVA)).astype(int)
     rows["has_landslide"] = rows["has_landslide"].fillna(0).astype(int)
     method = liquefaction_method(claims, realisation_id, extent=extent)
     print(f"  Liquefaction costs: {method}")

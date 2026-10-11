@@ -37,6 +37,8 @@
   #drop.over { border-style: solid; background: #e2eef6; }
   #drop.loaded { border-color: var(--line); background: #fff; }
   .i { color: var(--muted); cursor: help; font-size: 11px; }
+  label.check { display: flex; gap: 6px; align-items: flex-start; }
+  label.check input { margin-top: 3px; }
   main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 440px; }
   @media (max-width: 1280px) {
     main { grid-template-columns: 240px minmax(0, 1fr); }
@@ -166,6 +168,9 @@
     <input class="sens" type="number" id="landScale" value="1" step="0.1" min="0"></label>
   <label title="The share of residential properties with a home insurance policy, and so NHC cover. Which properties are insured is not known, so that share of them is chosen at random, fixed per property; the rest are paid nothing and are not claims.">Insurance penetration (%) <span class="i">&#9432;</span>
     <input class="sens" type="number" id="penetration" value="90" step="5" min="0" max="100"></label>
+  <label class="check" title="On: as in Canterbury, the Student Volunteer Army clears the first 250 m² of each site's ejecta for nothing, so only the ejecta beyond it is paid for -- which is why a Moderate claim in Canterbury cost about the same as a Minor one. Off: all of each site's ejecta is paid for, at the same rate per m². Only the liquefaction cost of inundated land changes.">
+    <input type="checkbox" id="sva" checked>
+    <span>Student Volunteer Army clears ejecta <span class="i">&#9432;</span></span></label>
   <label title="Brings the Canterbury liquefaction repair costs, which are in 2010/2011 dollars, to today's. See the note below for where 1.42 comes from.">Liquefaction costs, 2011 to today &times; <span class="i">&#9432;</span>
     <input class="sens" type="number" id="liqEsc" value="1.42" step="0.01" min="0"></label>
   <div class="note" style="margin-top:2px">The Canterbury liquefaction costs are in
@@ -341,6 +346,7 @@ function settings() {
     spec: num("spec"), fees: FEES_EXCL_GST, spoilRate: SPOIL_RATE_EXCL_GST,
     wallScale: num("wallScale"), landScale: num("landScale"),
     penetration: num("penetration") / 100, liqEsc: num("liqEsc"),
+    sva: document.getElementById("sva").checked,
   };
 }
 
@@ -380,7 +386,14 @@ function settle(r, s) {
   const fees = walled ? Math.max(FEES_SHARE * (wall + newWall), s.fees * gst) : 0;
   // The CSV carries the Canterbury cost in 2010/2011 dollars; it is brought to
   // today's here, as the module does with LIQ_COST_ESCALATION.
-  const liq = nz(r.liq_cost_excl_gst) * s.liqEsc * gst;
+  // The part that is clearing ejecta is carried as the run priced it, and with
+  // and without volunteers; the switch takes the one out and puts the other in.
+  // A CSV from before the parts were carried leaves the cost as it is.
+  const hasParts = r.liq_inundated_cost_sva_excl_gst != null;
+  const ejectaNow = !hasParts ? nz(r.liq_inundated_cost_excl_gst)
+    : nz(s.sva ? r.liq_inundated_cost_sva_excl_gst : r.liq_inundated_cost_no_sva_excl_gst);
+  const liq = (nz(r.liq_cost_excl_gst) - nz(r.liq_inundated_cost_excl_gst) + ejectaNow)
+    * s.liqEsc * gst;
   const crossing = nz(r.has_crossing) > 0 ? s.bcSub * gst * dwellings : 0;
 
   const landValue = Math.min(nz(r.damaged_area_m2), s.areaCap) * landRate * s.landScale;
@@ -880,6 +893,9 @@ function load(text) {
   if (RAW[0]?.liq_escalation != null) {
     document.getElementById("liqEsc").value = RAW[0].liq_escalation;
   }
+  // Open on the module's choice too: volunteers in unless the run priced
+  // clearing without them.
+  document.getElementById("sva").checked = RAW[0]?.liq_sva == null || nz(RAW[0].liq_sva) > 0;
   // The CSV says which version built it; the page beside it may be newer, and
   // an issued pair should match, so a different commit is called out.
   const built = RAW[0]?.built_with, page = document.getElementById("version").textContent;

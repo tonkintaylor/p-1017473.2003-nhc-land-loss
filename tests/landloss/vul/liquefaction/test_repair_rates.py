@@ -6,10 +6,14 @@ from landloss.vul.liquefaction.repair_rates import (
     RepairRates,
     area_repair_cost_nzd,
     fit_per_claim_sigma,
+    fit_per_claim_sigma_holding_median,
     fit_repair_rates,
+    inundated_cost_nzd,
+    inundated_repair_cost_nzd,
     lognormal_mean,
     lognormal_multiplier,
     modelled_quartiles,
+    section_ground,
 )
 
 
@@ -118,12 +122,13 @@ def test_the_cost_adds_both_areas_and_the_fixed_cost_on_a_claim_only():
     assert cost.tolist() == [5 * 20.0 + 100 * 10.0 + 1_000.0, 0.0]
 
 
-def test_the_no_sva_multiplier_raises_only_the_inundated_part():
-    rates = RepairRates(10.0, 20.0, 1_000.0)
+def test_without_volunteers_all_the_ejecta_is_paid_for():
+    rates = RepairRates(10.0, 20.0, 1_000.0, volunteer_cleared_m2=60.0)
     args = (np.array([5.0]), np.array([100.0]), np.array([True]), rates)
-    plain = area_repair_cost_nzd(*args)
-    no_sva = area_repair_cost_nzd(*args, inundated_multiplier=1.5)
-    assert no_sva[0] - plain[0] == pytest.approx(0.5 * 100 * 10.0)
+    with_sva = area_repair_cost_nzd(*args)
+    without = area_repair_cost_nzd(*args, volunteers=False)
+    assert with_sva[0] == pytest.approx(5 * 20.0 + 40 * 10.0 + 1_000.0)
+    assert without[0] - with_sva[0] == pytest.approx(60 * 10.0)
 
 
 def test_a_negative_spread_is_refused():
@@ -189,3 +194,67 @@ def test_the_spread_fit_needs_matching_states():
         fit_per_claim_sigma(
             {1: np.zeros(2)}, 1_000.0, {1: [1.0, 2.0, 3.0], 2: [1.0, 2.0, 3.0]}
         )
+
+
+def test_a_section_loses_the_middle_of_each_range():
+    inundated, evacuated = section_ground(
+        {2: (1.0, 1.0), 3: (1.0, 10.0)}, {2: (0.0, 0.0), 3: (0.25, 0.70)}, 500.0
+    )
+    assert inundated == pytest.approx({2: 0.0, 3: 237.5})
+    assert evacuated == pytest.approx({2: 1.0, 3: 5.5})
+
+
+def test_a_section_must_have_some_land():
+    with pytest.raises(ValueError, match="section_m2"):
+        section_ground({2: (1.0, 1.0)}, {2: (0.0, 0.0)}, 0.0)
+
+
+def test_holding_the_median_keeps_it_whatever_the_spread():
+    # One claim per state at a known area cost: the fitted spread moves the
+    # quartiles either side, not the median, which stays area + fixed median.
+    area = {2: 100.0, 3: 400.0, 4: 900.0}
+    targets = {s: np.array([0.6, 1.0, 1.8]) * (a + 500.0) for s, a in area.items()}
+    sigma = fit_per_claim_sigma_holding_median(area, 500.0, targets)
+    mean = 500.0 * np.exp(sigma**2 / 2)
+    for a in area.values():
+        median = modelled_quartiles(np.array([a]), mean, sigma)[1]
+        assert median == pytest.approx(a + 500.0, rel=0.01)
+    assert sigma > 0
+
+
+def test_the_inundated_part_is_the_inundated_term_alone():
+    rates = RepairRates(2.0, 30.0, 1_000.0, volunteer_cleared_m2=50.0)
+    part = inundated_repair_cost_nzd(
+        np.array([100.0, 100.0]), np.array([True, False]), rates
+    )
+    assert part == pytest.approx([100.0, 0.0])
+    no_sva = inundated_repair_cost_nzd(
+        np.array([100.0]), np.array([True]), rates, volunteers=False
+    )
+    assert no_sva == pytest.approx([200.0])
+
+
+def test_volunteers_clear_the_first_of_each_site_for_nothing():
+    rates = RepairRates(3.0, 20.0, 500.0, volunteer_cleared_m2=250.0)
+    cost = inundated_cost_nzd(np.array([0.0, 200.0, 250.0, 325.0]), rates)
+    assert cost == pytest.approx([0.0, 0.0, 0.0, 75 * 3.0])
+
+
+def test_with_no_allowance_all_ejecta_is_paid_for():
+    rates = RepairRates(3.0, 20.0, 500.0)
+    assert inundated_cost_nzd(100.0, rates) == pytest.approx(300.0)
+
+
+def test_the_fit_recovers_the_rate_beyond_the_allowance():
+    truth = RepairRates(4.0, 20.0, 600.0, volunteer_cleared_m2=100.0)
+    inundated = {2: 0.0, 3: 80.0, 4: 250.0, 5: 400.0, 6: 300.0}
+    evacuated = {2: 1.0, 3: 2.0, 4: 6.0, 5: 25.0, 6: 70.0}
+    target = {
+        s: float(inundated_cost_nzd(inundated[s], truth)) + evacuated[s] * 20.0 + 600.0
+        for s in inundated
+    }
+    fitted = fit_repair_rates(inundated, evacuated, target, volunteer_cleared_m2=100.0)
+    assert fitted.inundated_nzd_per_m2 == pytest.approx(4.0)
+    assert fitted.evacuated_nzd_per_m2 == pytest.approx(20.0)
+    assert fitted.per_claim_nzd == pytest.approx(600.0)
+    assert fitted.volunteer_cleared_m2 == 100.0

@@ -90,42 +90,34 @@ EVACUATED_OVERLAP_SHARE = 0.3
 # per_claim_sigma. 2010/2011 dollars excluding GST, before the excess, per
 # claim. The loss module settles on these (vul step 10 hands it area_cost_nzd).
 #
-# Fitted by step 3 (s3_repair_rate_calibration) on 2026-10-08 to the Canterbury
-# claimant-only cost per state (costs_liq_ld_claimant_costs_2011.csv, T-65), a
-# calibration target only: the three rates to the means, then the spread to the
-# quartiles, all six states weighted by claim count, over the pilot's 644
-# claims with the drop-out on. Modelled mean over Canterbury: None 1.19, Minor
-# 0.87, Moderate 1.01, Major 0.71, Severe 1.14, Very severe 0.76. The quartiles
-# of None, Minor and Moderate, 86% of the Canterbury claims, land within about
-# 30%; Severe and Very severe stay too narrow, their cost being mostly area
-# drawn from tight ranges (L-39).
+# Back-calculated by step 3 (s3_repair_rate_calibration) on 2026-10-12 (Perrie
+# Gilbert): a 500 m² section losing the middle of each state's ranges below is
+# priced at the Canterbury claimant-only median (costs_liq_ld_claimant_costs_
+# 2011.csv, T-65, a calibration target only), Minor to Very severe weighted by
+# claim count; then the spread fitted to the quartiles holding the median. The
+# None state is not fitted and costs nothing. per_claim_nzd is the mean of the
+# per-claim draw; its median is $794.
 #
-# The inundated rate comes out near zero however the fit is weighted (0.09
-# unweighted, 0.52 by root claim count): Canterbury paid Moderate claims
-# ($1,351) barely more than Minor ($1,291), while Moderate is given 25% to 70%
-# of the insured land inundated (L-39) and Minor none. Either clearing ejecta
-# cost little because volunteers did it (L-40), or Moderate's inundated share is
-# too high; Major and Very severe, both under-priced, point at the area ranges.
-# Re-run step 3 after changing the area ranges, the overlap, the drop-out rates
-# or the cost table, and copy its values here; it says when these are stale.
+# The Student Volunteer Army cleared the first of every site's ejecta for
+# nothing (L-40): step 3's VOLUNTEER_CLEARED_M2, 250 m², judgement -- about
+# what a Moderate site is given, so Canterbury's Moderate claims cost no more
+# than Minor ones, as its medians show. The inundated rate is what claims paid
+# per m² beyond it; NO_SVA pays it on all the ejecta. Against Lower Hutt's
+# claims priced from their own ground, both x1.42 to today, the modelled median
+# over Canterbury's is in step 3's comparison output. Re-run step 3 after
+# changing the area ranges, the section, the allowance or the cost table, and
+# copy its values here; it says when these are stale.
 REPAIR_RATES = {
-    "inundated_nzd_per_m2": 1.28,
-    "evacuated_nzd_per_m2": 27.47,
-    "per_claim_nzd": 1094.0,
-    "per_claim_sigma": 1.01,
+    "inundated_nzd_per_m2": 3.39,
+    "evacuated_nzd_per_m2": 18.57,
+    "per_claim_nzd": 1207.0,
+    "per_claim_sigma": 0.92,
+    "volunteer_cleared_m2": 250.0,
 }
 
 # Whether ejecta is cleared without the Student Volunteer Army's unpaid labour,
 # which the Canterbury costs -- and so the inundated rate fitted to them --
-# carry (L-40). True multiplies the inundated rate by NO_SVA_INUNDATED_MULTIPLIER.
+# carry (L-40). With volunteers, the first volunteer_cleared_m2 of each site's
+# ejecta (REPAIR_RATES) is cleared for nothing, as in Canterbury; True pays for
+# all of it. The loss viewer's switch does the same without a rerun.
 NO_SVA = False
-# How much more clearing ejecta costs without volunteers: 1 / (1 - f), where f
-# is the share of the ejecta the SVA cleared at no charge, which the Canterbury
-# claims therefore never paid for. After the February 2011 earthquake the SVA
-# cleared about 260,000 t of an estimated 400,000 t of ejecta, f = 0.65, giving
-# 2.9; a share of 50% to 75% gives 2 to 4. Rough, from public figures gathered
-# by Perrie Gilbert on 2026-10-08: the SVA's tonnage may include streets and
-# parks that land claims never paid for, which would put f, and the multiplier,
-# lower. It corrects the volunteer effect only, not an inundated share that is
-# too high (L-39).
-NO_SVA_INUNDATED_MULTIPLIER = 2.9
