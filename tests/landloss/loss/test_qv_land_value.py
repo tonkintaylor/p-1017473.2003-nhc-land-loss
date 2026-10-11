@@ -78,7 +78,9 @@ def test_insured_land_short_of_the_footprint_is_taken_as_the_footprint():
     assert rate.iloc[0] == pytest.approx(500.0)
 
 
-@pytest.mark.parametrize(("insured", "uninsured"), [(0.2, 0.5), (1.2, 0.1), (0.5, -0.1)])
+@pytest.mark.parametrize(
+    ("insured", "uninsured"), [(0.2, 0.5), (1.2, 0.1), (0.5, -0.1)]
+)
 def test_ratios_that_do_not_step_down_are_refused(insured, uninsured):
     with pytest.raises(ValueError, match="uninsured_ratio <= insured_ratio"):
         footprint_rate(
@@ -124,9 +126,7 @@ def test_a_claim_off_the_roll_takes_its_suburbs_median_rate_times_its_area():
             ("c5", 700.0, "Kelburn"),  # not on the roll
         ]
     )
-    qv = pd.Series(
-        {"c1": 400_000.0, "c2": 600_000.0, "c3": 400_000.0, "c4": 200_000.0}
-    )
+    qv = pd.Series({"c1": 400_000.0, "c2": 600_000.0, "c3": 400_000.0, "c4": 200_000.0})
     values = claim_land_values(land, qv)
     assert values.loc["c5", LAND_VALUE_COLUMN] == pytest.approx(800.0 * 700.0)
     assert values.loc["c5", VALUE_SOURCE_COLUMN] == FROM_SUBURB

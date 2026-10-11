@@ -130,9 +130,20 @@
     <input type="number" id="bcSub" value="25000" step="1000"></label>
 
   <h2>Excess</h2>
-  <label>Per dwelling ($)
-    <input type="number" id="exEach" value="500" step="100" min="0"></label>
-  <label>Ceiling ($)<input type="number" id="exCeil" value="5000" step="500"></label>
+  <label>Basis
+    <select id="exBasis">
+      <option value="dwelling">Per dwelling, up to a ceiling (the Act)</option>
+      <option value="fixed">Fixed per claim</option>
+    </select></label>
+  <div id="exDwelling">
+    <label>Per dwelling ($)
+      <input type="number" id="exEach" value="500" step="100" min="0"></label>
+    <label>Ceiling ($)<input type="number" id="exCeil" value="5000" step="500"></label>
+  </div>
+  <div id="exFixedBox" hidden>
+    <label title="Charged once on every claim that is paid anything, however many dwellings it covers">Per claim ($)
+      <input type="number" id="exFixed" value="5000" step="500" min="0"></label>
+  </div>
 
   <h2>Costs</h2>
   <label>Replacement spec uplift
@@ -299,7 +310,8 @@ const pct = d3.format(".0%");
 function settings() {
   return {
     areaCap: num("areaCap"), rwSub: num("rwSub"), bcSub: num("bcSub"),
-    exEach: num("exEach"), exCeil: num("exCeil"),
+    exBasis: val("exBasis"), exEach: num("exEach"), exCeil: num("exCeil"),
+    exFixed: num("exFixed"),
     spec: num("spec"), fees: num("fees"), spoilRate: num("spoilRate"),
     wallScale: num("wallScale"), landScale: num("landScale"),
     penetration: num("penetration") / 100, liqEsc: num("liqEsc"),
@@ -359,7 +371,9 @@ function settle(r, s) {
   const has_area_cap_limit = insured && Math.min(repair, fullCap) > payable + 0.5;
   // The excess a claim would pay if anything were payable, kept apart so each
   // cap scenario can apply it to its own payable amount.
-  const excessIf = Math.min(dwellings * s.exEach, s.exCeil);
+  const excessIf = s.exBasis === "fixed"
+    ? s.exFixed
+    : Math.min(dwellings * s.exEach, s.exCeil);
   const excess = payable > 0 ? excessIf : 0;
   const settlement = Math.max(0, payable - excess);
   // A claim exists only where there is damage, whether or not the excess then
@@ -869,7 +883,13 @@ drop.addEventListener("drop", e => e.dataTransfer.files[0].text().then(load));
 // A policy or sensitivity control changes the answer, so it re-settles --
 // debounced, because it is the expensive one. Everything else changes what is
 // shown rather than what is owed, so it repaints only.
-d3.selectAll("#config input").on("input", rerender);
+d3.selectAll("#config input, #config select").on("input", rerender);
+// Only the excess basis in use shows its inputs.
+d3.select("#exBasis").on("input.show", () => {
+  const fixed = val("exBasis") === "fixed";
+  document.getElementById("exDwelling").hidden = fixed;
+  document.getElementById("exFixedBox").hidden = !fixed;
+});
 d3.selectAll("#colourBy, #basemap, #showDots, #dotSize, #histOf, #capMode")
   .on("input", () => render({resettle: false}));
 window.addEventListener("resize", debounce(() => RAW.length && render({resettle: false}), 200));
