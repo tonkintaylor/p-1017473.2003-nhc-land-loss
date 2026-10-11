@@ -145,8 +145,11 @@ before building anything.
         categorised `gw_depth_class` layer instead of binned depth.
       - `src/scripts/landloss/reviewer/gen_reviewer_landslide.py:226`.
       - `src/scripts/landloss/hazard/landslide/research/slope_elements/gen_ground_map_qgis_layers.py:152`
-        is research and not maintained; leave it. *It no longer imports
-        (`read_raster` is gone and the `polygonise_*` signatures changed).*
+        is research and not maintained; leave it. *It stopped importing
+        (`read_raster` is gone and the `polygonise_*` signatures changed). On
+        2026-10-11 the lead asked to keep it at low cost, so it now reads the
+        step's own config for every setting and draws the groundwater class.
+        Checked by a run on wlg-pilot.*
       - Tests: `test_ground_map.py` lines 425-428, 459, 522, 568, 575, 641-644,
         807-812, 915, 940; `urban/test_chain_end_to_end.py:304`,
         `urban/test_fragility.py:312`, `urban/test_geometry.py:51`, `:75`.
