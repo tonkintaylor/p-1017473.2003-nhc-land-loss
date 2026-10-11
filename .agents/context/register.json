@@ -1079,6 +1079,22 @@
       "Phase": "4",
       "Source": "Wgtn Land Model 2026-10-09",
       "Status": "Open"
+    },
+    {
+      "ID": "T-156",
+      "Task": "Confirm with QV or NHC that per-property land rates derived from the QV rating roll may be shared outside T+T, including in the loss viewer's CSV.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-157",
+      "Task": "Rerun exposure step 5, vul (landslide s3, liquefaction s2, property damage s10) and loss for Porirua, Upper Hutt and Lower Hutt so they value land from the QV roll in tiers.",
+      "Owner": "Unassigned",
+      "Phase": "1",
+      "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -1612,6 +1628,20 @@
       "Limitation": "NHC has no rule for valuing part of a section for a landslide claim: adjusted rating values are only used for uniform land with flooding or inundation, and land claims are settled on repair cost, so the model's land rate rests on T+T's own rule.",
       "Affects": "exposure/land value, loss",
       "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-79",
+      "Limitation": "Damaged land is valued from each property's QV rating valuation spread over three tiers (footprint, rest of the insured land at 0.5, uninsured remainder at 0.15), and the two ratios are T+T placeholders until a valuer gives figures (T-153).",
+      "Affects": "loss land cover cap",
+      "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-80",
+      "Limitation": "Liquefaction damage has no location within the insured land, so it is valued at the insured land's average rate rather than by the tier it lies in; landslide damage is valued by how much lies under the footprint.",
+      "Affects": "loss land cover cap",
+      "Source": "QV land valuation in loss 2026-10-11",
       "Status": "Open"
     }
   ],
