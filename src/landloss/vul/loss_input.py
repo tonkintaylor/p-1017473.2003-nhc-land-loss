@@ -88,12 +88,21 @@ WORLD_ID_COLUMN = "world_id"
 
 # Exposure's column names for what the contract renames.
 SIZE_CLASS_COLUMN = "size_class"
+# Each property a wall enters by at least 1 m and its length there, primary
+# first (exposure rw step 6): a list of {"property_id", "length_m"}.
+PROPERTY_LENGTHS_COLUMN = "property_lengths_m"
 WALL_TYPE_COLUMN = "wall_type"
 HEIGHT_COLUMN = "height_m"
 LENGTH_COLUMN = "length_m"
 ASSET_COLUMN = "asset"
 
 FLAG_COLUMNS = (IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN)
+
+# The wall a row of the rw table is a piece of, written after the contract
+# columns. A wall on one property is its own piece; a wall crossing several is
+# one row per property (split_walls_by_property), each ``<rw_id>-P<n>``.
+PARENT_RW_ID_COLUMN = "parent_rw_id"
+PIECE_SUFFIX = "-P"
 
 
 def _geo(
@@ -223,14 +232,90 @@ def build_land_table(
     return land
 
 
-def build_rw_table(
-    walls: gpd.GeoDataFrame, states: pd.DataFrame, flags: pd.DataFrame
+def split_walls_by_property(
+    rw: gpd.GeoDataFrame,
+    property_lengths: pd.Series,
+    claims: set | None = None,
 ) -> gpd.GeoDataFrame:
-    """Assemble the retaining wall table, one row per insured wall.
+    """Return the wall table with each wall split onto the properties it crosses.
+
+    A wall on one property is one row, as it was. A wall crossing several is one
+    row per property it enters by at least 1 m, each carrying that property's
+    claim and the length of wall on it, and everything else -- type, height,
+    damage -- from the wall, since the wall stands or fails as one. So each
+    property settles the wall on its own land against its own sub-cap and
+    excess, rather than the property holding most of it settling all of it.
+
+    The primary property takes the wall's length less the other pieces, so the
+    slivers under 1 m stay with it and the wall's length is conserved. A piece
+    on a property that is not a claim is dropped: that wall is not insured
+    there, and the primary keeps only its own share. Each piece keeps the whole
+    wall's line, since the population carries no line per property.
+
+    Args:
+        rw: The retaining wall table, one row per wall, keyed on ``rw_id``.
+        property_lengths: Each wall's :data:`PROPERTY_LENGTHS_COLUMN` by
+            ``rw_id``; a wall with none, or an empty list, is not split.
+        claims: The claim ids a piece may land on; ``None`` keeps every piece.
+
+    Returns:
+        ``rw`` with :data:`PARENT_RW_ID_COLUMN` added, one row per piece, in the
+        order of ``rw`` and, within a wall, primary first.
+    """
+    rows = []
+    for record in rw.to_dict("records"):
+        parent = record[RW_ID_COLUMN]
+        entries = property_lengths.get(parent)
+        entries = [] if entries is None else list(entries)
+        others = [
+            entry
+            for entry in entries
+            if entry["property_id"] != record[CLAIM_ID_COLUMN]
+        ]
+        kept = [
+            entry
+            for entry in others
+            if claims is None or entry["property_id"] in claims
+        ]
+        if not others:
+            rows.append({**record, PARENT_RW_ID_COLUMN: parent})
+            continue
+        primary = record[RW_LENGTH_COLUMN] - sum(
+            float(entry["length_m"]) for entry in others
+        )
+        pieces = [(record[CLAIM_ID_COLUMN], max(primary, 0.0))] + [
+            (entry["property_id"], float(entry["length_m"])) for entry in kept
+        ]
+        for number, (claim, length) in enumerate(pieces, start=1):
+            # A wall left on its primary alone keeps its own id.
+            piece_id = parent if len(pieces) == 1 else f"{parent}{PIECE_SUFFIX}{number}"
+            rows.append(
+                {
+                    **record,
+                    RW_ID_COLUMN: piece_id,
+                    CLAIM_ID_COLUMN: claim,
+                    RW_LENGTH_COLUMN: length,
+                    PARENT_RW_ID_COLUMN: parent,
+                }
+            )
+    columns = [*rw.columns, PARENT_RW_ID_COLUMN]
+    frame = pd.DataFrame(rows, columns=columns)
+    return gpd.GeoDataFrame(frame, geometry=rw.geometry.name, crs=rw.crs)
+
+
+def build_rw_table(
+    walls: gpd.GeoDataFrame,
+    states: pd.DataFrame,
+    flags: pd.DataFrame,
+    *,
+    claims: set | None = None,
+) -> gpd.GeoDataFrame:
+    """Assemble the retaining wall table, one row per insured wall per property.
 
     The table is spined on the world's wall population, so a wall on sloping
     ground, which the shaking step never sees, appears beside the flat-land
-    walls it does (contract section 7.14).
+    walls it does (contract section 7.14). A wall crossing property boundaries
+    is then split onto each property (:func:`split_walls_by_property`).
 
     Args:
         walls: The world's wall population, carrying ``rw_id``, ``claim_id``,
@@ -242,11 +327,14 @@ def build_rw_table(
         flags: The wall landslide step's ``is_damaged_by_shaking``,
             ``is_evacuated`` and ``is_inundated`` per ``rw_id``, for every
             wall.
+        claims: The claims a piece of a wall may land on, normally those with
+            insured land; ``None`` keeps every piece.
 
     Returns:
-        :data:`~landloss.domain.loss_contract.RW_COLUMNS` then the geometry, in
-        the order and CRS of ``walls``. A wall is damaged by shaking when its
-        damage state is replace or the landslide step's flag says so.
+        :data:`~landloss.domain.loss_contract.RW_COLUMNS`, then
+        :data:`PARENT_RW_ID_COLUMN`, then the geometry, in the order and CRS of
+        ``walls``. A wall is damaged by shaking when its damage state is replace
+        or the landslide step's flag says so.
 
     Raises:
         ValueError: If ``rw_id`` repeats in ``walls`` or ``states``, a state
@@ -290,6 +378,15 @@ def build_rw_table(
         replaced | merged[IS_DAMAGED_BY_SHAKING_COLUMN].to_numpy()
     )
     rw = _geo(merged, list(RW_COLUMNS), walls.crs)
+    if PROPERTY_LENGTHS_COLUMN in walls.columns:
+        lengths = pd.Series(
+            walls[PROPERTY_LENGTHS_COLUMN].to_numpy(),
+            index=walls[RW_ID_COLUMN].to_numpy(),
+        )
+    else:
+        lengths = pd.Series(dtype=object)
+    rw = split_walls_by_property(rw, lengths, claims)
+    rw = _geo(rw, [*RW_COLUMNS, PARENT_RW_ID_COLUMN], walls.crs)
     check_contract_columns(rw.columns, RW_COLUMNS, table="rw")
     return rw
 

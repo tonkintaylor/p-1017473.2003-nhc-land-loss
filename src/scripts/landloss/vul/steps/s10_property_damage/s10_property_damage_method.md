@@ -55,6 +55,16 @@
   the wall landslide step, which already OR-ed the urban outcome with the
   geometry. The run prints how many walls carry a damage state and how many
   take their shaking flag from the urban outcome (`describe_walls()`).
+- **A wall crossing property boundaries is split onto each insured property**
+  (`split_walls_by_property`, 2026-10-12, RW-A31): one row per property in its
+  `property_lengths_m`, `<rw_id>-P<n>`, each on that property's claim at the
+  length of wall inside it, and each carrying the whole wall's type, height and
+  damage, since the wall stands or fails as one. The primary keeps the slivers
+  under 1 m; a piece on a property with no insured land is dropped. A wall on
+  one property keeps its own id. `parent_rw_id` is written after the contract
+  columns to tie the pieces back to the wall. Each piece keeps the whole wall's
+  line. Over Lower Hutt world 0, 7,772 walls become 10,590 rows and the claims
+  with a damaged wall rise from 4,961 to 6,244.
 - **Culverts and bridges** are split from the crossings by structure kind, the
   `crossing_id` becoming `culvert_id` or `bridge_id`:
   - culverts: `culvert_id`, `claim_id`, `is_inundated`, `is_damaged` (the

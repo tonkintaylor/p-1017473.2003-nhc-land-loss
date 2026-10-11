@@ -290,7 +290,7 @@ def test_every_table_carries_the_contract_columns_after_the_two_ids(synthetic_ru
 
     ids = ["realisation_id", "world_id"]
     assert list(land.columns) == [*ids, *LAND_COLUMNS, "dwelling_count", "geometry"]
-    assert list(rw.columns) == [*ids, *RW_COLUMNS, "geometry"]
+    assert list(rw.columns) == [*ids, *RW_COLUMNS, "parent_rw_id", "geometry"]
     assert list(culverts.columns) == [
         *ids,
         *CULVERT_COLUMNS,

@@ -522,8 +522,8 @@ inside an evacuated or inundated polygon.
 
 Any flag true means one replacement (RW-A29). Vul attaches no cost; vul step 10
 writes the loss input table (`rw_id, claim_id, rw_size, rw_type, rw_height, rw_length` and the three
-flags), and the loss module prices it. A boundary wall counting on each property
-is decided but not yet in loss (RW-A31).
+flags), and the loss module prices it. A boundary wall is split onto each insured
+property at the length on it (RW-A31).
 
 **Check the freshness panel first.** If the vul files are older than the
 population, the counts here belong to an earlier set of walls.

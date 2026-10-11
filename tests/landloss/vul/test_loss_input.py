@@ -104,6 +104,63 @@ def wall_flags():
     )
 
 
+def shared_walls():
+    """The population with 1-RW02 crossing onto claims 2 and 9.
+
+    30 m long: 18 m on claim 1, 10 m on claim 2, 1.2 m on claim 9; the other
+    0.8 m is in slivers under 1 m, which the population does not list.
+    """
+    population = walls()
+    population["property_lengths_m"] = [
+        [{"property_id": 1, "length_m": 12.0}],
+        [
+            {"property_id": 1, "length_m": 18.0},
+            {"property_id": 2, "length_m": 10.0},
+            {"property_id": 9, "length_m": 1.2},
+        ],
+        [],
+    ]
+    return population
+
+
+def test_a_wall_across_properties_is_split_onto_each():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags())
+    shared = rw[rw["parent_rw_id"] == "1-RW02"]
+    assert shared["rw_id"].tolist() == ["1-RW02-P1", "1-RW02-P2", "1-RW02-P3"]
+    assert shared["claim_id"].tolist() == [1, 2, 9]
+    # The primary keeps the slivers, so the wall's length is conserved.
+    assert shared["rw_length"].tolist() == pytest.approx([18.8, 10.0, 1.2])
+    assert shared["rw_length"].sum() == pytest.approx(30.0)
+
+
+def test_each_piece_carries_the_whole_walls_type_height_and_damage():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags())
+    shared = rw[rw["parent_rw_id"] == "1-RW02"]
+    for column in ("rw_type", "rw_height", "rw_size", "is_evacuated"):
+        assert shared[column].nunique() == 1
+    assert shared["is_evacuated"].all()
+
+
+def test_a_wall_on_one_property_keeps_its_own_id():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags())
+    assert {"1-RW01", "2-RW01"} <= set(rw["rw_id"])
+
+
+def test_a_piece_on_a_property_with_no_claim_is_dropped():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags(), claims={1, 2})
+    shared = rw[rw["parent_rw_id"] == "1-RW02"]
+    assert shared["claim_id"].tolist() == [1, 2]
+    # Claim 9's 1.2 m is not insured on this policy, so nobody carries it.
+    assert shared["rw_length"].tolist() == pytest.approx([18.8, 10.0])
+
+
+def test_a_wall_left_on_its_primary_alone_keeps_its_id_and_its_share():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags(), claims={1})
+    wall = rw[rw["parent_rw_id"] == "1-RW02"]
+    assert wall["rw_id"].tolist() == ["1-RW02"]
+    assert wall["rw_length"].tolist() == pytest.approx([18.8])
+
+
 def crossings():
     return gpd.GeoDataFrame(
         {
@@ -174,7 +231,9 @@ def test_a_duplicated_land_id_is_refused():
 
 def test_the_rw_table_is_spined_on_the_population_in_its_order():
     rw = build_rw_table(walls(), wall_states(), wall_flags())
-    assert list(rw.columns) == [*RW_COLUMNS, "geometry"]
+    assert list(rw.columns) == [*RW_COLUMNS, "parent_rw_id", "geometry"]
+    # No wall here carries property lengths, so none is split.
+    assert rw["parent_rw_id"].tolist() == rw["rw_id"].tolist()
     assert rw["rw_id"].tolist() == ["1-RW01", "1-RW02", "2-RW01"]
     assert rw["claim_id"].tolist() == [1, 1, 2]
     assert rw["rw_size"].tolist() == ["small", "large", "medium"]

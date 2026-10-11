@@ -1,0 +1,1 @@
+A retaining wall that crosses property boundaries is now split onto each insured property it enters by at least 1 m, at the length of wall on that property, instead of being carried whole by the property holding most of it. Each piece keeps the wall's type, height and damage; the vul-to-loss wall table gains `parent_rw_id`. Vul property damage (s10) and loss need rerunning.

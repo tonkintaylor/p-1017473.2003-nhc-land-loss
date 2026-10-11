@@ -1082,6 +1082,7 @@ def test_the_retaining_wall_table_carries_every_insured_wall_once(chain):
         urban.REALISATION_ID_COLUMN,
         urban.WORLD_ID_COLUMN,
         *RW_COLUMNS,
+        "parent_rw_id",
         "geometry",
     ]
     assert not rw[RW_ID_COLUMN].duplicated().any()
