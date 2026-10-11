@@ -191,6 +191,12 @@ report/**/*SYNTHETIC*
 # written there by gen_viewer_data.py so the folder can be handed over whole.
 report/loss/viewer/loss_viewer.html
 
+# The loss viewer CSVs. Each carries a land rate per claim derived from that
+# property's land value on the QV rating roll, which is sensitive, so they stay
+# local until QV or NHC confirm per-property rates may be shared (T-156).
+# gen_viewer_data.py rebuilds them from the loss outputs.
+report/loss/viewer/loss-viewer-*.csv
+
 # Built reviewer pages. Each embeds claim ids and claim report wall counts, so
 # it stays inside T+T, and it is rebuilt from the current outputs by
 # src/scripts/landloss/reviewer/gen_reviewer_rw.py rather than kept.
