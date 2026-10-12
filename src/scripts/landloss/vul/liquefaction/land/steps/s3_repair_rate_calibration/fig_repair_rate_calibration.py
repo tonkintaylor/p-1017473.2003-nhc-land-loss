@@ -13,7 +13,8 @@ rates behave:
 - **Cost build-up.** The back-calculation: the median cost of a 500 m² section
   in each state, stacked as the median per-claim cost, the evacuated cost and
   the inundated cost, against the Canterbury claimant-only median the three
-  rates were fitted to.
+  rates were fitted to, each labelled in dollars. None is drawn too, its
+  median hollow: the model charges it nothing and does not fit it.
 - **Quartiles.** The lower quartile, median and upper quartile of a claim's
   cost per state over the extent's own claims, modelled against Canterbury,
   with no spread and with the fitted spread: why the spread is there, and how
@@ -245,23 +246,39 @@ def fig_ground_lost(claims, states, extent):
     finish(fig, "liq-repair-ground-lost", extent)
 
 
-def fig_cost_build_up(canterbury, rates, states, extent, *, section_m2):
-    """A standard section's median cost per state, stacked, against Canterbury's."""
+def fig_cost_build_up(canterbury, rates, fit_states, extent, *, section_m2):
+    """A standard section's median cost per state, stacked, against Canterbury's.
+
+    None is drawn beside the fitted states with its Canterbury median hollow:
+    the model charges it nothing, so it is shown only to say it is not fitted.
+    """
+    states = [NO_DAMAGE_STATE, *(s for s in fit_states if s != NO_DAMAGE_STATE)]
+    fitted = np.array([s != NO_DAMAGE_STATE for s in states])
     inundated_m2, evacuated_m2 = section_ground(
         s2_config.EVACUATED_AREA_M2, s2_config.INUNDATED_SHARE, section_m2
     )
-    per_claim = np.full(len(states), per_claim_median(rates))
-    evacuated = np.array([evacuated_m2[s] for s in states]) * rates.evacuated_nzd_per_m2
-    inundated = inundated_cost_nzd(np.array([inundated_m2[s] for s in states]), rates)
+    per_claim = np.where(fitted, per_claim_median(rates), 0.0)
+    evacuated = (
+        np.array([evacuated_m2[s] for s in states])
+        * rates.evacuated_nzd_per_m2
+        * fitted
+    )
+    inundated = (
+        inundated_cost_nzd(np.array([inundated_m2[s] for s in states]), rates) * fitted
+    )
     target = canterbury.loc[states, QUARTILE_COLUMNS[50]].to_numpy(float)
     modelled = per_claim + evacuated + inundated
     x = np.arange(len(states))
     width = 0.55
 
-    fig, ax = plt.subplots(figsize=(9, 4.6))
+    fig, ax = plt.subplots(figsize=(11, 4.8))
     bottom = np.zeros(len(states))
     segments = (
-        (per_claim, PER_CLAIM, f"Per claim, ${per_claim[0]:,.0f} at the median"),
+        (
+            per_claim,
+            PER_CLAIM,
+            f"Per claim, ${per_claim_median(rates):,.0f} at the median",
+        ),
         (
             evacuated,
             EVACUATED,
@@ -290,8 +307,8 @@ def fig_cost_build_up(canterbury, rates, states, extent, *, section_m2):
         bottom += values
         handles.append(Patch(facecolor=colour, label=label))
     ax.scatter(
-        x,
-        target,
+        x[fitted],
+        target[fitted],
         marker="D",
         s=46,
         color=CANTERBURY,
@@ -299,27 +316,67 @@ def fig_cost_build_up(canterbury, rates, states, extent, *, section_m2):
         linewidth=1.5,
         zorder=4,
     )
-    handles.append(
-        Line2D(
-            [],
-            [],
-            marker="D",
-            linestyle="none",
-            color=CANTERBURY,
-            markersize=7,
-            label="Canterbury claimant-only median (target)",
-        )
+    ax.scatter(
+        x[~fitted],
+        target[~fitted],
+        marker="D",
+        s=46,
+        facecolor=SURFACE,
+        edgecolor=INK_MUTED,
+        linewidth=1.5,
+        zorder=4,
     )
-    for i, (m, t) in enumerate(zip(modelled, target, strict=True)):
+    handles.extend(
+        [
+            Line2D(
+                [],
+                [],
+                marker="D",
+                linestyle="none",
+                color=CANTERBURY,
+                markersize=7,
+                label="Canterbury claimant-only median (target)",
+            ),
+            Line2D(
+                [],
+                [],
+                marker="D",
+                linestyle="none",
+                markerfacecolor=SURFACE,
+                markeredgecolor=INK_MUTED,
+                markersize=7,
+                label="Canterbury median, not fitted (None is charged $0)",
+            ),
+        ]
+    )
+    for i, (m, t, fit) in enumerate(zip(modelled, target, fitted, strict=True)):
+        # The Canterbury median beside its diamond, the modelled total and the
+        # ratio of the two above the taller of bar and diamond.
         ax.annotate(
-            f"{m / t:.2f}\N{MULTIPLICATION SIGN}",
+            f"${t:,.0f}",
+            (x[i] + width / 2, t),
+            xytext=(3, 0),
+            textcoords="offset points",
+            ha="left",
+            va="center",
+            color=CANTERBURY if fit else INK_MUTED,
+            fontsize=8,
+        )
+        ax.annotate(
+            (
+                f"${m:,.0f}\n{m / t:.2f}\N{MULTIPLICATION SIGN}"
+                if fit
+                else "not fitted\n$0 modelled"
+            ),
             (x[i], max(m, t)),
             xytext=(0, 8),
             textcoords="offset points",
             ha="center",
-            color=INK,
+            va="bottom",
+            color=INK if fit else INK_MUTED,
             fontsize=8,
-            fontweight="bold",
+            fontweight="bold" if fit else "normal",
+            linespacing=1.2,
         )
     claims_n = canterbury.loc[states, CLAIMS_COLUMN]
     ax.set_xticks(
@@ -334,7 +391,7 @@ def fig_cost_build_up(canterbury, rates, states, extent, *, section_m2):
     ax.yaxis.set_major_formatter(DOLLARS)
     ax.set_ylabel("Median cost of a claim, 2010/2011 NZD excl. GST")
     ax.grid(axis="x", visible=False)
-    ax.margins(y=0.12)
+    ax.margins(y=0.18)
     ax.set_title(
         f"How the rates build the median cost of a {section_m2:,.0f} m² section"
     )
@@ -345,7 +402,8 @@ def fig_cost_build_up(canterbury, rates, states, extent, *, section_m2):
         f"Back-calculated: a {section_m2:,.0f} m² section losing the middle of each "
         "state's ground ranges is priced at the Canterbury claimant-only median,\n"
         "least squares weighted by Canterbury claim count, all non-negative. "
-        "None has no damage and costs nothing. Labels: modelled over Canterbury.",
+        "None is charged nothing and not fitted. Above each bar: the modelled "
+        "median and modelled over Canterbury.",
         color=INK_MUTED,
         fontsize=8,
     )
