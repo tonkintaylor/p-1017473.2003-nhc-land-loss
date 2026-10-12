@@ -19,6 +19,7 @@ from landloss.loss.qv_land_value import (
     QV_CAPITAL_VALUE_COLUMN,
     QV_LAND_VALUE_COLUMN,
     QV_UNITS_COLUMN,
+    QV_USE_COLUMN,
     UNINSURED_RATIO,
     VALUE_SOURCE_COLUMN,
     claim_land_values,
@@ -26,6 +27,7 @@ from landloss.loss.qv_land_value import (
     footprint_rate,
     qv_capital_value_by_claim,
     qv_land_value_by_claim,
+    residential_land_values,
 )
 
 CLAIM = loss_contract.CLAIM_ID_COLUMN
@@ -102,7 +104,7 @@ def test_ratios_that_do_not_step_down_are_refused(insured, uninsured):
 
 
 # ---------------------------------------------------------------------------
-# A claim not on the roll takes its suburb's median rate.
+# A claim not on the roll takes its suburb's median value.
 # ---------------------------------------------------------------------------
 
 
@@ -124,20 +126,28 @@ def test_a_claim_on_the_roll_keeps_its_own_value():
     assert values.loc["c1", VALUE_SOURCE_COLUMN] == FROM_ROLL
 
 
-def test_a_claim_off_the_roll_takes_its_suburbs_median_rate_times_its_area():
+def test_a_claim_off_the_roll_takes_its_suburbs_median_value():
     land = suburb_land(
         [
-            ("c1", 500.0, "Kelburn"),  # $800/m2
-            ("c2", 1_000.0, "Kelburn"),  # $600/m2
-            ("c3", 400.0, "Kelburn"),  # $1,000/m2
-            ("c4", 2_000.0, "Karori"),  # $100/m2, another suburb
+            ("c1", 500.0, "Kelburn"),
+            ("c2", 1_000.0, "Kelburn"),
+            ("c3", 400.0, "Kelburn"),
+            ("c4", 2_000.0, "Karori"),  # another suburb
             ("c5", 700.0, "Kelburn"),  # not on the roll
         ]
     )
-    qv = pd.Series({"c1": 400_000.0, "c2": 600_000.0, "c3": 400_000.0, "c4": 200_000.0})
+    qv = pd.Series({"c1": 400_000.0, "c2": 600_000.0, "c3": 500_000.0, "c4": 200_000.0})
     values = claim_land_values(land, qv)
-    assert values.loc["c5", LAND_VALUE_COLUMN] == pytest.approx(800.0 * 700.0)
+    assert values.loc["c5", LAND_VALUE_COLUMN] == pytest.approx(500_000.0)
     assert values.loc["c5", VALUE_SOURCE_COLUMN] == FROM_SUBURB
+
+
+def test_a_large_title_off_the_roll_is_not_valued_by_its_area():
+    # 58 ha at the suburb's rate would be worth billions; it takes the suburb's
+    # typical section value instead.
+    land = suburb_land([("c1", 600.0, "Makara"), ("c2", 580_000.0, "Makara")])
+    values = claim_land_values(land, pd.Series({"c1": 450_000.0}))
+    assert values.loc["c2", LAND_VALUE_COLUMN] == pytest.approx(450_000.0)
 
 
 def test_a_suburb_with_nothing_on_the_roll_takes_the_runs_median_rate():
@@ -150,9 +160,20 @@ def test_a_suburb_with_nothing_on_the_roll_takes_the_runs_median_rate():
         ]
     )
     values = claim_land_values(land, pd.Series({"c1": 400_000.0, "c2": 200_000.0}))
-    # $800 and $200 a m2: the median is $500.
-    assert values.loc["c3", LAND_VALUE_COLUMN] == pytest.approx(500.0 * 200.0)
+    # $400,000 and $200,000: the median is $300,000.
+    assert values.loc["c3", LAND_VALUE_COLUMN] == pytest.approx(300_000.0)
     assert values.loc[["c3", "c4"], VALUE_SOURCE_COLUMN].tolist() == [FROM_RUN] * 2
+
+
+def test_a_non_residential_roll_value_is_left_for_the_suburb_median():
+    by_claim = pd.DataFrame(
+        {
+            QV_LAND_VALUE_COLUMN: [600_000.0, 208_000_000.0, 900_000.0],
+            QV_USE_COLUMN: ["residential", "non-residential", "lifestyle"],
+        },
+        index=pd.Index(["c1", "c2", "c3"], name=CLAIM),
+    )
+    assert residential_land_values(by_claim).index.tolist() == ["c1", "c3"]
 
 
 # ---------------------------------------------------------------------------

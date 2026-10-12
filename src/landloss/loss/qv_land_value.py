@@ -29,10 +29,13 @@ with no location, so it takes the insured land's average, which is its expected
 value if it is spread evenly. A polygon with both is valued by the larger, as
 :func:`~landloss.loss.claims.damaged_area_m2` counts the larger area.
 
-**Not on the roll.** A property whose land value cannot be read off the roll
-takes the median land value per m² of the properties in its suburb that can,
-times its own area, and is then tiered the same way; with no such property in
-its suburb, the median over the whole run.
+**Not on the roll.** A property whose land value cannot be read off the roll,
+or whose roll value is a non-residential unit's (:func:`residential_land_values`),
+takes the median land value of the properties in its suburb that can, and is
+then tiered the same way; with no such property in its suburb, the median over
+the whole run. The median value, not the median rate times the property's area:
+a house on a large or non-residential title sits on a typical residential site,
+and a 58 ha title at a suburb's rate would be worth billions.
 
 Sensitive:
     The roll is QV's, supplied as sensitive data
@@ -55,6 +58,7 @@ from landloss.domain.loss_contract import (
     TOTAL_INSURED_LAND_AREA_COLUMN,
 )
 from landloss.exposure.land.residential_use import (
+    NON_RESIDENTIAL,
     USE_PRECEDENCE,
     VALUATION_REFERENCE_COLUMN,
     classify_property_category,
@@ -94,7 +98,7 @@ QV_USE_COLUMN = "property_use"
 QV_CAPITAL_VALUE_COLUMN = "qv_capital_value_indexed_nzd"
 
 # Each claim's land value as the tiers spread it, and where it came from: its
-# own roll record, its suburb's median rate, or the run's.
+# own roll record, its suburb's median value, or the run's.
 LAND_VALUE_COLUMN = "land_value_excl_gst_nzd"
 VALUE_SOURCE_COLUMN = "land_value_source"
 FROM_ROLL = "qv"
@@ -225,14 +229,39 @@ def _roll_value_by_claim(
     )
 
 
+def residential_land_values(by_claim: pd.DataFrame) -> pd.Series:
+    """Return the roll's land values that are a house's, leaving out the rest.
+
+    A claim whose rating units are all non-residential -- an institution's
+    grounds, a park, a commercial block -- has a land value that is not a
+    house's: one 11-dwelling claim sits on a $208m unit of 13 ha. Its land is
+    valued as though it were not on the roll (:func:`claim_land_values`). A
+    property with any residential, lifestyle or rural unit keeps its value,
+    as :data:`~landloss.exposure.land.residential_use.USE_PRECEDENCE` ranks it.
+
+    Args:
+        by_claim: From :func:`qv_land_value_by_claim`.
+
+    Returns:
+        :data:`QV_LAND_VALUE_COLUMN` for the claims whose use is not
+        non-residential.
+    """
+    non_residential = by_claim[QV_USE_COLUMN] == NON_RESIDENTIAL
+    print(
+        f"  {int(non_residential.sum()):,} properties are valued on the roll as "
+        "non-residential and are valued as though off the roll"
+    )
+    return by_claim.loc[~non_residential, QV_LAND_VALUE_COLUMN]
+
+
 def claim_land_values(land: pd.DataFrame, qv_value: pd.Series) -> pd.DataFrame:
-    """Return each claim's land value: its own, or its suburb's median rate.
+    """Return each claim's land value: its own, or its suburb's median value.
 
     Args:
         land: The contract's land table, carrying the claim, its property area
             and its suburb.
         qv_value: The indexed QV land value per claim, from
-            :func:`qv_land_value_by_claim`.
+            :func:`residential_land_values`.
 
     Returns:
         Indexed by claim id: :data:`LAND_VALUE_COLUMN`, in dollars excluding
@@ -244,17 +273,14 @@ def claim_land_values(land: pd.DataFrame, qv_value: pd.Series) -> pd.DataFrame:
     )
     value = claims.index.map(qv_value).astype(float)
     value = pd.Series(value, index=claims.index)
-    rate = value / claims["area"].where(claims["area"] > 0)
-    by_suburb = rate.groupby(claims["suburb"]).median()
-    suburb_rate = claims["suburb"].map(by_suburb)
-    run_rate = rate.median()
+    suburb_value = claims["suburb"].map(value.groupby(claims["suburb"]).median())
     source = pd.Series(FROM_ROLL, index=claims.index).where(value.notna(), None)
     filled = value.copy()
-    use_suburb = value.isna() & suburb_rate.notna()
-    filled[use_suburb] = (suburb_rate * claims["area"])[use_suburb]
+    use_suburb = value.isna() & suburb_value.notna()
+    filled[use_suburb] = suburb_value[use_suburb]
     source[use_suburb] = FROM_SUBURB
     use_run = filled.isna()
-    filled[use_run] = run_rate * claims["area"][use_run]
+    filled[use_run] = value.median()
     source[use_run] = FROM_RUN
     return pd.DataFrame({LAND_VALUE_COLUMN: filled, VALUE_SOURCE_COLUMN: source})
 

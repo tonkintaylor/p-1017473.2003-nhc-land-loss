@@ -104,10 +104,17 @@ reach an access way on it.
   A rating unit that spans two claim properties cannot be split, so those
   properties are left out, as is any property with a unit missing its value.
 - **Not on the roll.** A property whose value cannot be read off the roll takes
-  the median land value per m² of the run's properties in its suburb that can,
-  times its own property area, and is then tiered the same way. If no property
-  in its suburb can be read off the roll, it takes the median over the whole
-  run. The run prints how many claims took each source.
+  the median land value of the run's properties in its suburb that can, and is
+  then tiered the same way. If no property in its suburb can be read off the
+  roll, it takes the median over the whole run. The run prints how many claims
+  took each source. It is the median value, not the median rate times the
+  property's area (2026-10-13): a house on a large title sits on a typical
+  residential site, and a 58 ha title at its suburb's rate came to $2.8 billion,
+  which the tiers then put on its house site at millions of dollars a m².
+- **Non-residential units.** A property whose rating units are all
+  non-residential (an institution's grounds, a park, a commercial block) is
+  valued as though it were not on the roll, because its value is not a
+  house's: one 11-dwelling claim sat on a $208m unit of 13 ha.
 - **GST.** The QV value is taken as excluding GST, and the rates are grossed up
   for the Act's comparison, as before.
 - **Footprint.** This is the buildings the insured land is buffered off,
@@ -171,12 +178,14 @@ The ground, the hazards and the rest of exposure are unaffected.
 - `loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py`
   (`load_qv_land_values`, `value_land`), used by s1 as well.
 - Tests: `tests/landloss/loss/test_qv_land_value.py`.
-- `loss/validations/gen_qv_tier_factors.py`: how far the tiers move each
-  property's rate off its average QV rate, the correction factor -- a figure
-  (`report/loss/qv-land-value/fig/`) and suburb and property layers with a
-  QGIS project (`temp/loss/qv-tier-factors/`), with a tier layer that cuts
-  each property into its three tiers, each carrying its QV rate per m² (the
+- `loss/validations/gen_qv_average_rate.py`: the figures, over the four
+  councils (`report/loss/qv-land-value/fig/`) -- each rate the tiers apply,
+  the correction factors (how far the tiers move a rate off the property's
+  average QV rate), and the tiers on a valuer's example and a typical section.
+  At 0.2 and 0.02, liquefied ground takes a median 1.16 times the property's
+  average, landslide ground under the house 2.5 times, and landslide ground
+  around it about half (0.2 times the footprint factor).
+- `loss/validations/gen_qv_tier_factors.py`: suburb and property layers with a
+  QGIS project (`temp/loss/qv-tier-factors/`), and a tier layer that cuts each
+  property into its three tiers, each carrying its QV rate per m² (the
   property and tier layers are sensitive).
-  On the Wellington pilot the liquefaction factor is a median 1.06, rising to
-  1.81 where less than half the property is insured; landslide ground under the
-  house is a median 1.49 times the average, and off it 0.75 times.

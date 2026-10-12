@@ -131,14 +131,15 @@ def load_qv_land_values(*, extent: str) -> pd.Series:
 
     Returns:
         The land value in dollars excluding GST, indexed by claim id, for the
-        claims whose value can be read off the roll.
+        claims whose value can be read off the roll and is not a non-residential
+        unit's (:func:`~landloss.loss.qv_land_value.residential_land_values`).
     """
     links = pd.read_parquet(valuation_links_path(extent=extent))
     print("Reading the QV rating roll from T: ...", flush=True)
     values = qv_land_value.qv_land_value_by_claim(
         get_qv_rating_roll(), links, load_base_rates()
     )
-    return values[qv_land_value.QV_LAND_VALUE_COLUMN]
+    return qv_land_value.residential_land_values(values)
 
 
 def value_land(land: pd.DataFrame, qv_values: pd.Series) -> pd.DataFrame:
