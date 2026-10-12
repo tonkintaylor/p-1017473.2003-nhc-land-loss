@@ -84,6 +84,9 @@ MAX_UNINSURED_M2 = 4_000.0
 QV_LAND_VALUE_COLUMN = "qv_land_value_indexed_nzd"
 QV_UNITS_COLUMN = "qv_rating_units"
 QV_USE_COLUMN = "property_use"
+# The roll's capital value summed and indexed the same way. Loss does not
+# settle on it; it is what claims are banded by when equity is looked at.
+QV_CAPITAL_VALUE_COLUMN = "qv_capital_value_indexed_nzd"
 
 # Each claim's land value as the tiers spread it, and where it came from: its
 # own roll record, its suburb's median rate, or the run's.
@@ -120,13 +123,54 @@ def qv_land_value_by_claim(
         Indexed by claim id: :data:`QV_LAND_VALUE_COLUMN`,
         :data:`QV_UNITS_COLUMN` and :data:`QV_USE_COLUMN`.
     """
+    return _roll_value_by_claim(
+        roll, links, base_rates, "land_value", QV_LAND_VALUE_COLUMN
+    )
+
+
+def qv_capital_value_by_claim(
+    roll: pd.DataFrame, links: pd.DataFrame, base_rates: pd.DataFrame
+) -> pd.DataFrame:
+    """Return the roll's indexed capital value summed over each claim property.
+
+    The same join as :func:`qv_land_value_by_claim`, leaving out the same
+    properties, on the roll's capital value instead. The index is the regional
+    house price index, so it carries capital value as well as land value.
+
+    Args:
+        roll: The QV rating roll, from ``get_qv_rating_roll``.
+        links: Valuation references and the claims they belong to.
+        base_rates: The land value base rates, carrying each authority's index.
+
+    Returns:
+        Indexed by claim id: :data:`QV_CAPITAL_VALUE_COLUMN`,
+        :data:`QV_UNITS_COLUMN` and :data:`QV_USE_COLUMN`.
+    """
+    return _roll_value_by_claim(
+        roll, links, base_rates, "capital_value", QV_CAPITAL_VALUE_COLUMN
+    )
+
+
+def _roll_value_by_claim(
+    roll: pd.DataFrame,
+    links: pd.DataFrame,
+    base_rates: pd.DataFrame,
+    roll_column: str,
+    out_column: str,
+) -> pd.DataFrame:
+    """Return one of the roll's values, indexed and summed over each claim.
+
+    Returns:
+        Indexed by claim id: ``out_column``, :data:`QV_UNITS_COLUMN` and
+        :data:`QV_USE_COLUMN`.
+    """
     index = base_rates.assign(
         district=base_rates["ta_code"].astype(str).str.zfill(3).str[-2:]
     ).set_index("district")["index_to_2025_09"]
     units = pd.DataFrame(
         {
             VALUATION_REFERENCE_COLUMN: linz_valuation_reference(roll),
-            "land_value": roll["land_value"].astype("Float64"),
+            "value": roll[roll_column].astype("Float64"),
             "factor": roll["district_ta_code"].map(index).astype("Float64"),
             "use": classify_property_category(roll["property_category"]),
         }
@@ -147,20 +191,18 @@ def qv_land_value_by_claim(
     joined = joined[~joined[CLAIM_ID_COLUMN].isin(split_claims)]
 
     incomplete = set(
-        joined.loc[
-            joined["land_value"].isna() | joined["factor"].isna(), CLAIM_ID_COLUMN
-        ]
+        joined.loc[joined["value"].isna() | joined["factor"].isna(), CLAIM_ID_COLUMN]
     )
     if incomplete:
         print(
-            f"  {len(incomplete):,} properties have a unit with no land value or "
-            "no index factor and are left out"
+            f"  {len(incomplete):,} properties have a unit with no "
+            f"{roll_column.replace('_', ' ')} or no index factor and are left out"
         )
     joined = joined[~joined[CLAIM_ID_COLUMN].isin(incomplete)]
 
     rank = {use: order for order, use in enumerate(USE_PRECEDENCE)}
     joined = joined.assign(
-        indexed=joined["land_value"] * joined["factor"],
+        indexed=joined["value"] * joined["factor"],
         rank=joined["use"].map(rank).fillna(len(rank)),
     )
     grouped = joined.groupby(CLAIM_ID_COLUMN)
@@ -171,7 +213,7 @@ def qv_land_value_by_claim(
     )
     return pd.DataFrame(
         {
-            QV_LAND_VALUE_COLUMN: grouped["indexed"].sum().astype(float),
+            out_column: grouped["indexed"].sum().astype(float),
             QV_UNITS_COLUMN: grouped.size(),
             QV_USE_COLUMN: first_use,
         }

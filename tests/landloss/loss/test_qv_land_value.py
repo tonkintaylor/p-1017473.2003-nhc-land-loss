@@ -15,12 +15,14 @@ from landloss.loss.qv_land_value import (
     INSURED_RATE_COLUMN,
     LAND_VALUE_COLUMN,
     MAX_UNINSURED_M2,
+    QV_CAPITAL_VALUE_COLUMN,
     QV_LAND_VALUE_COLUMN,
     QV_UNITS_COLUMN,
     VALUE_SOURCE_COLUMN,
     claim_land_values,
     damaged_land_rates,
     footprint_rate,
+    qv_capital_value_by_claim,
     qv_land_value_by_claim,
 )
 
@@ -267,6 +269,22 @@ def test_a_propertys_units_are_summed_and_indexed():
     assert values.loc["c1", QV_LAND_VALUE_COLUMN] == pytest.approx(360_000.0)
     assert values.loc["c1", QV_UNITS_COLUMN] == 2
     assert values.loc["c2", QV_LAND_VALUE_COLUMN] == pytest.approx(450_000.0)
+
+
+def test_capital_value_is_summed_and_indexed_like_land_value():
+    units = roll(
+        [
+            ("17110", "100", 300_000.0, "47", "RD"),
+            ("17110", "200", 100_000.0, "47", "RD"),
+        ]
+    ).assign(capital_value=[700_000.0, np.nan])
+    links = pd.DataFrame(
+        {"valuation_reference": ["17110-00100", "17110-00200"], CLAIM: ["c1", "c2"]}
+    )
+    values = qv_capital_value_by_claim(units, links, BASE_RATES)
+    assert values.loc["c1", QV_CAPITAL_VALUE_COLUMN] == pytest.approx(630_000.0)
+    # A unit with no capital value leaves its property out, as for land value.
+    assert "c2" not in values.index
 
 
 def test_a_unit_on_two_properties_leaves_both_out():
