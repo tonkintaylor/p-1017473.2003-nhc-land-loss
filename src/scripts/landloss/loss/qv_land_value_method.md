@@ -68,6 +68,23 @@ Where the insured land covers the whole section, as it does on most small
 sections, there is no outer tier to take value, and the rates come close to
 the section's average.
 
+**Large blocks.** The uninsured remainder counts for no more than 4,000 m², the
+Act's minimum-sized site (`MAX_UNINSURED_M2`, 2026-10-12). Land beyond it is
+treated as bare land outside the cover and valued at nothing. Without the cap a
+lifestyle block of tens of hectares spread its value over every paddock at
+0.15R, leaving the land around its house at a few dollars a square metre --
+about 350 claims across the four councils under $10/m². A section with less
+than 4,000 m² of uninsured land is unaffected. On a 58 ha Wainuiomata Coast
+block worth $688,000 with 2,300 m² insured, the house site goes from about
+$8/m² to about $360/m².
+
+**Shared lots.** A title can include a share in a common lot -- an access lot,
+or a subdivision's reserve. Timberlea's titles each carry a house lot and
+shares in two lots of about 51 ha. The property area the tiers use leaves that
+shared ground out (exposure step 5, `shared_area_m2`), so a house is valued
+over its own lot; the property's shape keeps it, so insured land can still
+reach an access way on it.
+
 ## Details
 
 - **QV land value.** Every rating unit on the claim property is summed and
@@ -99,9 +116,11 @@ Both ratios are in `landloss.loss.qv_land_value`:
 | --- | --- | --- |
 | `INSURED_RATIO` | `0.5` | Tier 2's rate as a share of tier 1's |
 | `UNINSURED_RATIO` | `0.15` | Tier 3's rate as a share of tier 1's |
+| `MAX_UNINSURED_M2` | `4000` | The most of tier 3 counted; land beyond it is valued at nothing |
 
-The two ratios are **placeholders until a valuer sets them** (T-153). They must
-step down: 0 ≤ uninsured ≤ insured ≤ 1. Changing them needs only loss rerun.
+The two ratios and the cap are **placeholders until a valuer sets them**
+(T-153). The ratios must step down: 0 ≤ uninsured ≤ insured ≤ 1. Changing any
+of them needs only loss rerun.
 
 ## What has to be rerun
 
@@ -141,3 +160,12 @@ The ground, the hazards and the rest of exposure are unaffected.
 - `loss/steps/s0_land_cover_cap/s0_gen_land_cover_cap.py`
   (`load_qv_land_values`, `value_land`), used by s1 as well.
 - Tests: `tests/landloss/loss/test_qv_land_value.py`.
+- `loss/validations/gen_qv_tier_factors.py`: how far the tiers move each
+  property's rate off its average QV rate, the correction factor -- a figure
+  (`report/loss/qv-land-value/fig/`) and suburb and property layers with a
+  QGIS project (`temp/loss/qv-tier-factors/`), with a tier layer that cuts
+  each property into its three tiers, each carrying its QV rate per m² (the
+  property and tier layers are sensitive).
+  On the Wellington pilot the liquefaction factor is a median 1.06, rising to
+  1.81 where less than half the property is insured; landslide ground under the
+  house is a median 1.49 times the average, and off it 0.75 times.

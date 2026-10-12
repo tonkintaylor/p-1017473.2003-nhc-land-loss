@@ -81,6 +81,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyproj
+import shapely
 
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN
 
@@ -124,6 +125,15 @@ MAX_DWELLING_FOOTPRINT_M2 = 500.0
 ADDRESS_ID_COLUMN = "address_id"
 AREA_COLUMN = "area_m2"
 PROPERTY_AREA_COLUMN = "property_area_m2"
+# The part of a property's title shared with other titles, a share in a common
+# lot: left out of its property area (own_property_area).
+SHARED_AREA_COLUMN = "shared_area_m2"
+# How much ground a title must share before it is taken out of its area, so the
+# slivers where neighbouring boundaries disagree are left alone; and how much of
+# its own the title must keep, so near-identical unit titles on one footprint,
+# which share all of it, keep their whole area.
+MIN_SHARED_AREA_M2 = 100.0
+MIN_OWN_AREA_M2 = 50.0
 # The area of the property an address stands on, carried on the address. What
 # the land value model sizes a section by and divides the rate by.
 SECTION_AREA_COLUMN = "section_area_m2"
@@ -356,8 +366,61 @@ def build_claim_properties(
         stack.to_numpy() == claimable.index.to_numpy()
     ].copy()
     properties[id_column] = properties[SOURCE_ID_COLUMN].to_numpy()
-    properties[PROPERTY_AREA_COLUMN] = properties.geometry.area
-    return properties.reset_index(drop=True)
+    properties = properties.reset_index(drop=True)
+    shared = shared_area_m2(properties)
+    properties[SHARED_AREA_COLUMN] = shared
+    properties[PROPERTY_AREA_COLUMN] = properties.geometry.area - shared
+    return properties
+
+
+def shared_area_m2(
+    properties: gpd.GeoDataFrame,
+    *,
+    min_shared_m2: float = MIN_SHARED_AREA_M2,
+    min_own_m2: float = MIN_OWN_AREA_M2,
+) -> np.ndarray:
+    """Return how much of each property's title is ground other titles share.
+
+    A title can carry its own lot and a share in a common lot -- an access lot,
+    or a reserve kept by a subdivision: Timberlea's titles each carry a house
+    lot and shares in two lots of about 51 ha between them. The title's polygon
+    covers both, so its area is mostly ground that is not the property's own,
+    which the loss module's land tiers would spread the land value across
+    (2026-10-12). The shape is kept, so insured land still reaches an access way
+    on the common lot; only the area the land is valued over leaves the shared
+    ground out.
+
+    Args:
+        properties: The claim properties, one row each, on a unique index.
+        min_shared_m2: Ground shared below this is boundary noise and kept.
+        min_own_m2: A property left with less than this of its own is a near
+            copy of another title, not a share in a common lot, and is kept
+            whole.
+
+    Returns:
+        The shared area per property, aligned to ``properties``; zero where it
+        is kept whole.
+    """
+    shapes = properties.geometry.reset_index(drop=True)
+    left, right = shapes.sindex.query(shapes, predicate="intersects")
+    pairs = left != right
+    left, right = left[pairs], right[pairs]
+    geometry = shapes.to_numpy()
+    overlaps = shapely.intersection(geometry[left], geometry[right])
+    keep = shapely.area(overlaps) > 1.0
+    shared = np.zeros(len(shapes))
+    if not keep.any():
+        return shared
+    unions = (
+        gpd.GeoSeries(overlaps[keep], crs=properties.crs)
+        .groupby(left[keep])
+        .agg(lambda group: shapely.union_all(group.to_numpy()))
+    )
+    union_area = shapely.area(np.asarray(unions.to_numpy(), dtype=object))
+    own = shapes.area.to_numpy()[unions.index.to_numpy()] - union_area
+    take = (union_area >= min_shared_m2) & (own >= min_own_m2)
+    shared[unions.index.to_numpy()[take]] = union_area[take]
+    return shared
 
 
 def count_dwellings(

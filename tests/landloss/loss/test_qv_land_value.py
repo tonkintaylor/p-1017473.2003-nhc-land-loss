@@ -14,6 +14,7 @@ from landloss.loss.qv_land_value import (
     FROM_SUBURB,
     INSURED_RATE_COLUMN,
     LAND_VALUE_COLUMN,
+    MAX_UNINSURED_M2,
     QV_LAND_VALUE_COLUMN,
     QV_UNITS_COLUMN,
     VALUE_SOURCE_COLUMN,
@@ -287,3 +288,20 @@ def test_a_unit_with_no_value_leaves_its_property_out():
         {"valuation_reference": ["17110-00100", "17110-00200"], CLAIM: ["c1", "c1"]}
     )
     assert qv_land_value_by_claim(units, links, BASE_RATES).empty
+
+
+def test_a_large_block_spreads_its_value_over_no_more_than_the_capped_remainder():
+    # 60 ha with a 300 m2 house and 2,300 m2 insured: the remainder counts only
+    # to the cap, so the house site carries the value.
+    rate = footprint_rate(series(688_000), series(300), series(2_300), series(600_000))
+    weighted = 300 + 0.5 * 2_000 + 0.15 * MAX_UNINSURED_M2
+    assert rate.iloc[0] == pytest.approx(688_000 / weighted)
+    assert rate.iloc[0] > 300
+
+
+def test_a_section_under_the_cap_is_unaffected_by_it():
+    capped = footprint_rate(series(600_000), series(150), series(800), series(3_000))
+    uncapped = footprint_rate(
+        series(600_000), series(150), series(800), series(3_000), max_uninsured_m2=1e12
+    )
+    assert capped.iloc[0] == pytest.approx(uncapped.iloc[0])

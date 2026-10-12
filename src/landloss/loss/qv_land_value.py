@@ -70,6 +70,15 @@ from landloss.io.qv_rating_roll import linz_valuation_reference
 INSURED_RATIO = 0.5
 UNINSURED_RATIO = 0.15
 
+# The most of the uninsured remainder the tiers spread a property's value over
+# (Perrie Gilbert, 2026-10-12): the Act's 4,000 m² minimum-sized site, beyond
+# which land is bare land outside the cover, valued at nothing here. Without it
+# a lifestyle block of tens of hectares spreads its value over every paddock at
+# 0.15R, leaving its house site at a few dollars a square metre; a residential
+# section, well under it, is unaffected. JUDGEMENT, for the valuer with the
+# ratios (T-153).
+MAX_UNINSURED_M2 = 4_000.0
+
 # The roll's land value summed over a claim property, indexed to the common
 # valuation date, and what else is known about the property from the roll.
 QV_LAND_VALUE_COLUMN = "qv_land_value_indexed_nzd"
@@ -211,12 +220,16 @@ def footprint_rate(
     *,
     insured_ratio: float = INSURED_RATIO,
     uninsured_ratio: float = UNINSURED_RATIO,
+    max_uninsured_m2: float = MAX_UNINSURED_M2,
 ) -> pd.Series:
     """Return the footprint's full rate, so the three tiers add back to the value.
 
     The insured land includes the footprint, so the ring is the insured land
     less the footprint and the outer tier the property less the insured land;
-    neither goes below zero where the layers disagree slightly.
+    neither goes below zero where the layers disagree slightly. The outer tier
+    counts no more than ``max_uninsured_m2``: land beyond it is valued at
+    nothing, so a large block's value sits on its house site rather than being
+    spread over every paddock.
 
     Args:
         land_value: Each property's land value, in dollars.
@@ -225,6 +238,7 @@ def footprint_rate(
         property_m2: The area of the whole property.
         insured_ratio: The ring's rate as a share of the footprint's.
         uninsured_ratio: The outer tier's rate as a share of the footprint's.
+        max_uninsured_m2: The most of the outer tier counted.
 
     Returns:
         The full rate per m², indexed as ``land_value``; missing where there is
@@ -243,7 +257,7 @@ def footprint_rate(
     footprint = footprint_m2.astype(float).clip(lower=0)
     insured = np.maximum(insured_m2.astype(float), footprint)
     ring = insured - footprint
-    outer = (property_m2.astype(float) - insured).clip(lower=0)
+    outer = (property_m2.astype(float) - insured).clip(lower=0, upper=max_uninsured_m2)
     weighted = footprint + insured_ratio * ring + uninsured_ratio * outer
     return land_value.astype(float) / weighted.where(weighted > 0)
 

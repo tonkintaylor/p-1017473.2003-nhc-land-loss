@@ -22,6 +22,13 @@
 - The written layer carries `land_id`, `claim_id`, `area_m2`,
   `property_area_m2`, `footprint_area_m2`, `building_count`, `dwelling_count`,
   `suburb_locality` and the polygon, in that order.
+- **`property_area_m2` is the property's own ground** (2026-10-12): ground its
+  title shares with other titles -- a share in a common lot, such as
+  Timberlea's two lots of about 51 ha -- is left out, by `shared_area_m2` in
+  `landloss.exposure.land.extent`. The property's shape keeps it, so insured
+  land still reaches an access way on a common lot. Overlaps under 100 m² are
+  boundary noise and kept, and a title left with under 50 m² of its own is a
+  near copy of another and kept whole.
 - **No land rate is written.** Since 2026-10-11 the loss module values damaged
   land itself, from each property's QV land value in three tiers
   (`src/scripts/landloss/loss/qv_land_value_method.md`). This step writes what
