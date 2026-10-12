@@ -1,0 +1,1 @@
+`tasks/run_wellington_build.ps1` runs the whole pipeline (ground, exposure, hazard, vul) over the Wellington City extent, taking the worlds, realisations and `START_FROM` from `src/scripts/landloss/config.py` and logging to `temp/logs/`. With `-CacheOnly` it reads the T: and R: inputs only from `.tdrivecache` and stops on any that are not cached.
