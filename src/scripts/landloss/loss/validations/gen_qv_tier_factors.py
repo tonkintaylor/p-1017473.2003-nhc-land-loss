@@ -4,8 +4,9 @@
 
 The loss module values damaged land from each property's own QV land value,
 spread over three tiers (:mod:`landloss.loss.qv_land_value`): the building
-footprint at the full rate ``R``, the rest of the insured land at half of it,
-and the uninsured remainder at 0.15 of it. The plain alternative would be the
+footprint at the full rate ``R``, the rest of the insured land at
+``INSURED_RATIO`` of it, and the uninsured remainder at ``UNINSURED_RATIO`` of
+it (0.2 and 0.02 since 2026-10-13). The plain alternative would be the
 property's average rate, its land value over its area. This draws how far the
 tiers move the rate away from that average -- the **correction factor** -- per
 claim property:
@@ -13,7 +14,8 @@ claim property:
 - **liquefaction factor**: the insured land's average rate over the property's
   average rate, what liquefied ground is valued at;
 - **footprint factor**: ``R`` over the average, landslide ground under the house;
-- **ring factor**: ``0.5 R`` over the average, landslide ground off the house.
+- **ring factor**: ``INSURED_RATIO R`` over the average, landslide ground off
+  the house.
 
 A section the insured land covers wholly has no outer tier to take value, so its
 liquefaction factor is about 1; a large section with a small insured area rises
@@ -21,12 +23,9 @@ well above it. The factors are rates before GST at the common valuation date;
 GST and the land value sensitivity scale every tier alike, so they do not move
 a factor.
 
-Writes, for the extent in ``config.QV_TIER_EXTENT``:
+Writes, for the extent in ``config.QV_TIER_EXTENT`` (the figures are
+``gen_qv_average_rate.py``'s, over the four councils):
 
-- ``report/loss/qv-land-value/fig/qv-tier-factors<suffix>.png``: the tiers on a
-  worked example, the liquefaction factor against how much of the property is
-  insured, the factors by authority, and suburb medians. Summaries only, so it
-  may go in the report.
 - ``temp/loss/qv-tier-factors/``: ``qv-tier-factors-by-suburb<suffix>`` as CSV
   and geoparquet (medians), the per-property layer when
   ``config.QV_TIER_WRITE_PROPERTY_LAYER`` is set, and a QGIS project
@@ -54,14 +53,8 @@ local cache with ``TTDRIVE_SYNC_LOCAL_MODE=True``.
 import sys
 
 import geopandas as gpd
-import matplotlib as mpl
-
-mpl.use("Agg")  # non-interactive: this script only writes PNGs
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.ticker import NullFormatter
 
 from landloss.exposure.land.extent import (
     AREA_COLUMN,
@@ -71,7 +64,7 @@ from landloss.exposure.land.extent import (
     SUBURB_COLUMN,
     build_claim_properties,
 )
-from landloss.exposure.land.land_value import COMMON_VALUATION_DATE, load_base_rates
+from landloss.exposure.land.land_value import load_base_rates
 from landloss.io.area_of_interest import extent_suffix, get_study_areas
 from landloss.io.qv_rating_roll import get_qv_rating_roll
 from landloss.io.readers import get_nz_property_boundaries
@@ -123,22 +116,9 @@ FACTORS = {
     RING_FACTOR: f"Landslide off the house: {INSURED_RATIO:g}R",
 }
 
-# The worked example the tier panel draws: invented, so nothing of the roll is in
-# it, and the one in the loss module's method note.
-EXAMPLE = {"value": 600_000.0, "area": 3_000.0, "footprint": 150.0, "insured": 800.0}
-
 # The factor bands the QGIS layers are drawn in: pale near 1, darker as the tiers
 # move the rate further above the property's average.
 FACTOR_BREAKS = [0.0, 0.95, 1.05, 1.15, 1.3, 1.5, 2.0, 3.0, 1000.0]
-# How many suburbs the suburb panel names at each end.
-LABELLED_SUBURBS = 8
-
-TIER_COLOURS = {"footprint": "#b2182b", "ring": "#ef8a62", "outer": "#fddbc7"}
-FACTOR_COLOURS = {
-    LIQUEFACTION_FACTOR: "#2166ac",
-    FOOTPRINT_FACTOR: "#b2182b",
-    RING_FACTOR: "#ef8a62",
-}
 
 
 def tier_factors(insured, qv_value):
@@ -239,205 +219,6 @@ def describe(factors):
         .round(2)
         .to_string()
     )
-
-
-def draw_example(ax):
-    """Draw the three tiers of the worked example, rate against area."""
-    value, area = EXAMPLE["value"], EXAMPLE["area"]
-    footprint, insured = EXAMPLE["footprint"], EXAMPLE["insured"]
-    ring, outer = insured - footprint, area - insured
-    full = value / (footprint + INSURED_RATIO * ring + UNINSURED_RATIO * outer)
-    average = value / area
-    tiers = (
-        ("footprint", "Footprint", footprint, full),
-        ("ring", "Rest of the insured land", ring, INSURED_RATIO * full),
-        ("outer", "Uninsured remainder", outer, UNINSURED_RATIO * full),
-    )
-    left = 0.0
-    for key, label, width, rate in tiers:
-        ax.bar(
-            left,
-            rate,
-            width=width,
-            align="edge",
-            color=TIER_COLOURS[key],
-            edgecolor="white",
-        )
-        ax.annotate(
-            f"{label}\n{width:,.0f} m² at ${rate:,.0f}/m²",
-            # The footprint is a narrow bar, so its label sits to its right.
-            (left + (width if width < 0.1 * area else width / 2), rate),
-            xytext=(4, -24) if width < 0.1 * area else (0, 4),
-            textcoords="offset points",
-            ha="left" if width < 0.1 * area else "center",
-            va="bottom",
-            fontsize=8,
-        )
-        left += width
-    ax.axhline(average, color="k", lw=1, ls="--")
-    ax.annotate(
-        f"Property average ${average:,.0f}/m²",
-        (area, average),
-        xytext=(-4, 4),
-        textcoords="offset points",
-        ha="right",
-        fontsize=8,
-    )
-    insured_rate = full * (footprint + INSURED_RATIO * ring) / insured
-    ax.axhline(insured_rate, color=FACTOR_COLOURS[LIQUEFACTION_FACTOR], lw=1.2)
-    ax.annotate(
-        f"Insured land's average ${insured_rate:,.0f}/m² "
-        f"= {insured_rate / average:.2f}x the property average",
-        (area, insured_rate),
-        xytext=(-4, 4),
-        textcoords="offset points",
-        ha="right",
-        fontsize=8,
-        color=FACTOR_COLOURS[LIQUEFACTION_FACTOR],
-    )
-    ax.set_xlim(0, area)
-    ax.set_ylim(0, full * 1.3)
-    ax.set_xlabel("Area of the property (m²)")
-    ax.set_ylabel("Land value per m², before GST")
-    ax.set_title(
-        f"(a) The three tiers on an example: ${value:,.0f} of land, {area:,.0f} m²,\n"
-        f"a {footprint:,.0f} m² house and {insured:,.0f} m² insured; "
-        "the tiers add back to the value",
-        fontsize=10,
-    )
-
-
-def plot(factors, suburbs, out, *, title):
-    """Draw the four panel figure."""
-    fig, axes = plt.subplots(2, 2, figsize=(13, 11))
-    ax_example, ax_share, ax_ta, ax_sub = axes.ravel()
-
-    draw_example(ax_example)
-
-    # (b) A density rather than points: one point per property would draw the
-    # roll's records.
-    share = factors[INSURED_SHARE_COLUMN].to_numpy()
-    factor = np.log10(factors[LIQUEFACTION_FACTOR].to_numpy())
-    hexes = ax_share.hexbin(
-        share,
-        factor,
-        gridsize=45,
-        extent=(0, 1, np.log10(0.8), np.log10(4)),
-        bins="log",
-        mincnt=3,
-        cmap="viridis",
-    )
-    fig.colorbar(hexes, ax=ax_share, label="Properties per cell")
-    bins = np.linspace(0, 1, 21)
-    centres = (bins[:-1] + bins[1:]) / 2
-    medians = (
-        factors.groupby(pd.cut(factors[INSURED_SHARE_COLUMN], bins), observed=False)[
-            LIQUEFACTION_FACTOR
-        ]
-        .median()
-        .to_numpy()
-    )
-    ax_share.plot(centres, np.log10(medians), "w-", lw=2.5)
-    ax_share.plot(centres, np.log10(medians), "k-", lw=1.2, label="Median")
-    ax_share.axhline(0, color="k", lw=0.6, ls=":")
-    ticks = [0.8, 1, 1.25, 1.5, 2, 3, 4]
-    ax_share.set_yticks(np.log10(ticks), [f"{t:g}x" for t in ticks])
-    ax_share.set_xlabel("Share of the property that is insured land")
-    ax_share.set_ylabel("Liquefaction factor (log)")
-    ax_share.legend(loc="upper right", fontsize=8)
-    ax_share.set_title(
-        "(b) The less of the section is insured, the more the tiers\n"
-        "raise the rate liquefied land is valued at",
-        fontsize=10,
-    )
-
-    # (c) The three factors by authority.
-    authorities = sorted(factors[TA_COLUMN].unique())
-    width = 0.25
-    for i, (column, label) in enumerate(FACTORS.items()):
-        data = [
-            factors.loc[factors[TA_COLUMN] == ta, column].to_numpy()
-            for ta in authorities
-        ]
-        positions = np.arange(len(authorities)) + (i - 1) * width
-        box = ax_ta.boxplot(
-            data,
-            positions=positions,
-            widths=width * 0.85,
-            whis=(10, 90),
-            showfliers=False,
-            patch_artist=True,
-            medianprops={"color": "k"},
-        )
-        for patch in box["boxes"]:
-            patch.set_facecolor(FACTOR_COLOURS[column])
-            patch.set_alpha(0.8)
-        ax_ta.plot([], [], "s", color=FACTOR_COLOURS[column], label=label)
-    counts = factors[TA_COLUMN].value_counts()
-    ax_ta.set_xticks(
-        np.arange(len(authorities)),
-        [f"{ta}\nn={counts[ta]:,}" for ta in authorities],
-    )
-    ax_ta.axhline(1, color="k", lw=0.8)
-    ax_ta.set_yscale("log")
-    ax_ta.set_yticks(
-        [0.5, 0.75, 1, 1.5, 2, 3, 4], ["0.5", "0.75", "1", "1.5", "2", "3", "4"]
-    )
-    ax_ta.yaxis.set_minor_formatter(NullFormatter())
-    ax_ta.set_ylabel("Factor on the property's average rate (log)")
-    ax_ta.legend(loc="upper left", fontsize=8)
-    ax_ta.set_title(
-        "(c) The factors by authority: box the middle half, whiskers 10th to 90th",
-        fontsize=10,
-    )
-
-    # (d) Suburb medians, the highest and lowest.
-    ranked = suburbs.sort_values("median_liquefaction_factor")
-    shown = pd.concat(
-        [ranked.head(LABELLED_SUBURBS), ranked.tail(LABELLED_SUBURBS)]
-    ).drop_duplicates()
-    y = np.arange(len(shown))
-    ax_sub.barh(
-        y,
-        shown["median_liquefaction_factor"] - 1,
-        left=1,
-        color=FACTOR_COLOURS[LIQUEFACTION_FACTOR],
-    )
-    ax_sub.set_yticks(
-        y,
-        [
-            f"{row[SUBURB_COLUMN]} ({row['properties']:,})"
-            for _, row in shown.iterrows()
-        ],
-        fontsize=8,
-    )
-    ax_sub.axvline(1, color="k", lw=0.8)
-    ax_sub.set_xlabel("Median liquefaction factor")
-    ax_sub.set_title(
-        f"(d) Suburbs with the lowest and highest median factor\n"
-        f"(at least {config.QV_TIER_MIN_SUBURB_PROPERTIES} properties; "
-        "properties in brackets)",
-        fontsize=10,
-    )
-
-    fig.suptitle(title, fontsize=12)
-    fig.text(
-        0.01,
-        -0.01,
-        f"Each property's QV land value, indexed to {COMMON_VALUATION_DATE}, spread "
-        f"over three tiers: the footprint at R, the rest of the insured land at "
-        f"{INSURED_RATIO:g}R and the uninsured remainder at {UNINSURED_RATIO:g}R "
-        "(placeholders, T-153).\nFactor: the rate damaged land is valued at, over "
-        "the property's land value divided by its area. Properties on the roll "
-        "only; before GST.",
-        fontsize=8,
-        color="#52514e",
-    )
-    fig.tight_layout()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Wrote {out}")
 
 
 def tier_pieces(insured, footprints, properties, factors):
@@ -635,13 +416,6 @@ def main(*, extent, min_suburb_properties):
     describe(factors)
     suburbs = by_suburb(factors, min_suburb_properties)
     print(RULE)
-    plot(
-        factors,
-        suburbs,
-        FIG_DIR / f"{STEM}{suffix}.png",
-        title="How the three land tiers correct the property's average QV rate"
-        f" -- {extent}",
-    )
     tiers = None
     if config.QV_TIER_WRITE_TIER_LAYER:
         print("Cutting each property into its tiers ...", flush=True)

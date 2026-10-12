@@ -26,3 +26,21 @@ QV_TIER_WRITE_PROPERTY_LAYER = True
 # sensitive, like the property layer. Reads the LINZ property boundaries from
 # exposure step 5's cache.
 QV_TIER_WRITE_TIER_LAYER = True
+
+# The extents the average QV land rate histograms are drawn over, one per
+# territorial authority, and how the figures name them.
+QV_RATE_EXTENTS = ["wellington-city", "lower-hutt", "porirua", "upper-hutt"]
+QV_RATE_EXTENT_NAMES = ["Wellington City", "Lower Hutt", "Porirua", "Upper Hutt"]
+
+# The rates the histograms span, $/m2 before GST, the same for every rate so
+# they compare; a property beyond is counted in the end bin, so no lone
+# property's rate can be read off a figure.
+QV_RATE_RANGE_NZD_PER_M2 = (10.0, 20_000.0)
+
+# The property area bands the third histogram is stacked by, in m2. The last
+# is the Act's 4,000 m2 minimum-sized site.
+QV_RATE_AREA_BANDS_M2 = [500, 800, 1_500, 4_000]
+
+# The correction factors the tier factor histograms span; a property beyond is
+# counted in the end bin.
+QV_FACTOR_RANGE = (0.9, 100.0)
