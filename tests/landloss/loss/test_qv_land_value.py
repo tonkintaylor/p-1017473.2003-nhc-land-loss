@@ -13,11 +13,13 @@ from landloss.loss.qv_land_value import (
     FROM_RUN,
     FROM_SUBURB,
     INSURED_RATE_COLUMN,
+    INSURED_RATIO,
     LAND_VALUE_COLUMN,
     MAX_UNINSURED_M2,
     QV_CAPITAL_VALUE_COLUMN,
     QV_LAND_VALUE_COLUMN,
     QV_UNITS_COLUMN,
+    UNINSURED_RATIO,
     VALUE_SOURCE_COLUMN,
     claim_land_values,
     damaged_land_rates,
@@ -39,10 +41,13 @@ def series(*values):
 
 
 def test_the_worked_example_in_the_method_note():
-    # A 3,000 m2 section worth $600,000, a 150 m2 house and 800 m2 insured.
-    rate = footprint_rate(series(600_000), series(150), series(800), series(3_000))
-    assert rate.iloc[0] == pytest.approx(600_000 / (150 + 0.5 * 650 + 0.15 * 2_200))
-    assert rate.iloc[0] == pytest.approx(745.34, abs=0.01)
+    # A 3,000 m2 section worth $600,000, a 150 m2 house and 650 m2 insured: the
+    # valuer's example the ratios were set from (T-153).
+    rate = footprint_rate(series(600_000), series(150), series(650), series(3_000))
+    assert rate.iloc[0] == pytest.approx(600_000 / (150 + 0.2 * 500 + 0.02 * 2_350))
+    assert rate.iloc[0] == pytest.approx(2_020.20, abs=0.01)
+    # About $300,000 under the house, as the valuer expected.
+    assert rate.iloc[0] * 150 == pytest.approx(300_000, rel=0.02)
 
 
 def test_the_three_tiers_add_back_to_the_land_value():
@@ -181,10 +186,11 @@ def rated(rows, value=280_000.0):
     return damaged_land_rates(land, values)
 
 
-# $280,000 over 100 + 0.5 x 300 + 0.15 x 600 = 340 weighted m2 is $823.53 at
-# the footprint excluding GST.
-FULL = add_gst(280_000.0 / 340.0)
-INSURED_AVERAGE = FULL * (100 + 0.5 * 300) / 400
+# $280,000 over the property's weighted area, 100 + ring ratio x 300 + outer
+# ratio x 600 m2, is the footprint rate excluding GST.
+WEIGHTED = 100 + INSURED_RATIO * 300 + UNINSURED_RATIO * 600
+FULL = add_gst(280_000.0 / WEIGHTED)
+INSURED_AVERAGE = FULL * (100 + INSURED_RATIO * 300) / 400
 
 
 def test_liquefaction_takes_the_insured_lands_average():
@@ -201,12 +207,12 @@ def test_landslide_ground_under_the_house_takes_the_full_rate():
 
 def test_landslide_ground_off_the_house_takes_the_ring_rate():
     out = rated([("c1", 0.0, 80.0, 0.0)])
-    assert out[DAMAGED_LAND_RATE_COLUMN].iloc[0] == pytest.approx(0.5 * FULL)
+    assert out[DAMAGED_LAND_RATE_COLUMN].iloc[0] == pytest.approx(INSURED_RATIO * FULL)
 
 
 def test_landslide_ground_partly_under_the_house_is_split_by_area():
     out = rated([("c1", 0.0, 200.0, 50.0)])
-    expected = (50 * FULL + 150 * 0.5 * FULL) / 200
+    expected = (50 * FULL + 150 * INSURED_RATIO * FULL) / 200
     assert out[DAMAGED_LAND_RATE_COLUMN].iloc[0] == pytest.approx(expected)
 
 
@@ -223,10 +229,13 @@ def test_footprint_ground_beyond_the_landslide_is_not_counted():
 
 
 def test_all_the_insured_land_damaged_is_worth_its_two_tiers():
-    # The footprint and the ring together: 250 of the 340 weighted m2.
+    # The footprint and the ring together, of the weighted area.
     out = rated([("c1", 400.0, 0.0, 0.0)])
     insured_value = out[DAMAGED_LAND_RATE_COLUMN].iloc[0] * 400
-    assert insured_value == pytest.approx(add_gst(280_000.0) * 250 / 340)
+    insured_weight = 100 + INSURED_RATIO * 300
+    assert insured_value == pytest.approx(
+        add_gst(280_000.0) * insured_weight / WEIGHTED
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +321,7 @@ def test_a_large_block_spreads_its_value_over_no_more_than_the_capped_remainder(
     # 60 ha with a 300 m2 house and 2,300 m2 insured: the remainder counts only
     # to the cap, so the house site carries the value.
     rate = footprint_rate(series(688_000), series(300), series(2_300), series(600_000))
-    weighted = 300 + 0.5 * 2_000 + 0.15 * MAX_UNINSURED_M2
+    weighted = 300 + INSURED_RATIO * 2_000 + UNINSURED_RATIO * MAX_UNINSURED_M2
     assert rate.iloc[0] == pytest.approx(688_000 / weighted)
     assert rate.iloc[0] > 300
 

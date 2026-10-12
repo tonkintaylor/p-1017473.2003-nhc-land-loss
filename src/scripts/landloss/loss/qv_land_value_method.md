@@ -33,19 +33,19 @@ insured land step already builds:
 | Tier | Area | Rate |
 | --- | --- | --- |
 | 1 | The building footprints on the property | `R`, the full rate |
-| 2 | The rest of the insured land: the 8 m buffer and the accessway | `0.5 × R` |
-| 3 | The uninsured remainder of the property | `0.15 × R` |
+| 2 | The rest of the insured land: the 8 m buffer and the accessway | `0.2 × R` |
+| 3 | The uninsured remainder of the property | `0.02 × R` |
 
 `R` is set so that the three tiers add back to the property's QV land value `V`:
 
 ```latex
-R = \frac{V}{A_{footprint} + 0.5\,A_{ring} + 0.15\,A_{outer}}
+R = \frac{V}{A_{footprint} + 0.2\,A_{ring} + 0.02\,A_{outer}}
 ```
 
 Damaged land is insured land, so only tiers 1 and 2 price it:
 
 - **Landslide damage is located.** Vul intersects the landslide ground with the
-  footprint, so the part under the house takes `R` and the rest takes `0.5R`.
+  footprint, so the part under the house takes `R` and the rest takes `0.2R`.
 - **Liquefaction damage is an area with no location.** It takes the insured
   land's average rate, tiers 1 and 2 together weighted by area. That is its
   expected value if the damage is spread evenly over the insured land.
@@ -53,16 +53,26 @@ Damaged land is insured land, so only tiers 1 and 2 price it:
   area loss counts is the larger of the two.
 
 **Example.** Take a 3,000 m² section with a QV land value of $600,000, a 150 m²
-house and 800 m² of insured land. Rates exclude GST:
+house and 650 m² of insured land. Rates exclude GST:
 
-- `R` = 600,000 ÷ (150 + 0.5 × 650 + 0.15 × 2,200) = **$745/m²** under the
-  house. The rest of the insured land is $373/m², and the land beyond it is
-  $112/m².
-- Liquefaction damage takes the insured land's average, **$443/m²**. The old
-  average over the whole section would have been $200/m².
+- `R` = 600,000 ÷ (150 + 0.2 × 500 + 0.02 × 2,350) = **$2,020/m²** under the
+  house, about $303,000 in all. The rest of the insured land is $404/m², and
+  the land beyond it is $40/m².
+- Liquefaction damage takes the insured land's average, **$777/m²**. The
+  average over the whole section is $200/m².
 - A 100 m² landslide with 40 m² under the house takes
-  (40 × 745 + 60 × 373) ÷ 100 = **$522/m²**.
+  (40 × 2,020 + 60 × 404) ÷ 100 = **$1,051/m²**.
 - The three tiers still add up to $600,000.
+
+**Where the ratios come from.** A valuer reviewed this example on 2026-10-13
+(T-153). With the first ratios, 0.5 and 0.15, it put $797/m² and about $120,000
+under the house. The valuer expected about $300,000 there, about $2,000/m².
+One example fixes one combination of the two ratios, not both. The ring was
+kept near the $400/m² it had, and the value came off the rest of the section,
+which gives 0.2 and 0.02. They have not been checked on a suburban section.
+On a 700 m² section worth $490,000, with a 150 m² house and 400 m² insured,
+they put about $357,000 (73%) under the house, at $2,380/m², against 47% with
+the first ratios.
 
 Where the insured land covers the whole section, as it does on most small
 sections, there is no outer tier to take value, and the rates come close to
@@ -72,11 +82,12 @@ the section's average.
 Act's minimum-sized site (`MAX_UNINSURED_M2`, 2026-10-12). Land beyond it is
 treated as bare land outside the cover and valued at nothing. Without the cap a
 lifestyle block of tens of hectares spread its value over every paddock at
-0.15R, leaving the land around its house at a few dollars a square metre --
+the outer tier's rate, leaving the land around its house at a few dollars a
+square metre --
 about 350 claims across the four councils under $10/m². A section with less
 than 4,000 m² of uninsured land is unaffected. On a 58 ha Wainuiomata Coast
-block worth $688,000 with 2,300 m² insured, the house site goes from about
-$8/m² to about $360/m².
+block worth $688,000 with 2,300 m² insured, the house site went from about
+$8/m² to about $360/m² at the first ratios.
 
 **Shared lots.** A title can include a share in a common lot -- an access lot,
 or a subdivision's reserve. Timberlea's titles each carry a house lot and
@@ -114,12 +125,12 @@ Both ratios are in `landloss.loss.qv_land_value`:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `INSURED_RATIO` | `0.5` | Tier 2's rate as a share of tier 1's |
-| `UNINSURED_RATIO` | `0.15` | Tier 3's rate as a share of tier 1's |
+| `INSURED_RATIO` | `0.2` | Tier 2's rate as a share of tier 1's |
+| `UNINSURED_RATIO` | `0.02` | Tier 3's rate as a share of tier 1's |
 | `MAX_UNINSURED_M2` | `4000` | The most of tier 3 counted; land beyond it is valued at nothing |
 
-The two ratios and the cap are **placeholders until a valuer sets them**
-(T-153). The ratios must step down: 0 ≤ uninsured ≤ insured ≤ 1. Changing any
+The two ratios are set from one valuer's example (2026-10-13), and the cap is
+a judgement; both await a valuer's review over more cases (T-153). The ratios must step down: 0 ≤ uninsured ≤ insured ≤ 1. Changing any
 of them needs only loss rerun.
 
 ## What has to be rerun

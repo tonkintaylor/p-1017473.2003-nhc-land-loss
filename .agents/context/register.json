@@ -1632,7 +1632,7 @@
     },
     {
       "ID": "L-79",
-      "Limitation": "Damaged land is valued from each property's QV rating valuation spread over three tiers (footprint, rest of the insured land at 0.5, uninsured remainder at 0.15), and the two ratios are T+T placeholders until a valuer gives figures (T-153).",
+      "Limitation": "Damaged land is valued from each property's QV rating valuation spread over three tiers (footprint, rest of the insured land at 0.2, uninsured remainder at 0.02). The ratios were set 2026-10-13 from a valuer's view of one 3,000 m2 example (about half its value under the house) and are unchecked on suburban sections, where they put about three quarters of the value under the house (T-153).",
       "Affects": "loss land cover cap",
       "Source": "QV land valuation in loss 2026-10-11",
       "Status": "Open"

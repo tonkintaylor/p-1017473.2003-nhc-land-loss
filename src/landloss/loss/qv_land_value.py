@@ -64,19 +64,24 @@ from landloss.io.qv_rating_roll import linz_valuation_reference
 # The tiers' rates as shares of the footprint's: the rest of the insured land,
 # and the uninsured remainder of the property.
 #
-# PLACEHOLDERS, TO BE SET BY A VALUER (T-153). Chosen in the spirit of the
-# valuers' depth rules, which put the back of a section at a fraction of the
-# front's rate, and of the primary site against surplus land, about a fifth.
-INSURED_RATIO = 0.5
-UNINSURED_RATIO = 0.15
+# Set 2026-10-13 from a valuer's review of one example (T-153): a 3,000 m²
+# section worth $600,000, with a 150 m² house and 500 m² more of insured land,
+# should carry about $300,000 under the house, about $2,000/m². These give
+# $2,020/m² there; 0.5 and 0.15 before them gave $797/m². One example fixes
+# one combination of the two, not both: the ring is kept near the $400/m² it
+# had, and the value comes off the rest of the section. NOT YET CONFIRMED on a
+# suburban section, where they put about three quarters of a 700 m² section's
+# value under the house, against under half before.
+INSURED_RATIO = 0.2
+UNINSURED_RATIO = 0.02
 
 # The most of the uninsured remainder the tiers spread a property's value over
 # (Perrie Gilbert, 2026-10-12): the Act's 4,000 m² minimum-sized site, beyond
 # which land is bare land outside the cover, valued at nothing here. Without it
 # a lifestyle block of tens of hectares spreads its value over every paddock at
-# 0.15R, leaving its house site at a few dollars a square metre; a residential
-# section, well under it, is unaffected. JUDGEMENT, for the valuer with the
-# ratios (T-153).
+# the outer tier's rate, leaving its house site at a few dollars a square metre;
+# a residential section, well under it, is unaffected. JUDGEMENT, for the
+# valuer with the ratios (T-153).
 MAX_UNINSURED_M2 = 4_000.0
 
 # The roll's land value summed over a claim property, indexed to the common
