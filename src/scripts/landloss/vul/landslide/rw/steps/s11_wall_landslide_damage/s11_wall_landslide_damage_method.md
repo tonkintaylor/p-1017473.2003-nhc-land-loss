@@ -22,8 +22,13 @@
     `failed_with_polygon` sets `is_damaged_by_shaking`, `absorbed` and
     `superseded` set `is_evacuated`, `standing` sets nothing;
   - its line lying inside any `evacuated land` polygon (`is_evacuated`) or
-    `inundated land` polygon (`is_inundated`) of either population. Imminent
-    ground sets no flag.
+    `inundated land` polygon (`is_inundated`) of either population, except
+    that the wall's own polygon (its outcome's `slope_id`) never sets
+    `is_evacuated` (the lead, 2026-10-13): the wall's line is drawn at the toe
+    of its own face and its evacuated polygon is cut at the line, so its own
+    failure is the outcome route's (`failed_with_polygon`). Evacuated polygons
+    of other slopes still set it; the inundated flag reads every polygon.
+    Imminent ground sets no flag.
 - A polygon reaches a wall only where **a positive length of the line lies
   inside it**: more than `WALL_INSIDE_TOLERANCE_M` (0.01 m) of the line inside
   the polygon shrunk by 0.01 m (`landloss.vul.landslide.flags`). Urban

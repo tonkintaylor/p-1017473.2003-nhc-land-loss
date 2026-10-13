@@ -1,0 +1,1 @@
+A retaining wall's own landslide polygon no longer sets its `is_evacuated` flag; evacuated polygons of other slopes still do. The wall now sits at the toe of its own face, and its own failure is already flagged through `is_damaged_by_shaking`. Each aligned evacuated polygon's imminent zone is also kept off it, so the two never overlap.

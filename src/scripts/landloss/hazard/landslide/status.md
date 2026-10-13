@@ -405,8 +405,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   polygons of walled elements are cut at the wall unit's line (the ends projected
   on, the part downhill removed) and the gaps to the line filled
   (`wall_trim.align_unit`, `zone_alignment.align_zones`). Imminent and inundated
-  zones are left as built (the lead, 2026-10-13); evacuated areas and depths are
-  redrawn. Only units walled in the scenario are aligned; an unwalled polygon
+  zones are left as built (the lead, 2026-10-13), except that an aligned
+  polygon's imminent zone loses what its evacuated polygon now holds, so the two
+  never overlap; evacuated areas and depths are redrawn. Only units walled in the scenario are aligned; an unwalled polygon
   stays as built. Pilot rebuilt from ground step 3 to the loss tables on
   2026-10-13: 1,339 no-wall pif pieces, 5,689 wall units (961 GNS-only, 857
   before), 3,340 expected walls (3,300 before); world 0 aligned 2,606 polygons,
@@ -414,7 +415,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   its polygon's edge, so vul's inside test gives fewer walls `is_evacuated`
   (1,128 to 424 against today's code on the old zones) and more `is_inundated`
   (300 to 798); walls with any flag, one replacement each, barely move (64.1%
-  to 63.3%). Method in `s4_wall_zones_method.md`.
+  to 63.3%). The drop is the wall's own polygon: walls inside only their own
+  evacuated polygon fall from 935 to 235 (all of them `failed_with_polygon`, so
+  already flagged by shaking), those inside another polygon from 146 to 134. Method in `s4_wall_zones_method.md`.
 - **Landslide step 4 tiles in parallel (2026-10-11)**: `TILE_WORKERS` worker
   processes, each tile kept on disk as built and a stopped run resumed from the
   tiles not yet built, cleared when the record (found elements, wall units and

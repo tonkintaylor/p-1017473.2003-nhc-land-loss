@@ -48,9 +48,8 @@
   bare in every world. A mapped wall within `GNS_WALL_MATCH_M` of only a
   no-wall piece's pips is not on a wall piece, so `gen_gns_only_candidates`
   does not count those pips and the wall becomes a `gns_only` candidate; no
-  mapped wall is lost. This
-  rule is the build's own judgement and is pending the lead's confirmation;
-  compare the `gns_only` count with the old 857 after the rerun. The siz table's `has_wall` and `wall_line` columns pass
+  mapped wall is lost (the lead kept this, 2026-10-13: on the pilot it gives
+  961 `gns_only` candidates against 857 before). The siz table's `has_wall` and `wall_line` columns pass
   through from ground step 3. Ground step 5 reads pips by `pif_id` only, so the
   new pieces need no change there.
 - Each pif is tied to a property by `wall_candidates.property_of_pifs`: the LINZ

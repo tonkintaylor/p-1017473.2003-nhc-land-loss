@@ -179,10 +179,14 @@
     line are filled by ribbons along the line's normal. How each polygon went
     is written on its evacuated rows (`wall_trim_how`, `wall_trim_removed_m2`,
     `wall_trim_filled_m2`; "" where not aligned).
-  - Imminent and inundated zones are left as built (the lead chose a rule for the
-    evacuated polygon only, 2026-10-13). No rule for them has been chosen, so a
-    band can still overlap or leave a gap against an aligned outline. Ask the
-    lead before adding one.
+  - Imminent and inundated zones are left as built (the lead, 2026-10-13), but a
+    polygon's imminent zone never overlaps its own evacuated polygon: the band is
+    drawn with the zones, against the evacuated outline as built, and the
+    alignment comes after it, so each aligned polygon's new evacuated ground is
+    taken out of its imminent zone, and an imminent zone left with no area is
+    dropped (`zone_alignment.imminent_outside`; the lead, 2026-10-13: imminent
+    follows the evacuated polygon). Inundated ground overlaps the evacuated on
+    purpose (the deposit) and is not cut.
   - `volume_m3` is unchanged; `area_m2` and `depth_m` of an aligned evacuated
     polygon are redrawn from the geometry (`drawn_areas`), so the depth is the
     same volume over the new area.
