@@ -18,11 +18,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   failed with its polygon as damaged by shaking and absorbed or superseded as
   evacuated, OR-ed with the line flags, because the wall fails with the
   polygon on whose edge it stands.
-- [x] A wall's own polygon does not set its evacuated flag (the lead,
-  2026-10-13): the wall's line now sits at the toe and its evacuated polygon is
-  cut there, so its own failure is the outcome route's. On the pilot (world 0,
-  earthquake 0) the walls flagged evacuated fall from 424 to 190, and the walls
-  with any flag (one replacement each) stay at 1,121.
+- [x] A wall's own polygon sets neither its evacuated nor its inundated flag
+  (the lead, 2026-10-13): the wall's line now sits at the toe and its evacuated
+  polygon is cut there, so its own failure is the outcome route's. On the pilot
+  (world 0, earthquake 0) the walls flagged evacuated fall from 424 to 190 and
+  those flagged inundated from 798 to 137; the walls with any flag (one
+  replacement each) stay at 1,121.
 
 ## Loss contract
 

@@ -369,7 +369,7 @@ def test_another_slopes_evacuated_polygon_still_evacuates_the_wall():
     assert flags["is_evacuated"].tolist() == [True]
 
 
-def test_the_own_polygons_inundated_ground_still_flags_the_wall():
+def test_the_own_polygons_inundated_ground_does_not_flag_the_wall():
     walls = assets(("A-RW01", LineString([(12, 5), (18, 5)])))
     hazard = slides_with_slopes(
         (EVACUATED, "SP0000002", OWN_POLYGON), (INUNDATED, "SP0000002", OWN_POLYGON)
@@ -377,6 +377,16 @@ def test_the_own_polygons_inundated_ground_still_flags_the_wall():
     table = outcomes(("A-RW01", "SP0000002", STANDING))
     flags = wall_flags(walls, hazard, table, id_column="rw_id")
     assert flags["is_evacuated"].tolist() == [False]
+    assert flags["is_inundated"].tolist() == [False]
+
+
+def test_another_slopes_inundated_ground_still_flags_the_wall():
+    walls = assets(("A-RW01", INSIDE_BOTH))
+    hazard = slides_with_slopes(
+        (INUNDATED, "SP0000001", NEIGHBOUR), (INUNDATED, "SP0000002", OWN_POLYGON)
+    )
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    flags = wall_flags(walls, hazard, table, id_column="rw_id")
     assert flags["is_inundated"].tolist() == [True]
 
 

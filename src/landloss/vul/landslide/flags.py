@@ -31,12 +31,12 @@ share no ground
 (:data:`~landloss.hazard.landslide.urban.realisation.SHARED_GROUND_TOLERANCE_M2`).
 
 A wall's **own** polygon (its outcome's ``slope_id``) never sets the wall's
-``is_evacuated`` flag by geometry (the lead, 2026-10-13). The wall's line is
-drawn at the toe of its own face and its evacuated polygon is cut at the line,
-so the wall is that polygon's edge, and its own failure is the outcome route's
-(``failed_with_polygon``, the shaking flag). Evacuated polygons of other slopes
-still flag it, as do the ``absorbed`` and ``superseded`` outcomes, and the
-inundated flag still reads every polygon.
+``is_evacuated`` or ``is_inundated`` flag by geometry (the lead, 2026-10-13).
+The wall's line is drawn at the toe of its own face and its evacuated polygon
+is cut at the line, so the wall is that polygon's edge and its own deposit runs
+on below it; its own failure is the outcome route's (``failed_with_polygon``,
+the shaking flag). Polygons of other slopes still flag it, as do the
+``absorbed`` and ``superseded`` outcomes.
 
 This sits at the landslide level rather than under an asset submodule because it
 reads no asset-specific attribute: it needs only an identifier and a geometry,
@@ -336,7 +336,7 @@ def wall_flags(
     where more than :data:`WALL_INSIDE_TOLERANCE_M` of the wall's line lies
     inside it, so a standing wall that is only the edge of a neighbouring
     failure is not flagged, and the wall's own polygon (its outcome's
-    ``slope_id``) never sets ``is_evacuated`` (see the module docstring); the
+    ``slope_id``) sets neither geometric flag (see the module docstring); the
     frames are otherwise checked as :func:`landslide_flags` checks them.
 
     Args:
@@ -369,14 +369,8 @@ def wall_flags(
         land_class: str,
         ids: str,
     ) -> pd.Index:
-        """The walls a land class reaches, a wall's own polygon not evacuating it."""
-        return _lines_inside_ids(
-            assets,
-            slides,
-            land_class,
-            ids,
-            own=own if land_class == EVACUATED else None,
-        )
+        """The walls a land class reaches, a wall's own polygon not counting."""
+        return _lines_inside_ids(assets, slides, land_class, ids, own=own)
 
     geometric = _geometric_flags(walls, landslides, id_column=id_column, caught=caught)
     strangers = from_outcome.loc[
