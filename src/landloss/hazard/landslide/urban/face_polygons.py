@@ -29,7 +29,6 @@ geology, takes :data:`BETA_OFF_MAP_GROUND`.
 
 import geopandas as gpd
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 
 from landloss.common.utils.ids import mint_ids, sort_by_point
@@ -64,14 +63,24 @@ ELEMENT_COLUMNS = ("siz_id", "majority_ground_row", "overall_angle_deg")
 # The columns of exposure rw step 6's wall units it reads, indexed by ``wall_unit_id``.
 UNIT_COLUMNS = ("member_pif_ids", "is_fill")
 
+# The ground map's flag for a piece on NLM flatland.
+FLATLAND_COLUMN = "is_flatland"
+
+# The ground map's groundwater column: the drainage class, not a depth.
+GROUNDWATER_COLUMN = "gw_depth_class"
+
 # The columns of the ground step 2 ground map it reads, by position.
 GROUND_COLUMNS = (
     "material",
     "modification",
     "geology_value",
     "prior_failure",
-    "gw_depth_m",
+    GROUNDWATER_COLUMN,
 )
+
+# Said when the ground map lacks a column, which is a map built before the
+# groundwater depth was replaced by its class.
+REBUILD_GROUND_HINT = " Rebuild the ground map (ground step 2)."
 
 # Whether the polygon's element carries a wall in this world's zones.
 IS_WALLED_COLUMN = "is_walled"
@@ -83,22 +92,48 @@ FACE_SCALE_M = 1
 # The ground an element off the ground step 2 ground map (or on a piece whose
 # material is unknown) is scored on: natural, highly weathered rock (the
 # ground map's value for Wellington greywacke), no prior failure, and the
-# groundwater depth ground step 2 assumes off the NLM flat-land footprint, which puts
-# hill country in the well drained class. Judgement until the ground map
-# covers the whole extent.
+# groundwater class of the depth ground step 2 assumes off the NLM flat-land
+# footprint (4 m), which puts hill country in the well drained class.
+# Judgement until the ground map covers the whole extent.
 BETA_OFF_MAP_GROUND = {
     "material": "rock",
     "modification": "natural",
     "geology_value": susceptibility.GEOLOGY_HIGHLY_TO_COMPLETELY_WEATHERED,
     "prior_failure": "none",
-    "gw_depth_m": 4.0,
+    GROUNDWATER_COLUMN: "well_drained",
 }
 
 
-def _require(frame: pd.DataFrame, columns: tuple[str, ...], name: str) -> None:
+def _require(
+    frame: pd.DataFrame, columns: tuple[str, ...], name: str, hint: str = ""
+) -> None:
     missing = [column for column in columns if column not in frame.columns]
     if missing:
-        msg = f"{name} carry no {missing}."
+        msg = f"{name} carry no {missing}.{hint}"
+        raise ValueError(msg)
+
+
+def _check_groundwater_classes(classes: pd.Series) -> None:
+    """Refuse a missing or unknown class on a ground map piece an element reads.
+
+    The off-map default is for an element with no piece, never for a piece with
+    no class: it would turn saturated flat land into well drained unseen. A map
+    built before the depth was dropped has no class column and is refused by
+    :func:`_require`, in :func:`ground_of_elements` as in the builder.
+    """
+    missing = int(classes.isna().sum())
+    if missing:
+        msg = (
+            f"{missing} ground map piece(s) under the elements carry no "
+            f"{GROUNDWATER_COLUMN}; rebuild the ground map (ground step 2)."
+        )
+        raise ValueError(msg)
+    unknown = set(classes.unique()) - set(susceptibility.GROUNDWATER_CLASS_VALUES)
+    if unknown:
+        msg = (
+            f"{GROUNDWATER_COLUMN} {', '.join(repr(c) for c in sorted(unknown))} "
+            f"is not one of {', '.join(susceptibility.GROUNDWATER_CLASS_VALUES)}."
+        )
         raise ValueError(msg)
 
 
@@ -133,7 +168,17 @@ def unit_of_pifs(units: pd.DataFrame) -> pd.Series:
 def ground_of_elements(
     elements: pd.DataFrame, ground_map: pd.DataFrame
 ) -> pd.DataFrame:
-    """The ground map columns under each element, off-map defaults filled in."""
+    """The ground map columns under each element, off-map defaults filled in.
+
+    Raises:
+        ValueError: If a non-empty ground map lacks a column of
+            :data:`GROUND_COLUMNS`, which is how a map built before the
+            groundwater depth was replaced by its class shows, or if a piece an
+            element reads has no groundwater class, or one outside the three
+            classes.
+    """
+    if len(ground_map):
+        _require(ground_map, GROUND_COLUMNS, "The ground map", REBUILD_GROUND_HINT)
     rows = elements["majority_ground_row"].to_numpy(dtype=np.int64)
     safe = np.maximum(rows, 0)
     out = {}
@@ -145,12 +190,17 @@ def ground_of_elements(
         )
         on_map = (rows >= 0) if len(ground_map) else np.zeros(len(rows), dtype=bool)
         values = pd.Series(values, index=elements.index, dtype=object)
-        # A piece whose material is unknown carries no geology, and takes the
-        # off-map ground's.
-        out[column] = values.where(on_map & values.notna().to_numpy(), default)
+        if column == GROUNDWATER_COLUMN:
+            # Every piece carries a class, so a gap is a broken map and is
+            # refused, not filled with the default.
+            _check_groundwater_classes(values[on_map])
+            out[column] = values.where(on_map, default)
+        else:
+            # A piece whose material is unknown carries no geology, and takes
+            # the off-map ground's.
+            out[column] = values.where(on_map & values.notna().to_numpy(), default)
     ground = pd.DataFrame(out, index=elements.index)
-    for column in ("geology_value", "gw_depth_m"):
-        ground[column] = ground[column].astype(float)
+    ground["geology_value"] = ground["geology_value"].astype(float)
     return ground
 
 
@@ -215,7 +265,7 @@ def face_polygons(
     _require(zones, ZONE_COLUMNS, "The zones")
     _require(elements, ELEMENT_COLUMNS, "The elements")
     _require(units, UNIT_COLUMNS, "The wall units")
-    _require(ground_map, GROUND_COLUMNS, "The ground map")
+    _require(ground_map, GROUND_COLUMNS, "The ground map", REBUILD_GROUND_HINT)
 
     evacuated_rows = zones[zones[ZONE_COLUMN] == geometry.EVACUATED].set_index(
         POLYGON_COLUMN
@@ -342,29 +392,54 @@ def _score(polygons: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return polygons
 
 
-def with_amplification(
-    polygons: gpd.GeoDataFrame, topographic_position_m: npt.ArrayLike
-) -> gpd.GeoDataFrame:
-    """Add the topographic position and the amplification factor.
+def on_flatland(points: gpd.GeoSeries, ground_map: gpd.GeoDataFrame) -> np.ndarray:
+    """Return whether each point lies in a ground map piece on NLM flatland.
 
-    The placeholder factor of
-    :func:`landloss.hazard.landslide.urban.geometry.amplification_factor`, on
-    the 100 m topographic position at each polygon's representative point
-    and the element's slope.
+    Args:
+        points: The points, in the ground map's CRS or reprojected to it.
+        ground_map: The ground step 2 ground map, carrying ``is_flatland``.
+
+    Returns:
+        A boolean per point, in the points' order; false where a point
+        is missing or lies in no flatland piece.
+    """
+    _require(ground_map, (FLATLAND_COLUMN,), "The ground map", REBUILD_GROUND_HINT)
+    out = np.zeros(len(points), dtype=bool)
+    flat = ground_map.loc[ground_map[FLATLAND_COLUMN].fillna(value=False).astype(bool)]
+    present = points.notna().to_numpy() & ~points.is_empty.to_numpy()
+    if flat.empty or not present.any():
+        return out
+    located = gpd.GeoDataFrame(
+        geometry=points[present].to_numpy(), crs=points.crs
+    ).to_crs(ground_map.crs)
+    hits = gpd.sjoin(
+        located, flat[["geometry"]], predicate="within", how="inner"
+    ).index.unique()
+    out[np.flatnonzero(present)[hits]] = True
+    return out
+
+
+def with_amplification(
+    polygons: gpd.GeoDataFrame, ground_map: gpd.GeoDataFrame
+) -> gpd.GeoDataFrame:
+    """Add whether each polygon is on NLM flatland, and the amplification factor.
+
+    :func:`landloss.hazard.landslide.urban.geometry.amplification_factor`:
+    one factor off flatland, 1.0 on it, read at each polygon's
+    representative point (the project lead, 2026-10-12).
 
     Args:
         polygons: From :func:`face_polygons`.
-        topographic_position_m: The 100 m topographic position at each
-            ``rep_point``, in row order; NaN reads no amplification from it.
+        ground_map: The ground step 2 ground map, carrying ``is_flatland``.
 
     Returns:
-        A copy with ``topographic_position_100m`` and ``amp_factor``.
+        A copy with ``on_flatland`` and ``amp_factor``.
     """
     out = polygons.copy()
-    out["topographic_position_100m"] = np.asarray(topographic_position_m, dtype=float)
+    points = gpd.GeoSeries(out[geometry.REP_POINT_COLUMN], crs=out.crs)
+    out["on_flatland"] = on_flatland(points, ground_map)
     out["amp_factor"] = geometry.amplification_factor(
-        out["topographic_position_100m"].to_numpy(dtype=float),
-        out[geometry.SLOPE_COLUMN].to_numpy(dtype=float),
+        out["on_flatland"].to_numpy(dtype=bool)
     )
     return out
 

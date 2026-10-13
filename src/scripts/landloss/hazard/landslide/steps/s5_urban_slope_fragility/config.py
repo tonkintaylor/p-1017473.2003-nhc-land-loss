@@ -8,32 +8,29 @@ git history of it rather than by remembering which flags were typed.
 
 The fragility numbers are not here. The wall curves are the packaged
 ``retaining-wall-type-fragility.csv`` (one per wall type and height class) and
-the localised median's constants live in
-`landloss.hazard.landslide.urban.fragility`, because they are the model, not a
-setting of a run.
+the localised curve is the packaged ``urban-localised-fragility.csv`` (two
+p15/p50 points on site PGA), because they are the model, not a setting of a
+run.
 
 `WORLD_IDS` is taken from exposure rw step 6's `config.py`, as landslide step
 4 takes it: exposure rw step 6 draws those worlds' walls and landslide step 4 zones
 them, so a second copy could only ask for a world neither wrote.
 
-`RETURN_PERIOD_YR` is taken from shaking step 3's own `config.py` rather than
-repeated here. This step reads the PGV grid shaking step 3 wrote at that return period,
-so a second copy of the setting would only ever send it to look for a file shaking
-step 3 never wrote, or read a stale one.
+The step reads no shaking demand: every curve is on site PGA (the lead,
+2026-10-12), and landslide step 6 samples each earthquake's PGA from shaking
+step 4. It reads only shaking step 2's site class grid, to record it.
 """
 
 from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     config as wall_population_config,
 )
-from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
 
 # The extent to run over: "wlg-pilot" for the small Wellington pilot box,
 # "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
 # the four territorial authorities.
 # Must match the run of landslide step 4 whose per-world zones and elements this
 # step reads, the run of exposure rw step 6 whose wall units and drawn walls
-# it joins, and the run of shaking steps 2 and 3 whose grids the PGV/PGA ratio
-# is read from.
+# it joins, and the run of shaking step 2 whose site class grid is read.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
 EXTENT = "wlg-pilot"
 
@@ -53,8 +50,3 @@ WORLD_IDS = wall_population_config.WORLD_IDS
 # "low" failure rate is a higher median. Written into the model file and
 # printed by every run.
 URBAN_RATE = "medium"
-
-# The return period of the TS1170.5 demand the PGV/PGA ratio is read at: shaking
-# step 3's PGV grid over the unscaled PGA grid, both at this return period. Change
-# it in shaking step 3's config.py; this step follows.
-RETURN_PERIOD_YR = pgv_config.RETURN_PERIOD_YR

@@ -60,8 +60,9 @@ USE_CACHED_LAYERS = True
 
 # The extent exposure step 8 was run over, whose property ages
 # (gen_rwt_age.py) and per-suburb age table (table_rwt_age_by_suburb.py)
-# gen_wall_age.py reads. Keep this in sync with that step's config. This run
-# uses Wellington City property ages and suburb shares.
+# gen_wall_age.py reads when run on its own. Keep this in sync with that step's
+# config. gen_exposure.py ignores it: it runs step 8 over its own extent and
+# reads that.
 AGE_EXTENT = "wellington-city"
 
 # The share of claimed properties held out of the claim update for the

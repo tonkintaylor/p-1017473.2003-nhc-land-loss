@@ -156,6 +156,7 @@ def main(*, extent, realisation_ids, world_ids):
                     marc_onshore_fraction=hancox_config.MARC_ONSHORE_FRACTION,
                     marc_modal_slope_deg=hancox_config.MARC_MODAL_SLOPE_DEG,
                     marc_a_topo=hancox_config.MARC_A_TOPO,
+                    beta_marc_share_factor=hancox_config.BETA_MARC_SHARE_FACTOR,
                 ),
             ),
             (
@@ -175,6 +176,8 @@ def main(*, extent, realisation_ids, world_ids):
                     extent=extent,
                     use_cached_layers=wall_zones_config.USE_CACHED_LAYERS,
                     world_ids=world_ids,
+                    rebuild=wall_zones_config.REBUILD,
+                    tile_workers=wall_zones_config.TILE_WORKERS,
                 ),
             ),
             (
@@ -183,7 +186,6 @@ def main(*, extent, realisation_ids, world_ids):
                     extent=extent,
                     world_ids=world_ids,
                     urban_rate=fragility_config.URBAN_RATE,
-                    return_period_yr=fragility_config.RETURN_PERIOD_YR,
                 ),
             ),
             (

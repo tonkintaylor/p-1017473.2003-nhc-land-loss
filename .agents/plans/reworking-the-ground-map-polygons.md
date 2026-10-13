@@ -5,8 +5,11 @@
 > method file and plan; both change in the same commit as the scripts
 > (`adding-steps-scripts`).
 
-**Date**: 2026-10-09 (reviewed and revised the same day) | **Status**: Draft,
-awaiting the lead's sign-off on the numbers in Decisions D3 and D7
+**Date**: 2026-10-09 (reviewed and revised the same day) | **Status**: Built
+and run over the Wellington pilot and Porirua on 2026-10-10 at 900 m2 / 10 m
+(D3), on branch `rework-ground-map-polygons`, uncommitted; awaiting the lead's
+sign-off on the numbers. The Upper Hutt items are not done: the 2026-10-10 run
+covered the Wellington pilot and Porirua only.
 
 **Goal:** Cut the ground map over Upper Hutt from 1.65 M pieces and 574 MB, built in
 64 minutes, to a map of large polygons that follows real cut, fill, material and
@@ -76,15 +79,20 @@ That supports the two suspects, but the Upper Hutt breakdown is what matters.
 
 ### Phase 0 -- The baseline
 
-- [ ] Branch off `add-project-context` (D6). Rename the existing Upper Hutt map to
+- [~] Branch off `add-project-context` (D6). Rename the existing Upper Hutt map to
       `ground-map-upper-hutt-baseline.geoparquet` **before** anything runs, because
       the profile script overwrites `ground-map-upper-hutt.geoparquet`. Check it
       opens and has 1,649,603 pieces. The full Porirua map
       (`ground-map-porirua.geoparquet`, 144 MB, 2026-10-08 17:48) is the second
       baseline; rename it the same way.
-- [ ] Run `temp/profile_ground_map.py` (already written; it times each phase and
+      *2026-10-10: branch made. The baselines were kept by copying each
+      extent's outputs from ground step 2 on into
+      `temp/versions/<extent>/v1-20261008/` (`porirua-pilot/v1-20261009/`), not
+      by renaming; Upper Hutt not done.*
+- [~] Run `temp/profile_ground_map.py` (already written; it times each phase and
       prints the residual polygon count, vertices and smallest area) over
       `porirua-pilot`, then `upper-hutt`.
+      *Porirua pilot only (2026-10-09, and each sweep variant on 2026-10-10).*
 - [ ] Record the total time, peak memory and the per-phase breakdown: reading the
       sources, polygonising groundwater, polygonising the residual, reading the
       rasters, `build_ground_map`, fill thickness, writing.
@@ -98,29 +106,35 @@ before building anything.
 
 ### Phase 1 -- The groundwater class (D1)
 
-- [ ] Test first, in `tests/landloss/hazard/landslide/test_ground_map.py`: a depth raster
+- [x] Test first, in `tests/landloss/hazard/landslide/test_ground_map.py`: a depth raster
       that straddles 1 m and 3 m polygonises into one polygon per class, with
       cells either side of a break in different classes, and a depth of exactly
       1.0 saturated and exactly 3.0 poorly drained, as the existing
       `gw_depth_class_from_depth` gives them (depth of 1 m or less is saturated,
       3 m or less poorly drained, deeper well drained).
-- [ ] Fix the docstring of `gw_depth_class_from_depth` (`ground_map.py` line 578),
+      *Built the other way round: a depth exactly on a break takes the deeper
+      class (1.0 m poorly drained, 3.0 m well drained), as
+      `susceptibility.groundwater_value` already did, so the map and the
+      Kingsbury factor agree. No cell of the old Porirua or Wellington pilot
+      maps sits exactly on a break. For the lead to confirm.*
+- [x] Fix the docstring of `gw_depth_class_from_depth` (`ground_map.py` line 578),
       which has the classes inverted ("saturated at or above").
-- [ ] `polygonise_groundwater` classes the clipped depth with
+- [x] `polygonise_groundwater` classes the clipped depth with
       `ground_map.gw_depth_class_from_depth`, maps the classes to integer codes
       and polygonises the codes, as `polygonise_residual` does, then simplifies
       them as a coverage (D8).
-- [ ] `build_ground_map` and the `GroundSource` for the NLM groundwater carry the
+- [x] `build_ground_map` and the `GroundSource` for the NLM groundwater carry the
       class. Read `ground_map.py` at line 902, where the depth is filled by
       precedence with `default_gw_depth_m`, and lines 876 and 927-928, where the
       column and class are written. The default off the NLM footprint becomes the
       class of `DEFAULT_GROUNDWATER_DEPTH_M` (4 m gives well drained), derived in
       one place.
-- [ ] Move every reader of `gw_depth_m` to `gw_depth_class` (found with
+- [x] Move every reader of `gw_depth_m` to `gw_depth_class` (found with
       `git grep -n gw_depth_m -- src tests` on 2026-10-09):
       - `src/landloss/hazard/landslide/urban/geometry.py:177`, the Kingsbury
         groundwater factor: add a class-to-factor helper beside
         `susceptibility.groundwater_value` (the breaks are the same) and call it.
+        *`groundwater_value_from_class`.*
       - `src/landloss/hazard/landslide/urban/face_polygons.py:73`, `:94`, `:152`:
         the ground column it carries, its off-map default (4.0, becomes
         `well_drained`) and the float cast. **This reader fails silently**: it
@@ -131,11 +145,15 @@ before building anything.
         categorised `gw_depth_class` layer instead of binned depth.
       - `src/scripts/landloss/reviewer/gen_reviewer_landslide.py:226`.
       - `src/scripts/landloss/hazard/landslide/research/slope_elements/gen_ground_map_qgis_layers.py:152`
-        is research and not maintained; leave it.
+        is research and not maintained; leave it. *It stopped importing
+        (`read_raster` is gone and the `polygonise_*` signatures changed). On
+        2026-10-11 the lead asked to keep it at low cost, so it now reads the
+        step's own config for every setting and draws the groundwater class.
+        Checked by a run on wlg-pilot.*
       - Tests: `test_ground_map.py` lines 425-428, 459, 522, 568, 575, 641-644,
         807-812, 915, 940; `urban/test_chain_end_to_end.py:304`,
         `urban/test_fragility.py:312`, `urban/test_geometry.py:51`, `:75`.
-- [ ] Off the NLM footprint the assumed depth (`DEFAULT_GROUNDWATER_DEPTH_M`, 4 m)
+- [x] Off the NLM footprint the assumed depth (`DEFAULT_GROUNDWATER_DEPTH_M`, 4 m)
       still gives well drained.
 
 **Verification:** `uv run --frozen pytest tests/landloss/hazard/landslide/`
@@ -147,40 +165,48 @@ the baseline to the printed precision, and the groundwater polygon count has fal
 
 ### Phase 2 -- The residual: 10 m grid, sieve, polygonise, coverage simplify (D2, D3, D7, D8)
 
-- [ ] Tests first: a synthetic classed raster with a one-cell speckle, a natural
+- [x] Tests first: a synthetic classed raster with a one-cell speckle, a natural
       pocket inside a fill patch and a staircase edge gives, after the new
       function, no polygon below the minimum area, the pocket absorbed into the
       fill (D7), no vertex spacing finer than the tolerance, shared edges still
       shared (the union of the polygons has no gaps or overlaps), and a large
       patch keeps its area to within the stated tolerance.
-- [ ] Class to codes, not strings. Add `modification_codes_from_residual` in
+- [x] Class to codes, not strings. Add `modification_codes_from_residual` in
       `ground_map.py` returning `uint8` (0 natural, 1 cut, 2 fill, with a nodata
       mask for NaN) from a module-level code table, and have the existing
       `modification_from_residual` map those codes to its names, so there is one
       truth and the object array is never built over a large grid.
-- [ ] Read the 30 m residual decimated to 10 m, with `rasterio`'s
+- [x] Read the 30 m residual decimated to 10 m, with `rasterio`'s
       `Resampling.average` on read (`out_shape`), so the 1 m grid is never loaded.
       Test: a 1 m synthetic residual read at 10 m gives the block means.
-- [ ] A function in `gen_ground_map.py` beside `polygonise_residual`
+      *Built as a block mean in numpy, read strip by strip
+      (`read_residual`), not GDAL's average on read: the residual rasters carry
+      no nodata tag, so GDAL would average NaN in. Cells short of a whole
+      block at the south and east edges are dropped.*
+- [x] A function in `gen_ground_map.py` beside `polygonise_residual`
       (per `placing-python-functions`, it stays in the script unless another step needs it)
       that sieves the codes with `rasterio.features.sieve` at a minimum patch
       size in cells (from the area and the cell size), with the nodata mask,
       polygonises, and simplifies with `shapely.coverage_simplify` (D8). The
       sieve area and tolerance arrive as arguments from `config.py`, with no
       defaults in `main()`.
-- [ ] `config.py` gains `RESIDUAL_CLASS_CELL_M` (10), `RESIDUAL_MIN_PATCH_M2` and
+- [x] `config.py` gains `RESIDUAL_CLASS_CELL_M` (10), `RESIDUAL_MIN_PATCH_M2` and
       `RESIDUAL_SIMPLIFY_M`, with the reason for each value in the comment. Leave
       the last two at the values the lead agrees (D3). The script takes no
       command-line arguments. `src/scripts/landloss/ground/gen_ground.py:72` calls
       this step's `main()` with named arguments and gains the same three.
-- [ ] State D7 in the method file: a sieved patch takes its largest neighbour's
+- [x] State D7 in the method file: a sieved patch takes its largest neighbour's
       class, not natural.
-- [ ] Run the sweep on `porirua` (the 144 MB baseline is on disk): sieve 100, 900,
+- [x] Run the sweep on `porirua` (the 144 MB baseline is on disk): sieve 100, 900,
       2,500 m2 against tolerances of 5 and 10 m. For each, record time, peak memory,
       piece count, file size, and the area shares by material, modification,
       modification source and groundwater class, beside the baseline. Then run
       the chosen variant only over Upper Hutt; six Upper Hutt runs would take most
       of a day.
+      *Run on the two pilots (`wlg-pilot`, `porirua-pilot`) on 2026-10-10;
+      table in `temp/profile-ground-map/sweep.md`. The lead agreed 900 m2 and
+      10 m; the chosen variant was then built over the whole of Porirua, not
+      Upper Hutt.*
 
 **Verification:** a table of those numbers for each variant and the baseline, in
 `temp/profile-ground-map/sweep.md`.
@@ -190,15 +216,23 @@ The piece count over Upper Hutt is in the tens of thousands, not millions.
 
 ### Phase 3 -- The fill thickness (D4)
 
-- [ ] Compare `fill_thickness_m` per fill piece between the baseline and the chosen
+- [x] Compare `fill_thickness_m` per fill piece between the baseline and the chosen
       variant. Aggregate by area: the area-weighted mean and the 5th and 95th
       percentile of the thickness over all fill, before and after. The thickness
       is expected to fall (D4); the size of the fall needs a sentence to the lead.
-- [ ] If `mean_positive_residual` is now a large share of the time (the 1 m
+      *2026-10-10, area-weighted over fill with a thickness: Wellington pilot
+      2.06 to 1.95 m; Porirua pilot 6.04 to 6.50 m; Porirua 7.45 to 7.64 m (5th
+      percentile 2.08 to 2.98 m, median 7.86 m both, 95th 11.53 to 11.22 m).
+      It fell only on the Wellington pilot. On Porirua the rise is in the low
+      tail, which fits thin fill margins being sieved away, but that is not
+      tested. Fill area with no thickness fell from 1.14 to 0.18 km2 over
+      Porirua. Reported to the lead.*
+- [x] If `mean_positive_residual` is now a large share of the time (the 1 m
       rasterisation of every fill piece), burn per window or per tile, as
       ground step 3 does through `landloss.common.utils.tiles`, so memory stays
       bounded for the full 59 by 54 km extent; the open item in
       `s2_ground_map_implementation_plan.md` lines 132-135 is the same problem.
+      *Read in full-width strips of at most `THICKNESS_STRIP_CELLS` cells.*
 
 **Verification:** the thickness comparison, plus `pytest` on `mean_positive_residual`
 with a two-piece raster whose means are known by hand.
@@ -207,15 +241,23 @@ with a two-piece raster whose means are known by hand.
 
 ### Phase 4 -- Land it
 
-- [ ] Update `s2_ground_map_method.md` (the groundwater class, the 10 m grid, the
+- [x] Update `s2_ground_map_method.md` (the groundwater class, the 10 m grid, the
       sieve and D7, the coverage simplify, with the chosen numbers),
       `s2_ground_map_implementation_plan.md`, and `ground/status.md`. Weekly
       updates read the status file.
 - [ ] Rebuild ground step 3 over Upper Hutt on the new map and note the time against
       the three minutes it took, since it was this step's size problem that started it.
-- [ ] A changelog fragment `doc/whatsnew/mm.feature.<yymmddhhmm>.md`, since the map's
+      *Not done for Upper Hutt. Over Porirua, the current step 3 code took
+      1,234 s on the old map and 1,043 s on the new one in the same session
+      (1.18 times; `temp/profile-ground-map/downstream-porirua/s3-timing/`).
+      The fall from 5,503 s (2026-10-08) to 466 s (2026-10-10) in the builds is
+      mostly commit 9f7c228's four tile workers, not the map. The map's large
+      savings are elsewhere: ground step 4's wall evidence join, 207 to 252 s
+      on the old map against 9 s on the new, and shaking step 2's overlay,
+      149 s against 0.6 s.*
+- [x] A changelog fragment `doc/whatsnew/mm.feature.<yymmddhhmm>.md`, since the map's
       pieces change for everyone reading it.
-- [ ] Rebuild or check every reader of the map. A rebuild changes its row count
+- [x] Rebuild or check every reader of the map. A rebuild changes its row count
       and ids (`ground_id` is minted by location). The readers, from
       `git grep -n "ground_map_path\|ground-map" -- src tests` on 2026-10-09:
       - **Must be rebuilt:** ground step 3 (`gen_instability_zones.py`), which
@@ -229,7 +271,17 @@ with a two-piece raster whose means are known by hand.
         the e2e QGIS build and the reviewer page.
       - Research scripts under `hazard/landslide/research/slope_elements/` are
         not maintained.
-- [ ] `uv run --frozen prek -a` until it passes cleanly, and `uv run --frozen pytest`.
+      *2026-10-10: the Wellington pilot and Porirua were rebuilt from ground
+      step 2 through vul (loss not run). The five regenerate readers ran for
+      Porirua into a scratch folder; the reviewer's sites are all on the
+      Wellington pilot, so its Porirua page shows no ground. The rebuild also
+      found a partition bug: a source polygon a clip returned inside a
+      GeometryCollection left no edge, which put the wrong groundwater class
+      on 0.07% of Porirua; fixed in `_planar_partition` and the groundwater
+      clip.*
+- [x] `uv run --frozen prek -a` until it passes cleanly, and `uv run --frozen pytest`.
+      *2026-10-10: 2,616 tests pass; prek passes clean on its second run
+      (ruff format re-wrapped one test).*
 
 **Verification:** `uv run --frozen prek -a` and `uv run --frozen pytest` both pass.
 

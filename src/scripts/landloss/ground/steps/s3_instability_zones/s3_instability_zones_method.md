@@ -65,6 +65,61 @@
   `parent_pif_id` kept for reference. Each siz piece grows one element, so an
   element's `siz_id` is a siz table row, and a long face can be shared between
   walls.
+- **The wall line and the pips it holds** (the lead, 2026-10-13, "option 10",
+  chosen after review on 120 cases and the `wlg-pilot`). After `split_pifs` and
+  before `assess_pifs`, `instability_zones.split_no_wall_pifs` draws a wall
+  line on each piece and takes out the pips the wall does not hold. It is run
+  by `find_instability_zones` when given `wall_settings`;
+  `gen_instability_zones.wall_line_settings()` builds them from the
+  `WALL_LINE_*` constants of `config.py`. The method is in
+  `landloss.hazard.landslide.wall_lines`:
+  - `wall_line`: the piece's cell outline (its pips, and the cell each pip
+    falls to at 1 m, as 1 m squares) is walked every 0.5 m; the longest run
+    whose outward normal is within 45° of the local fall (60°, 75° or 90° only
+    if no run is 4 m long) is the toe; gaps are joined (6, 3, 1.5, 9, 12 m,
+    each tried in turn); each run is cut to 49 m and fitted by an exact
+    polyline fit (0 to 3 bends, sections of 3 m or more, no bend over 100°,
+    185° of turning in all), end hooks are trimmed, and the candidate with the
+    fewest pips beyond it downhill (with fit, bend and S-jog penalties) is
+    kept. `method` is `outline`, `outline-wide` (angle over 60°) or
+    `fallback`. With no downhill run the line is the piece's own cut line.
+  - `wall_pieces`: a pip is on the wall when its fall, widened by 45° either
+    side and 200 m long, meets the line. The pips left over are grouped (up to
+    2.1 m apart, so a one-cell gap does not split a group). A group of more
+    than 7 pips (`WALL_LINE_MIN_NO_WALL_PIPS`, raised from 5 by the lead on
+    2026-10-13 to make fewer small no-wall pifs) is a pif piece with no wall;
+    a smaller one goes back to the
+    wall piece, as does one with more than half its edge on the wall piece's
+    cells. The wall piece must touch (8-connected): groups of wall pips within
+    3 m of the line stay, any other joins the no-wall piece it shares most
+    edge with, or is a no-wall piece of its own if it touches none and holds
+    more than 7 pips.
+  - Each no-wall group is a **new pif piece**: a new `pif_id` after the
+    existing pieces, the same `parent_pif_id`, `has_wall` False. It has its
+    own pips, siz test, seed, element and `siz_id`. The wall piece keeps its
+    label 0 pips, `has_wall` True and its wall line.
+  - **Cut line of the new pieces.** A wall piece keeps the cut line it had
+    (`pif_lines`), so the line rules still hold for it
+    (`rule_breaks`). A no-wall piece has no cut line (None): its pips are not
+    on a path of the pif, it has no wall for the rules to apply to, and the
+    check skips it. Its spine is the longest shortest path through its own
+    pips (`gen_pif_spines` with no line given, as for a pif of three pips
+    or more before the pieces existed). This is the smallest change that keeps
+    every piece with a spine.
+  - **Columns.** The siz table gains `has_wall`, `wall_line_method`, and the
+    spine columns read along the wall line: `wall_line` (a second geometry
+    column), `wall_length_m`, `wall_end_a_x`, `wall_end_a_y`, `wall_end_b_x`,
+    `wall_end_b_y`, `wall_end_a_fall_deg`, `wall_end_b_fall_deg` (`grid.py`
+    `grid_table`, whole and tiled alike). They are None and NaN for a no-wall
+    piece (a no-wall piece's `spine` is still filled). The tiled path needs no
+    other change: a no-wall piece shares its parent's `parent_pif_id`, so the
+    tile that owns the parent owns it.
+  - `wall_lines` is in `SEARCH_CODE`, and the `WALL_LINE_*` settings are in the
+    run's record, so the cached search is rebuilt. Some wall lines
+    are under 3 m on small pifs (see exposure rw step 6).
+  - `DIRECTIONS` moved to `landloss.hazard.landslide.directions` so that
+    `wall_lines` and `instability_zones` need not import each other
+    (`instability_zones.DIRECTIONS` still works).
 - A pif holds at least `BETA_MIN_PIF_PIPS` (3) pips (the lead, 2026-10-06,
   matching the 3 m shortest element): `cluster_pifs` leaves a smaller cluster
   at 0 and numbers the pifs it keeps from 1 with no gaps, so such pips are in

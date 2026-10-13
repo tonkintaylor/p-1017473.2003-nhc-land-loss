@@ -44,6 +44,21 @@ def test_the_study_gets_its_share_of_the_event_total():
     assert result.report.total_after_km2 == pytest.approx(0.5)
 
 
+def test_share_factor_scales_the_study_share():
+    result = model.run(
+        slope_deg=np.array([30.0, 40.0]),
+        mm_intensity=8.0,
+        site_distance_km=25.0,
+        cell_area_km2=np.array([2.0, 3.0]),
+        mw=8.1,
+        event_total_area_km2=0.1 * float(h.area_affected_km2(8.1)),
+        share_factor=2.3,
+    )
+
+    assert result.study_target_area_km2 == pytest.approx(0.5 * 2.3)
+    assert np.sum(result.coverage * [2.0, 3.0]) == pytest.approx(0.5 * 2.3)
+
+
 def test_mm_threshold_removes_a_cell_and_its_share_of_the_total():
     result = run_model([30.0, 30.0], mm_intensity=[6.9, 7.0])
 
@@ -76,11 +91,27 @@ def test_the_study_share_cannot_exceed_the_whole_event():
     assert result.study_target_area_km2 == pytest.approx(10.0)
 
 
+def test_the_scaled_share_cannot_exceed_the_whole_event():
+    area_affected = float(h.area_affected_km2(8.1))
+    result = model.run(
+        slope_deg=np.full(2, 30.0),
+        mm_intensity=8.0,
+        site_distance_km=25.0,
+        cell_area_km2=area_affected / 4.0,
+        mw=8.1,
+        event_total_area_km2=10.0,
+        share_factor=3.0,
+    )
+
+    assert result.study_target_area_km2 == pytest.approx(10.0)
+
+
 @pytest.mark.parametrize(
     ("name", "kwargs"),
     [
         ("event total", {"event_total_area_km2": -1.0}),
         ("cell area", {"cell_area_km2": -1.0}),
+        ("share factor", {"share_factor": 0.0}),
     ],
 )
 def test_negative_areas_are_refused(name, kwargs):

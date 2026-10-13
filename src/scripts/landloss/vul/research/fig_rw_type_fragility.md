@@ -5,6 +5,12 @@ Run 2026-10-06 with `fig_rw_type_fragility.py`, which writes
 curves on 2026-10-06, and since then landslide step 5 and vul shaking step 9
 read them (`.agents/plans/assigning-retaining-wall-types.md`).
 
+**Superseded 2026-10-13.** The lead replaced these curves with judgement
+curves, one per wall type with a height factor, that flatten as they
+strengthen (`src/landloss/io/assets/README.md`). This document and its
+script are kept as the record of the evidence; the script is frozen and runs
+only at commit 8c09101.
+
 ## Question
 
 Can each proposed wall type be given a fragility curve from published sources,

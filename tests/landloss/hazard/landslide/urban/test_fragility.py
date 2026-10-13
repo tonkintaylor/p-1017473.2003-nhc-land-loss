@@ -50,7 +50,6 @@ from scripts.landloss.hazard.landslide.validations.urban import (
     table_urban_fragility_anchors,
 )
 from scripts.landloss.hazard.shaking.steps.s2_site_class import gen_site_class
-from scripts.landloss.hazard.shaking.steps.s3_pgv import gen_pgv
 
 # rioxarray recomputes the transform through affine's ``*`` operator, which
 # affine 3.0.1 has begun warning about; nothing to fix on this side.
@@ -96,28 +95,25 @@ HEIGHT_BY_SIZE = {"small": 1.0, "medium": 1.5, "large": 3.0}
 
 
 def wall_table():
-    """Every wall type and height class, as ``load_wall_type_fragility`` returns.
+    """Every wall type, as ``load_wall_type_fragility`` returns.
 
-    The medians are on PGA: 0.5 g under 2 m and 1.0 g at 2 m and over, times
-    0.6 for :data:`OLD`.
+    The medians are on PGA: 0.5 g, times 0.6 for :data:`OLD`; a wall 2 m and
+    over takes them times the height factor.
     """
-    rows = []
-    for height_class, theta in zip(
-        wall_type_fragility.HEIGHT_CLASSES, (0.5, 1.0), strict=True
-    ):
-        for wall_type in wall_type_fragility.WALL_TYPES:
-            shift = 0.6 if wall_type == OLD else 1.0
-            rows.append(
-                {
-                    "wall_type": wall_type,
-                    "height_class": height_class,
-                    "im": fragility.PGA_IM,
-                    "theta": theta * shift,
-                    "beta": 0.5,
-                    "source": f"test_{height_class}_{wall_type}",
-                }
-            )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        {
+            "wall_type": list(wall_type_fragility.WALL_TYPES),
+            "im": fragility.PGA_IM,
+            "theta": [
+                0.5 * (0.6 if wall_type == OLD else 1.0)
+                for wall_type in wall_type_fragility.WALL_TYPES
+            ],
+            "beta": 0.5,
+            "source": [
+                f"test_{wall_type}" for wall_type in wall_type_fragility.WALL_TYPES
+            ],
+        }
+    )
 
 
 def polygons(
@@ -309,7 +305,8 @@ def ground_map_frame():
             "modification": ["natural"],
             "geology_value": [susceptibility.GEOLOGY_COLLUVIUM_OR_ALLUVIUM],
             "prior_failure": ["none"],
-            "gw_depth_m": [4.0],
+            "gw_depth_class": ["well_drained"],
+            "is_flatland": [False],
         },
         geometry=[square(0, 0, 200)],
         crs=constants.DEFAULT_CRS,
@@ -338,10 +335,6 @@ def three_face_polygons(**kwargs):
 
 
 def site_class_at(polygons_frame, value=3):
-    return pd.Series(float(value), index=polygons_frame.index)
-
-
-def ratio_at(polygons_frame, value=1.2):
     return pd.Series(float(value), index=polygons_frame.index)
 
 
@@ -434,6 +427,64 @@ def test_the_localised_median_runs_log_linearly_between_its_two_constants():
     )
     np.testing.assert_allclose(theta, [low, np.sqrt(low * high), high])
     assert np.isnan(fragility.localised_theta_base_m_s(np.array([np.nan])))[0]
+
+
+def test_the_packaged_localised_curve_holds_the_leads_points():
+    table = fragility.load_localised_fragility()
+    theta, beta = fragility.localised_curve_pga_g(np.array([80.0, 145.0]), table)
+    np.testing.assert_allclose(theta, [2.0, 0.6])
+    p15 = theta * np.exp(wall_type_fragility.LOWER_Z * beta)
+    np.testing.assert_allclose(p15, [0.7, 0.3])
+    # Zone 1's curve is the flattest.
+    _, beta_zone_1 = fragility.localised_curve_pga_g(np.array([10.0]), table)
+    assert beta_zone_1[0] > beta[0] > beta[1]
+
+
+def test_the_localised_percentiles_run_in_straight_lines_in_log_pga():
+    table = localised_table(p15=(0.5, 0.25), p50=(2.0, 0.5), ratings=(0.0, 100.0))
+    ratings = np.array([0.0, 50.0, 100.0, 150.0])
+    theta, beta = fragility.localised_curve_pga_g(ratings, table)
+    np.testing.assert_allclose(theta, [2.0, 1.0, 0.5, 0.25])
+    p15 = theta * np.exp(wall_type_fragility.LOWER_Z * beta)
+    np.testing.assert_allclose(p15, [0.5, np.sqrt(0.125), 0.25, 0.125 * np.sqrt(2)])
+    # Not parallel: the dispersion falls as the rating rises.
+    assert np.all(np.diff(beta) < 0)
+    nan_theta, nan_beta = fragility.localised_curve_pga_g(np.array([np.nan]), table)
+    assert np.isnan(nan_theta[0])
+    assert np.isnan(nan_beta[0])
+
+
+def test_the_localised_table_is_refused_when_malformed(tmp_path):
+    good = localised_table(p15=(0.5, 0.25), p50=(2.0, 0.5), ratings=(0.0, 100.0))
+    cases = {
+        "three": pd.concat([good, good.iloc[[0]].assign(rating=50.0)]),
+        "same_rating": good.assign(rating=50.0),
+        "pgv": good.assign(im="pgv_m_s"),
+        # The p15 line crosses the p50 line within the scale.
+        "crossing": localised_table(
+            p15=(0.5, 0.45), p50=(2.0, 0.5), ratings=(0.0, 100.0)
+        ),
+    }
+    for name, table in cases.items():
+        path = tmp_path / f"{name}.csv"
+        table.to_csv(path, index=False)
+        with pytest.raises(ValueError, match=r"localised fragility table|p15"):
+            fragility.load_localised_fragility(path)
+
+
+def localised_table(*, p15, p50, ratings):
+    """A two-point localised fragility table on PGA."""
+    return pd.DataFrame(
+        {
+            "point": ["low", "high"],
+            "rating": ratings,
+            "im": "pga_g",
+            "p15": p15,
+            "p50": p50,
+            "set_by": "test",
+            "basis": "test",
+        }
+    )
 
 
 def test_polygon_theta_divides_by_amplification_and_multiplies_by_the_rate():
@@ -537,7 +588,6 @@ def test_a_polygon_with_a_wall_takes_the_wall_curve_and_one_without_the_localise
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame, 1.2),
     )
     assert list(model.columns) == list(fragility.MODEL_COLUMNS)
     # Sorted by slope_id with a fresh index: the frame was built in reverse.
@@ -550,34 +600,33 @@ def test_a_polygon_with_a_wall_takes_the_wall_curve_and_one_without_the_localise
     assert no_wall["fragility_basis"] == "localised"
     assert no_wall["fragility_source"] == "localised:30"
     assert pd.isna(no_wall["rw_id"])
-    assert pd.isna(no_wall["theta_base_pga_g"])
-    assert pd.isna(no_wall["pgv_pga_ratio_m_s_per_g"])
-    expected = fragility.localised_theta_base_m_s(np.array([30.0]))[0]
-    assert no_wall["theta_base"] == pytest.approx(expected)
-    assert no_wall["theta"] == pytest.approx(expected / 1.25)
-    assert no_wall["beta"] == constants.LOCALISED_FRAGILITY_BETA
+    # The localised curve is on site PGA, as every curve is.
+    theta_pga_g, beta = fragility.localised_curve_pga_g(
+        np.array([30.0]), fragility.load_localised_fragility()
+    )
+    assert no_wall["theta_base"] == pytest.approx(theta_pga_g[0])
+    assert no_wall["theta"] == pytest.approx(theta_pga_g[0] / 1.25)
+    assert no_wall["beta"] == pytest.approx(beta[0])
 
     cut = by_id.loc["SP0000002"]  # the large old wall, position unknown
     assert cut["wall_state"] == "cut_wall"
     assert cut["rw_id"] == "C2-RW01"
     assert cut["fragility_basis"] == "wall"
-    assert cut["fragility_source"] == "test_2_m_and_over_brick_rock"
+    assert cut["fragility_source"] == "test_brick_rock"
     assert cut["wall_type"] == OLD
-    assert cut["theta_base_pga_g"] == pytest.approx(0.6)
-    assert cut["pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
-    assert cut["theta_base"] == pytest.approx(0.72)
+    assert cut["theta_base"] == pytest.approx(
+        0.5 * 0.6 * wall_type_fragility.TALL_HEIGHT_FACTOR
+    )
     assert cut["beta"] == 0.5
 
     fill = by_id.loc["SP0000003"]  # the small modern wall, position unknown
     assert fill["wall_state"] == "fill_wall"
     assert fill["size_class"] == "small"
     assert fill["wall_type"] == MODERN
-    assert fill["theta_base_pga_g"] == pytest.approx(0.5)
-    assert fill["pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
-    assert fill["theta_base"] == pytest.approx(0.6)
-    assert fill["theta"] == pytest.approx(0.6 / 1.25)
+    assert fill["theta_base"] == pytest.approx(0.5)
+    assert fill["theta"] == pytest.approx(0.5 / 1.25)
 
-    assert set(model["im"]) == {"pgv_m_s"}
+    assert set(model["im"]) == {"pga_g"}
     assert set(model["rate_setting"]) == {"medium"}
     assert set(model["rate_factor"]) == {1.0}
     assert model["site_class"].dtype == "Int64"
@@ -591,7 +640,6 @@ def test_the_rate_setting_scales_every_median():
     frame = three_polygons()
     kwargs = {
         "site_class": site_class_at(frame),
-        "pgv_pga_ratio": ratio_at(frame),
     }
     medium = fragility.assign_fragility(
         frame, two_walls(), wall_table(), rate_setting="medium", **kwargs
@@ -615,7 +663,6 @@ def test_a_line_that_drew_two_walls_or_an_unknown_size_is_refused():
             wall_table(),
             rate_setting="medium",
             site_class=site_class_at(frame),
-            pgv_pga_ratio=ratio_at(frame),
         )
     walls.loc[0, "size_class"] = "huge"
     with pytest.raises(ValueError, match="Unknown size class"):
@@ -625,7 +672,6 @@ def test_a_line_that_drew_two_walls_or_an_unknown_size_is_refused():
             wall_table(),
             rate_setting="medium",
             site_class=site_class_at(frame),
-            pgv_pga_ratio=ratio_at(frame),
         )
 
 
@@ -634,16 +680,13 @@ def test_an_unknown_wall_type_or_a_type_with_no_curve_is_refused():
     kwargs = {
         "rate_setting": "medium",
         "site_class": site_class_at(frame),
-        "pgv_pga_ratio": ratio_at(frame),
     }
     walls = two_walls()
     walls.loc[0, "wall_type"] = "dry_stone"
     with pytest.raises(ValueError, match="wall type"):
         fragility.assign_fragility(frame, walls, wall_table(), **kwargs)
     table = wall_table()
-    table = table[
-        ~((table["wall_type"] == OLD) & (table["height_class"] == "2_m_and_over"))
-    ]
+    table = table[table["wall_type"] != OLD]
     with pytest.raises(ValueError, match="No wall type curve"):
         fragility.assign_fragility(frame, two_walls(), table, **kwargs)
 
@@ -656,7 +699,7 @@ def test_an_unknown_wall_type_or_a_type_with_no_curve_is_refused():
         (None, 1.0),
     ],
 )
-def test_the_walls_own_position_scales_its_pgv_median(position, factor):
+def test_the_walls_own_position_scales_its_pga_median(position, factor):
     # The polygons keep their own positions (fill, then cut) for the wall
     # state; each wall's own position alone shifts its curve.
     frame = three_polygons()
@@ -673,22 +716,21 @@ def test_the_walls_own_position_scales_its_pgv_median(position, factor):
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame, 1.2),
     )
     by_line = model.set_index("wall_line_id", drop=False)
     for line, state in (("WL0000001", "fill_wall"), ("WL0000002", "cut_wall")):
         row = by_line.loc[line]
         assert row["wall_state"] == state
-        assert row["theta_base_pga_g"] == pytest.approx(0.5 * factor)
-        assert row["theta_base"] == pytest.approx(0.5 * factor * 1.2)
+        assert row["theta_base"] == pytest.approx(0.5 * factor)
         assert row["beta"] == 0.5
 
 
 @pytest.mark.parametrize(
-    ("height_m", "theta_pga_g"), [(1.99, 0.5), (2.0, 1.0), (np.nan, 0.5)]
+    ("height_m", "theta_pga_g"),
+    [(1.99, 0.5), (2.0, 0.5 * wall_type_fragility.TALL_HEIGHT_FACTOR), (np.nan, 0.5)],
 )
-def test_the_walls_height_not_its_size_class_picks_its_curve(height_m, theta_pga_g):
-    # Arrange: two small walls, so the size class alone would pick one curve.
+def test_the_walls_height_not_its_size_class_scales_its_curve(height_m, theta_pga_g):
+    # Arrange: two small walls, so the size class alone would give one curve.
     frame = three_polygons()
     walls = wall_population(
         ["C1-RW01", "C2-RW01"],
@@ -705,13 +747,12 @@ def test_the_walls_height_not_its_size_class_picks_its_curve(height_m, theta_pga
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame, 1.2),
     )
 
     # Assert
     walled = model[model["fragility_basis"] == fragility.WALL_BASIS]
     assert len(walled) == 2
-    np.testing.assert_allclose(walled["theta_base_pga_g"], theta_pga_g)
+    np.testing.assert_allclose(walled["theta_base"], theta_pga_g)
     assert set(walled["size_class"]) == {"small"}
 
 
@@ -724,7 +765,6 @@ def test_a_wall_whose_line_is_not_a_polygon_edge_draws_nothing():
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame),
     )
     assert set(model["wall_state"]) == {"no_wall"}
     assert model["rw_id"].isna().all()
@@ -738,7 +778,6 @@ def test_an_uninsured_wall_gives_its_polygon_the_wall_curve_with_no_rw_id():
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame, 1.2),
     )
     model = fragility.assign_fragility(
         frame,
@@ -746,7 +785,6 @@ def test_an_uninsured_wall_gives_its_polygon_the_wall_curve_with_no_rw_id():
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame, 1.2),
     )
     by_line = model.set_index("wall_line_id", drop=False)
     uninsured = by_line.loc["WL0000001"]
@@ -755,10 +793,10 @@ def test_an_uninsured_wall_gives_its_polygon_the_wall_curve_with_no_rw_id():
     assert pd.isna(uninsured["rw_id"])
     assert uninsured["wall_state"] == "fill_wall"
     assert uninsured["fragility_basis"] == fragility.WALL_BASIS
-    assert uninsured["fragility_source"] == "test_under_2_m_concrete_block"
+    assert uninsured["fragility_source"] == "test_concrete_block"
     assert uninsured["size_class"] == "small"
     assert uninsured["wall_type"] == MODERN
-    assert uninsured["theta_base"] == pytest.approx(0.6)
+    assert uninsured["theta_base"] == pytest.approx(0.5)
     assert by_line.loc["WL0000002", "rw_id"] == "C2-RW01"
     pd.testing.assert_frame_equal(
         model.drop(columns="rw_id"), insured.drop(columns="rw_id")
@@ -775,7 +813,6 @@ def test_a_flat_land_wall_on_a_polygon_edge_leaves_the_polygon_no_wall():
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame),
     )
     by_line = model.set_index("wall_line_id", drop=False)
     flat_edge = by_line.loc["WL0000001"]
@@ -802,7 +839,6 @@ def test_a_wall_on_any_line_of_the_edge_gives_the_polygon_its_wall():
     kwargs = {
         "rate_setting": "medium",
         "site_class": site_class_at(frame),
-        "pgv_pga_ratio": ratio_at(frame),
     }
     shorter = wall_population(["C3-RW01"], ["WL0000003"], ["large"], [OLD])
     model = fragility.assign_fragility(frame, shorter, wall_table(), **kwargs)
@@ -811,7 +847,7 @@ def test_a_wall_on_any_line_of_the_edge_gives_the_polygon_its_wall():
     assert walled["rw_id"] == "C3-RW01"
     assert walled["wall_line_id"] == "WL0000003"
     assert list(walled["wall_line_ids"]) == ["WL0000003"]
-    assert walled["fragility_source"] == "test_2_m_and_over_brick_rock"
+    assert walled["fragility_source"] == "test_brick_rock"
 
     both = wall_population(
         ["C1-RW01", "C3-RW01"],
@@ -838,7 +874,6 @@ def test_polygons_without_the_edge_lines_are_refused():
             wall_table(),
             rate_setting="medium",
             site_class=site_class_at(frame),
-            pgv_pga_ratio=ratio_at(frame),
         )
 
 
@@ -852,7 +887,6 @@ def test_a_wall_population_without_is_flatland_is_refused():
             wall_table(),
             rate_setting="medium",
             site_class=site_class_at(frame),
-            pgv_pga_ratio=ratio_at(frame),
         )
 
 
@@ -998,11 +1032,23 @@ def test_an_element_off_the_ground_map_is_scored_on_the_default_ground():
     assert frame["kingsbury_rating"].iloc[2] < frame["kingsbury_rating"].iloc[0]
 
 
-def test_the_amplification_reads_the_topographic_position():
-    frame = face_polygons.with_amplification(three_face_polygons(), [0.0, 10.0, np.nan])
-    top = constants.TOPOGRAPHIC_AMPLIFICATION_MAX
-    steep = 1.0 + (top - 1.0) * (10.0 / 30.0)
-    np.testing.assert_allclose(frame["amp_factor"], [steep, top, steep])
+def test_the_amplification_is_one_factor_off_flatland_and_none_on_it():
+    polygons = three_face_polygons()
+    # A flatland piece over the second polygon's representative point.
+    point = polygons["rep_point"].iloc[1]
+    ground_map = pd.concat(
+        [
+            ground_map_frame(),
+            ground_map_frame().assign(is_flatland=True, geometry=[point.buffer(1.0)]),
+        ],
+        ignore_index=True,
+    )
+
+    frame = face_polygons.with_amplification(polygons, ground_map)
+
+    assert list(frame["on_flatland"]) == [False, True, False]
+    top = constants.TOPOGRAPHIC_AMPLIFICATION
+    np.testing.assert_allclose(frame["amp_factor"], [top, 1.0, top])
 
 
 def test_a_pif_in_two_units_is_refused():
@@ -1040,14 +1086,13 @@ def test_a_flat_land_wall_does_not_count_as_drawn_for_the_check():
 
 
 def test_face_polygons_take_the_wall_curve_and_keep_their_own_geometry():
-    frame = face_polygons.with_amplification(three_face_polygons(), np.zeros(3))
+    frame = face_polygons.with_amplification(three_face_polygons(), ground_map_frame())
     model = fragility.assign_fragility(
         frame,
         unit_walls(),
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame),
     )
     assert list(model["wall_state"]) == ["fill_wall", "cut_wall", "no_wall"]
     assert list(model["fragility_basis"]) == ["wall", "wall", "localised"]
@@ -1079,7 +1124,6 @@ def work_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(gen_terrain_derivatives, "TERRAIN_DIR", landslide / "terrain")
     monkeypatch.setattr(step, "WORK_DIR", landslide)
     monkeypatch.setattr(gen_site_class, "WORK_DIR", shaking)
-    monkeypatch.setattr(gen_pgv, "WORK_DIR", shaking)
     monkeypatch.setattr(gen_wall_population, "WORK_DIR", exposure)
     monkeypatch.setattr(table_urban_slope_model, "TAB_DIR", tmp_path / "tab")
     monkeypatch.setattr(fig_urban_slope_model, "FIG_DIR", tmp_path / "fig")
@@ -1109,18 +1153,6 @@ def write_inputs(monkeypatch):
     write_raster(
         site_class.astype("float32"), gen_site_class.site_class_path(extent="wlg-pilot")
     )
-    pgv = make_grid([[1.0, 1.0, 1.0], [0.6, 1.2, 2.0]]).rename("pgv_m_s")
-    write_raster(
-        pgv.astype("float32"),
-        gen_pgv.output_path(
-            "pgv", return_period_yr=RETURN_PERIOD_YR, extent="wlg-pilot"
-        ),
-    )
-    pga = make_grid([[1.0, 1.0, 1.0], [0.5, 1.0, 1.0]])
-    monkeypatch.setattr(
-        step, "demand_on_site_class_grid", lambda *_args, **_kwargs: pga
-    )
-    monkeypatch.setattr(step, "get_ts1170_pga", None)
 
 
 def test_the_step_prints_the_flat_land_walls_it_skips(capsys):
@@ -1153,7 +1185,6 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
         extent="wlg-pilot",
         world_ids=[WORLD],
         urban_rate="medium",
-        return_period_yr=RETURN_PERIOD_YR,
     )
 
     written = gpd.read_parquet(step.urban_slope_model_path(WORLD, extent="wlg-pilot"))
@@ -1165,24 +1196,18 @@ def test_the_step_writes_the_model_with_the_contract_columns(work_dirs, monkeypa
     assert set(written["world_id"]) == {WORLD}
     assert written["world_id"].dtype == "int64"
     assert written["site_class"].dtype == "Int64"
-    # The site class and the ratio were read at each polygon's cell: the
-    # polygons sit in the three cells left to right, in id order.
+    # The site class was read at each polygon's cell: the polygons sit in
+    # the three cells left to right, in id order.
     by_id = written.set_index("slope_id")
     assert by_id.loc["SP0000001", "site_class"] == 1
-    assert by_id.loc["SP0000001", "pgv_pga_ratio_m_s_per_g"] == pytest.approx(1.2)
     # The packaged curve of the small modern wall, shifted for its unit's
-    # fill, then converted at the cell's ratio.
-    packaged = wall_type_fragility.load_wall_type_fragility().set_index(
-        list(wall_type_fragility.TABLE_KEY)
-    )
+    # fill, on site PGA as published.
+    packaged = wall_type_fragility.load_wall_type_fragility().set_index("wall_type")
     assert by_id.loc["SP0000001", "wall_type"] == MODERN
     assert by_id.loc["SP0000001", "theta_base"] == pytest.approx(
-        packaged.loc[(MODERN, "under_2_m"), "theta"]
-        * wall_type_fragility.FILL_CAPACITY_FACTOR
-        * 1.2
+        packaged.loc[MODERN, "theta"] * wall_type_fragility.FILL_CAPACITY_FACTOR
     )
     assert by_id.loc["SP0000003", "site_class"] == 5
-    assert pd.isna(by_id.loc["SP0000003", "pgv_pga_ratio_m_s_per_g"])
     assert by_id.loc["SP0000003", "fragility_basis"] == "localised"
     assert by_id.loc["SP0000003", "wall_state"] == "no_wall"
     assert set(written["rate_setting"]) == {"medium"}
@@ -1207,7 +1232,6 @@ def test_the_table_and_the_figure_read_the_model_the_step_wrote(work_dirs, monke
         extent="wlg-pilot",
         world_ids=[WORLD],
         urban_rate="high",
-        return_period_yr=RETURN_PERIOD_YR,
     )
 
     table_urban_slope_model.main(extent="wlg-pilot", world_ids=[WORLD])
@@ -1233,7 +1257,6 @@ def test_a_polygon_with_no_zone_is_grouped_under_none():
         wall_table(),
         rate_setting="medium",
         site_class=site_class_at(frame),
-        pgv_pga_ratio=ratio_at(frame),
     )
     model["kingsbury_zone"] = pd.array([None, 3, 4], dtype="Int64")
     table = table_urban_slope_model.medians_by_zone_and_state(model)
@@ -1329,7 +1352,6 @@ def test_the_step_stops_on_zones_and_walls_from_different_draws(work_dirs, monke
             extent="wlg-pilot",
             world_ids=[WORLD],
             urban_rate="medium",
-            return_period_yr=RETURN_PERIOD_YR,
         )
 
 

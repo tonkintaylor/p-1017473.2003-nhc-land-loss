@@ -1,0 +1,1 @@
+A group of pips the wall line does not hold now needs more than 7 pips, not more than 5, to become a pif piece with no wall (`WALL_LINE_MIN_NO_WALL_PIPS` in ground step 3). Groups of 6 or 7 pips go back to the wall's pif, so fewer small no-wall pifs and bare-slope elements are made. Ground step 3 and the steps after it must be rerun to apply it.

@@ -13,11 +13,11 @@ run.
 Two panels.
 
 - **Where.** The whole extent, with the polygons at the finest scale coloured
-  by their median PGV ``theta`` on one sequential scale. What this panel is
+  by their median site PGA ``theta`` on one sequential scale. What this panel is
   for is the pattern: the lowest medians should sit on the steep cut faces,
   the crests and the walled fills, and the gentle ground should read pale.
 - **How spread.** The distribution of ``theta`` per wall state, as a
-  cumulative curve on a log axis, with the study's 2,500-year PGV range marked
+  cumulative curve on a log axis, with the study's 2,500-year site PGA range marked
   so the eye can see what share of each state sits below the demand.
 
 Needs network access for the basemap tiles. The figure goes under
@@ -63,15 +63,16 @@ STATE_COLOURS = {
     geometry.CUT_WALL: "#762a83",
 }
 
-# The study's PGV at 2,500 years over the four territorial authorities, m/s
-# (plan section 6), marked on the distribution panel.
-STUDY_PGV_RANGE_M_S = (0.96, 2.11)
+# The study's site PGA at 2,500 years over the four territorial authorities, g
+# (the TS1170.5 PGA on the site class grid, 2026-10-12), marked on the
+# distribution panel.
+STUDY_PGA_RANGE_G = (0.93, 2.02)
 
 RULE = "-" * 72
 
 
 def draw_medians(ax, model, extent, *, title):
-    """Colour the finest-scale polygons by their median PGV."""
+    """Colour the finest-scale polygons by their median site PGA."""
     finest = model[model[geometry.SCALE_COLUMN] == model[geometry.SCALE_COLUMN].min()]
     theta = finest["theta"].to_numpy(dtype=float)
     finite = theta[np.isfinite(theta)]
@@ -84,7 +85,7 @@ def draw_medians(ax, model, extent, *, title):
         linewidth=0.2,
         edgecolor="none",
         legend=True,
-        legend_kwds={"label": "median PGV (m/s)", "shrink": 0.6},
+        legend_kwds={"label": "median site PGA (g)", "shrink": 0.6},
         missing_kwds={"color": "#bdbdbd", "label": "no median"},
     )
     style_basemap_ax(
@@ -113,17 +114,17 @@ def draw_distribution(ax, model, *, title):
             linewidth=1.5,
             label=f"{state.replace('_', ' ')} ({theta.size:,})",
         )
-    ax.axvspan(*STUDY_PGV_RANGE_M_S, color="#fdae61", alpha=0.3, lw=0)
+    ax.axvspan(*STUDY_PGA_RANGE_G, color="#fdae61", alpha=0.3, lw=0)
     ax.text(
-        STUDY_PGV_RANGE_M_S[0],
+        STUDY_PGA_RANGE_G[0],
         1.01,
-        "study PGV, 2,500 yr",
+        "study site PGA, 2,500 yr",
         fontsize=7,
         ha="left",
         va="bottom",
     )
     ax.set_xscale("log")
-    ax.set_xlabel("median PGV, theta (m/s)")
+    ax.set_xlabel("median site PGA, theta (g)")
     ax.set_ylabel("share of polygons with a lower median")
     ax.set_ylim(0, 1.05)
     ax.grid(True, which="both", linewidth=0.3, alpha=0.5)

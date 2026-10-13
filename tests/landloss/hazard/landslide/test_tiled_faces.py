@@ -102,3 +102,39 @@ def test_a_pif_two_tiles_both_claim_is_kept_once(include_empty_tile):
     assert elements.index.is_unique
     assert len(elements) == 1
     assert sum(1 in found_tile.owned_pifs for found_tile in found.tiles) == 1
+
+
+def test_a_no_wall_piece_keeps_its_parent_and_the_wall_columns_through_the_stitch():
+    # A wall piece and a no-wall piece of one parent: the owning tile keeps both,
+    # the wall piece's line and the no-wall piece's None.
+    core = (0.0, 0.0, 200.0, 100.0)
+    table = pifs([1, 1], [[(100.5, 50.5), (101.5, 50.5)], [(100.5, 54.5)]])
+    table["has_wall"] = [True, False]
+    table["wall_line"] = gpd.GeoSeries(
+        [shapely.LineString([(100, 50), (102, 50)]), None], index=table.index
+    )
+    elements = gpd.GeoDataFrame(
+        {"siz_id": [1, 2], "seed_row": [49, 45], "seed_col": [100, 100]},
+        geometry=[shapely.box(100, 50, 102, 51), shapely.box(100, 54, 101, 55)],
+        index=pd.Index([1, 2], name="label"),
+        crs=constants.DEFAULT_CRS,
+    )
+    window = windows.Window(0, 0, 200, 100)
+    record = {
+        "tile": tiles.Tile(0, 0, window, window, core),
+        "path": None,
+        "table": table,
+        "elements": elements,
+        "owned": tiled.owned_parents(table, core),
+    }
+
+    found, stitched, owned_elements = tiled.globalise_found(
+        [record], Affine(1, 0, 0, 0, -1, 100)
+    )
+
+    assert list(stitched["has_wall"]) == [True, False]
+    assert stitched["parent_pif_id"].nunique() == 1
+    assert stitched["wall_line"].iloc[0].length == 2.0
+    assert stitched["wall_line"].iloc[1] is None
+    assert len(owned_elements) == 2
+    assert len(found.tiles) == 1

@@ -1,0 +1,1 @@
+The research script `research/slope_elements/gen_ground_map_qgis_layers.py` runs again on the reworked ground map. It reads the residual and polygonises the groundwater and residual with ground step 2's own settings, and draws the NLM groundwater depth as its class.

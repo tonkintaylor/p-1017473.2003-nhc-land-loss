@@ -130,14 +130,14 @@ and the Kingsbury rating per element are separate items of phase 3.
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from functools import cache
+from functools import cache, partial
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 from numpy.typing import ArrayLike, NDArray
-from rasterio import features
+from rasterio import Env, features
 from rasterio.transform import Affine
 from scipy import ndimage
 from shapely.geometry import shape as to_shape
@@ -957,7 +957,9 @@ def _march_uphill(
       behind the crest it last left; a climbing ray (a stack-dominant
     free-face's)
       takes every element facing the same way that it enters while still
-      evacuating, and that element's width then holds;
+      evacuating, and that element's width then holds; where the width is a
+      cell or more, it keeps its first cell past the crest even if that
+      cell's centre lies further back, and the band then ends there;
     - imminent: from the end of the evacuated band, it marks cells within the
       T-45 band or above the repose line from its own toe;
     - probe: the first element facing the same way that it meets and did not
@@ -991,6 +993,10 @@ def _march_uphill(
     imminent = np.ones(n_rays, dtype=bool)
     probe = np.ones(n_rays, dtype=bool)
     evac_end = np.full(n_rays, np.nan)
+    # Whether each ray has marked a cell yet, and how far behind its crest
+    # the first cell lies where it was kept past the band.
+    marked_any = np.zeros(n_rays, dtype=bool)
+    first_d = np.full(n_rays, np.nan)
 
     evac_parts: list[pd.DataFrame] = []
     imminent_parts: list[pd.DataFrame] = []
@@ -1046,10 +1052,22 @@ def _march_uphill(
         top_z[took] = z[absorb]
         top_d[took] = dist[absorb]
         band = e & ~absorb & ~own
-        within = band & (
-            dist - exit_d[index] <= width_m[current[index]] + _DISTANCE_SLACK_M
+        band_m = width_m[current[index]]
+        within = band & (dist - exit_d[index] <= band_m + _DISTANCE_SLACK_M)
+        # A band a cell or more wide keeps the ray's first cell past the
+        # crest, however far back its centre: across the grid's diagonal the
+        # nearest is root 2 cells back, past a 1 m band, and a polygon kept
+        # no ground behind its crest at all (the lead, 2026-10-13).
+        first = (
+            band
+            & ~within
+            & ~marked_any[index]
+            & (band_m + _DISTANCE_SLACK_M >= cell_size_m)
         )
+        first_d[index[first]] = dist[first]
+        within |= first
         marked = absorb | within
+        marked_any[index[marked]] = True
         if marked.any():
             evac_parts.append(
                 pd.DataFrame(
@@ -1064,7 +1082,10 @@ def _march_uphill(
         if absorb.any():
             absorbed_parts.append(pd.DataFrame({"ray": took, "element": lab[absorb]}))
         ended = band & ~within
-        evac_end[index[ended]] = exit_d[index[ended]] + width_m[current[index[ended]]]
+        evac_end[index[ended]] = np.fmax(
+            exit_d[index[ended]] + width_m[current[index[ended]]],
+            first_d[index[ended]],
+        )
         evac[index[ended | (evac[index] & stop)]] = False
 
         # The imminent band, from the first cell past the evacuated one.
@@ -1108,7 +1129,9 @@ def _march_uphill(
 
     # A ray stopped while evacuating (at a ridge, nodata or the edge) ends
     # its band where its width would have.
-    evac_end = np.where(np.isnan(evac_end), exit_d + width_m[current], evac_end)
+    evac_end = np.where(
+        np.isnan(evac_end), np.fmax(exit_d + width_m[current], first_d), evac_end
+    )
     return _UphillResult(
         evacuated=frame(evac_parts, ["ray", "cell", "dist", "owner"]),
         imminent=frame(imminent_parts, ["ray", "cell", "dist"]),
@@ -1804,8 +1827,50 @@ def _empty(
     )
 
 
+def _rays_and_crest_distance(
+    found: SlopeElements,
+    dem: ArrayLike,
+    elevation: NDArray[np.float64],
+    cell_size_m: float,
+    shared: dict | None,
+) -> tuple[_Rays, tuple[NDArray[np.intp], NDArray[np.float64], NDArray[np.intp]]]:
+    """The rays and the crest distances, from ``shared`` where it holds them.
+
+    What they read of the elements (labels, crests, fall lines, aspect, height
+    and run) is compared with what ``shared`` kept them for, so a call on
+    other elements works them out again and keeps those.
+    """
+    own = found.elements[["aspect_deg", "height_m", "run_m"]].to_numpy()
+    if shared is not None and (
+        shared.get("labels") is found.labels
+        and shared.get("layers") is found.layers
+        and shared.get("edge_roles") is found.edge_roles
+        and shared.get("dem") is dem
+        and shared.get("cell_size_m") == cell_size_m
+        and np.array_equal(shared["elements"], own, equal_nan=True)
+    ):
+        return shared["rays"], shared["crest_distance"]
+    rays = _crest_rays(found, elevation, cell_size_m)
+    crest_distance = _crest_distance(found, cell_size_m)
+    if shared is not None:
+        shared.update(
+            labels=found.labels,
+            layers=found.layers,
+            edge_roles=found.edge_roles,
+            dem=dem,
+            cell_size_m=cell_size_m,
+            elements=own,
+            rays=rays,
+            crest_distance=crest_distance,
+        )
+    return rays, crest_distance
+
+
 def _claims(
-    found: SlopeElements, rays: _Rays, uphill: _UphillResult, cell_size_m: float
+    found: SlopeElements,
+    rays: _Rays,
+    uphill: _UphillResult,
+    crest_distance: tuple[NDArray[np.intp], NDArray[np.float64], NDArray[np.intp]],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """The evacuated claims of each element, one per element and cell.
 
@@ -1817,6 +1882,12 @@ def _claims(
     a marked cell, its crest cell's for an own cell, -1 where its crest cell
     set out none) and ``on_element`` (the label of the cell).
 
+    Args:
+        found: The elements.
+        rays: The rays set out from the crest cells.
+        uphill: What the uphill march found.
+        crest_distance: From :func:`_crest_distance`.
+
     Returns:
         ``(claims, band)``: the claims, and every cell the rays marked before
         a cell reached twice by one element was kept once.
@@ -1824,7 +1895,7 @@ def _claims(
     labels = found.labels
     flat_labels = labels.ravel()
     n_cols = labels.shape[1]
-    own_cells, below_crest, crest_cells = _crest_distance(found, cell_size_m)
+    own_cells, below_crest, crest_cells = crest_distance
     own_element = flat_labels[own_cells]
     ray_at = np.full(labels.size, -1, dtype=np.int64)
     ray_at[rays.row * n_cols + rays.col] = np.arange(rays.row.size)
@@ -2008,6 +2079,7 @@ def build_slope_polygons(
     fill_thickness_m: pd.Series | None = None,
     element_ground: pd.DataFrame | None = None,
     barriers: ArrayLike | None = None,
+    shared: dict | None = None,
 ) -> SlopePolygons:
     """Build the failure polygons and their zones from the slope elements.
 
@@ -2027,12 +2099,19 @@ def build_slope_polygons(
             depth; missing elements take the slip plane alone.
         element_ground: Per element (indexed by label), the ground the
             Kingsbury zone is scored on: ``modification``, ``geology_value``,
-            ``prior_failure`` and ``gw_depth_m``
+            ``prior_failure`` and ``gw_depth_class``
             (:func:`landloss.hazard.landslide.urban.face_polygons.ground_of_elements`).
             None scores no zone, and every polygon takes
             :data:`BETA_SEISMIC_RUNOUT_UNRATED_M`.
         barriers: A boolean grid of the cells debris stops at (building
             outlines, roads); none where not given.
+        shared: A dict to pass again to every call on these same elements, DEM
+            and grid that differ only in ``element_type`` (as
+            :func:`landloss.hazard.landslide.instability_zones.with_walls`
+            sets it): the rays set out from the crest cells and each cell's
+            distance below its crest do not hang on it, so they are worked
+            out once and kept here. A call whose elements, DEM or grid differ
+            works them out again.
 
     Returns:
         The polygons, their cells by zone, and their links.
@@ -2100,7 +2179,9 @@ def build_slope_polygons(
     aspect = elements["aspect_deg"].to_numpy()
     n_cols = shape[1]
 
-    rays = _crest_rays(found, elevation, cell_size_m)
+    rays, crest_distance = _rays_and_crest_distance(
+        found, dem, elevation, cell_size_m, shared
+    )
     uphill = _march_uphill(
         found,
         elevation,
@@ -2111,7 +2192,7 @@ def build_slope_polygons(
         cell_size_m=cell_size_m,
     )
 
-    claims, band = _claims(found, rays, uphill, cell_size_m)
+    claims, band = _claims(found, rays, uphill, crest_distance)
     claims["depth"] = depth_l[claims["owner"].to_numpy(dtype=np.intp)]
     _set_planar_depths(
         claims,
@@ -2552,7 +2633,12 @@ def smooth_cell_outline(geometry: shapely.Geometry, cell_size_m: float) -> objec
 
 
 def polygon_geometries(
-    result: SlopePolygons, *, zone: str, crs: object, smooth: bool = True
+    result: SlopePolygons,
+    *,
+    zone: str,
+    crs: object,
+    smooth: bool = True,
+    cache: dict | None = None,
 ) -> gpd.GeoDataFrame:
     """Draw one zone of every polygon as shapely geometry.
 
@@ -2567,6 +2653,12 @@ def polygon_geometries(
             cells smoothed together less the evacuated smoothed alone, so its
             inner edge is the evacuated outline; the evacuated and inundated
             zones are smoothed on their own.
+        cache: A dict to keep the outlines drawn, to pass again over other
+            results on the same grid, such as the same polygons under another
+            scenario: an outline is a function of its cells alone (and, for
+            the imminent zone, of the evacuated cells too), so a polygon
+            whose cells are the same as one drawn before takes its outline
+            from the cache, unchanged.
 
     Returns:
         One row per polygon with cells in the zone: ``polygon`` and its
@@ -2578,29 +2670,79 @@ def polygon_geometries(
     if zone not in ZONES:
         msg = f"The zone has to be one of {ZONES}, not {zone!r}."
         raise ValueError(msg)
-    cell_size_m = abs(result.transform.a)
+    transform = result.transform
+    cell_size_m = abs(transform.a)
     chosen = result.cells[result.cells["zone"] == zone]
     evacuated = result.cells[result.cells["zone"] == EVACUATED]
     evacuated_by_polygon = dict(tuple(evacuated.groupby("polygon")))
+
+    def remember(key: tuple, make: Callable[[], object]) -> object:
+        """What ``make`` draws, kept in the cache under the key where there is one."""
+        if cache is None:
+            return make()
+        if key not in cache:
+            cache[key] = make()
+        return cache[key]
+
+    def edges(cells: pd.DataFrame, cell_set: bytes | None) -> shapely.Geometry:
+        return remember(
+            ("edges", transform, cell_set), partial(_cell_shape, cells, transform)
+        )
+
+    def smoothed(cells: pd.DataFrame, cell_set: bytes | None) -> shapely.Geometry:
+        return remember(
+            ("smoothed", transform, cell_set),
+            lambda: smooth_cell_outline(edges(cells, cell_set), cell_size_m),
+        )
+
+    def imminent_band(
+        cells: pd.DataFrame,
+        cell_set: bytes | None,
+        scar: pd.DataFrame,
+        scar_set: bytes | None,
+    ) -> shapely.Geometry:
+        # The imminent band lies against the evacuated ground, so its
+        # inner edge is the smoothed evacuated outline: the two smoothed
+        # together, less the evacuated alone. Smoothed on its own, each
+        # outline rounded its corners apart and left gaps between them.
+        return remember(
+            ("imminent", transform, cell_set, scar_set),
+            lambda: shapely.difference(
+                smooth_cell_outline(
+                    shapely.union(edges(scar, scar_set), edges(cells, cell_set)),
+                    cell_size_m,
+                ),
+                smoothed(scar, scar_set),
+            ),
+        )
+
+    def cells_of(cells: pd.DataFrame) -> bytes | None:
+        return None if cache is None else _cell_set(cells)
+
     names: list[int] = []
     shapes: list[shapely.Geometry] = []
-    for polygon, group in chosen.groupby("polygon"):
-        shape = _cell_shape(group, result.transform)
-        if smooth and zone == IMMINENT and polygon in evacuated_by_polygon:
-            # The imminent band lies against the evacuated ground, so its
-            # inner edge is the smoothed evacuated outline: the two smoothed
-            # together, less the evacuated alone. Smoothed on its own, each
-            # outline rounded its corners apart and left gaps between them.
-            scar = _cell_shape(evacuated_by_polygon[polygon], result.transform)
-            shape = shapely.difference(
-                smooth_cell_outline(shapely.union(scar, shape), cell_size_m),
-                smooth_cell_outline(scar, cell_size_m),
-            )
-        elif smooth:
-            shape = smooth_cell_outline(shape, cell_size_m)
-        names.append(int(polygon))
-        shapes.append(shape)
+    # One GDAL environment for every polygon's outline rather than one each.
+    with Env():
+        for polygon, group in chosen.groupby("polygon"):
+            cell_set = cells_of(group)
+            if smooth and zone == IMMINENT and polygon in evacuated_by_polygon:
+                scar = evacuated_by_polygon[polygon]
+                shape = imminent_band(group, cell_set, scar, cells_of(scar))
+            elif smooth:
+                shape = smoothed(group, cell_set)
+            else:
+                shape = edges(group, cell_set)
+            names.append(int(polygon))
+            shapes.append(shape)
     return gpd.GeoDataFrame({"polygon": names}, geometry=shapes, crs=crs)
+
+
+def _cell_set(cells: pd.DataFrame) -> bytes:
+    """A set of cells as bytes, the same whatever order the cells are in."""
+    flat = cells["row"].to_numpy(dtype=np.int64) * (1 << 32) + cells["col"].to_numpy(
+        dtype=np.int64
+    )
+    return np.unique(flat).tobytes()
 
 
 def _cell_shape(cells: pd.DataFrame, transform: Affine) -> shapely.Geometry:

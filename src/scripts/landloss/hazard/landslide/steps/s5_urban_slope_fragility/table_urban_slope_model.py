@@ -10,7 +10,7 @@ It reads ``config.py`` beside it, the same file the generation reads, and asks
 went, so the table cannot summarise a different run from the one last made.
 
 One row per Kingsbury zone and wall state: the polygon count, the median
-``theta`` and ``theta_base`` in m/s, the median amplification factor and the
+``theta`` and ``theta_base`` in g of site PGA, the median amplification factor and the
 rate factor, so the three parts of every adjusted median can be checked
 against plan section 4 side by side. The table goes under
 ``report/hazard/landslide/urban-slope-model/tab/``.

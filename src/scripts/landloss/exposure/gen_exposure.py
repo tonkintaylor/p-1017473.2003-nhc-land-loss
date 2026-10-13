@@ -16,9 +16,8 @@ The wall units read the ground module's siz table, GNS-only walls and pif cut
 and fill, so ``gen_ground.py`` runs before this module and ``gen_all.py`` holds
 that order. The hazard module's urban zones read the wall draws written here,
 so it runs after. The property age shares read the QV rating roll from the T:
-drive and exposure step 8's property ages, which no orchestrator runs: run
-``gen_rwt_age.py`` and ``table_rwt_age_by_suburb.py`` by hand first, or the
-age step stops and says so.
+drive and exposure rw step 8's property ages and per-suburb table, which run
+just before them over the same extent.
 """
 
 from scripts.landloss.exposure import config
@@ -51,6 +50,13 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population import (
     gen_wall_population,
     gen_wall_probability,
     gen_wall_units,
+)
+from scripts.landloss.exposure.rw.steps.s8_infer_rwt_age import (
+    config as rwt_age_config,
+)
+from scripts.landloss.exposure.rw.steps.s8_infer_rwt_age import (
+    gen_rwt_age,
+    table_rwt_age_by_suburb,
 )
 from scripts.landloss.exposure.steps.s1_address_spine import (
     config as spine_config,
@@ -150,13 +156,24 @@ def main(*, extent, realisation_ids, world_ids):
                 ),
             ),
             (
+                # Step 8 dates the claim properties step 3 counted dwellings on,
+                # so it runs after step 3 and before the wall age shares that
+                # read it.
+                "rw s8, wall age by property",
+                lambda: gen_rwt_age.main(
+                    extent=extent, use_cached_extent=rwt_age_config.USE_CACHED_EXTENT
+                ),
+            ),
+            (
+                "rw s8, wall age by suburb",
+                lambda: table_rwt_age_by_suburb.main(extent=extent),
+            ),
+            (
                 # The wall age shares give the wall units their age (the lead,
                 # 2026-10-07); they read QV (on T:), exposure step 8 and the
                 # LINZ properties, so they run before the wall units.
                 "rw s6, wall age",
-                lambda: gen_wall_age.main(
-                    extent=extent, age_extent=wall_config.AGE_EXTENT
-                ),
+                lambda: gen_wall_age.main(extent=extent, age_extent=extent),
             ),
             (
                 "rw s6, wall units",

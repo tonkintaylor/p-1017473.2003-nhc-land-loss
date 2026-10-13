@@ -21,7 +21,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05 (now exposure rw step 6); the per-zone fragility is next.
 
-**Updated:** 2026-10-09
+**Updated:** 2026-10-13
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -96,8 +96,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   landslide, through its wall, or by localised failure; a polygon with a wall
   fails with the wall, and if any polygon on a wall fails the wall has failed.
   Walls are drawn per exposure world, failures per world and earthquake, each
-  polygon on a lognormal fragility on PGV with a low, medium or high rate
-  setting.
+  polygon on a lognormal fragility on site PGA (PGV until 2026-10-12) with
+  a low, medium or high rate setting.
 - [x] Build the terrain derivatives at 1 to 100 m (ground step 1), the ground map
   (ground step 2) and the slope units (landslide step 1).
 - [x] Delineate polygons from banded slope and aspect patches (the old steps 6 and 7);
@@ -147,13 +147,22 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   and none-walled runs stay as bounds; `gen_exposure.main` runs the wall units and draws, and
   `gen_hazard.main` the zones of each world's walls (landslide step 4).
 - [~] Attach a fragility per polygon (landslide step 5), on landslide step 4's zones of each
-  world's wall draw (2026-10-06); built, with placeholder medians,
-  dispersion and rate factors until the anchoring
-  (`.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, a
-  skeleton for the reviewer to develop).
+  world's wall draw (2026-10-06). The no-wall curve was set by the lead on
+  site PGA on 2026-10-12 (p50 2.0 g at zone 3 and 0.6 g at zone 5, flatter
+  at low susceptibility), and the wall type curves on 2026-10-13: one per
+  type, flattening as they strengthen from garden timber on the zone 5 curve
+  to reinforced concrete from July 1992 (p50 5.12 g), with walls 2 m and over
+  at 0.85 times. Neither is rerun on the pilot yet; the rate factors are
+  still placeholders.
 - [x] Draw the urban failures per world and earthquake (landslide step 6).
-- [ ] Run per territorial authority, tiled, with the static layers built once
-  (`.agents/plans/running-per-territorial-authority.md`).
+- [~] Run per territorial authority, tiled, with the static layers built once
+  (`.agents/plans/running-per-territorial-authority.md`). Landslide step 4's
+  tiles now build on `TILE_WORKERS` processes, are kept on disk and resume after
+  a stop (2026-10-11); identical to the one-process run on the Porirua pilot,
+  and over Porirua in 10 minutes rather than about 3.7 hours, with every
+  landslide and vul output unchanged.
+  Each tile now does about a third of the work it did (repeated drawing and
+  rays shared, 144 s to 46 s on one worker); Upper Hutt time and memory are next.
 
 **Demand and scenario.** The demand is the TS1170.5 2,500-year field as the
 standard gives it, per site class (**T-26**, closed 2026-10-02). Where a model
@@ -200,7 +209,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   Landslide step 3 is configured to place that coverage directly. None has been run over
   Wellington. Landslide step 2 already takes each realisation's MM threshold from the
   TS1170.5-derived PGV; its separate Marc amount uses the plan's central
-  interface sensitivity rather than final NSHM source geometry.
+  interface sensitivity rather than final NSHM source geometry. The study's
+  area share of that amount is multiplied by `BETA_MARC_SHARE_FACTOR` (2.3,
+  the lead's interim choice on 2026-10-13): weighting the share by Marc's own
+  shaking, with the rupture beneath Lower Hutt, gave 2.3 times the area share.
+  Even so Lower Hutt gets about 1.1 km² against about 4.0 km² from ESNZ as
+  step 3 uses it; the asperity depth, not the share, sets most of that gap.
 - **Kritikos model 2** (`.agents/plans/building-kritikos-2015-landslide-model.md`)
   is built end to end: landslide step 8 (then step 11) has run over `wlg-pilot` with the real AF250
   traces and writes H and a coverage raster per realisation, and landslide step 3 reads
@@ -273,7 +287,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     held to where that line meets level ground;
   - **amplification by face height and ridge or terrace setting**, 1.0 for
     most house-lot faces, in place of the placeholder that gives every 60°
-    wall 1.5 [brabhaharan_2018];
+    wall 1.5 [brabhaharan_2018]; superseded on 2026-10-12 by the lead's
+    single factor of 1.3 off NLM flatland;
   - **the anchoring**: anchors as shares of face area; A16, A19 and A21 read
     their sources too strongly; the 2013 Cook Strait earthquakes, 0.21 to
     0.26 g in Wellington with two small failures on modified ground
@@ -390,6 +405,38 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
   deprecated and is to be retired; the shared slope table is now the two-band
   one, so the old pilot and toy figure scripts read it too.
+- **Landslide step 4 aligns walled polygons with the wall line (2026-10-13)**:
+  after each scenario's zones are built (and stitched, over tiles), the evacuated
+  polygons of walled elements are cut at the wall unit's line (the ends projected
+  on, the part downhill removed) and the gaps to the line filled
+  (`wall_trim.align_unit`, `zone_alignment.align_zones`). Imminent and inundated
+  zones are left as built (the lead, 2026-10-13), except that an aligned
+  polygon's imminent zone loses what its evacuated polygon now holds, so the two
+  never overlap; evacuated areas and depths are redrawn. Only units walled in the scenario are aligned; an unwalled polygon
+  stays as built. Pilot rebuilt from ground step 3 to the loss tables on
+  2026-10-13: 1,339 no-wall pif pieces, 5,689 wall units (961 GNS-only, 857
+  before), 3,340 expected walls (3,300 before); world 0 aligned 2,606 polygons,
+  17,578 m2 trimmed and 4,535 m2 filled. Downstream, a wall's line now sits on
+  its polygon's edge, so vul's inside test gives fewer walls `is_evacuated`
+  (1,128 to 424 against today's code on the old zones) and more `is_inundated`
+  (300 to 798); walls with any flag, one replacement each, barely move (64.1%
+  to 63.3%). The drop is the wall's own polygon: walls inside only their own
+  evacuated polygon fall from 935 to 235 (all of them `failed_with_polygon`, so
+  already flagged by shaking), those inside another polygon from 146 to 134. Method in `s4_wall_zones_method.md`.
+- **Imminent land touches its own landslide (2026-10-13)**: step 4 deletes every
+  imminent piece not touching its own polygon's evacuated ground, walled or not
+  (`zone_alignment.imminent_touching`, the lead). Pilot world 0: 695 pieces,
+  1,029 m² of 147,015 m² (−0.7%), 11 imminent zones gone; realisation 0's
+  imminent land −0.8%. Damage and loss unchanged, as vul does not read imminent
+  land yet (T-45).
+- **Landslide step 4 tiles in parallel (2026-10-11)**: `TILE_WORKERS` worker
+  processes, each tile kept on disk as built and a stopped run resumed from the
+  tiles not yet built, cleared when the record (found elements, wall units and
+  draws, scenarios, settings, code) changes; outputs unchanged on the Porirua
+  pilot (spec `doc/specs/optimise-landslide-s4-wall-zones/spec.md`). Each tile
+  also draws only the polygons it keeps, draws a cell set once across the
+  scenarios and shares the rays between them (same outputs, about three times
+  faster: 144 s to 46 s on one worker).
 - **Landslide step 4 (2026-10-09)** rebuilds ground step 3's found elements
   from a compact store, recomputing their terrain layers from the DEM, and
   reads back each tile's window cut down to its buildings; on the tiled
@@ -439,6 +486,13 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     widths are now the same. 185 of world 0's 1,570 insured sloping walls
     have no polygon in landslide step 6 (573 of 2,004 before): 175 GNS-only, 4 on
     `low_height` pifs and 6 at the DEM margin landslide step 5 leaves out.
+  - **Every ray keeps its first cell past the crest (the lead, 2026-10-13).**
+    Across the grid's diagonal that cell is √2 m back, past the 1 m floor, so
+    12,117 of Lower Hutt's 13,684 low, diagonal polygons kept no ground behind
+    their crest (wall WU0048768's drew as a string of discs). Fixed in the
+    evacuated band; the imminent band and the 1 m runout miss the diagonal
+    cell the same way and are not yet fixed. Lower Hutt needs landslide steps 4
+    to 6 rerun.
   - **Buildings, wall lines and boundaries (the lead, 2026-10-06).** Pifs
     with most of their pips in a LINZ building outline are dropped (334 on
     the pilot); each wall unit is one line of at most 3 bends and no
@@ -619,9 +673,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    style per face, the repose angle and the amplification rule. Then build
    the face-based polygons, rerun the pilot and record the counts and
    timings.
-4. Develop and run the anchoring on the face polygons, after the lead decides
-   the reviewer's answers in the anchoring skeleton and the anchor table is
-   edited to match.
+4. Rerun landslide steps 5 and 6 on the pilot with the no-wall curve the lead
+   set on 2026-10-12, and compare the failed polygons by zone with the last
+   run.
 5. Run per territorial authority (per-TA plan).
 6. Ask the supplier what an ESNZ cell's probability is a probability of, and
    what shaking it is conditioned on, and in particular whether it keeps the
@@ -652,14 +706,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 13. Add walls on the flat land, where no wall unit is today. (A wall on a
     property boundary is one unit counted on each property it enters,
     2026-10-06; the loss side's use of it is a vul rw Next item.)
-14. **Evaluate the wall curves in PGA in landslide step 6** (a potential future step,
-    the lead, 2026-10-06; landslide step 6 plan, "Potential future improvements"): the
-    wall curves are published in PGA [koutsoupaki_2023] and landslide step 5 converts
-    their medians to PGV with the TS1170.5 PGV/PGA ratio. That is exact
-    while shaking steps 4 and 5 scale PGA and PGV by one draw, but landslide step 6
-    could sample the realised PGA field at the walled polygons and evaluate
-    the curves in PGA directly, removing the ratio and the site class from
-    the wall median.
+14. **Done 2026-10-12: the urban model is on site PGA.** Every curve, wall and
+    no wall, is evaluated on site PGA as published; landslide step 6 samples
+    shaking step 4's PGA field, and the PGV/PGA conversion is gone. On the
+    Porirua pilot the failures and wall outcomes matched the PGV run exactly.
 15. **Stop urban runout at building outlines** (the lead, 2026-10-07, not
     yet built): pass the LINZ building outlines ground step 3 already rasterises
     (`building_mask()`) as the `barriers` grid of `build_slope_polygons`, so
@@ -737,7 +787,8 @@ otherwise.
   points (the cells 1, 3 and 5 cells below each pip) that give a vertical wall a
   height; and that every soil pif is a siz, because a pip already stands
   steeper than the soil angle.
-- **Converting the PGA wall curves to PGV** at each site's ratio, as built.
+- **Converting the PGA wall curves to PGV** at each site's ratio, as built
+  until 2026-10-12; the model is now on site PGA.
 - **SLIDE's mixed fill classes.** "Mixed fill/rock", "Mixed fill/colluvium"
   and "Mixed fill/colluvium/rock", 65% of the SLIDE area over the pilot, are
   mapped to uncontrolled fill (`landloss.hazard.landslide.ground_map`), which

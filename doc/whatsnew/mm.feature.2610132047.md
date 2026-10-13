@@ -1,0 +1,1 @@
+Landslide step 2 multiplies the study's area share of the Marc et al. (2016) event total by `BETA_MARC_SHARE_FACTOR` (2.3), an interim allowance for Wellington sitting above the rupture where Marc's shaking is strongest. The Hancox large-landslide coverage, and so the area landslide step 3 places, rises 2.3 times; `model.run()` takes the factor as `share_factor`.

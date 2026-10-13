@@ -12,7 +12,7 @@ The world is built here by hand, so every outcome can be worked out on paper:
   fill wall along the crest of claim 2's face (on claim 2's property but far
   from its insured land, so uninsured), and a wall on claim 2's flat land
   with no polygon;
-- a PGV grid, and one large-model landslide whose evacuated polygon covers
+- a site PGA grid, and one large-model landslide whose evacuated polygon covers
   claim 2's face.
 
 The stages run in the order the step scripts run them, and each hand-over goes
@@ -35,9 +35,10 @@ and checked against the columns landslide step 5 and the wall probability read.
 The draws are forced so the assertions are deterministic whatever the seed:
 every wall unit is walled in the world and every unit is made a wall
 (``p_wall`` set to 1 after the probability table is built), the wall medians
-of every type are far below the PGV for walls under 2 m (the toe and crest
-units, 1.8 m) and far above it for walls 2 m and over (the flat unit, 3 m),
-whatever type and fill or cut shift a wall draws, and the PGV is far above
+of every type are far below the PGA for walls under 2 m (the toe and crest
+units, 1.8 m) and, through a patched height factor, far above it for walls
+2 m and over (the flat unit, 3 m), whatever type and fill or cut shift a wall
+draws, and the PGA is far above
 every localised median, so every polygon fails and the tall flat-land wall
 stands. The wall units are all on sloping ground
 as the ground and exposure steps build them; the flat one is flagged
@@ -116,8 +117,8 @@ from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation,
 )
 from scripts.landloss.hazard.shaking.steps.s2_site_class import gen_site_class
-from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation import (
-    gen_pgv_realisations,
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation import (
+    gen_pga_realisations,
 )
 from scripts.landloss.vul.landslide.land.steps.s3_landslide_land_damage import (
     gen_landslide_land_damage,
@@ -158,22 +159,22 @@ RATE_SETTING = "medium"
 # Every face slopes down to the south.
 SOUTH = 180.0
 
-# The earthquake's PGV everywhere, m/s: far above every localised median (3 m/s
-# at most before amplification) and every median under 2 m, far below the
-# median of 2 m and over.
-PGV_M_S = 100.0
-# Shaking step 3's PGV at the return period over the unscaled PGA: the ratio a PGA wall
-# median is converted at.
-RATIO_M_S_PER_G = 1.2
+# The earthquake's site PGA everywhere, g: far above every localised median
+# (the packaged curve's p50 is under 9 g at a rating of 0, before
+# amplification) and every median under 2 m, far below the median of 2 m
+# and over.
+PGA_G = 1e4
 SITE_CLASS = 3
-# The wall table medians, in g on PGA: one that fails at any PGV, one that
-# never does, whatever the fill or cut shift.
+# The wall table medians, in g on PGA: one that fails at any PGA, and one,
+# reached through a patched height factor for walls 2 m and over, that never
+# does, whatever the fill or cut shift.
 ALWAYS_FAILS_G = 1e-5
-NEVER_FAILS_G = 1e4
+NEVER_FAILS_G = 1e6
+TALL_HEIGHT_FACTOR = NEVER_FAILS_G / ALWAYS_FAILS_G
 WALL_BETA = 0.6
 
 # Toe and crest walls are medium and under 2 m; the flat wall is large and
-# 2 m and over, so its height class alone keeps it standing.
+# 2 m and over, so its height factor alone keeps it standing.
 WALL_UNIT_HEIGHTS_M = {"toe": 1.8, "crest": 1.8, "flat": 3.0}
 FACE_ANGLE_DEG = 45.0
 
@@ -308,7 +309,8 @@ def make_ground_map():
             "modification": ["natural"],
             "geology_value": [susceptibility.GEOLOGY_COLLUVIUM_OR_ALLUVIUM],
             "prior_failure": ["none"],
-            "gw_depth_m": [4.0],
+            "gw_depth_class": ["well_drained"],
+            "is_flatland": [False],
         },
         geometry=[rect(GRID_X_MIN, GRID_Y_MAX - GRID_HEIGHT_M, 120, GRID_Y_MAX)],
         crs=constants.DEFAULT_CRS,
@@ -370,29 +372,20 @@ def make_footprints():
 
 
 def make_wall_table(path):
-    """A wall type table in the packaged CSV's form, medians forced by height."""
-    short, tall = wall_type_fragility.HEIGHT_CLASSES
-    rows = []
-    for wall_type in wall_type_fragility.WALL_TYPES:
-        for height_class in (short, tall):
-            theta = NEVER_FAILS_G if height_class == tall else ALWAYS_FAILS_G
-            p15, p50 = wall_type_fragility.lognormal_to_percentiles(theta, WALL_BETA)
-            rows.append(
-                {
-                    "wall_type": wall_type,
-                    "height_class": height_class,
-                    "im": fragility.PGA_IM,
-                    "p15": float(p15),
-                    "p50": float(p50),
-                    "published_height_m": 3.0,
-                    "published_fs": 1.5,
-                    "type_factor": 1.0,
-                    "height_effect": "none",
-                    "damage_state": "moderate",
-                    "source": f"synthetic_{height_class}",
-                    "basis": "forced for the chain test",
-                }
-            )
+    """A wall type table in the packaged CSV's form, every median failing."""
+    p15, p50 = wall_type_fragility.lognormal_to_percentiles(ALWAYS_FAILS_G, WALL_BETA)
+    rows = [
+        {
+            "wall_type": wall_type,
+            "im": fragility.PGA_IM,
+            "p15": float(p15),
+            "p50": float(p50),
+            "damage_state": "moderate",
+            "source": "synthetic",
+            "basis": "forced for the chain test",
+        }
+        for wall_type in wall_type_fragility.WALL_TYPES
+    ]
     pd.DataFrame(rows, columns=list(wall_type_fragility.TABLE_COLUMNS)).to_csv(
         path, index=False
     )
@@ -448,7 +441,7 @@ WORK_DIRS = (
     (gen_urban_slope_fragility, "landslide"),
     (gen_urban_slope_realisation, "landslide"),
     (gen_site_class, "shaking"),
-    (gen_pgv_realisations, "shaking"),
+    (gen_pga_realisations, "shaking"),
     (gen_wall_probability, "exposure"),
     (gen_wall_age, "exposure"),
     (gen_wall_population, "exposure"),
@@ -470,7 +463,7 @@ def write(frame, path):
     return pd.read_parquet(path)
 
 
-def flat_wall_states(walls, *, pgv_rp, pga, wall_table):
+def flat_wall_states(walls, *, wall_table):
     """Vul shaking rw step 9, on its script's helpers, for one world and earthquake."""
     step = gen_wall_damage_state
     flat = step.flat_land_walls(walls)
@@ -479,11 +472,10 @@ def flat_wall_states(walls, *, pgv_rp, pga, wall_table):
         flat,
         world_id=WORLD,
         realisation_id=EARTHQUAKE,
-        pgv_m_s=sample_at_points(
-            gen_pgv_realisations.pgv_path(EARTHQUAKE, extent="wlg-pilot"), points
+        pga_g=sample_at_points(
+            gen_pga_realisations.pga_path(EARTHQUAKE, extent="wlg-pilot"), points
         ),
         site_class=step.sample_site_class(points, extent="wlg-pilot"),
-        pgv_pga_ratio=fragility.pgv_pga_ratio_m_s_per_g(pgv_rp, pga, points),
         table=wall_table,
     )
 
@@ -537,15 +529,17 @@ def chain(tmp_path_factory):
         patch.setattr(
             gen_terrain_derivatives, "TERRAIN_DIR", root / "landslide" / "terrain"
         )
+        _, tall = wall_type_fragility.HEIGHT_CLASSES
+        patch.setitem(wall_type_fragility.HEIGHT_FACTORS, tall, TALL_HEIGHT_FACTOR)
         yield run_chain(root)
 
 
 def run_chain(root):
     """The stages, in run order, each reading what the one before it wrote."""
     extent = "wlg-pilot"
-    pgv_path = gen_pgv_realisations.pgv_path(EARTHQUAKE, extent=extent)
-    pgv_path.parent.mkdir(parents=True, exist_ok=True)
-    write_raster(constant_grid(PGV_M_S, SHAKING_CELL_M), pgv_path)
+    pga_path = gen_pga_realisations.pga_path(EARTHQUAKE, extent=extent)
+    pga_path.parent.mkdir(parents=True, exist_ok=True)
+    write_raster(constant_grid(PGA_G, SHAKING_CELL_M), pga_path)
     write_raster(
         constant_grid(SITE_CLASS, SHAKING_CELL_M),
         gen_site_class.site_class_path(extent=extent),
@@ -555,8 +549,6 @@ def run_chain(root):
     )
     tpi_path.parent.mkdir(parents=True, exist_ok=True)
     write_raster(constant_grid(0.0, SHAKING_CELL_M), tpi_path)
-    pgv_rp = constant_grid(RATIO_M_S_PER_G, SHAKING_CELL_M)
-    pga = constant_grid(1.0, SHAKING_CELL_M)
     wall_table = make_wall_table(root / "retaining-wall-type-fragility.csv")
 
     insured = write(
@@ -640,8 +632,6 @@ def run_chain(root):
         drawn,
         wall_table=wall_table,
         rate_setting=RATE_SETTING,
-        pgv=pgv_rp,
-        pga=pga,
         extent=extent,
     )
     model = fragility_step.add_world_id(model, WORLD)
@@ -659,17 +649,17 @@ def run_chain(root):
     outcomes = pd.read_parquet(
         realisation_step.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent=extent)
     )
-    read_model, _, pgv, read_large = realisation_step.read_inputs(
+    read_model, _, pga, read_large = realisation_step.read_inputs(
         WORLD, EARTHQUAKE, extent=extent
     )
     rng = realisation_seed(
         constants.BASE_SEED, EARTHQUAKE, urban.URBAN_STREAM, world_id=WORLD
     )
-    realised = realisation_step.realise(read_model, pgv, read_large, rng)
+    realised = realisation_step.realise(read_model, pga, read_large, rng)
 
     # Vul shaking rw step 9, flat-land walls only.
     states = write(
-        flat_wall_states(walls, pgv_rp=pgv_rp, pga=pga, wall_table=wall_table),
+        flat_wall_states(walls, wall_table=wall_table),
         gen_wall_damage_state.wall_damage_state_path(WORLD, EARTHQUAKE, extent=extent),
     )
 
@@ -1041,14 +1031,11 @@ def test_the_uninsured_walls_polygon_takes_the_wall_fragility_and_writes_no_loss
     assert pd.isna(row[RW_ID_COLUMN])
     assert row[urban.WALL_STATE_COLUMN] == geometry.FILL_WALL
     assert row["fragility_basis"] == fragility.WALL_BASIS
-    assert row["fragility_source"] == "synthetic_under_2_m"
+    assert row["fragility_source"] == "synthetic"
     # The crest wall retains fill, so its own position shifts its median.
     assert drawn.loc[crest, geometry.WALL_POSITION_COLUMN] == geometry.FILL
     assert row["theta"] == pytest.approx(
-        ALWAYS_FAILS_G
-        * wall_type_fragility.FILL_CAPACITY_FACTOR
-        * RATIO_M_S_PER_G
-        / row["amp_factor"]
+        ALWAYS_FAILS_G * wall_type_fragility.FILL_CAPACITY_FACTOR / row["amp_factor"]
     )
 
     assert crest not in set(chain["walls"][urban.WALL_LINE_ID_COLUMN])

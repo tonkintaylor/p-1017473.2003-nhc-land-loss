@@ -4,15 +4,15 @@
 
 Run first, over the same extent: landslide step 5 (the model file for each
 world, on landslide step 4's zones of that world's wall draw), the wall
-population for each world (exposure rw step 6, the same draw), shaking step 5
-(the PGV field for each earthquake) and landslide step 3 (the large-model
+population for each world (exposure rw step 6, the same draw), shaking step 4
+(the site class PGA field for each earthquake) and landslide step 3 (the large-model
 realisation for each earthquake).
 
 For each world ``w`` and earthquake ``r``, following plan section 5.1:
 
-1. Reads the model file for ``w`` and the PGV field for ``r``, and samples PGV
-   at each polygon's representative point.
-2. Evaluates each row's fragility at that PGV and draws a uniform against it
+1. Reads the model file for ``w`` and the site PGA field for ``r``, and
+   samples PGA at each polygon's representative point.
+2. Evaluates each row's fragility at that PGA and draws a uniform against it
    from the ``"urban"`` stream seeded on ``r`` and ``w``. A fragility is a
    probability of failure at a level of shaking, and the draw is what decides
    whether each polygon fails. Rows stay in model-file order, sorted by
@@ -72,8 +72,8 @@ from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_
     urban_slope_model_path,
 )
 from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import config
-from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation.gen_pgv_realisations import (
-    pgv_path,
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation.gen_pga_realisations import (
+    pga_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 
@@ -144,7 +144,7 @@ class Realised(NamedTuple):
     large_evacuated: gpd.GeoDataFrame
 
 
-def realise(model, pgv, large, rng):
+def realise(model, pga, large, rng):
     """Draw the failures of one pair and resolve supersession, then absorption.
 
     Supersession is found first, on the failed rows only, and mapped onto
@@ -155,14 +155,14 @@ def realise(model, pgv, large, rng):
 
     Args:
         model: The world's model file, in its own order.
-        pgv: PGV at each row's representative point, on ``model.index``.
+        pga: Site PGA at each row's representative point, on ``model.index``.
         large: The large-model realisation of the earthquake.
         rng: The urban stream of the pair.
 
     Returns:
         The draws and the resolution of every row, as a :class:`Realised`.
     """
-    draws = urban.draw_failures(model, pgv, rng)
+    draws = urban.draw_failures(model, pga, rng)
     failed = draws[urban.FAILED_COLUMN].to_numpy(dtype=bool)
     evacuated = gpd.GeoSeries(model[urban.EVACUATED_GEOMETRY_COLUMN])
 
@@ -204,20 +204,20 @@ def read_inputs(world_id, realisation_id, *, extent):
             ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
     Returns:
-        ``(model, walls, pgv_m_s, large)``: the model file, the wall
-        population, the PGV sampled at each polygon's representative point,
+        ``(model, walls, pga_g, large)``: the model file, the wall
+        population, the site PGA sampled at each polygon's representative point,
         and the large-model realisation.
     """
     model = gpd.read_parquet(urban_slope_model_path(world_id, extent=extent))
     walls = gpd.read_parquet(wall_population_path(world_id, extent=extent))
-    pgv = urban.sample_pgv(
+    pga = urban.sample_pga(
         gpd.GeoSeries(model[urban.REP_POINT_COLUMN]),
-        pgv_path(realisation_id, extent=extent),
+        pga_path(realisation_id, extent=extent),
     )
     large = gpd.read_parquet(
         realisation_path(extent=extent, realisation_id=realisation_id)
     )
-    return model, walls, pgv, large
+    return model, walls, pga, large
 
 
 def describe_draw(model, realised):
@@ -229,7 +229,7 @@ def describe_draw(model, realised):
     absorbed = realised.absorbed_by != urban.NONE
     superseded = realised.superseded_by != urban.NONE
     p_fail = realised.draws[urban.P_FAIL_COLUMN]
-    no_pgv = realised.draws[urban.PGV_COLUMN].isna()
+    no_pga = realised.draws[urban.PGA_COLUMN].isna()
     no_median = model[urban.THETA_COLUMN].isna()
     print(RULE)
     print(f"Failed: {int(failed.sum()):,} of {len(model):,} polygons")
@@ -239,7 +239,7 @@ def describe_draw(model, realised):
     if p_fail.isna().any():
         print(f"  not drawn (p_fail NaN): {int(p_fail.isna().sum()):,}")
         print(f"    with no fragility median: {int(no_median.sum()):,}")
-        print(f"    off the PGV grid: {int((no_pgv & ~no_median).sum()):,}")
+        print(f"    off the PGA grid: {int((no_pga & ~no_median).sum()):,}")
 
 
 def describe_areas(combined):
@@ -310,12 +310,12 @@ def run_pair(world_id, realisation_id, *, extent):
     print(
         f"World {world_id}, earthquake {realisation_id}, stream {urban.URBAN_STREAM!r}"
     )
-    model, walls, pgv, large = read_inputs(world_id, realisation_id, extent=extent)
+    model, walls, pga, large = read_inputs(world_id, realisation_id, extent=extent)
     describe_rate_setting(model)
     rng = realisation_seed(
         constants.BASE_SEED, realisation_id, urban.URBAN_STREAM, world_id=world_id
     )
-    realised = realise(model, pgv, large, rng)
+    realised = realise(model, pga, large, rng)
     describe_draw(model, realised)
 
     urban_rows = urban.to_landslide_rows(model, realised.draws, realised.survivors)

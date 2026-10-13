@@ -32,7 +32,7 @@ realisation:
    evacuated, imminent and inundated zones. Whether a face carries a wall is a
    probability from a points score, a GNS floor and claim counts, drawn per
    exposure world, and a drawn wall's type comes from its age, height and road
-   frontage (exposure rw step 6). Each zone polygon gets a fragility on PGV: the retaining
+   frontage (exposure rw step 6). Each zone polygon gets a fragility on site PGA: the retaining
    wall curve for the wall's type where a wall is drawn, and a Kingsbury rating
    curve where none is.
 3. **One draw per earthquake.** Landslide step 6 draws every urban polygon, lets a large
@@ -204,7 +204,7 @@ used_by = "Flatland mask on the large models, ground map, groundwater"
 name = "Shaking realisation (PGA, PGV)"
 source = "Hazard shaking steps 2 to 5, TS1170.5 2,500-year by site class"
 licence = "Derived"
-used_by = "Coverage models, urban fragility (PGV/PGA ratio), landslide step 6 demand"
+used_by = "Coverage models (PGV); landslide step 6 and flat-land wall demand (site PGA)"
 
 [[inputs]]
 name = "ESNZ earthquake-induced landslide probability, 32 m"
@@ -282,7 +282,7 @@ tables = []
 checked = "2026-10-07"
 narrative = """
 One planar partition of the extent. Each piece takes its material,
-modification, prior failure, groundwater depth and strength set from the first
+modification, prior failure, groundwater class and strength set from the first
 source in a precedence order (SLIDE, then 1:50k geology, NLM, WCC earthworks)
 whose polygon contains it (LS-A58).
 
@@ -548,7 +548,7 @@ title = "Urban fragility: one curve per polygon"
 module = "hazard / landslide"
 folder = "src/scripts/landloss/hazard/landslide/steps/s5_urban_slope_fragility"
 scripts = ["gen_urban_slope_fragility.py", "fig_urban_slope_model.py"]
-inputs = ["zones_world", "drawn_walls", "ground_map", "pgv_realisation", "tpi_100m"]
+inputs = ["zones_world", "drawn_walls", "ground_map", "tpi_100m"]
 outputs = ["urban_model"]
 layers = ["urban_model_theta", "zones_world"]
 visible = 1
@@ -562,27 +562,31 @@ tables = [
 ]
 checked = "2026-10-07"
 narrative = """
-Each polygon gets a lognormal fragility on PGV, a median θ and a dispersion β:
+Each polygon gets a lognormal fragility on site PGA, a median θ in g and a
+dispersion β:
 
 - **Walled polygon** (its unit drew a sloping wall in this world, insured or
   not; LS-A44): the Koutsoupaki (2023) curve for the wall's type and height
   class, under or over {HEIGHT_CLASS_SPLIT_M} m (the curves and table below). Its
   median is multiplied by {FILL_CAPACITY_FACTOR} for fill or
-  {CUT_CAPACITY_FACTOR} for cut, then converted from PGA to PGV at the site's
-  ratio (LS-A45, LS-A46; RW-A23, RW-A33). New timber pole and reinforced concrete from July 1992
+  {CUT_CAPACITY_FACTOR} for cut, and drawn on site PGA as published, with no
+  conversion (LS-A45, LS-A46; RW-A23, RW-A33). New timber pole and reinforced concrete from July 1992
   are the block/RC curve ×1.3 and ×1.5; for gravity masonry, old timber pole,
   block/RC and landscaper timber the taller wall takes the weaker curve.
-- **Unwalled polygon**: a median that falls log-linearly with the Kingsbury
-  (1995) rating, from {LOCALISED_THETA_AT_ZERO_RATING_M_S} m/s at rating 0 to {LOCALISED_THETA_AT_MAX_RATING_M_S} m/s at 150, β {LOCALISED_FRAGILITY_BETA} (LS-A32).
+- **Unwalled polygon**: a curve on site PGA whose p15 and p50 fall
+  log-linearly with the Kingsbury (1995) rating, p50 2.0 g at rating 80 and
+  0.6 g at 145, β from 1.38 at zone 1 to 0.67 at zone 5 (LS-A32).
 
 Every median is then divided by a topographic amplification factor (LS-A47)
 and multiplied by a rate factor (LS-A48).
 
-The **calibration** in `validations/urban/` fits the unwalled curve to the
-Kaikōura area share and five polygon anchors (LS-A49). Its adopted fit (θ 2.46
-to 0.492 m/s, β 0.724) **has run but is not in the code yet** (LS-A32).
+The **calibration** in `validations/urban/` fitted the earlier PGV form of the
+unwalled curve to the Kaikōura area share and five polygon anchors (LS-A49).
+Its fit (θ 2.46 to 0.492 m/s, β 0.724) was never ported; on 2026-10-12 the
+lead set the curve on site PGA by judgement against the same anchors instead
+(LS-A32).
 
-Pilot (2026-10-07): 5,277 polygons (3,247 no wall, 1,543 cut wall, 487 fill
+Pilot (2026-10-07, on the earlier PGV curves): 5,277 polygons (3,247 no wall, 1,543 cut wall, 487 fill
 wall). Median θ: 0.99 m/s no wall, 0.42 cut wall, 0.32 fill wall, against a
 realised PGV of about 1.37 m/s.
 """
@@ -594,7 +598,7 @@ title = "One draw: urban failures, supersession and absorption"
 module = "hazard / landslide"
 folder = "src/scripts/landloss/hazard/landslide/steps/s6_urban_slope_realisation"
 scripts = ["gen_urban_slope_realisation.py", "fig_urban_slope_realisation.py"]
-inputs = ["urban_model", "pgv_realisation", "large_realisation", "wall_population"]
+inputs = ["urban_model", "pga_realisation", "large_realisation", "wall_population"]
 outputs = ["realisation", "wall_outcome"]
 layers = ["failures", "large_realisation", "urban_model_theta"]
 visible = 1
@@ -602,7 +606,8 @@ charts = ["realisation_tiles", "failed_by_wall_state", "failed_by_kingsbury_zone
 tables = []
 checked = "2026-10-07"
 narrative = """
-1. PGV is read at each polygon, and p_fail = Φ(ln(PGV/θ)/β).
+1. The earthquake's site PGA (shaking step 4) is read at each polygon, and
+   p_fail = Φ(ln(PGA/θ)/β).
 2. Each polygon is drawn on a uniform. Every polygon on one wall unit shares a
    uniform, and if any fails the wall fails (LS-A50, RW-A25). Unwalled
    polygons are independent (LS-A51).
@@ -612,7 +617,7 @@ narrative = """
 4. Each survivor is written as three rows (evacuated, inundated, imminent)
    beside the landslide step 3 rows, in one layer.
 
-Pilot (w0, r0, 2026-10-07): **3,388 of 5,277 polygons fail (64%)**: 77% of
+Pilot (w0, r0, 2026-10-07, on the earlier PGV curves): **3,388 of 5,277 polygons fail (64%)**: 77% of
 cut-wall, 83% of fill-wall and 55% of no-wall polygons. Evacuated 293,756 m²,
 12.9% of the non-flat pilot; inundated 191,247 m²; imminent 61,681 m². No large
 rows, so supersession is not exercised. No figure has been rendered.

@@ -2,10 +2,12 @@
 
     uv run --frozen python src/scripts/landloss/ground/steps/s2_ground_map/gen_ground_map.py
 
-The run settings -- the extent, whether to reuse the
-cached layers, the groundwater depth assumed off the NLM footprint and the
-residual threshold -- come from ``config.py`` beside this script rather than
-from the command line.
+The run settings -- the extent, whether to reuse the cached layers, the
+groundwater depth assumed off the NLM footprint, the groundwater simplification
+tolerance, the residual threshold, the residual's classing cell, minimum patch
+area and simplification tolerance, and the tile size the fill thickness is read
+in -- come from ``config.py`` beside this script rather than from the command
+line.
 
 Needs ``TNT_KOORDINATES_API_KEY`` in ``.env`` for the T+T Koordinates layers
 (SLIDE genesis, WCC earthworks, NLM geomorphology and groundwater depth); the
@@ -24,12 +26,17 @@ and each piece takes its attributes by precedence, finest source first:
 - modification: SLIDE genesis cut slopes, fill bodies, landfills and dams, then
   the WCC cut and fill areas, then the SLIDE materials that name fill (its fill
   and mixed fill classes), then the thresholded 30 m residual, then
-  ``natural``;
+  ``natural``. The residual is read at a 10 m cell, thresholded, sieved so no
+  patch is smaller than the minimum area and polygonised, and the polygons are
+  simplified as a coverage; a patch below the minimum takes the class of its
+  largest neighbour, which is not necessarily natural;
 - prior failure: SLIDE genesis landslides and rockfall, then ``none``;
-- groundwater depth: the NLM median depth polygonised over the flat land, then
-  the assumed default.
+- groundwater class: the NLM median depth classed as saturated, poorly drained
+  or well drained and polygonised over the flat land, then the class of the
+  assumed default depth. The map carries the class only, not the depth.
 
-Fill thickness is the mean of the positive 100 m residual over each fill piece.
+Fill thickness is the mean of the positive 100 m residual over each fill piece,
+read tile by tile so the 1 m grid is never held whole.
 The Kingsbury geology value and the effective strength set follow from the
 material by lookup. No probability anywhere.
 
@@ -37,15 +44,23 @@ Writes ``ground-map<extent_suffix>.geoparquet`` under temp/ground/, one row
 per ``ground_id``.
 """
 
+import math
 import sys
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import rasterio
 import rioxarray
-from rasterio.features import rasterize, shapes
+import shapely
+import xarray as xr
+from rasterio import windows
+from rasterio.features import rasterize, shapes, sieve
+from rasterio.transform import Affine
+from rasterio.windows import Window
 from shapely.geometry import box, shape
 
+from landloss.common.utils import tiles
 from landloss.common.utils.ids import mint_ids, sort_by_point
 from landloss.domain import constants
 from landloss.hazard.landslide import ground_map
@@ -85,6 +100,10 @@ OUT_STEM = "ground-map"
 MODIFICATION_RESIDUAL_M = 30
 THICKNESS_RESIDUAL_M = 100
 
+# How many rows of classing blocks :func:`read_residual` reads at a time: with a
+# 10 m block and a 59 km wide raster, a strip is about 120 MB.
+STRIP_BLOCK_ROWS = 50
+
 # The columns of the output, in order (contract section 3.2).
 COLUMNS = (
     "ground_id",
@@ -96,7 +115,6 @@ COLUMNS = (
     "modification_confidence",
     "is_flatland",
     "flatland_version",
-    "gw_depth_m",
     "gw_depth_class",
     "gw_source",
     "prior_failure",
@@ -116,8 +134,11 @@ COLUMNS = (
 # modification claimers and are low.
 GENESIS_COMPLETE_TYPES = ("Cut slope", "Fill body", "Landfill")
 
-# The codes the thresholded residual is polygonised with.
-RESIDUAL_CODES = {"cut": 1, "fill": 2}
+# The codes the groundwater classes are polygonised with; 0 is left for the
+# cells the grid does not cover.
+GROUNDWATER_CODES = {
+    name: code for code, name in enumerate(ground_map.GW_DEPTH_CLASSES, start=1)
+}
 
 RULE = "-" * 72
 
@@ -133,10 +154,74 @@ def residual_path(base_resolution_m, *, extent):
     return terrain_path(f"cut-fill-residual-{base_resolution_m:g}m", extent=extent)
 
 
-def read_raster(path):
-    """Read a single-band raster into memory with nodata as NaN."""
-    with rioxarray.open_rasterio(path, masked=True) as opened:
-        return opened.squeeze(drop=True).load()
+def read_residual(path, *, cell_m):
+    """Read a cut-and-fill residual raster averaged up to a coarser cell.
+
+    The residual is a 1 m grid, and a billion cells at that. It is read in
+    strips of whole blocks and each strip is averaged into ``cell_m`` blocks
+    before the next is read, so the 1 m grid is never in memory, only a strip
+    of it and the result. The averaging is done here, not by GDAL's
+    ``Resampling.average``, because the residual rasters carry no nodata tag
+    (``terrain._as_derivative`` drops it), and GDAL's average of an untagged
+    block touching one NaN is NaN.
+
+    A block is the mean of the cells in it that hold a value, and is NaN only
+    when none of them does, so a block half over the DEM's edge keeps the
+    residual of the half that is there. Cells short of a whole block at the
+    south and east edges, less than ``cell_m`` wide, are not read and are
+    natural ground downstream.
+
+    Args:
+        path: The residual raster ground step 1 wrote, on a 1 m grid.
+        cell_m: The side of the blocks to average to, in metres, a whole
+            multiple of the raster's cell,
+            ``config.RESIDUAL_CLASS_CELL_M``.
+
+    Returns:
+        The averaged residual as a float32 raster in the raster's system,
+        NaN where no cell of a block held a value, on a grid of ``cell_m`` cells
+        from the raster's north-west corner.
+
+    Raises:
+        ValueError: If the cell is not a whole multiple of the raster's cell.
+    """
+    with rasterio.open(path) as source:
+        factor = cell_m / source.res[0]
+        if not math.isclose(factor, round(factor)) or round(factor) < 1:
+            msg = (
+                f"The classing cell, {cell_m:g} m, is not a whole multiple of "
+                f"the {source.res[0]:g} m cell of {path}"
+            )
+            raise ValueError(msg)
+        factor = round(factor)
+        rows, columns = source.height // factor, source.width // factor
+        means = np.full((rows, columns), np.nan, dtype="float32")
+        for first in range(0, rows, STRIP_BLOCK_ROWS):
+            strip_rows = min(STRIP_BLOCK_ROWS, rows - first)
+            strip = source.read(
+                1,
+                window=Window(0, first * factor, columns * factor, strip_rows * factor),
+                masked=True,
+            )
+            strip = strip.astype("float32").filled(np.nan)
+            blocks = strip.reshape(strip_rows, factor, columns, factor)
+            held = np.isfinite(blocks)
+            totals = np.where(held, blocks, 0.0).sum(axis=(1, 3), dtype="float64")
+            counts = held.sum(axis=(1, 3))
+            with np.errstate(invalid="ignore", divide="ignore"):
+                means[first : first + strip_rows] = np.where(
+                    counts > 0, totals / counts, np.nan
+                )
+        transform = source.transform @ Affine.scale(factor)
+        crs = source.crs
+    return xr.DataArray(
+        means,
+        dims=("y", "x"),
+        coords={
+            "y": transform.f + transform.e * (np.arange(rows) + 0.5),
+            "x": transform.c + transform.a * (np.arange(columns) + 0.5),
+        },
+    ).rio.write_crs(crs)
 
 
 def with_fields(frame, fields):
@@ -298,21 +383,25 @@ def polygonise(values, template, *, mask, column):
     )
 
 
-def polygonise_groundwater(depth_path, extent, flatland):
-    """Polygonise the NLM median groundwater depth over the flat land.
+def polygonise_groundwater(depth_path, extent, flatland, *, simplify_m):
+    """Polygonise the NLM median groundwater depth, as a class, over the flat land.
 
     The grid is national and carries a value over flat land only, so it is
     clipped to the extent before loading and the polygons are cut back to the
-    flatland. A polygon per run of equal-valued cells fragments the flat land
-    only, which the urban domain excludes.
+    flatland. The depth is classed first (saturated, poorly drained, well
+    drained) and the class codes are polygonised, so a polygon is a body of one
+    class and not a run of equal depths. The class polygons are simplified as
+    a coverage, which keeps the edge two classes share one edge.
 
     Args:
         depth_path: The grid, from :func:`landloss.io.readers.get_gwd_median_depth`.
         extent: The polygon being mapped.
         flatland: The NLM flatland polygons, in the study's system.
+        simplify_m: The simplification tolerance in metres,
+            ``config.GROUNDWATER_SIMPLIFY_M``.
 
     Returns:
-        Polygons carrying ``gw_depth_m``, clipped to the flat land.
+        Polygons carrying ``gw_depth_class``, clipped to the flat land.
     """
     west, south, east, north = extent.bounds
     with rioxarray.open_rasterio(depth_path, masked=True) as opened:
@@ -322,49 +411,99 @@ def polygonise_groundwater(depth_path, extent, flatland):
             .load()
         )
     values = depth.to_numpy().astype("float32")
-    polygons = polygonise(
-        values, depth, mask=np.isfinite(values), column="gw_depth_m"
-    ).to_crs(constants.DEFAULT_CRS)
+    classed = ground_map.gw_depth_class_from_depth(values)
+    codes = np.zeros(classed.shape, dtype="uint8")
+    for name, code in GROUNDWATER_CODES.items():
+        codes[classed == name] = code
+    polygons = polygonise(codes, depth, mask=codes > 0, column="code").to_crs(
+        constants.DEFAULT_CRS
+    )
+    names = {code: name for name, code in GROUNDWATER_CODES.items()}
+    polygons["gw_depth_class"] = polygons.pop("code").astype(int).map(names)
     if polygons.empty or flatland.empty:
         return polygons.iloc[0:0]
-    return gpd.clip(polygons, flatland).reset_index(drop=True)
+    polygons["geometry"] = shapely.coverage_simplify(
+        polygons.geometry.to_numpy(), simplify_m
+    )
+    # keep_geom_type: where a class only touches the flat land the clip leaves
+    # a line or a point, which is not ground.
+    return gpd.clip(polygons, flatland, keep_geom_type=True).reset_index(drop=True)
 
 
-def polygonise_residual(residual, *, threshold_m):
+def polygonise_residual(residual, *, threshold_m, min_patch_m2, simplify_m):
     """Polygonise the cut and fill the thresholded 30 m residual marks.
 
+    The residual is classed to codes (natural, cut, fill) and sieved as one
+    raster, so a patch smaller than ``min_patch_m2`` takes the class of its
+    largest neighbour: a natural pocket inside a fill body becomes fill, and a
+    fill speckle inside a cut becomes cut, rather than every small patch going
+    natural. The minimum is a whole number of cells, the area over the cell's
+    area rounded up, so no patch of the sieved raster is smaller than the area
+    asked for. Cells with no residual are left out of the sieve and out of the
+    polygons. The patches are then polygonised and simplified as a coverage,
+    which moves the edge two patches share once, not once for each side.
+    Simplifying cuts the corners of the cell staircase, so a polygon can come
+    out a little under the minimum area and the total area moves a little: the
+    minimum holds before simplification, and a ``simplify_m`` of zero keeps it.
+
     Args:
-        residual: The 30 m cut-and-fill residual on the 1 m grid.
+        residual: The 30 m cut-and-fill residual on the classing grid, from
+            :func:`read_residual`.
         threshold_m: The magnitude beyond which the residual marks a cut or a
             fill, ``config.RESIDUAL_MODIFICATION_THRESHOLD_M``.
+        min_patch_m2: The smallest patch kept, in square metres,
+            ``config.RESIDUAL_MIN_PATCH_M2``.
+        simplify_m: The simplification tolerance in metres,
+            ``config.RESIDUAL_SIMPLIFY_M``; zero leaves the outlines as the
+            cells give them.
 
     Returns:
         Polygons carrying ``modification`` as ``cut`` or ``fill``; natural and
         unknown cells are left out, because natural is the default anyway.
     """
-    classed = ground_map.modification_from_residual(
+    codes, nodata = ground_map.modification_codes_from_residual(
         residual.to_numpy(), threshold_m=threshold_m
     )
-    codes = np.zeros(classed.shape, dtype="uint8")
-    for name, code in RESIDUAL_CODES.items():
-        codes[classed == name] = code
-    polygons = polygonise(codes, residual, mask=codes > 0, column="code")
-    names = {code: name for name, code in RESIDUAL_CODES.items()}
+    transform = residual.rio.transform()
+    # The epsilon keeps a minimum that is a whole number of cells from
+    # rounding up on float noise.
+    min_cells = math.ceil(min_patch_m2 / abs(transform.a * transform.e) - 1e-9)
+    if min_cells > 1:
+        codes = sieve(codes, min_cells, mask=~nodata)
+    natural = ground_map.MODIFICATION_CODES[ground_map.NATURAL]
+    polygons = polygonise(
+        codes, residual, mask=(codes != natural) & ~nodata, column="code"
+    )
+    if simplify_m > 0 and not polygons.empty:
+        polygons["geometry"] = shapely.coverage_simplify(
+            polygons.geometry.to_numpy(), simplify_m
+        )
+    names = {code: name for name, code in ground_map.MODIFICATION_CODES.items()}
     polygons["modification"] = polygons["code"].astype(int).map(names)
     return polygons.drop(columns="code")
 
 
-def mean_positive_residual(ground, residual):
+def mean_positive_residual(ground, residual_file, *, strip_cells):
     """Average the positive residual over each fill piece of the map.
 
     The fill thickness of a piece is the mean of the 100 m residual where it is
     positive -- ground standing above the 100 m surface -- over the cells
-    inside the piece. Computed by burning each fill piece's row number onto
-    the raster's grid and summing per label, so no polygon is clipped.
+    inside the piece. Computed strip by strip: each strip's fill pieces, cut to
+    the strip, are burned onto its cells by row number and the positive
+    residual is summed per piece, and the sums and counts carry from strip to
+    strip, so no polygon is clipped for good and the 1 m grid is never held
+    whole. A cell is the piece's where its centre is inside it, so the means
+    are those of a whole-grid burn. A strip is the full width of the raster,
+    because the residual is written in one-row strips and a window narrower
+    than that still has every row of it decoded in full: a strip reads each
+    row once.
 
     Args:
         ground: The ground map, carrying ``modification``.
-        residual: The 100 m cut-and-fill residual on the 1 m grid.
+        residual_file: The 100 m cut-and-fill residual on the 1 m grid, on disk.
+        strip_cells: The most cells a strip holds,
+            ``config.THICKNESS_STRIP_CELLS``; a strip is as many whole rows as
+            fit, and at least one.
 
     Returns:
         The mean positive residual per row, NaN where the piece is not fill
@@ -375,37 +514,58 @@ def mean_positive_residual(ground, residual):
     if fill.empty:
         return thickness
 
-    labels = rasterize(
-        zip(fill.geometry, range(1, len(fill) + 1), strict=True),
-        out_shape=residual.shape,
-        transform=residual.rio.transform(),
-        fill=0,
-        dtype="int32",
-    )
-    values = residual.to_numpy()
-    positive = np.isfinite(values) & (values > 0)
-    sums = np.bincount(
-        labels[positive], weights=values[positive], minlength=len(fill) + 1
-    )
-    counts = np.bincount(labels[positive], minlength=len(fill) + 1)
+    labels_of = pd.Series(np.arange(1, len(fill) + 1), index=fill.index)
+    sums = np.zeros(len(fill) + 1)
+    counts = np.zeros(len(fill) + 1)
+    with rasterio.open(residual_file) as source:
+        cell = abs(source.transform.a)
+        strip_rows = max(1, strip_cells // source.width)
+        for first in range(0, source.height, strip_rows):
+            window = Window(
+                0, first, source.width, min(strip_rows, source.height - first)
+            )
+            near = tiles.clip_to_window(
+                fill, windows.bounds(window, source.transform), cell
+            )
+            if near.empty:
+                continue
+            labels = rasterize(
+                zip(near.geometry, labels_of.loc[near.index], strict=True),
+                out_shape=(window.height, window.width),
+                transform=windows.transform(window, source.transform),
+                fill=0,
+                dtype="int32",
+            )
+            values = source.read(1, window=window, masked=True)
+            values = values.astype("float32").filled(np.nan)
+            positive = np.isfinite(values) & (values > 0)
+            sums += np.bincount(
+                labels[positive], weights=values[positive], minlength=len(fill) + 1
+            )
+            counts += np.bincount(labels[positive], minlength=len(fill) + 1)
     with np.errstate(invalid="ignore", divide="ignore"):
         means = sums[1:] / counts[1:]
     thickness.loc[fill.index] = np.where(counts[1:] > 0, means, np.nan)
     return thickness
 
 
-def finish(ground, residual_100m):
+def finish(ground, residual_100m_file, *, strip_cells):
     """Add the fill thickness, mint the ids, measure the area and order the columns.
 
     Args:
         ground: The attributed partition from ``build_ground_map``.
-        residual_100m: The 100 m residual on the 1 m grid, for the thickness.
+        residual_100m_file: The 100 m residual on the 1 m grid, on disk, for
+            the thickness.
+        strip_cells: The most cells a strip of the residual holds when the
+            thickness is read.
 
     Returns:
         The ground map with every column of ``COLUMNS``, sorted by location.
     """
     ground = ground.copy()
-    ground["fill_thickness_m"] = mean_positive_residual(ground, residual_100m)
+    ground["fill_thickness_m"] = mean_positive_residual(
+        ground, residual_100m_file, strip_cells=strip_cells
+    )
     ground = sort_by_point(ground)
     ground.insert(0, "ground_id", mint_ids(constants.GROUND_ID_PREFIX, len(ground)))
     ground["area_m2"] = ground.area
@@ -455,7 +615,16 @@ def describe_strength(ground):
 
 
 def main(
-    *, extent, use_cached_layers, default_gw_depth_m, residual_modification_threshold_m
+    *,
+    extent,
+    use_cached_layers,
+    default_gw_depth_m,
+    groundwater_simplify_m,
+    residual_modification_threshold_m,
+    residual_class_cell_m,
+    residual_min_patch_m2,
+    residual_simplify_m,
+    thickness_strip_cells,
 ):
     """Build the ground map over the extent and write it out.
 
@@ -464,9 +633,20 @@ def main(
             landloss.io.area_of_interest.EXTENTS or "full".
         use_cached_layers: Whether to reuse the cached polygon layers.
         default_gw_depth_m: The depth to groundwater assumed off the NLM
-            footprint, in metres.
+            footprint, in metres; the map carries its class.
+        groundwater_simplify_m: The tolerance, in metres, the groundwater class
+            polygons are simplified to as a coverage.
         residual_modification_threshold_m: The magnitude of 30 m residual
             beyond which the ground is cut or fill where no mapping reaches.
+        residual_class_cell_m: The cell, in metres, the 30 m residual is
+            averaged to and classed on.
+        residual_min_patch_m2: The smallest cut or fill patch the residual
+            keeps, in square metres; a smaller one takes its largest
+            neighbour's class.
+        residual_simplify_m: The tolerance, in metres, the residual patches
+            are simplified to as a coverage.
+        thickness_strip_cells: The most cells a strip of the 100 m residual
+            holds when the fill thickness is read.
     """
     bbox, extent_name = resolve_extent(extent=extent)
     area = box(*bbox)
@@ -497,13 +677,21 @@ def main(
     ):
         print(f"  {name:<20} {len(frame):>6,} polygons")
 
-    print("\nPolygonising the groundwater depth and the 30 m residual ...", flush=True)
-    groundwater = polygonise_groundwater(get_gwd_median_depth(), area, flatland)
-    residual_30m = read_raster(residual_path(MODIFICATION_RESIDUAL_M, extent=extent))
-    residual = polygonise_residual(
-        residual_30m, threshold_m=residual_modification_threshold_m
+    print("\nPolygonising the groundwater class and the 30 m residual ...", flush=True)
+    groundwater = polygonise_groundwater(
+        get_gwd_median_depth(), area, flatland, simplify_m=groundwater_simplify_m
     )
-    print(f"  {'groundwater depth':<20} {len(groundwater):>6,} polygons")
+    residual_30m = read_residual(
+        residual_path(MODIFICATION_RESIDUAL_M, extent=extent),
+        cell_m=residual_class_cell_m,
+    )
+    residual = polygonise_residual(
+        residual_30m,
+        threshold_m=residual_modification_threshold_m,
+        min_patch_m2=residual_min_patch_m2,
+        simplify_m=residual_simplify_m,
+    )
+    print(f"  {'groundwater class':<20} {len(groundwater):>6,} polygons")
     print(f"  {'residual cut/fill':<20} {len(residual):>6,} polygons")
 
     sources = [
@@ -529,7 +717,11 @@ def main(
         *slide_modification_sources(materials),
         GroundSource("residual_30m", residual, "modification", "modification", "low"),
         GroundSource(
-            ground_map.NLM_GWD_SOURCE, groundwater, "gw_depth_m", "gw_depth_m", "medium"
+            ground_map.NLM_GWD_SOURCE,
+            groundwater,
+            "gw_depth_class",
+            "gw_depth_class",
+            "medium",
         ),
     ]
 
@@ -541,8 +733,11 @@ def main(
         default_gw_depth_m=default_gw_depth_m,
         crs=constants.DEFAULT_CRS,
     )
-    residual_100m = read_raster(residual_path(THICKNESS_RESIDUAL_M, extent=extent))
-    ground = finish(ground, residual_100m)
+    ground = finish(
+        ground,
+        residual_path(THICKNESS_RESIDUAL_M, extent=extent),
+        strip_cells=thickness_strip_cells,
+    )
 
     out_path = ground_map_path(extent=extent)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -569,5 +764,10 @@ if __name__ == "__main__":
         extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         default_gw_depth_m=config.DEFAULT_GROUNDWATER_DEPTH_M,
+        groundwater_simplify_m=config.GROUNDWATER_SIMPLIFY_M,
         residual_modification_threshold_m=config.RESIDUAL_MODIFICATION_THRESHOLD_M,
+        residual_class_cell_m=config.RESIDUAL_CLASS_CELL_M,
+        residual_min_patch_m2=config.RESIDUAL_MIN_PATCH_M2,
+        residual_simplify_m=config.RESIDUAL_SIMPLIFY_M,
+        thickness_strip_cells=config.THICKNESS_STRIP_CELLS,
     )

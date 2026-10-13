@@ -114,6 +114,7 @@ def build_coverage(
     mw,
     site_distance_km,
     event_total_area_km2,
+    share_factor,
 ):
     """Build a Hancox coverage grid on the slope raster."""
     pgv = align_pgv(pgv_m_s, slope)
@@ -127,6 +128,7 @@ def build_coverage(
         cell_area_km2=cell_area_km2,
         mw=mw,
         event_total_area_km2=event_total_area_km2,
+        share_factor=share_factor,
     )
     coverage = slope.copy(data=result.coverage).rename(COVERAGE_NAME)
     coverage = coverage.rio.write_nodata(np.nan)
@@ -160,6 +162,7 @@ def main(
     marc_onshore_fraction,
     marc_modal_slope_deg,
     marc_a_topo,
+    beta_marc_share_factor,
 ):
     """Write one Hancox coverage raster per shaking realisation."""
     slope_file = gen_multiscale_slope.slope_path(RESOLUTION_M, extent=extent)
@@ -180,7 +183,7 @@ def main(
         f"Scenario: Mw {scenario_mw:g}, {site_distance_km:g} km; Marc R0 "
         f"{marc_r0_km:g} km, {marc_fault_type}, onshore fraction "
         f"{marc_onshore_fraction:g}, modal slope {marc_modal_slope_deg:g} degrees, "
-        f"A_topo {marc_a_topo:g}"
+        f"A_topo {marc_a_topo:g}; beta share factor {beta_marc_share_factor:g}"
     )
     for realisation_id in realisation_ids:
         pgv_file = pgv_path(realisation_id, extent=extent)
@@ -192,6 +195,7 @@ def main(
             mw=scenario_mw,
             site_distance_km=site_distance_km,
             event_total_area_km2=event_total,
+            share_factor=beta_marc_share_factor,
         )
         describe(result, coverage, realisation_id=realisation_id)
         out_path = coverage_path(realisation_id, extent=extent)
@@ -210,4 +214,5 @@ if __name__ == "__main__":
         marc_onshore_fraction=config.MARC_ONSHORE_FRACTION,
         marc_modal_slope_deg=config.MARC_MODAL_SLOPE_DEG,
         marc_a_topo=config.MARC_A_TOPO,
+        beta_marc_share_factor=config.BETA_MARC_SHARE_FACTOR,
     )

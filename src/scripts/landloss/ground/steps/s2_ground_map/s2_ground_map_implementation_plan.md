@@ -35,16 +35,22 @@ and the function signatures this step is built against.
 - [x] `build_ground_map()`: the union overlay of every source's boundaries
       and the flatland into one planar partition, attributed by
       representative-point lookup in precedence order, with the defaults
-      written where no source reaches and water pieces dropped.
+      written where no source reaches and water pieces dropped. Since
+      2026-10-10 the boundaries are those of each geometry's polygonal parts:
+      a polygon a clip returned inside a GeometryCollection had left no edge
+      and put the wrong groundwater class on 0.07% of Porirua.
 - [x] `strength_from_material()` reading `wellington-greywacke-strength.csv`
       through `ASSETS_DIR`, with the pick rule (all three values present,
       `check` false first, published first, file order) and the six picks on
       the committed CSV asserted in the tests.
 - [x] `gen_ground_map.py`: reads the seven polygon sources, polygonises the
-      NLM groundwater depth over the flat land and the thresholded 30 m
-      residual, builds the map, takes the fill thickness as the mean positive
-      100 m residual per fill piece, mints `ground_id` by location and writes
-      `ground-map[-pilot].geoparquet`.
+      NLM groundwater class (the depth classed first, simplified as a
+      coverage) over the flat land and the 30 m residual (read at
+      `RESIDUAL_CLASS_CELL_M`, classed, sieved once over the three classes with
+      `RESIDUAL_MIN_PATCH_M2`, simplified with `shapely.coverage_simplify` at
+      `RESIDUAL_SIMPLIFY_M`), builds the map, takes the fill thickness as the
+      mean positive 100 m residual per fill piece, mints `ground_id` by
+      location and writes `ground-map[-pilot].geoparquet`.
 - [x] `fig_ground_map.py`: material and modification panels.
 - [x] Tests on synthetic overlapping sources carrying every vocabulary value,
       the precedence order, the defaults, the water rule, the strength picks
@@ -55,6 +61,11 @@ and the function signatures this step is built against.
 
 - [x] Run `gen_ground_map.py` over the pilot. Made on 2026-10-02 in the
       whole-chain run: 19,275 pieces.
+- [x] Rework the polygons (`.agents/plans/reworking-the-ground-map-polygons.md`),
+      run 2026-10-10 at 900 m2 and 10 m: the Wellington pilot 19,275 to 4,757
+      pieces; Porirua 306,592 to 43,692 pieces, 144 MB to 6.2 MB and 376 s to
+      42 s, with material and groundwater shares unchanged and the cut share
+      18.3% to 21.4%.
 - [ ] Review the area shares the run prints, the strength row chosen per
       grade, and the two panels of `fig_ground_map.py`.
 - [ ] Build the map over the same snapped extent as ground step 1 and the urban
@@ -129,10 +140,9 @@ and the function signatures this step is built against.
       Wellington Fault trace becomes `rock_crushed`, and a narrower band, its
       width judgement, along the other three. Needs the active fault traces as
       a source; the 1:50,000 geology may already carry them.
-- [ ] The full extent. The fill thickness burns every fill piece onto the 1 m
-      residual grid at once, which the 59 by 54 km study area cannot carry in
-      memory; tile the residual read by ground step 1's output tiles, or by a
-      regular grid of the map's pieces, before a full run.
+- [x] The full extent. The fill thickness is read in full-width strips of the
+      1 m residual (`THICKNESS_STRIP_CELLS`), each strip's fill pieces burned
+      and the sums carried, so the 59 by 54 km study area is never held whole.
 - [ ] Decide the material for the NLM classes that occur nationally but not in
       the Wellington extents (`Melange`, `Estuarine`, `Alluvial fan and
       plains`, `Glacial till`, the beach and marine terrace classes): the

@@ -23,6 +23,14 @@
 > being replaced: see `.agents/plans/building-face-based-urban-slope-polygons.md`.
 > A reviewer does not need to read this file to review the code.
 
+> **Intensity measure (2026-10-12).** Every PGV in this contract for the urban
+> slope model and the walls now reads site PGA in g: the project lead moved
+> landslide steps 5 and 6 and vul shaking rw step 9 onto site PGA, the measure
+> the wall curves are published on. Landslide step 6 and vul shaking rw step 9
+> sample shaking step 4's PGA field; the PGV/PGA ratio, `theta_base_pga_g`,
+> `pgv_pga_ratio_m_s_per_g` and the steps' `RETURN_PERIOD_YR` are gone; the
+> draw columns are `pga_g`. The step method files hold the detail.
+
 The single document every implementer of
 `.agents/plans/building-urban-slope-failure-and-retaining-wall-models.md` (the
 plan) builds against. Section numbers in the plan are cited as "plan §n". Where
@@ -1457,6 +1465,8 @@ the cause, which plan §5.2 records as proposed, so the mapping lives in one
 dict and nowhere else.
 
 ## 6. Fragility rows
+
+> Since 2026-10-12 on site PGA in g, not PGV; see the note at the top.
 
 Every fragility is a lognormal CDF on PGV in m/s:
 `P(fail | PGV) = Phi(ln(PGV / theta) / beta)`. The row columns, in this order,

@@ -30,24 +30,51 @@ Run from the repository root::
 
 Run ground step 3 (``gen_instability_zones.py``) and exposure rw step 6
 (``gen_wall_units.py``) first. Settings are in ``config.py``.
+
+Over an extent ground step 3 searched in tiles the zones are built tile by tile
+(:func:`build_tiled`), ``TILE_WORKERS`` tiles at once in worker processes
+(:mod:`zone_tiles`). Each tile is kept on disk as it is built, so a run that
+stops resumes from the tiles not yet built, and the tiles are stitched in tile
+order, so the outputs do not depend on which worker finished first. A kept tile
+is reused only by a run with the same record (:func:`built_from`).
 """
+
+import hashlib
+import inspect
+import json
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 
-from landloss.hazard.landslide.forced_polygons import (
-    gen_forced_elements,
-    gen_forced_zones,
+from landloss.common.utils import tiles
+from landloss.domain import constants
+from landloss.hazard.landslide import (
+    bend_split,
+    directions,
+    forced_polygons,
+    instability_zones,
+    pif_cut_fill,
+    slope_elements,
+    slope_polygons,
+    susceptibility,
+    wall_candidates,
+    wall_trim,
+    wall_units,
+    zone_alignment,
 )
+from landloss.hazard.landslide import geometry as landslide_geometry
+from landloss.hazard.landslide import ground_map as landslide_ground_map
+from landloss.hazard.landslide.forced_polygons import gen_forced_elements
 from landloss.hazard.landslide.instability_zones import add_line_elements, with_walls
 from landloss.hazard.landslide.slope_elements import restore_elements
-from landloss.hazard.landslide.slope_polygons import (
-    ZONES,
-    build_slope_polygons,
-    polygon_geometries,
-)
+from landloss.hazard.landslide.slope_polygons import build_slope_polygons
+from landloss.hazard.landslide.urban import face_polygons, fragility
+from landloss.hazard.landslide.urban import geometry as urban_geometry
 from landloss.hazard.landslide.urban.face_polygons import ground_of_elements
 from landloss.hazard.landslide.wall_units import gen_element_walls
 from landloss.io.area_of_interest import extent_suffix
@@ -62,7 +89,7 @@ from scripts.landloss.ground.steps.s1_terrain.gen_multiscale_slope import (
 from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
 )
-from scripts.landloss.ground.steps.s3_instability_zones import tiled
+from scripts.landloss.ground.steps.s3_instability_zones import grid, tiled
 from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
     CRS,
     dem_bbox,
@@ -76,11 +103,21 @@ from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import (
     FILL_MODIFICATION,
     siz_table_path,
 )
-from scripts.landloss.hazard.landslide.steps.s4_wall_zones import config
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones import config, zone_tiles
+from scripts.landloss.hazard.landslide.steps.s4_wall_zones.zone_tiles import (
+    align_walled_zones,
+    fill_by_element,
+    ground_rows,
+    wall_trim_settings,
+    with_forced,
+)
 from scripts.landloss.paths import TEMP_DIR
 
 WORK_DIR = TEMP_DIR / "hazard" / "landslide"
 SCENARIOS = {"walled": True, "bare": False}
+
+# The share of walled polygons that may have no fall before the step stops.
+MAX_NO_FALL_SHARE = 0.05
 
 
 def wall_elements_path(*, extent):
@@ -94,59 +131,6 @@ def wall_elements_path(*, extent):
 def zones_path(scenario, *, extent):
     """Where the evacuated, imminent and inundated zones of a scenario are written."""
     return WORK_DIR / f"urban-slope-zones-{scenario}{extent_suffix(extent)}.parquet"
-
-
-def fill_by_element(elements, ground_map):
-    """Whether each element is on fill, and the fill's thickness where it is."""
-    rows = elements["majority_ground_row"].to_numpy()
-    on_map = rows >= 0
-    safe = np.maximum(rows, 0)
-    is_fill = on_map & (
-        ground_map["modification"].to_numpy()[safe] == FILL_MODIFICATION
-    )
-    thickness = np.where(
-        is_fill, ground_map["fill_thickness_m"].to_numpy()[safe], np.nan
-    )
-    return (
-        pd.Series(is_fill, index=elements.index),
-        pd.Series(thickness, index=elements.index),
-    )
-
-
-def zone_polygons(result, *, scenario):
-    """Every zone of every polygon of a scenario, one row per polygon and zone."""
-    parts = []
-    for zone in ZONES:
-        frame = polygon_geometries(result, zone=zone, crs=CRS)
-        frame["zone"] = zone
-        parts.append(frame)
-    zones = pd.concat(parts, ignore_index=True)
-    zones = zones.merge(result.polygons.reset_index(), on="polygon", how="left")
-    zones = drawn_areas(gpd.GeoDataFrame(zones, geometry="geometry", crs=CRS))
-    zones["scenario"] = scenario
-    return zones
-
-
-def drawn_areas(zones):
-    """Set each polygon's areas to its drawn zones' and its depth to match.
-
-    The zones are drawn smoothed (``polygon_geometries``), so their areas are
-    not the cell counts the builder measured: ``area_m2``,
-    ``imminent_area_m2`` and ``inundated_area_m2`` become the drawn areas
-    (0 where a zone is not drawn), and ``depth_m`` the volume, which stays
-    the cells' depths summed, over the drawn evacuated area.
-    """
-    drawn = zones.geometry.area
-    for zone, column in (
-        ("evacuated", "area_m2"),
-        ("imminent", "imminent_area_m2"),
-        ("inundated", "inundated_area_m2"),
-    ):
-        area = drawn[zones["zone"] == zone].groupby(zones["polygon"]).sum()
-        zones[column] = zones["polygon"].map(area).fillna(0.0).to_numpy()
-    with np.errstate(invalid="ignore", divide="ignore"):
-        zones["depth_m"] = zones["volume_m3"] / zones["area_m2"]
-    return zones
 
 
 def units_without_element(units, elements):
@@ -167,42 +151,6 @@ def units_without_element(units, elements):
         lambda ids: any(int(i) in grown for i in ids)
     )
     return units[~has_element.to_numpy(dtype=bool)]
-
-
-def ground_rows(geometries, ground_map):
-    """The ground map row (by position) under each geometry's representative point.
-
-    -1 where no ground map polygon holds it, as an element off the map.
-    """
-    points = gpd.GeoDataFrame(
-        geometry=geometries.representative_point().to_numpy(), crs=geometries.crs
-    )
-    frame = ground_map[["geometry"]].reset_index(drop=True)
-    joined = gpd.sjoin(points, frame, predicate="within", how="left")
-    first = joined[~joined.index.duplicated()]["index_right"]
-    return first.fillna(-1).astype(np.int64).to_numpy()
-
-
-def with_forced(result, scenario, forced, walled, is_fill, thickness, ground):
-    """A scenario's built zones with the forced polygons' zones after them."""
-    zones = zone_polygons(result, scenario=scenario)
-    zones["forced"] = False
-    zones["side_unknown"] = False
-    first = int(result.polygons.index.max()) + 1 if len(result.polygons) else 1
-    extra = gen_forced_zones(
-        forced,
-        walled,
-        is_fill=is_fill,
-        fill_thickness_m=thickness,
-        ground=ground,
-        first_polygon=first,
-        scenario=scenario,
-    )
-    if extra.empty:
-        return zones
-    return gpd.GeoDataFrame(
-        pd.concat([zones, extra], ignore_index=True), geometry="geometry", crs=zones.crs
-    )
 
 
 def describe_forced(forced, zones):
@@ -229,6 +177,50 @@ def describe_forced(forced, zones):
     )
 
 
+def read_unit_falls(units, *, extent):
+    """Each wall unit's fall (a unit vector) from its first pif's pips in the siz table."""
+    directions = pd.read_parquet(
+        siz_table_path(extent=extent), columns=["pip_direction"]
+    )
+    return zone_alignment.unit_falls(units, directions["pip_direction"])
+
+
+def align_scenario(zones, *, scenario, elements, units, flags, falls):
+    """Align one scenario's zones with the wall lines and say what it did.
+
+    The post-step of landslide step 4 (:func:`zone_tiles.align_walled_zones`),
+    applied to the whole zones in the whole run and to the stitched zones over
+    tiles, so the two paths do the same.
+    """
+    aligned = align_walled_zones(
+        zones,
+        elements=elements,
+        units=units,
+        flags=flags,
+        falls=falls,
+        settings=wall_trim_settings(config),
+    )
+    done = aligned[aligned["wall_trim_how"] != ""]
+    unaligned = int((done["wall_trim_how"] == zone_alignment.HOW_NO_FALL).sum())
+    if unaligned:
+        print(f"{scenario}: {unaligned:,} walled polygons left as built: no fall")
+        if unaligned > MAX_NO_FALL_SHARE * len(done):
+            msg = (
+                f"{scenario}: {unaligned:,} of {len(done):,} walled polygons have "
+                "no fall (their unit's pif is not in the siz table); the siz "
+                "table is stale or does not match the wall units"
+            )
+            raise ValueError(msg)
+    if len(done):
+        print(
+            f"{scenario}: {len(done):,} evacuated polygons aligned with their wall "
+            f"({done['wall_trim_how'].value_counts().to_dict()}); "
+            f"{done['wall_trim_removed_m2'].sum():,.0f} m2 trimmed, "
+            f"{done['wall_trim_filled_m2'].sum():,.0f} m2 filled"
+        )
+    return aligned
+
+
 def world_scenario(world_id):
     """The scenario name, and zones file tag, of one world's wall draw."""
     return f"w{world_id:03d}"
@@ -250,26 +242,248 @@ def world_walls(draws, world_id):
     return rows.set_index("wall_unit_id")["walled"]
 
 
-def build_tiled(found, units, draws, *, extent, use_cached_layers, world_ids):
+# The code that builds a tile: a change to any of it makes the kept tiles stale.
+# Whole modules are hashed for the values a tile reads from them (the depth and
+# volume constants of ``geometry``, the ground map's materials, the minimum wall
+# height of ``constants``, the grid's CRS), as ground step 3's SEARCH_CODE does.
+TILE_CODE = (
+    zone_tiles,
+    tiled,
+    tiles,
+    instability_zones,
+    slope_elements,
+    slope_polygons,
+    forced_polygons,
+    wall_units,
+    wall_trim,
+    zone_alignment,
+    directions,
+    face_polygons,
+    urban_geometry,
+    bend_split,
+    landslide_geometry,
+    susceptibility,
+    landslide_ground_map,
+    pif_cut_fill,
+    wall_candidates,
+    fragility,
+    constants,
+    grid,
+    units_without_element,
+    world_scenario,
+    world_walls,
+)
+
+
+def tiles_dir(*, extent):
+    """The folder a tiled run keeps each tile's zones in, for a resume and the stitch."""
+    return WORK_DIR / f"urban-slope-zones-tiles{extent_suffix(extent)}"
+
+
+def tile_zones_path(tile, *, extent):
+    """Where one tile's zones are kept."""
+    return tiles_dir(extent=extent) / f"tile-{tile.row:02d}-{tile.col:02d}.pkl"
+
+
+def keep_or_clear_tiles(*, extent, record, rebuild):
+    """Keep the tiles an earlier run of the same record built; clear any others.
+
+    The folder holds the run's record (:func:`built_from`), so a tile is reused
+    only by a run built from the same elements, wall units and draws,
+    scenarios, settings and code.
+
+    Returns:
+        How many tile files were cleared.
+    """
+    folder = tiles_dir(extent=extent)
+    stamp = folder / "built-from.json"
+    same = stamp.exists() and read_record(stamp) == record
+    stale = [] if same and not rebuild else sorted(folder.glob("tile-*"))
+    for path in stale:
+        path.unlink()
+    folder.mkdir(parents=True, exist_ok=True)
+    partial = stamp.with_name(f"{stamp.name}.partial")
+    try:
+        partial.write_text(json.dumps(record, indent=1), encoding="utf-8")
+        os.replace(partial, stamp)
+    finally:
+        partial.unlink(missing_ok=True)
+    return len(stale)
+
+
+def read_record(path):
+    """The record a run kept, or None where the file is not a whole record.
+
+    A run killed while writing it leaves a file that is empty or cut short;
+    that is not the same record as any run's, so the tiles are built again.
+    """
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def rebuild_wanted(*, rebuild, use_cached_layers):
+    """Whether every tile is built again whatever the record says.
+
+    The record holds the code and the files the tiles are built from, not the
+    LINZ coastline and building layers every tile reads. Fetching them again
+    (``use_cached_layers`` False) may change them, so it rebuilds.
+    """
+    return rebuild or not use_cached_layers
+
+
+def tile_settings(*, extent, scenarios, world_ids):
+    """The settings a tile is built with, for the record.
+
+    Besides the extent, scenarios and worlds, the name of the fill modification the
+    tiles read from ground step 4's slope faces module, which is too broad to hash.
+    """
+    return {
+        "extent": extent,
+        "scenarios": list(scenarios),
+        "world_ids": [int(world_id) for world_id in world_ids],
+        "fill_modification": FILL_MODIFICATION,
+    }
+
+
+def built_from(*, hashed, stamped, settings, code):
+    """What a tiled run depends on, as a JSON-ready dict.
+
+    Args:
+        hashed: Name to path of the small inputs, recorded by the hash of their
+            content: the found elements, the wall units and the draws.
+        stamped: Name to path of the large inputs, recorded by size and time
+            modified: the 1 m DEM, the ground map and the tiles' found
+            elements.
+        settings: The scenarios and worlds, and any setting the tiles are built
+            with.
+        code: The modules and functions that build a tile; the record holds
+            the hash of their source.
+    """
+
+    def digest(path):
+        sha = hashlib.sha256()
+        with path.open("rb") as file:
+            for block in iter(lambda: file.read(1 << 20), b""):
+                sha.update(block)
+        return sha.hexdigest()
+
+    def stamp(path):
+        stat = path.stat()
+        return {"bytes": stat.st_size, "modified_ns": stat.st_mtime_ns}
+
+    source = hashlib.sha256()
+    for item in code:
+        source.update(inspect.getsource(item).encode())
+    return {
+        "hashed": {name: digest(path) for name, path in hashed.items()},
+        "stamped": {name: stamp(path) for name, path in stamped.items()},
+        "settings": settings,
+        "code_sha256": source.hexdigest(),
+    }
+
+
+def tiles_to_build(found, *, extent):
+    """The tiles of the found elements whose zones are not yet kept."""
+    return [
+        found_tile
+        for found_tile in found.tiles
+        if not tile_zones_path(found_tile.tile, extent=extent).exists()
+    ]
+
+
+def read_kept_tiles(found, *, extent):
+    """Every tile's kept zones, in tile order, whichever order they were built."""
+    return [
+        zone_tiles.read_tile_zones(tile_zones_path(found_tile.tile, extent=extent))
+        for found_tile in found.tiles
+    ]
+
+
+def describe_tile(summary, *, number, total, elapsed):
+    """The progress line of a tile that is done."""
+    tile = summary["tile"]
+    return (
+        f"  [{number}/{total}] tile {tile.row},{tile.col}: "
+        f"{summary['n_elements']:,} elements ({summary['seconds']:,.0f} s; "
+        f"{elapsed:,.0f} s in all)"
+    )
+
+
+def run_tiles(todo, *, workers, start_args, tile_kwargs):
+    """Build the tiles not yet kept, in worker processes, printing each as it lands.
+
+    Each tile is written to disk by :func:`zone_tiles.build_zone_tile` and
+    dropped from memory, so a worker holds one tile at a time. With one worker
+    the tiles run here, in order, without a pool. A tile that fails stops the
+    run; the tiles already kept stay for the next one.
+    """
+    start = time.perf_counter()
+
+    def report(number, summary):
+        print(
+            describe_tile(
+                summary,
+                number=number,
+                total=len(todo),
+                elapsed=time.perf_counter() - start,
+            ),
+            flush=True,
+        )
+
+    if workers == 1:
+        zone_tiles.start_worker(*start_args)
+        try:
+            for number, (found_tile, kwargs) in enumerate(
+                zip(todo, tile_kwargs, strict=True), 1
+            ):
+                report(number, zone_tiles.build_zone_tile(found_tile, **kwargs))
+        finally:
+            zone_tiles.end_worker()
+        return
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=zone_tiles.start_worker,
+        initargs=start_args,
+    ) as pool:
+        futures = [
+            pool.submit(zone_tiles.build_zone_tile, found_tile, **kwargs)
+            for found_tile, kwargs in zip(todo, tile_kwargs, strict=True)
+        ]
+        try:
+            for number, future in enumerate(as_completed(futures), 1):
+                report(number, future.result())
+        except BaseException:
+            # The tiles already written stay on disk for the next run.
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+
+
+def build_tiled(
+    found,
+    units,
+    draws,
+    *,
+    extent,
+    use_cached_layers,
+    world_ids,
+    rebuild,
+    workers,
+):
     """Build every scenario's zones tile by tile and write them stitched.
 
     The tiled counterpart of :func:`main`'s own pass, for an extent ground
     step 3 searched in tiles (:mod:`tiled`): each tile adds the line and
     forced elements of the wall units that reach it and builds every
     scenario, keeping what it owns, and the tiles are numbered into one set
-    of elements and one zones file per scenario.
+    of elements and one zones file per scenario. ``workers`` tiles are built
+    at once (:func:`run_tiles`); each is kept on disk as it is built, so a
+    stopped run resumes from the tiles not yet built, and the stitch reads
+    them in tile order.
     """
-    dem_file = dem_path(1, extent=extent)
-    bbox = dem_bbox(extent=extent)
-    ground_map = gpd.read_parquet(ground_map_path(extent=extent))
-    land = get_nz_coastline_polygons(bbox=bbox, crs=CRS, use_cache=use_cached_layers)
-    buildings = get_nz_building_outlines(
-        bbox=bbox, crs=CRS, use_cache=use_cached_layers
-    )
-    inputs = {"land": land, "ground_map": ground_map, "buildings": buildings}
-    lineless = units_without_element(
-        units, gpd.read_parquet(elements_path(extent=extent))
-    )
+    elements_file = elements_path(extent=extent)
+    lineless = units_without_element(units, gpd.read_parquet(elements_file))
     missed = tiled.units_on_no_tile(found, lineless)
     if len(missed):
         print(
@@ -280,32 +494,80 @@ def build_tiled(found, units, draws, *, extent, use_cached_layers, world_ids):
     flags = dict(SCENARIOS.items())
     for world_id in world_ids:
         flags[world_scenario(world_id)] = world_walls(draws, world_id)
-    tile_zones = []
-    for found_tile in found.tiles:
-        tile_zones.append(
-            tiled.zones_tile(
-                found_tile,
-                dem_file,
-                tiled=found,
-                inputs=inputs,
-                units=units,
-                lineless=lineless,
-                flags_by_scenario=flags,
-                fill_by_element=fill_by_element,
-                ground_of_elements=ground_of_elements,
-                ground_rows=ground_rows,
-                zone_frames=with_forced,
-                element_polygons=element_polygons,
-            )
-        )
-        tile = found_tile.tile
-        print(f"  tile {tile.row},{tile.col} zones built", flush=True)
-    labels = tiled.label_keys(found, tile_zones)
-    tiled.stitch_elements(tile_zones, labels).to_parquet(
-        wall_elements_path(extent=extent)
+    dem_file = dem_path(1, extent=extent)
+    ground_map_file = ground_map_path(extent=extent)
+    found_tile_files = {
+        f"found-tile-{t.tile.row:02d}-{t.tile.col:02d}": t.path for t in found.tiles
+    }
+    record = built_from(
+        hashed={
+            "found": found_path(extent=extent),
+            "units": wall_units_path(extent=extent),
+            "draws": wall_draws_path(extent=extent),
+        },
+        stamped={
+            "dem": dem_file,
+            "ground_map": ground_map_file,
+            "elements": elements_file,
+            **found_tile_files,
+        },
+        settings=tile_settings(extent=extent, scenarios=flags, world_ids=world_ids),
+        code=TILE_CODE,
     )
-    for scenario in flags:
+    n_cleared = keep_or_clear_tiles(
+        extent=extent,
+        record=record,
+        rebuild=rebuild_wanted(rebuild=rebuild, use_cached_layers=use_cached_layers),
+    )
+    if n_cleared:
+        print(f"Cleared {n_cleared} tile files from an earlier, different run")
+    todo = tiles_to_build(found, extent=extent)
+    workers = min(workers, max(len(todo), 1))
+    print(
+        f"{len(found.tiles)} tiles: {len(found.tiles) - len(todo)} kept by an "
+        f"earlier run, {len(todo)} to build on {workers} worker(s)"
+    )
+    if todo:
+        bbox = dem_bbox(extent=extent)
+        land = get_nz_coastline_polygons(
+            bbox=bbox, crs=CRS, use_cache=use_cached_layers
+        )
+        buildings = get_nz_building_outlines(
+            bbox=bbox, crs=CRS, use_cache=use_cached_layers
+        )
+        run_tiles(
+            todo,
+            workers=workers,
+            start_args=(
+                ground_map_file,
+                dem_file,
+                land,
+                buildings,
+                units,
+                lineless,
+                flags,
+                found,
+            ),
+            tile_kwargs=[
+                {"path": tile_zones_path(found_tile.tile, extent=extent)}
+                for found_tile in todo
+            ],
+        )
+    tile_zones = read_kept_tiles(found, extent=extent)
+    labels = tiled.label_keys(found, tile_zones)
+    stitched = tiled.stitch_elements(tile_zones, labels)
+    stitched.to_parquet(wall_elements_path(extent=extent))
+    falls = read_unit_falls(units, extent=extent)
+    for scenario, scenario_flags in flags.items():
         zones = tiled.stitch_zones(tile_zones, labels, scenario)
+        zones = align_scenario(
+            zones,
+            scenario=scenario,
+            elements=stitched,
+            units=units,
+            flags=scenario_flags,
+            falls=falls,
+        )
         zones.to_parquet(zones_path(scenario, extent=extent))
         evacuated = zones[zones["zone"] == "evacuated"]
         print(
@@ -314,13 +576,18 @@ def build_tiled(found, units, draws, *, extent, use_cached_layers, world_ids):
         )
 
 
-def main(*, extent, use_cached_layers, world_ids):
+def main(*, extent, use_cached_layers, world_ids, rebuild, tile_workers):
     """Build and write the zones of each world's wall draw.
 
     Args:
         extent: The build extent (``landloss.io.area_of_interest.EXTENTS``).
         use_cached_layers: Whether to reuse the cached LINZ layers.
         world_ids: The exposure worlds to build; each must be in the draws.
+        rebuild: Whether to build every tile again even when the kept tiles'
+            record matches (a tiled extent only).
+        tile_workers: How many tiles are built at once, each in its own
+            process (a tiled extent only). Not part of the record: it does not
+            change the result.
 
     Raises:
         ValueError: If ground step 3 or 4 was run again after the wall units
@@ -345,6 +612,8 @@ def main(*, extent, use_cached_layers, world_ids):
             extent=extent,
             use_cached_layers=use_cached_layers,
             world_ids=world_ids,
+            rebuild=rebuild,
+            workers=tile_workers,
         )
         return
     dem, transform, _, ground_map, group, position = get_inputs(
@@ -399,9 +668,15 @@ def main(*, extent, use_cached_layers, world_ids):
         f"{int((~in_unit & ~on_line).sum()):,}"
     )
 
+    falls = read_unit_falls(units, extent=extent)
     for scenario, walled in SCENARIOS.items():
+        # A bound walls every unit; an element of a pif in no unit (a pif piece
+        # with no wall) stays bare in it, as in every world.
+        bound_flags = gen_element_walls(
+            units, pd.Series(walled, index=units.index), elements
+        )
         result = build_slope_polygons(
-            with_walls(found, walled),
+            with_walls(found, bound_flags),
             dem,
             transform,
             is_fill=is_fill,
@@ -416,6 +691,14 @@ def main(*, extent, use_cached_layers, world_ids):
             forced_fill,
             forced_thickness,
             forced_ground,
+        )
+        zones = align_scenario(
+            zones,
+            scenario=scenario,
+            elements=elements,
+            units=units,
+            flags=walled,
+            falls=falls,
         )
         zones.to_parquet(zones_path(scenario, extent=extent))
         if scenario == "walled":
@@ -448,7 +731,7 @@ def main(*, extent, use_cached_layers, world_ids):
             forced["wall_unit_id"].map(walled).fillna(value=False).to_numpy(dtype=bool),
             index=forced.index,
         )
-        with_forced(
+        zones = with_forced(
             result,
             scenario,
             forced,
@@ -456,6 +739,14 @@ def main(*, extent, use_cached_layers, world_ids):
             forced_fill,
             forced_thickness,
             forced_ground,
+        )
+        align_scenario(
+            zones,
+            scenario=scenario,
+            elements=elements,
+            units=units,
+            flags=walled,
+            falls=falls,
         ).to_parquet(zones_path(scenario, extent=extent))
         print(
             f"World {world_id}: {flags.mean():.1%} of elements walled, "
@@ -469,4 +760,6 @@ if __name__ == "__main__":
         extent=config.EXTENT,
         use_cached_layers=config.USE_CACHED_LAYERS,
         world_ids=config.WORLD_IDS,
+        rebuild=config.REBUILD,
+        tile_workers=config.TILE_WORKERS,
     )

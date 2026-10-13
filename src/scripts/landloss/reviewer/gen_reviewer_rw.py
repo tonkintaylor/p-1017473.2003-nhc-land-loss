@@ -50,7 +50,6 @@ from rasterio.warp import (
     transform_bounds,
 )
 from rasterio.windows import from_bounds
-from scipy.stats import norm
 
 from landloss.domain import constants
 from landloss.exposure.rw import wall_type
@@ -454,30 +453,24 @@ def row_checks(frames, *, world_id):
     return checks
 
 
-def lognormal_beta(p15, p50):
-    """The dispersion of a lognormal curve from its 15th and 50th percentiles."""
-    return math.log(p50 / p15) / norm.ppf(0.85)
-
-
 def fragility_curves():
     """The wall type curves as median and dispersion, for plotting only.
 
-    The table's band column was ``size_class`` until 2026-10-07 and is
-    ``height_class`` since; whichever it carries is the band each curve is
-    labelled and dashed by.
+    The table holds each type's curve under 2 m; a wall 2 m and over takes
+    both percentiles times the height factor, so each type is drawn once per
+    height class, the class being the band each curve is dashed by.
     """
-    path = REPO_ROOT / "src" / "landloss" / "io" / "assets"
-    table = pd.read_csv(path / "retaining-wall-type-fragility.csv")
-    band = "height_class" if "height_class" in table.columns else "size_class"
+    table = wall_type_fragility.load_wall_type_fragility()
     return [
         {
-            "label": f"{row['wall_type']} {row[band]}",
+            "label": f"{row['wall_type']} {band}",
             "wall_type": row["wall_type"],
-            "band": row[band],
-            "theta": float(row["p50"]),
-            "beta": lognormal_beta(float(row["p15"]), float(row["p50"])),
+            "band": band,
+            "theta": float(row["theta"]) * factor,
+            "beta": float(row["beta"]),
         }
         for _, row in table.iterrows()
+        for band, factor in wall_type_fragility.HEIGHT_FACTORS.items()
     ]
 
 
@@ -631,26 +624,16 @@ def fragility_table_chart():
     table = wall_type_fragility.load_wall_type_fragility()
     return table_chart(
         "Wall type fragility, P(replace | PGA)",
-        table[
-            [
-                "wall_type",
-                "height_class",
-                "p15",
-                "p50",
-                "beta",
-                "published_height_m",
-                "published_fs",
-                "type_factor",
-                "height_effect",
-            ]
-        ],
-        note="retaining-wall-type-fragility.csv: Koutsoupaki (2023), DS2 "
-        "(moderate) read as replace. p15 and p50 are PGA (g); β is the "
-        "lognormal dispersion through them. The height class splits at "
-        f"{wall_type_fragility.HEIGHT_CLASS_SPLIT_M:g} m. On a slope, landslide "
+        table[["wall_type", "p15", "p50", "beta", "source"]],
+        note="retaining-wall-type-fragility.csv: the lead's judgement "
+        "(2026-10-13), moderate damage (DS2) read as replace, for a wall under "
+        f"{wall_type_fragility.HEIGHT_CLASS_SPLIT_M:g} m. p15 and p50 are PGA (g); "
+        "β is the lognormal dispersion through them. A wall "
+        f"{wall_type_fragility.HEIGHT_CLASS_SPLIT_M:g} m and over takes both "
+        f"times {wall_type_fragility.TALL_HEIGHT_FACTOR:g}. On a slope, landslide "
         f"step 5 multiplies the median by {wall_type_fragility.FILL_CAPACITY_FACTOR:g} "
         f"for a fill wall and {wall_type_fragility.CUT_CAPACITY_FACTOR:g} for a cut "
-        "wall, then converts it to PGV.",
+        "wall, and draws it on site PGA as published.",
         wide=True,
     )
 

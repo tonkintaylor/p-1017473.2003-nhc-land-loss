@@ -9,12 +9,15 @@ one line, one probability, one draw. This module:
    low-height wall), and every ``gns_only`` piece, a stretch of GNS mapped
    wall more than 2 m from every pip. A GNS mapped wall within 2 m of a pif
    piece is no candidate of its own: it sets that piece's ``gns_wall`` flag.
-   Nothing is joined. A pif piece's line is the stretch of its spine it was
-   cut on, and a GNS-only piece's line its stretch of mapped wall, both cut by
-   the shared rules (:mod:`landloss.hazard.landslide.bend_split`), so each
-   unit is one line of 3 to 50 m with at most 3 bends turning at most 185
-   degrees; each unit carries its length in every property it enters
-   (:func:`gen_unit_properties`).
+   A pif piece with no wall (``no_wall``, the pips its parent's wall line does
+   not hold, the lead 2026-10-13) is no candidate. Nothing is joined. A pif
+   piece's line is its wall line, drawn along its downhill outline
+   (:mod:`landloss.hazard.landslide.wall_lines`), and a GNS-only piece's line
+   its stretch of mapped wall, cut by the shared rules
+   (:mod:`landloss.hazard.landslide.bend_split`), so each unit is one line of
+   up to 50 m with at most 3 bends turning at most 185 degrees (a pif piece's
+   wall line on a small pif can be under 3 m); each unit carries its length in
+   every property it enters (:func:`gen_unit_properties`).
 2. **Prior.** Scores each unit in points (the lead, 2026-10-07): its
    verticality, wall height, length, distance to a building, road frontage or
    property boundary, ground step 5 class, a cut in rock or in soil, the
@@ -150,14 +153,14 @@ CUT_FILL_COLUMNS = ("cut_fill_class",)
 PIF_COLUMNS = (
     "candidate_class",
     "rateable_property_id",
-    "spine",
-    "spine_length_m",
-    "end_a_x",
-    "end_a_y",
-    "end_b_x",
-    "end_b_y",
-    "end_a_fall_deg",
-    "end_b_fall_deg",
+    "wall_line",
+    "wall_length_m",
+    "wall_end_a_x",
+    "wall_end_a_y",
+    "wall_end_b_x",
+    "wall_end_b_y",
+    "wall_end_a_fall_deg",
+    "wall_end_b_fall_deg",
     "max_delta_h_m",
     "near_drop_p80_m",
     "building_m",
@@ -208,8 +211,10 @@ def gen_wall_members(
     """One row per candidate pif and per GNS-only piece, in one shape.
 
     Args:
-        sizs: The siz table from ground step 4 (pif_id index, the spine
-            columns of
+        sizs: The siz table from ground step 4 (pif_id index, the wall line
+            columns ``wall_line``, ``wall_length_m`` and ``wall_end_*`` that
+            ground step 3 reads along each wall piece's wall line,
+            :func:`~landloss.hazard.landslide.wall_lines.wall_line`, with
             :func:`~landloss.hazard.landslide.instability_zones.gen_pif_spines`,
             the evidence of
             :func:`~landloss.hazard.landslide.wall_candidates.wall_candidate_evidence`
@@ -231,7 +236,7 @@ def gen_wall_members(
         :data:`GNS_ONLY_MEMBER`), ``member_id`` (the pif_id or gns_only_id),
         ``property_id`` (the rateable property, by one rule for both: the
         non-road property holding most of the pif or line, ties to the lowest
-        id, NA where none), ``length_m`` (the spine or the line),
+        id, NA where none), ``length_m`` (the wall line or the GNS-only line),
         the end columns (a GNS-only piece's ends are its line's ends and its
         falls are NaN), ``max_delta_h_m`` (NaN for GNS-only), ``height_m``
         (the siz table's ``near_drop_p80_m``, or ``step_height_m`` for
@@ -240,7 +245,7 @@ def gen_wall_members(
         ``ground_group``, ``ground_material``, ``height_band`` (0 for
         GNS-only), ``in_slide_fill`` (False for GNS-only), ``gns_wall`` (True
         for GNS-only), ``is_siz``, and ``footprint`` (the pips or the line).
-        The active geometry is the spine or the line.
+        The active geometry is the wall line or the GNS-only line.
 
     Raises:
         ValueError: If a frame is missing a column it needs, or a candidate
@@ -259,23 +264,23 @@ def gen_wall_members(
         )
         raise ValueError(msg)
     step13 = cut_fill.loc[pifs.index]
-    spine = gpd.GeoSeries(pifs["spine"], crs=crs).to_numpy()
+    wall_line = gpd.GeoSeries(pifs["wall_line"], crs=crs).to_numpy()
     pif_members = pd.DataFrame(
         {
             "member_type": PIF_MEMBER,
             "member_id": pifs.index.to_numpy(dtype=np.int64),
             "property_id": pifs["rateable_property_id"].astype(object).to_numpy(),
-            "length_m": pifs["spine_length_m"].to_numpy(dtype=float),
+            "length_m": pifs["wall_length_m"].to_numpy(dtype=float),
             **{
-                column: pifs[column].to_numpy(dtype=float)
-                for column in (
-                    "end_a_x",
-                    "end_a_y",
-                    "end_b_x",
-                    "end_b_y",
-                    "end_a_fall_deg",
-                    "end_b_fall_deg",
-                    "max_delta_h_m",
+                column: pifs[source].to_numpy(dtype=float)
+                for column, source in (
+                    ("end_a_x", "wall_end_a_x"),
+                    ("end_a_y", "wall_end_a_y"),
+                    ("end_b_x", "wall_end_b_x"),
+                    ("end_b_y", "wall_end_b_y"),
+                    ("end_a_fall_deg", "wall_end_a_fall_deg"),
+                    ("end_b_fall_deg", "wall_end_b_fall_deg"),
+                    ("max_delta_h_m", "max_delta_h_m"),
                 )
             },
             "height_m": pifs["near_drop_p80_m"].to_numpy(dtype=float),
@@ -293,7 +298,7 @@ def gen_wall_members(
             "in_slide_fill": pifs["in_slide_fill"].to_numpy(dtype=bool),
             "gns_wall": pifs["gns_wall"].to_numpy(dtype=bool),
             "is_siz": pifs["is_siz"].to_numpy(dtype=bool),
-            "geometry": spine,
+            "geometry": wall_line,
             "footprint": pifs.geometry.to_numpy(),
         }
     )
@@ -350,11 +355,15 @@ def gen_wall_units(
     The lead's model (2026-10-07): each candidate (a ``siz`` or ``low_height``
     pif piece, or a ``gns_only`` piece) is independent, one unit with one
     line, one probability and one draw; nothing is joined. A unit's line is
-    its member's: a pif piece's line (the stretch of spine it was cut on,
-    :func:`~landloss.hazard.landslide.instability_zones.split_pifs`) or a
+    its member's: a pif piece's wall line (drawn along its downhill outline by
+    :func:`~landloss.hazard.landslide.wall_lines.wall_line`, the lead,
+    2026-10-13; the piece's cut line where it finds no downhill run) or a
     GNS-only piece's line
     (:func:`~landloss.hazard.landslide.wall_candidates.gen_gns_only_candidates`),
-    both cut by :mod:`landloss.hazard.landslide.bend_split`.
+    both within the line rules of :mod:`landloss.hazard.landslide.bend_split`.
+    A pif piece's wall line may be under ``min_segment_m`` long (a small pif's
+    outline): the shortest-line rule is not applied to it (2026-10-13), the
+    others are.
 
     Args:
         members: From :func:`gen_wall_members`.
@@ -384,6 +393,7 @@ def gen_wall_units(
             part); the candidates keep them by construction, so this is a bug.
     """
     lines = dict(enumerate(members.geometry.to_numpy()))
+    is_pif = (members["member_type"] == PIF_MEMBER).to_numpy()
     breaks = {
         label: broken
         for label, line in lines.items()
@@ -391,7 +401,7 @@ def gen_wall_units(
             broken := bend_split.rule_breaks(
                 line,
                 max_bends=max_bends,
-                min_length_m=min_segment_m,
+                min_length_m=0.0 if is_pif[label] else min_segment_m,
                 max_length_m=max_length_m,
                 max_turn_deg=max_turn_deg,
             )

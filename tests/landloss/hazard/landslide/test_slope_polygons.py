@@ -30,18 +30,22 @@ and of the volume at 0.3 m deep.
 
 import math
 import os
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
 import pytest
 import shapely
+from rasterio.transform import Affine
 from scipy import ndimage
 
 from landloss.hazard.landslide import slope_polygons
+from landloss.hazard.landslide.instability_zones import with_walls
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     CREST,
     FREE_FACE,
+    SOIL_LIKE_CODE,
     SlopeElements,
     find_slope_elements,
 )
@@ -567,6 +571,76 @@ def test_geometries_are_true_to_the_cells():
         polygon_geometries(result, zone="debris", crs="EPSG:2193")
 
 
+@pytest.mark.parametrize(
+    "name", ["01_wall", "03_excavated_toe_4m", "05_terraces_narrow_bench"]
+)
+def test_shared_work_between_wall_scenarios_changes_no_polygon(name):
+    terrain = build_toy_case(name, noise_sd_m=0.0, seed=SEED)
+    found = find_slope_elements(terrain.dem, terrain.ground_group, terrain.transform)
+    shared = {}
+    for walled in (True, False, True):
+        scenario = with_walls(found, walled)
+        plain = build_slope_polygons(scenario, terrain.dem, terrain.transform)
+        kept = build_slope_polygons(
+            scenario, terrain.dem, terrain.transform, shared=shared
+        )
+        assert shared
+        for name_ in ("polygons", "cells", "overlaps", "element_links"):
+            pd.testing.assert_frame_equal(
+                getattr(kept, name_), getattr(plain, name_), check_exact=True
+            )
+
+
+def test_shared_work_is_worked_out_again_for_other_elements():
+    terrain = build_toy_case("01_wall", noise_sd_m=0.0, seed=SEED)
+    found = find_slope_elements(terrain.dem, terrain.ground_group, terrain.transform)
+    other = build_toy_case("03_excavated_toe_4m", noise_sd_m=0.0, seed=SEED)
+    other_found = find_slope_elements(other.dem, other.ground_group, other.transform)
+    shared = {}
+    build_slope_polygons(found, terrain.dem, terrain.transform, shared=shared)
+    kept = build_slope_polygons(other_found, other.dem, other.transform, shared=shared)
+    plain = build_slope_polygons(other_found, other.dem, other.transform)
+    pd.testing.assert_frame_equal(kept.cells, plain.cells, check_exact=True)
+
+
+@pytest.mark.parametrize("smooth", [True, False])
+def test_a_cache_gives_the_same_geometries_and_draws_each_cell_set_once(
+    smooth, monkeypatch
+):
+    _, _, result = run_case("03_excavated_toe_4m", 0.0)
+    cache = {}
+    for zone in (EVACUATED, IMMINENT, INUNDATED):
+        plain = polygon_geometries(result, zone=zone, crs="EPSG:2193", smooth=smooth)
+        cached = polygon_geometries(
+            result, zone=zone, crs="EPSG:2193", smooth=smooth, cache=cache
+        )
+        assert cached["polygon"].tolist() == plain["polygon"].tolist()
+        assert cached.geometry.geom_equals_exact(plain.geometry, 0).all()
+    drawn = []
+    real = slope_polygons._cell_shape  # noqa: SLF001
+    monkeypatch.setattr(
+        slope_polygons,
+        "_cell_shape",
+        lambda *args: drawn.append(1) or real(*args),
+    )
+    for zone in (EVACUATED, IMMINENT, INUNDATED):
+        polygon_geometries(
+            result, zone=zone, crs="EPSG:2193", smooth=smooth, cache=cache
+        )
+    assert drawn == []
+
+
+def test_a_cached_imminent_outline_is_not_reused_where_the_evacuated_cells_differ():
+    _, _, result = run_case("03_excavated_toe_4m", 0.0)
+    cache = {}
+    polygon_geometries(result, zone=IMMINENT, crs="EPSG:2193", cache=cache)
+    evacuated = result.cells[result.cells["zone"] == EVACUATED]
+    other = replace(result, cells=result.cells.drop(index=evacuated.index[0]))
+    plain = polygon_geometries(other, zone=IMMINENT, crs="EPSG:2193")
+    cached = polygon_geometries(other, zone=IMMINENT, crs="EPSG:2193", cache=cache)
+    assert cached.geometry.geom_equals_exact(plain.geometry, 0).all()
+
+
 @pytest.mark.parametrize("name", sorted(TOY_CASES))
 @pytest.mark.parametrize("noise", NOISE_LEVELS)
 def test_polygons_tile_except_where_the_rules_let_them_overlap(name, noise):
@@ -614,6 +688,27 @@ def test_case_1_wall_takes_the_minimum_width_behind_its_crest(noise):
         19.5,
         20.5,
     }
+
+
+def test_a_diagonal_wall_keeps_the_first_cell_behind_its_crest():
+    # A 1 m step across the grid's diagonal: each ray's first cell behind the
+    # crest cell is the diagonal one, whose centre is root 2 m back, past the
+    # 1 m minimum width, yet the ray keeps it.
+    n = 40
+    rows, cols = np.mgrid[0:n, 0:n]
+    dem = np.where(rows + cols < n, 1.0, 0.0)
+    transform = Affine(1.0, 0.0, ORIGIN_EASTING, 0.0, -1.0, 5_420_000.0)
+    found = find_slope_elements(
+        dem, np.full(dem.shape, SOIL_LIKE_CODE, dtype=np.int8), transform
+    )
+    result = build_slope_polygons(found, dem, transform)
+    polygon = result.polygons.iloc[0]
+    assert polygon["width_behind_crest_m"] == pytest.approx(BETA_MIN_EVACUATED_WIDTH_M)
+    assert polygon["width_realised_m"] == pytest.approx(math.sqrt(2.0))
+    # The evacuated ground is the element and a strip of cells behind it.
+    evacuated = zone_cells(result, EVACUATED)
+    behind = evacuated[found.labels[evacuated["row"], evacuated["col"]] == 0]
+    assert len(behind) >= 0.9 * (n - 4)
 
 
 @pytest.mark.usefixtures("type_rules_only")

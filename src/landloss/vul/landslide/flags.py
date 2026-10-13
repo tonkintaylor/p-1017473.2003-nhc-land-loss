@@ -30,6 +30,14 @@ analogue of the hazard side's rule that polygons touching only along an edge
 share no ground
 (:data:`~landloss.hazard.landslide.urban.realisation.SHARED_GROUND_TOLERANCE_M2`).
 
+A wall's **own** polygon (its outcome's ``slope_id``) never sets the wall's
+``is_evacuated`` or ``is_inundated`` flag by geometry (the lead, 2026-10-13).
+The wall's line is drawn at the toe of its own face and its evacuated polygon
+is cut at the line, so the wall is that polygon's edge and its own deposit runs
+on below it; its own failure is the outcome route's (``failed_with_polygon``,
+the shaking flag). Polygons of other slopes still flag it, as do the
+``absorbed`` and ``superseded`` outcomes.
+
 This sits at the landslide level rather than under an asset submodule because it
 reads no asset-specific attribute: it needs only an identifier and a geometry,
 whatever the structure is.
@@ -118,20 +126,29 @@ def _lines_inside_ids(
     landslides: gpd.GeoDataFrame,
     land_class: str,
     id_column: str,
+    own: pd.Series | None = None,
 ) -> pd.Index:
     """Return the ids of the walls whose line lies inside a landslide of one kind.
 
     A wall is caught where more than :data:`WALL_INSIDE_TOLERANCE_M` of its
     line lies inside some polygon shrunk by :data:`WALL_INSIDE_TOLERANCE_M`, so
     a line that only runs along the polygon's boundary, or touches it at a
-    point, is not.
+    point, is not. With ``own`` (each wall's own ``slope_id``, by wall id), a
+    polygon of the wall's own slope does not catch it; landslides with no
+    :data:`SLOPE_ID_COLUMN` have no own polygon.
     """
     slides = landslides[landslides[LAND_CLASS_COLUMN] == land_class]
     if slides.empty:
         return pd.Index([])
     shrunk = slides.geometry.buffer(-WALL_INSIDE_TOLERANCE_M)
+    keep = ~shrunk.is_empty
+    slope_ids = (
+        slides[SLOPE_ID_COLUMN].to_numpy()[keep.to_numpy()]
+        if SLOPE_ID_COLUMN in slides.columns
+        else np.full(int(keep.sum()), None, dtype=object)
+    )
     interiors = gpd.GeoDataFrame(
-        geometry=shrunk[~shrunk.is_empty].to_numpy(), crs=slides.crs
+        {SLOPE_ID_COLUMN: slope_ids}, geometry=shrunk[keep].to_numpy(), crs=slides.crs
     )
     if interiors.empty:
         return pd.Index([])
@@ -144,6 +161,11 @@ def _lines_inside_ids(
         interiors.geometry.to_numpy()[joined["index_right"].to_numpy()],
     )
     reached = shapely.length(inside) > WALL_INSIDE_TOLERANCE_M
+    if own is not None:
+        polygon_slope = joined[SLOPE_ID_COLUMN].to_numpy()
+        wall_slope = joined[id_column].map(own).to_numpy()
+        is_own = pd.notna(polygon_slope) & (polygon_slope == wall_slope)
+        reached &= ~is_own
     return pd.Index(joined.loc[reached, id_column].unique())
 
 
@@ -313,8 +335,9 @@ def wall_flags(
     set when the loss tables are built). A polygon sets a geometric flag only
     where more than :data:`WALL_INSIDE_TOLERANCE_M` of the wall's line lies
     inside it, so a standing wall that is only the edge of a neighbouring
-    failure is not flagged; the frames are otherwise checked as
-    :func:`landslide_flags` checks them.
+    failure is not flagged, and the wall's own polygon (its outcome's
+    ``slope_id``) sets neither geometric flag (see the module docstring); the
+    frames are otherwise checked as :func:`landslide_flags` checks them.
 
     Args:
         walls: The world's wall population, one row per wall carrying
@@ -337,10 +360,19 @@ def wall_flags(
         ValueError: If an outcome names a wall not in ``walls``, or on anything
             :func:`landslide_flags` or :func:`outcome_flags` refuses.
     """
-    geometric = _geometric_flags(
-        walls, landslides, id_column=id_column, caught=_lines_inside_ids
-    )
     from_outcome = outcome_flags(outcomes, id_column=id_column)
+    own = from_outcome.set_index(id_column)[SLOPE_ID_COLUMN]
+
+    def caught(
+        assets: gpd.GeoDataFrame,
+        slides: gpd.GeoDataFrame,
+        land_class: str,
+        ids: str,
+    ) -> pd.Index:
+        """The walls a land class reaches, a wall's own polygon not counting."""
+        return _lines_inside_ids(assets, slides, land_class, ids, own=own)
+
+    geometric = _geometric_flags(walls, landslides, id_column=id_column, caught=caught)
     strangers = from_outcome.loc[
         ~from_outcome[id_column].isin(geometric[id_column]), id_column
     ]

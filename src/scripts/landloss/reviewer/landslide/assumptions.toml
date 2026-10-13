@@ -281,10 +281,10 @@ source = "instability_zones.py; bend_split.py"
 [[assumptions]]
 id = "LS-A32"
 step = "fragility"
-title = "Unwalled median from the Kingsbury rating: the placeholder is still in code"
-text = "θ = θ0 · (θ150/θ0)^(R/150) on the continuous Kingsbury (1995) rating, β {LOCALISED_FRAGILITY_BETA}, with θ0 {LOCALISED_THETA_AT_ZERO_RATING_M_S} and θ150 {LOCALISED_THETA_AT_MAX_RATING_M_S} m/s: the placeholder. The adopted fit (θ0 2.46, θ150 0.492 m/s, β 0.724) ran on 2026-10-07 (urban-area-calibration-fit.csv) but is not ported. The fragility.py comment cites the rejected area fit (0.334 / 0.0668 / 1.01) as agreed, and the findings file still says the adopted fit has not run."
+title = "Unwalled curve from the Kingsbury rating, on site PGA, set by judgement"
+text = "Set by the project lead on 2026-10-12 on site PGA: p15 0.7 and p50 2.0 g at zone 3 (rating 80), p15 0.3 and p50 0.6 g at zone 5 (rating 145), with ln p50 and ln p15 on straight lines against the continuous Kingsbury (1995) rating, and β falling from 1.38 at zone 1 to 0.67 at zone 5, so low-susceptibility ground has the flatter curve. Judgement against the anchors (Kingsbury zone shares, the Kaikōura record, the cut and fill readings), not fitted: no anchor lies above 0.8 g, so the study's 2,500-year demand is extrapolation. The 2026-10-07 calibration fits are kept as the record and not read. Converted to PGV at the polygon's own ratio, as the wall curves are."
 status = "check"
-source = "urban/fragility.py (LOCALISED_THETA_*); constants (LOCALISED_FRAGILITY_BETA); validations/urban/urban_area_calibration_findings.md"
+source = "io/assets/urban-localised-fragility.csv; urban/fragility.py (localised_curve_pga_g); validations/urban/urban_area_calibration_findings.md"
 
 [[assumptions]]
 id = "LS-A33"
@@ -410,18 +410,19 @@ source = "wall_type_fragility (FILL_CAPACITY_FACTOR, CUT_CAPACITY_FACTOR); io/as
 [[assumptions]]
 id = "LS-A46"
 step = "fragility"
-title = "Wall medians converted from PGA to PGV"
-text = "At each site's TS1170.5 PGV/PGA ratio (pilot median 0.85 m/s per g). Exact while PGA and PGV scale by one draw; the alternative is to evaluate the wall curves in PGA in landslide step 6."
-status = "pending"
-source = "pgv_pga_ratio_m_s_per_g; hazard/landslide/status.md, Next 14"
+title = "Wall curves drawn on site PGA, as published"
+text = "Changed 2026-10-12: the whole urban slope model is on site PGA, so the wall curves are drawn as published with no conversion, and landslide step 6 reads the earthquake's site PGA from shaking step 4. Until then the medians were converted to PGV at each site's TS1170.5 PGV/PGA ratio (pilot median 0.85 m/s per g); the Porirua pilot draws the same failures either way, since PGA and PGV scale by one draw."
+status = "decided"
+decided = "by the project lead, 2026-10-12"
+source = "urban/fragility.py (IM); urban/realisation.py (sample_pga)"
 
 [[assumptions]]
 id = "LS-A47"
 step = "fragility"
-title = "Topographic amplification placeholder"
-text = "Every median is divided by 1 + 0.5 · max(TPI100 / 10, (slope − 30) / 30), clipped, at most {TOPOGRAPHIC_AMPLIFICATION_MAX}. It lifts 99.8% of pilot polygons (median 1.29 unwalled, 1.47 cut-walled). The review proposes 1.0 for most house-lot faces, by height and ridge or terrace setting (Brabhaharan 2018); not built."
-status = "beta"
-source = "urban/geometry.py (amplification_factor); constants (TOPOGRAPHIC_AMPLIFICATION_MAX)"
+title = "Topographic amplification: one factor off flatland"
+text = "Every median of a polygon whose representative point is off NLM flatland is divided by {TOPOGRAPHIC_AMPLIFICATION}; on flatland by 1.0 (the lead, 2026-10-12). It replaced a placeholder of up to 1.5 on the 100 m topographic position and the face's own slope, which lifted 99.5% of the Porirua pilot's polygons (median 1.24). The review's proposal, 1.0 for most house-lot faces by height and ridge or terrace setting (Brabhaharan 2018), was not built."
+status = "decided"
+source = "urban/geometry.py (amplification_factor); urban/face_polygons.py (with_amplification); constants (TOPOGRAPHIC_AMPLIFICATION)"
 
 [[assumptions]]
 id = "LS-A48"
@@ -487,7 +488,7 @@ source = "face_polygons (wall_position)"
 id = "LS-A55"
 step = "fragility"
 title = "Ground off the map is natural weathered rock"
-text = "An element off the ground map (about 15%) takes natural weathered rock, no prior failure and 4 m to groundwater for its Kingsbury rating."
+text = "An element off the ground map (about 15%) takes natural weathered rock, no prior failure and the well drained groundwater class (the 4 m default) for its Kingsbury rating."
 status = "beta"
 source = "face_polygons (BETA_OFF_MAP_GROUND)"
 

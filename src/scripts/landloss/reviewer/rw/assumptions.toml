@@ -244,8 +244,8 @@ source = "exposure/rw/status.md; s5_urban_slope_fragility"
 [[assumptions]]
 id = "RW-A27"
 step = "fragility"
-title = "Flat-land walls: adjusted curve on PGV"
-text = "A wall on flat land takes its type curve times 0.85 for fill or 1.15 for cut, converted from PGA to PGV at the site's TS1170.5 ratio, with no amplification or rate factor. No pilot wall is on flat land at present, so this path is unused."
+title = "Flat-land walls: adjusted curve on site PGA"
+text = "A wall on flat land takes its type curve times 0.85 for fill or 1.15 for cut, drawn at the earthquake's site PGA from shaking step 4 as published, with no amplification or rate factor. Changed 2026-10-12 from a conversion to PGV at the site's TS1170.5 ratio, with the whole urban slope model. No pilot wall is on flat land at present, so this path is unused."
 status = "beta"
 source = "src/landloss/vul/shaking/fragility.py; s9_wall_damage_state"
 

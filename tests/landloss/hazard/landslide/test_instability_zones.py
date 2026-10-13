@@ -689,3 +689,75 @@ def test_pip_directions_that_do_not_match_the_pips_are_rejected():
     table["pip_direction"] = [np.array([1, 1], dtype=np.int8)]
     with pytest.raises(ValueError, match="one direction per pip"):
         zones.gen_pif_spines(table, cell_size_m=1.0, end_window_m=3.0)
+
+
+# Wall lines and no-wall pieces ---------------------------------------------------
+
+
+def test_with_no_wall_settings_every_piece_is_walled_by_its_cut_line():
+    result = _zones(_ramp(6.0, 60.0), "soil_like")
+    assert result.sizs["has_wall"].all()
+    assert result.wall_lines.index.equals(result.sizs.index)
+    assert all(
+        result.wall_lines[i].equals(result.pif_lines[i]) for i in result.sizs.index
+    )
+
+
+def test_a_pif_gets_a_wall_line_along_its_downhill_outline(settings):
+    ground = np.full(SHAPE, GROUND_GROUPS.index("soil_like"), dtype=np.int8)
+    result = zones.find_instability_zones(
+        _wall(2.0), ground, TRANSFORM, wall_settings=settings
+    )
+    assert result.sizs["has_wall"].all()
+    line = result.wall_lines.iloc[0]
+    assert line.geom_type == "LineString"
+    assert line.length >= 3.0
+    # The wall faces east, so its line runs north to south.
+    xs = shapely.get_coordinates(line)[:, 0]
+    assert np.ptp(xs) < 1.5
+
+
+def _lobes():
+    """A wall piece (30 by 4 pips falling south) and a lobe falling north of it."""
+    labels = np.zeros((20, 40), dtype=np.int32)
+    direction = np.full(labels.shape, -1, dtype=np.int8)
+    labels[16:20, 0:30] = 1
+    direction[16:20, 0:30] = 2
+    labels[12:16, 0:15] = 1
+    direction[12:16, 0:15] = 0
+    pips = zones.Pips(mask=labels > 0, direction=direction)
+    return labels, pips
+
+
+def test_a_lobe_the_wall_line_does_not_hold_becomes_a_no_wall_piece(settings):
+    labels, pips = _lobes()
+    transform = Affine(1, 0, 0, 0, -1, labels.shape[0])
+    cut = shapely.LineString([(0.0, 0.5), (30.0, 0.5)])
+    split = zones.split_no_wall_pifs(
+        labels, np.array([0, 7]), [None, cut], pips, transform, settings
+    )
+    assert split.parent.tolist() == [0, 7, 7]
+    assert split.has_wall.tolist() == [True, True, False]
+    assert (split.labels[12:16, 0:15] == 2).all()
+    assert (split.labels[16:20, 0:30] == 1).all()
+    assert split.wall_line[2] is None
+    assert split.cut_line[2] is None
+    assert split.method[2] is None
+    assert split.wall_line[1].length > 20.0
+    assert split.cut_line[1] is cut
+
+
+def test_the_pips_of_a_split_are_all_kept_on_some_piece(settings):
+    labels, pips = _lobes()
+    transform = Affine(1, 0, 0, 0, -1, labels.shape[0])
+    split = zones.split_no_wall_pifs(
+        labels,
+        np.array([0, 7]),
+        [None, shapely.LineString([(0.0, 0.5), (30.0, 0.5)])],
+        pips,
+        transform,
+        settings,
+    )
+    rows, _cols = np.nonzero(split.labels == 2)
+    assert len(rows) == 60
+    assert set(split.labels[pips.mask]) == {1, 2}

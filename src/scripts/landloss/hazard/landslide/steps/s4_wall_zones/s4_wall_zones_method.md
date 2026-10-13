@@ -65,7 +65,13 @@
   the type's rule: the wall's wedge on fill's 42° (0.45 H) and the fill bank
   (0.45 H) always, the half-metre headscarp band always, and the one-metre band
   above 2 m high. `width_rule` stays the type's rule and `width_floored` says
-  where the floor set the width.
+  where the floor set the width. A width of a cell or more keeps each ray's
+  first cell past the crest, however far back its centre lies, and the
+  evacuated band then ends at that cell (`slope_polygons._march_uphill`, the
+  lead, 2026-10-13). Across the grid's diagonal that cell's centre is √2 m
+  back, past the 1 m floor, so before this a low face running diagonally kept
+  no ground behind its crest. That was 12,117 of the 13,684 such polygons
+  over Lower Hutt, and a one-cell-wide face was drawn as a string of discs.
 - Fill and its thickness are read onto each element by `fill_by_element()` from
   the element's majority ground map row. A fill bank (no wall) is cut on the
   same slip plane as a wall's face, from its toe to the back of its width, each
@@ -155,6 +161,57 @@
   2026-10-08): each polygon's wall is its element's wall unit, the id exposure rw
   step 6 writes as the drawn wall's `wall_line_id`, so the hazard and the
   exposure share one draw. The bounds are never read downstream.
+- **Alignment with the wall line** (the lead, 2026-10-13: the walled element's
+  evacuated polygons end at the wall; see `s6_wall_population_method.md` for the
+  wall line they are aligned to). After a scenario's zones are built, and for
+  the tiled run after they are stitched (so a unit's polygons are seen together
+  whichever tile built them), `gen_wall_zones.align_scenario()` calls
+  `zone_tiles.align_walled_zones()`, which runs
+  `zone_alignment.align_zones()`, then `zone_alignment.imminent_touching()`, then
+  `drawn_areas()`.
+  - Which polygons: the evacuated polygon of a built element whose pif is a
+    member of a wall unit that is walled in the scenario (`walled`: every unit,
+    `bare`: none, a world: its draw, the same units `gen_element_walls` flags).
+    Not aligned: line elements (`siz_id` 0, the GNS-only and low-height units,
+    which have no pips and so no fall), forced polygons (drawn from the line
+    already), and the elements of a pif piece with no wall (in no unit, so not
+    walled; their polygons stay as built).
+  - The unit's line is `units.geometry`; its fall is the mean fall of its first
+    member pif's pips (`zone_alignment.unit_falls()`, `pip_direction` of the siz
+    table).
+  - The trim and fill are `wall_trim.align_unit()`, with the settings in
+    `config.WALL_TRIM_*` (`zone_tiles.wall_trim_settings()`): the polygon within
+    2 m of the line is cut by the line extended along its end sections, the
+    pieces downhill are removed, then the gaps between the polygons and the
+    line are filled by ribbons along the line's normal. How each polygon went
+    is written on its evacuated rows (`wall_trim_how`, `wall_trim_removed_m2`,
+    `wall_trim_filled_m2`; "" where not aligned).
+  - Imminent and inundated zones are left as built (the lead, 2026-10-13), but a
+    polygon's imminent zone never overlaps its own evacuated polygon: the band is
+    drawn with the zones, against the evacuated outline as built, and the
+    alignment comes after it, so each aligned polygon's new evacuated ground is
+    taken out of its imminent zone, and an imminent zone left with no area is
+    dropped (`zone_alignment.imminent_outside`; the lead, 2026-10-13: imminent
+    follows the evacuated polygon). Inundated ground overlaps the evacuated on
+    purpose (the deposit) and is not cut.
+  - Imminent ground must touch its own landslide (the lead, 2026-10-13): every
+    polygon's imminent zone, aligned or not, keeps only the pieces within
+    `IMMINENT_TOUCH_M` (1 mm) of its own evacuated polygon, and an imminent zone
+    with no piece left is dropped (`zone_alignment.imminent_touching()`). The
+    pieces cut off come from the alignment (new evacuated ground splitting the
+    band) and from the outline smoothing, which leaves corner specks apart from
+    the evacuated outline in every scenario.
+  - `volume_m3` is unchanged; `area_m2` and `depth_m` of an aligned evacuated
+    polygon are redrawn from the geometry (`drawn_areas`), so the depth is the
+    same volume over the new area.
+  - A walled polygon whose unit has no fall is left as built and marked
+    `wall_trim_how` = `no fall`; the step prints the count and stops if more than
+    `MAX_NO_FALL_SHARE` (5%) of the walled polygons have no fall.
+  - The `walled` bound walls every unit through `gen_element_walls`, so the
+    elements of a no-wall pif piece stay bare in it, as in every world.
+  - Smoke test on the existing pilot world 0 zones with the research lines: 2,637
+    polygons aligned, 24,743 m2 trimmed and 4,595 m2 filled, in 16 s (run when
+    the imminent and inundated zones were also altered; since removed).
 - `fig_wall_zones.py` draws, at each site of `FIG_SITES` (the stage D2 pilot
   sites), one panel per zone file in `FIG_ZONE_SCENARIOS`: the evacuated zones
   coloured by whether the element is walled, the imminent and inundated zones at
@@ -177,8 +234,9 @@
 
 Over an extent whose 1 m DEM holds more than ground step 3's
 `config.MAX_UNTILED_CELLS` cells (every territorial authority; no pilot) the
-zones are built tile by tile (`build_tiled()`, on `tiled.py` in ground step 3),
-and the tiling of the grid pass is described in `s3_instability_zones_method.md`:
+zones are built tile by tile (`build_tiled()` in `gen_wall_zones.py`, on
+`tiled.zones_tile` in ground step 3), and the tiling of the grid pass is
+described in `s3_instability_zones_method.md`:
 
 - A line or forced element is keyed by its wall unit and belongs to the tile
   whose core holds the unit's line; a zone polygon belongs to its element's
@@ -189,5 +247,106 @@ and the tiling of the grid pass is described in `s3_instability_zones_method.md`
 
 The tiled zones are not yet identical to the whole grid's; see the plan's
 phase 3 for the comparison on the Porirua pilot.
+
+### Workers, kept tiles and the resume
+
+Implemented 2026-10-11 from `doc/specs/optimise-landslide-s4-wall-zones/spec.md`
+(FR-001 to FR-007); the settings are `TILE_WORKERS` and `REBUILD` in `config.py`.
+
+- **Workers.** `run_tiles()` builds the tiles in a `ProcessPoolExecutor`, at most
+  `TILE_WORKERS` at once, as ground step 3 does; 1 builds them in order in the
+  console's own process. Each worker reads the layers every tile reads once, in
+  `zone_tiles.start_worker()` (the ground map from its file, and the coastline,
+  building outlines, wall units, the lineless units, the scenarios' walled flags
+  and the found index as arguments). The tile builder, `zone_tiles.build_zone_tile()`,
+  and the functions it passes to `tiled.zones_tile` (`fill_by_element`,
+  `ground_rows`, `with_forced`, `zone_polygons`, `drawn_areas`) are in
+  `zone_tiles.py`, importable, so a worker on Windows can run them although
+  `gen_wall_zones.py` is run as a script; `gen_wall_zones.py` imports them back
+  for the whole-extent pass.
+- **Kept tiles.** Each tile's `tiled.TileZones` is pickled to a temporary file and
+  renamed (`zone_tiles.write_tile_zones()`), and dropped from memory, under
+  `temp/hazard/landslide/urban-slope-zones-tiles{extent_suffix}/tile-RR-CC.pkl`.
+  A tile file existing means the tile is done, so a killed run leaves no half
+  tile; a tile that fails leaves the others kept.
+- **Stitch.** `read_kept_tiles()` reads the kept tiles in the found index's tile
+  order, so the element and polygon numbers, and the rule that the first tile
+  claims a shared element, do not depend on which worker finished first.
+  `tiled.label_keys`, `stitch_elements` and `stitch_zones` are unchanged.
+- **Record.** The folder holds `built-from.json` (`built_from()`): the SHA-256 of
+  the found index, the wall units file and the draws file; the size and time
+  modified of the 1 m DEM, the ground map, the elements file and each tile's
+  found elements; the scenarios, world ids and the fill modification name
+  (`tile_settings()`); and the SHA-256 of the source of every module and function
+  that builds a tile (`TILE_CODE`: `zone_tiles`, `tiled`, `tiles`, `wall_trim` and
+  `zone_alignment` (the alignment is run after the stitch, so they are listed for
+  the record's sake and a change to them builds the tiles again), the landslide
+  library modules the tile reads, including `geometry`, `susceptibility`,
+  `ground_map`, `pif_cut_fill`, `wall_candidates`, `urban.fragility` and
+  `domain.constants`, ground step 3's `grid`, and the lineless and world
+  helpers). A run with the same record builds only the tiles not kept; a
+  different record, `REBUILD`, `USE_CACHED_LAYERS` False (the LINZ layers are not
+  in the record) or a record file cut short by a killed run clears the folder and
+  builds every tile (`keep_or_clear_tiles()`, which writes the record through a
+  temporary file). The scenario sharing swaps `tiled.build_slope_polygons` for the
+  length of a tile and puts it back, whatever happens
+  (`sharing_between_scenarios()`). `TILE_WORKERS` is not in the record: it does not
+  change the result.
+- **Progress.** One line per finished tile: its number of the tiles to build, its
+  row and column, its own elements, its own time and the time in all.
+- **Check.** On the Porirua pilot in four 1.65 km tiles the wall elements and
+  every scenario's zones were identical (attributes equal, geometries within
+  1e-6 m) on 1 worker, on 3 workers, and on 2 workers after two kept tiles were
+  deleted and the step run again. Over Porirua (39 tiles of 3 km, 4 workers)
+  the step took 582 s against about 3.7 hours one tile after another, and its
+  outputs were identical to the one-process run's. The peak memory of a worker over Upper Hutt
+  (SC-004) is not yet measured.
+
+### Less work per tile
+
+A profile of one-worker Porirua pilot tiles (cProfile) put three quarters of a
+tile in `polygon_geometries`, drawing and smoothing every polygon of every
+scenario, a fifth in `build_slope_polygons` and a tenth in `restore_elements`.
+Each change below leaves the outputs as they were (the pilot comparison against
+the earlier run passed for every file on 1 and on 3 workers):
+
+- **Draw only what the tile keeps.** `zone_tiles.with_forced(skip=...)` does not
+  draw the polygons of grown elements whose pif another tile owns
+  (`build_zone_tile` names them from the found tile's keys); the tile threw
+  their zones away after drawing them. The forced polygons are still numbered
+  after every built polygon.
+- **Draw a cell set once.** `polygon_geometries(cache=...)` keeps each outline by
+  its cells (and, for the imminent band, the evacuated cells), so a polygon whose
+  cells are the same under another scenario, as most are, is not drawn again,
+  and the evacuated outline the imminent band is cut from is the one just drawn.
+  `zone_polygons(outlines=...)` passes one dict through a tile's scenarios.
+  The outline is a function of the cells alone, so the geometry is unchanged.
+- **One GDAL environment per zone.** `polygon_geometries` draws its polygons
+  inside one `rasterio.Env`, rather than opening one per polygon.
+- **Share the rays.** `build_slope_polygons(shared=...)` keeps the rays set out
+  from the crest cells and each cell's distance below its crest, which do not
+  read `element_type`, so the scenarios of a tile (which differ only by
+  `with_walls`) work them out once. `zone_tiles.sharing_between_scenarios()`
+  passes the dict for the length of a tile by swapping the builder `tiled.zones_tile`
+  calls, because `zones_tile` is ground step 3's code and a change to it would
+  change that step's record.
+
+Own time of each Porirua pilot tile on one worker, before and after (s):
+
+| Tile | Elements | Before | After |
+| --- | --- | --- | --- |
+| 0,0 | 250 | 27 | 9 |
+| 0,1 | 345 | 36 | 10 |
+| 1,0 | 378 | 33 | 10 |
+| 1,1 | 775 | 45 | 16 |
+
+The step takes 46 s on one worker (144 s before) and 30 s on three (76 s before).
+
+Building only the margin elements an owned zone needs (FR-008) is not done. On
+every pilot tile, in the bare and the walled scenario, the owned elements'
+evacuated, imminent and inundated cells and their polygon attributes were
+identical when the margin elements were left out altogether, so what the margin
+adds is time (about 1.5 times the owned elements' build) and not zones. It is
+not done because it is not provably exact and saves little: see the plan.
 
 Potential future improvements: see `s4_wall_zones_implementation_plan.md`.

@@ -8,7 +8,7 @@ out; it runs first in `gen_all.py`, before exposure, hazard and vul, because it
 depends on no exposure world and no earthquake. All five steps have run over
 the pilot; the module as a whole has not been rerun since the move.
 
-**Updated:** 2026-10-09
+**Updated:** 2026-10-10
 
 For a reviewer: read this page, then each step's method file under `steps/`,
 then the code. The landslide chain that reads it is in
@@ -26,7 +26,7 @@ then the code. The landslide chain that reads it is in
   cut and fill residuals and the 100 m topographic position derived from them
   (`steps/s1_terrain/s1_terrain_method.md`).
 - [x] **Ground map (step 2).** One non-probabilistic polygon map of material,
-  modification, prior failure and groundwater depth, from the SLIDE, GNS,
+  modification, prior failure and groundwater class, from the SLIDE, GNS,
   WCC and NLM layers by precedence, with the strength row by lookup
   (`steps/s2_ground_map/s2_ground_map_method.md`).
 - [x] **Instability zones (step 3).** The pips, pifs and their pieces, the siz
@@ -53,6 +53,14 @@ then the code. The landslide chain that reads it is in
   fill classes read as natural material with fill as the modification, and the
   GNS modelling set S52) are built and wait on a rerun. Step 1 now writes only
   the cut and fill residuals and the 100 m topographic position (2026-10-08).
+- **Step 2's polygons were reworked on 2026-10-10** (uncommitted, branch
+  `rework-ground-map-polygons`): the groundwater depth is classed before it is
+  polygonised, and the cut and fill residual is read at 10 m, sieved at
+  900 m2 and simplified as a coverage at 10 m. Porirua went from 306,592
+  pieces and 144 MB to 43,692 pieces and 6.2 MB; material and groundwater
+  shares held and the cut share rose from 18.3% to 21.4%. The Wellington pilot
+  and Porirua were rebuilt through vul on the new map; Upper Hutt was not
+  (`steps/s2_ground_map/s2_ground_map_implementation_plan.md`).
 - **Step 3** was split out of the old step 12 on 2026-10-08. The fall-line siz
   test (2 to 8 s on the pilots against 18 to 83 s) is built; on 2026-10-08 it
   gave the Wellington pilot 6,220 pif pieces and 4,790 sizs (353,740 pips). The Porirua pilot with 1 km tiles matched the
@@ -103,6 +111,8 @@ then the code. The landslide chain that reads it is in
 5. Split pifs on steepness as well, once the pieces of mixed steepness have been
    looked at.
 6. Rebuild the claim layer, then rerun steps 4 and 5 over the pilot.
+7. Rebuild the reworked ground map and step 3 over Upper Hutt once the lead has
+   accepted the 2026-10-10 numbers.
 
 ## Validation
 
@@ -121,6 +131,10 @@ then the code. The landslide chain that reads it is in
 
 ## Open decisions
 
+- **The ground map rework's settings**: the 900 m2 sieve and 10 m simplification,
+  a sieved patch taking its largest neighbour's class, and a groundwater depth
+  exactly on 1 m or 3 m taking the deeper class
+  (`.agents/plans/reworking-the-ground-map-polygons.md`, D3 and D7).
 - **The Wellington Fault sheared zone** in the ground map is not built (**T-89**).
 - **Whether the weathering grade is read from a landform proxy or from borehole
   depth-to-rock**, which decides the angle each rock face is tested at

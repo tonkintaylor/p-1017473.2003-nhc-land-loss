@@ -1,0 +1,1 @@
+`fig_urban_fragility_curves.py` in landslide step 5 also writes `urban-fragility-curves-pga`, the same four panels with PGA on the x axis: the wall type curves on their published measure, and the no-wall curves and the study's 2,500-year PGV range converted to PGA at the median PGV/PGA ratio of the walled polygons.

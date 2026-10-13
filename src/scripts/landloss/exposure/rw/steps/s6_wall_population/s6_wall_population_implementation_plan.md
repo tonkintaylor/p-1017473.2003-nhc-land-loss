@@ -472,6 +472,13 @@ The plan is `.agents/plans/assigning-retaining-wall-types.md`.
       type only affects the probability of failure, and that the pricing
       heights stand against the new size ranges (**I-14**).
 
+## Phase: units take the wall line (the lead, 2026-10-13)
+
+- [x] Pif members take `wall_line` and `wall_length_m` from the siz table; the
+      minimum-length rule applies to GNS-only members only.
+- [ ] Rerun on the wlg-pilot; check units under 3 m (about 154 expected) in the
+      loss and landslide steps.
+
 ## Potential future improvements
 
 - Read the type from evidence where a wall's type is known (a claim report or

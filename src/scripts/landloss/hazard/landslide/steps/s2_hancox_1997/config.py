@@ -25,3 +25,12 @@ MARC_FAULT_TYPE = "R"
 MARC_ONSHORE_FRACTION = 1.0
 MARC_MODAL_SLOPE_DEG = 22.0
 MARC_A_TOPO = 1.0
+
+# Multiplier on the study's area share of the Marc total. The share is by area
+# (eligible ground over Hancox's area affected), but Marc's shaking is strongest
+# above the rupture, where Wellington sits. Weighting the share by Marc's own
+# shaking instead, with the R0 asperity line running NE beneath Lower Hutt,
+# gave 2.3 times the area share for Lower Hutt (the project lead's interim
+# choice, 2026-10-13). Replace with the shaking-weighted share once the NSHM
+# interface geometry places the rupture.
+BETA_MARC_SHARE_FACTOR = 2.3

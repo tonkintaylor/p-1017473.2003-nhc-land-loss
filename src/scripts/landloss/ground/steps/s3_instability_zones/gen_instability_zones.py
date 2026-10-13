@@ -28,6 +28,7 @@ wall line rules that ground step 4 and exposure rw step 6 read. ``gen_ground.py`
 runs it.
 """
 
+import dataclasses
 import hashlib
 import inspect
 import json
@@ -41,7 +42,13 @@ import rioxarray
 from rasterio import features
 
 from landloss.common.utils import tiles
-from landloss.hazard.landslide import bend_split, instability_zones, slope_elements
+from landloss.hazard.landslide import (
+    bend_split,
+    directions,
+    instability_zones,
+    slope_elements,
+    wall_lines,
+)
 from landloss.hazard.landslide.instability_zones import (
     beyond_reach,
     find_instability_zones,
@@ -354,6 +361,11 @@ def describe(zones, elapsed, *, building_reach_m):
     )
     print(f"{int(zones.pips.mask.sum()):,} pips, {len(sizs):,} pifs, ", end="")
     print(f"{int(sizs['is_siz'].sum()):,} sizs, {len(zones.found.elements):,} elements")
+    print(
+        f"{int((~sizs['has_wall']).sum()):,} of them have no wall (the pips the "
+        f"wall line does not hold); wall lines "
+        f"{sizs.loc[sizs['has_wall'], 'wall_line_method'].value_counts().to_dict()}"
+    )
     print(sizs.groupby("ground_group")["is_siz"].agg(["size", "sum"]).to_string())
     print(f"Pips to grown elements: {elapsed:.1f} s")
     print(f"Pif pieces the 50 m cap cut, by stage: {zones.cap_cuts}")
@@ -364,6 +376,8 @@ SEARCH_CODE = (
     instability_zones,
     slope_elements,
     bend_split,
+    wall_lines,
+    directions,
     tiled,
     tiles,
     get_dem,
@@ -372,6 +386,55 @@ SEARCH_CODE = (
     grid,
     find_tiled,
 )
+
+
+def wall_line_settings():
+    """The wall line settings (the ``WALL_LINE_*`` constants of the config).
+
+    The line rules (bends, shortest section, total turning) are the walls',
+    shared with the pif cutting; the rest are the lead's option 10 settings of
+    2026-10-13.
+    """
+    return wall_lines.WallLineSettings(
+        outline_step_m=config.WALL_LINE_OUTLINE_STEP_M,
+        normal_half_window_m=config.WALL_LINE_NORMAL_HALF_WINDOW_M,
+        fall_radius_m=config.WALL_LINE_FALL_RADIUS_M,
+        normal_angles_deg=config.WALL_LINE_NORMAL_ANGLES_DEG,
+        min_run_m=config.WALL_LINE_MIN_RUN_M,
+        join_gaps_m=config.WALL_LINE_JOIN_GAPS_M,
+        max_length_m=config.WALL_LINE_MAX_LENGTH_M,
+        fit_step_m=config.WALL_LINE_FIT_STEP_M,
+        max_bends=config.WALL_MAX_BENDS,
+        min_segment_m=config.WALL_MIN_SEGMENT_M,
+        max_bend_deg=config.WALL_MAX_BEND_DEG,
+        max_total_turn_deg=config.MAX_TOTAL_TURN_DEG,
+        bend_penalty_m2=config.WALL_LINE_BEND_PENALTY_M2,
+        bend_length_scale_m=config.WALL_LINE_BEND_LENGTH_SCALE_M,
+        fit_loss_scale_m=config.WALL_LINE_FIT_LOSS_SCALE_M,
+        refine_reach_m=config.WALL_LINE_REFINE_REACH_M,
+        refine_max_nfev=config.WALL_LINE_REFINE_MAX_NFEV,
+        hook_m=config.WALL_LINE_HOOK_M,
+        hook_sharp_m=config.WALL_LINE_HOOK_SHARP_M,
+        hook_sharp_deg=config.WALL_LINE_HOOK_SHARP_DEG,
+        beyond_m=config.WALL_LINE_BEYOND_M,
+        beyond_ok=config.WALL_LINE_BEYOND_OK,
+        rms_ok_m=config.WALL_LINE_RMS_OK_M,
+        rms_weight=config.WALL_LINE_RMS_WEIGHT,
+        chord_ok_m=config.WALL_LINE_CHORD_OK_M,
+        chord_weight=config.WALL_LINE_CHORD_WEIGHT,
+        bend_score=config.WALL_LINE_BEND_SCORE,
+        jog_m=config.WALL_LINE_JOG_M,
+        jog_score=config.WALL_LINE_JOG_SCORE,
+        cone_half_angle_deg=config.WALL_LINE_CONE_HALF_ANGLE_DEG,
+        cone_reach_m=config.WALL_LINE_CONE_REACH_M,
+        cone_arc_n=config.WALL_LINE_CONE_ARC_N,
+        leftover_join_m=config.WALL_LINE_LEFTOVER_JOIN_M,
+        min_no_wall_pips=config.WALL_LINE_MIN_NO_WALL_PIPS,
+        enclosed_share=config.WALL_LINE_ENCLOSED_SHARE,
+        edge_buffer_m=config.WALL_LINE_EDGE_BUFFER_M,
+        wall_join_m=config.WALL_LINE_WALL_JOIN_M,
+        stay_m=config.WALL_LINE_STAY_M,
+    )
 
 
 def record_path(*, extent):
@@ -498,6 +561,7 @@ def main(
         "stray_tolerance_m": stray_tolerance_m,
         "min_segment_m": min_segment_m,
         "max_turn_deg": max_turn_deg,
+        "wall_settings": wall_line_settings(),
     }
     table_settings = {
         "end_window_m": end_window_m,
@@ -511,8 +575,17 @@ def main(
         "tile_margin_m": tile_margin_m,
         "tile_crop_pad_m": tile_crop_pad_m,
     }
+    # The record is JSON, so the wall line settings go in as plain values.
     record = built_from(
-        extent=extent, settings=find_settings | table_settings | tile_settings
+        extent=extent,
+        settings=find_settings
+        | {
+            "wall_settings": json.loads(
+                json.dumps(dataclasses.asdict(find_settings["wall_settings"]))
+            )
+        }
+        | table_settings
+        | tile_settings,
     )
     if not rebuild and is_current(extent=extent, record=record):
         print(

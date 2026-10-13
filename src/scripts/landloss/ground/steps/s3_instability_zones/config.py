@@ -103,3 +103,93 @@ PIF_END_WINDOW_M = 3.0
 # siz table (near_drop_p80_m, named for the first setting).
 WALL_HEIGHT_REACH_M = 2.0
 WALL_HEIGHT_QUANTILE = 0.7
+
+# ---- The wall line and the pips it holds (the lead, 2026-10-13, "option 10",
+# settled on 120 cases and the wlg-pilot; landloss.hazard.landslide.wall_lines
+# reads these through WallLineSettings and holds no default of its own). The
+# line is drawn along each pif piece's downhill outline; the bends, section
+# length and total turning it keeps are WALL_MAX_BENDS, WALL_MIN_SEGMENT_M and
+# MAX_TOTAL_TURN_DEG above.
+
+# The outline is walked every WALL_LINE_OUTLINE_STEP_M; each sample's outward
+# normal is read off the outline this far either side, and the local fall off
+# the pips within WALL_LINE_FALL_RADIUS_M.
+WALL_LINE_OUTLINE_STEP_M = 0.5
+WALL_LINE_NORMAL_HALF_WINDOW_M = 1.5
+WALL_LINE_FALL_RADIUS_M = 3.0
+
+# A sample is on the toe when its normal is within this angle of the fall: the
+# first angle that gives a run WALL_LINE_MIN_RUN_M long (degrees).
+WALL_LINE_NORMAL_ANGLES_DEG = (45.0, 60.0, 75.0, 90.0)
+WALL_LINE_MIN_RUN_M = 4.0
+
+# Gaps in the toe run bridged, each tried in turn, the first line with few pips
+# beyond it kept (metres).
+WALL_LINE_JOIN_GAPS_M = (6.0, 3.0, 1.5, 9.0, 12.0)
+
+# The run is cut to this length (the wall line rule is 50 m) and fitted on
+# samples this far apart: 2 m let a short end jog through on WU0001293 and was
+# dropped (the lead, 2026-10-13).
+WALL_LINE_MAX_LENGTH_M = 49.0
+WALL_LINE_FIT_STEP_M = 1.0
+
+# No bend of the line may turn back more than this (degrees; the lead,
+# 2026-10-12): 0 is straight on, 180 a hairpin.
+WALL_MAX_BEND_DEG = 100.0
+
+# The regulariser: each bend costs this (m2 of area between path and line) times
+# 1 + length / WALL_LINE_BEND_LENGTH_SCALE_M; the vertex polish (a soft L1
+# least squares, scale WALL_LINE_FIT_LOSS_SCALE_M) moves each inner vertex at
+# most WALL_LINE_REFINE_REACH_M and takes at most WALL_LINE_REFINE_MAX_NFEV
+# evaluations.
+WALL_LINE_BEND_PENALTY_M2 = 2.5
+WALL_LINE_BEND_LENGTH_SCALE_M = 25.0
+WALL_LINE_FIT_LOSS_SCALE_M = 0.5
+WALL_LINE_REFINE_REACH_M = 1.5
+WALL_LINE_REFINE_MAX_NFEV = 20
+
+# An end section shorter than WALL_LINE_HOOK_M, or than WALL_LINE_HOOK_SHARP_M
+# when it turns more than WALL_LINE_HOOK_SHARP_DEG, is a corner hook and is cut
+# off.
+WALL_LINE_HOOK_M = 4.0
+WALL_LINE_HOOK_SHARP_M = 5.0
+WALL_LINE_HOOK_SHARP_DEG = 60.0
+
+# The candidates' score: the share of pips more than WALL_LINE_BEYOND_M past
+# the line downhill (a score under WALL_LINE_BEYOND_OK ends the search), plus
+# penalties for a fit further than WALL_LINE_RMS_OK_M from its run, a line
+# leaving its run by more than WALL_LINE_CHORD_OK_M (a chord across a notch),
+# each bend, and an S jog (opposite turns with a section under
+# WALL_LINE_JOG_M between).
+WALL_LINE_BEYOND_M = 0.75
+WALL_LINE_BEYOND_OK = 0.1
+WALL_LINE_RMS_OK_M = 1.0
+WALL_LINE_RMS_WEIGHT = 0.25
+WALL_LINE_CHORD_OK_M = 1.5
+WALL_LINE_CHORD_WEIGHT = 0.15
+WALL_LINE_BEND_SCORE = 0.03
+WALL_LINE_JOG_M = 8.0
+WALL_LINE_JOG_SCORE = 0.15
+
+# A pip is on the wall when its fall, widened this far either side (degrees) and
+# this long (metres), meets the line (the lead, 2026-10-13); the sector is a
+# polygon of WALL_LINE_CONE_ARC_N arc vertices.
+WALL_LINE_CONE_HALF_ANGLE_DEG = 45.0
+WALL_LINE_CONE_REACH_M = 200.0
+WALL_LINE_CONE_ARC_N = 9
+
+# Pips the wall does not hold, up to WALL_LINE_LEFTOVER_JOIN_M apart (a
+# one-cell gap does not split them), are a pif with no wall when more than
+# WALL_LINE_MIN_NO_WALL_PIPS; fewer go back to the wall's pif, as does a group
+# with more than WALL_LINE_ENCLOSED_SHARE of its edge on it (within
+# WALL_LINE_EDGE_BUFFER_M). Raised from 5 to 7 to make fewer small no-wall pifs
+# (the lead, 2026-10-13).
+WALL_LINE_LEFTOVER_JOIN_M = 2.1
+WALL_LINE_MIN_NO_WALL_PIPS = 7
+WALL_LINE_ENCLOSED_SHARE = 0.5
+WALL_LINE_EDGE_BUFFER_M = 0.5
+
+# The wall's pif must touch (8-connected, WALL_LINE_WALL_JOIN_M): a group of
+# wall pips within WALL_LINE_STAY_M of the line stays, any other leaves it.
+WALL_LINE_WALL_JOIN_M = 1.5
+WALL_LINE_STAY_M = 3.0

@@ -113,7 +113,7 @@ def combined_realisation(world_id=0, realisation_id=0):
             "source_area_m2": [row[6].area for row in rows],
             "wall_state": [None, None, "no_wall", "no_wall", "no_wall"],
             "rw_id": None,
-            "pgv_m_s": [np.nan, np.nan, 0.4, 0.4, 0.4],
+            "pga_g": [np.nan, np.nan, 0.4, 0.4, 0.4],
             "p_fail": [np.nan, np.nan, 0.3, 0.3, 0.3],
             "uniform": [np.nan, np.nan, 0.1, 0.1, 0.1],
         },

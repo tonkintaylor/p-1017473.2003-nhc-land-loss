@@ -26,8 +26,18 @@
   settings determine only Marc's event-wide amount; they do not replace or
   modify the TS1170.5-derived PGV used for the Hancox threshold.
 - Model 3 apportions that event total by the eligible modelled area divided by
-  Hancox's mean area affected and scales the slope-weighted grid to that amount
-  with `landloss.hazard.landslide.calibration.calibrate()`.
+  Hancox's mean area affected, times `BETA_MARC_SHARE_FACTOR` in `config.py`
+  (`share_factor` in `model.run()`, capped at the whole event), and scales the
+  slope-weighted grid to that amount with
+  `landloss.hazard.landslide.calibration.calibrate()`. Eligible ground is
+  finite-slope cells, so open sea (no LINZ DEM value) is already out.
+- `BETA_MARC_SHARE_FACTOR` is 2.3, the project lead's interim choice
+  (2026-10-13). An area share treats the study as an average part of the
+  event, but Marc's shaking is strongest above the rupture. Summing Marc's own
+  landslide density over 72 asperities at R0 22.5 km on a line striking 045°
+  beneath Lower Hutt gave Lower Hutt 6.1% of the event against a 2.7% area
+  share; the line 10 km either side gave 1.3 to 1.5 times, 20 km south-east
+  0.2 times.
 - `coverage_path()` names one float32 coverage raster per shaking realisation
   under `temp/hazard/landslide/`, with `extent_suffix()` separating pilot and
   full-study outputs.

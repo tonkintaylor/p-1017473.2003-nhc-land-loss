@@ -12,7 +12,7 @@ judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-12
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -379,6 +379,29 @@ What this module owes the retaining wall table `loss` reads
   `property_lengths_m` and `n_properties`, which vul step 10 splits it on, so
   each property it enters by 1 m carries its own length (2026-10-12). Pilot world 0:
   1,940 walls drawn, 1,141 insured.
+- **Wall line placement, research (2026-10-12).** A pif unit's line is its
+  pif's spine, on the crest or mid-face. Redraws from the downslope edge of
+  the pif's points plus 0.4 m (vertex shift and refit, with and without a
+  boundary snap), and the lead's toe fit (a line through the pif's toe
+  points plus 0.4 m, from the toe points nearest the spine's ends, with its
+  bends +/- 1, option 5; at 60° with the spine's bends, option 6; with an
+  8 m downhill look, option 7; with its ends projected down the fall and
+  the toe points moved 0.5 m, option 8; with its ends the lowest toe points
+  within 45° of the spine's perpendicular and bends of at most 100°,
+  option 9), were compared on the pilot. The
+  lead was happy with option 7 (2026-10-12), asked for option 8's and 9's changes,
+  and the other options' code was removed; it is not yet in the wall unit
+  build. A scratch trim of the evacuated polygons at the wall line
+  (`temp/qgis/evac-cut-pilot/`) is being looked at
+  (`research/wall_line_placement/wall_line_placement.md`).
+
+- **Wall lines in the wall units (2026-10-13).** The lead chose the outline
+  wall line ("option 10") and the no-wall pieces. Ground step 3 now draws a
+  wall line on each pif piece and makes a new pif piece, with no wall, of the
+  pips the wall does not hold; ground step 4 classes it `no_wall`. A wall
+  unit's line and length are the wall line (`gen_wall_members`), and a pif
+  unit's line may be under 3 m. Ground steps 3 to 5 and this step have to be
+  rerun for it; the pilot figures above are from the spine lines.
 
 ## Next
 
@@ -392,6 +415,10 @@ What this module owes the retaining wall table `loss` reads
 3. Landslide step 5's edge join is repaired: landslide steps 5 and 6 read
    landslide step 4's zones, which carry the wall unit ids, and the old step 7
    lines are removed (2026-10-08).
+4. Before the pilot is reviewed in QGIS, change the QGIS and reviewer scripts
+   (`gen_rw_qgis_project.py`, `gen_landslide_qgis_project.py`,
+   `gen_qgis_e2e_build.py`, `gen_reviewer_rw.py`) to draw `wall_line` instead of
+   the spine and to add a `no_wall` class. They still run but show the cut line.
 4. Add walls on the flat land: every wall unit is a face of sloping ground.
 5. Tie a wall on a property boundary, which is one unit on each side, so one
    draw serves both, or count it on both.

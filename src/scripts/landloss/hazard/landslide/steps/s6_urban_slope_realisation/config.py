@@ -14,7 +14,7 @@ pair of ids reproduces exactly and no step carries a seed of its own.
 # The extent to run over: "wlg-pilot" for the small Wellington pilot box,
 # "wlg-earthworks-pilot" for the Johnsonville and Newlands box, or "full" for
 # the four territorial authorities.
-# Landslide steps 3 to 5, shaking step 5 and exposure rw step 6 must have been
+# Landslide steps 3 to 5, shaking step 4 and exposure rw step 6 must have been
 # run over the same extent.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
 EXTENT = "wlg-pilot"
@@ -31,6 +31,6 @@ WORLD_IDS = [0]
 
 # Which modelled earthquakes to draw. A realisation id is the whole event: the
 # same id in the shaking, liquefaction and landslide layers is the same
-# earthquake, so the urban failures of earthquake 3 shake under the PGV field
+# earthquake, so the urban failures of earthquake 3 shake under the PGA field
 # and beside the large landslides of earthquake 3.
 REALISATION_IDS = [0]

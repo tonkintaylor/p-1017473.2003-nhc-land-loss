@@ -11,12 +11,14 @@ import numpy as np
 import pandas as pd
 import pytest
 import rioxarray  # noqa: F401  # registers the .rio accessor
+import shapely
 import xarray as xr
 from shapely.geometry import Point, box
 
 from landloss.common.utils.terrain import write_raster
 from landloss.domain import constants
 from landloss.hazard.landslide import ground_map as gm
+from landloss.hazard.landslide import susceptibility
 from landloss.hazard.landslide.ground_map import GroundSource, build_ground_map
 from scripts.landloss.ground.steps.s2_ground_map import gen_ground_map as step
 
@@ -194,6 +196,21 @@ def test_the_residual_classes_cut_fill_and_natural_about_the_threshold():
         gm.modification_from_residual(np.array([1.0]), threshold_m=0.0)
 
 
+def test_the_residual_codes_come_from_the_one_table_and_the_names_follow_them():
+    residual = np.array([-2.0, -1.0, 0.0, 1.0, 2.0, np.nan], dtype="float32")
+    codes, nodata = gm.modification_codes_from_residual(residual, threshold_m=1.0)
+    assert codes.dtype == np.uint8
+    assert gm.MODIFICATION_CODES == {gm.NATURAL: 0, "cut": 1, "fill": 2}
+    assert codes[:5].tolist() == [1, 0, 0, 0, 2]
+    assert nodata.tolist() == [False] * 5 + [True]
+    names = gm.modification_from_residual(residual, threshold_m=1.0)
+    inverse = {code: name for name, code in gm.MODIFICATION_CODES.items()}
+    assert names[:5].tolist() == [inverse[code] for code in codes[:5]]
+    assert names[5] == gm.UNKNOWN
+    with pytest.raises(ValueError, match="positive"):
+        gm.modification_codes_from_residual(residual, threshold_m=-1.0)
+
+
 def test_prior_failure_reads_landslides_and_counts_both_rockfall_subtypes_relict():
     types = pd.Series(["Landslide relict", "Landslide recent", "Rockfall", "Rockfall"])
     subtypes = pd.Series(["source area", "debris trail", "few", "many"])
@@ -209,16 +226,31 @@ def test_prior_failure_reads_landslides_and_counts_both_rockfall_subtypes_relict
         gm.prior_failure_from_genesis(pd.Series(["Fan"]), pd.Series([None]))
 
 
-def test_groundwater_depth_classes_at_the_breaks():
+def test_groundwater_depth_on_a_break_takes_the_deeper_class():
     classed = gm.gw_depth_class_from_depth(np.array([0.5, 1.0, 2.0, 3.0, 5.0, np.nan]))
     assert classed.tolist() == [
-        "saturated",
         "saturated",
         "poorly_drained",
         "poorly_drained",
         "well_drained",
+        "well_drained",
         None,
     ]
+
+
+def test_the_class_scores_what_its_depth_scores_including_on_a_break():
+    depths = np.array([0.0, 0.9, 1.0, 1.1, 2.9, 3.0, 3.1, 4.0, 16.0])
+    classed = gm.gw_depth_class_from_depth(depths)
+
+    np.testing.assert_array_equal(
+        susceptibility.groundwater_value_from_class(classed),
+        susceptibility.groundwater_value(depths),
+    )
+
+
+def test_the_depth_class_vocabulary_is_the_one_the_factor_scores():
+    assert set(gm.GW_DEPTH_CLASSES) == set(susceptibility.GROUNDWATER_CLASS_VALUES)
+    assert gm.GW_DEPTH_CLASSES == ("saturated", "poorly_drained", "well_drained")
 
 
 def test_kingsbury_geology_value_follows_the_material():
@@ -422,10 +454,11 @@ def overlapping_sources():
         GroundSource(
             gm.NLM_GWD_SOURCE,
             frame(
-                [square(0, 0, 100, 20), square(0, 20, 100, 30)], gw_depth_m=[0.5, 2.0]
+                [square(0, 0, 100, 20), square(0, 20, 100, 30)],
+                gw_depth_class=["saturated", "poorly_drained"],
             ),
-            "gw_depth_m",
-            "gw_depth_m",
+            "gw_depth_class",
+            "gw_depth_class",
             "medium",
         ),
         GroundSource(
@@ -456,7 +489,7 @@ def test_the_map_carries_the_contracts_columns_and_dtypes(ground):
     assert list(ground.columns) == LIBRARY_COLUMNS
     assert ground.crs == CRS
     assert ground["is_flatland"].dtype == bool
-    assert ground["gw_depth_m"].dtype == float
+    assert "gw_depth_m" not in ground.columns
     assert ground["fill_thickness_m"].dtype == float
     assert ground["geology_value"].dtype == float
     assert (ground["flatland_version"] == constants.FLATLAND_NLM_VERSION).all()
@@ -519,7 +552,6 @@ def test_defaults_where_no_source_reaches(ground):
     assert bare["modification"] == "fill"  # the residual reaches here
     assert bare["prior_failure"] == gm.NO_PRIOR_FAILURE
     assert bare["prior_failure_source"] == gm.ASSUMED
-    assert bare["gw_depth_m"] == 4.0
     assert bare["gw_source"] == gm.ASSUMED
     assert bare["gw_depth_class"] == "well_drained"
     assert np.isnan(bare["geology_value"])
@@ -565,14 +597,13 @@ def test_prior_failure_groundwater_flatland_and_fill_thickness(ground):
     assert at(ground, 45, 85)["prior_failure_source"] == "slide_genesis"
 
     south = at(ground, 15, 15)
-    assert (south["gw_depth_m"], south["gw_depth_class"], south["gw_source"]) == (
-        0.5,
+    assert (south["gw_depth_class"], south["gw_source"]) == (
         "saturated",
         gm.NLM_GWD_SOURCE,
     )
     assert south["is_flatland"]
     strip = at(ground, 15, 25)
-    assert (strip["gw_depth_m"], strip["gw_depth_class"]) == (2.0, "poorly_drained")
+    assert strip["gw_depth_class"] == "poorly_drained"
     assert not strip["is_flatland"]
 
     # Fill thickness is kept on fill pieces only.
@@ -638,10 +669,11 @@ def test_every_vocabulary_value_passes_through_the_overlay():
         GroundSource(
             gm.NLM_GWD_SOURCE,
             frame(
-                [square(0, 0, 100, 30), square(0, 30, 100, 60)], gw_depth_m=[0.5, 2.0]
+                [square(0, 0, 100, 30), square(0, 30, 100, 60)],
+                gw_depth_class=["saturated", "poorly_drained"],
             ),
-            "gw_depth_m",
-            "gw_depth_m",
+            "gw_depth_class",
+            "gw_depth_class",
             "medium",
         ),
     ]
@@ -709,6 +741,65 @@ def test_an_empty_source_list_gives_one_default_piece():
     assert ground.area.sum() == pytest.approx(SIZE**2)
     assert ground.iloc[0]["material"] == gm.UNKNOWN
     assert not ground.iloc[0]["is_flatland"]
+
+
+def test_the_default_groundwater_class_is_the_class_of_the_assumed_depth():
+    for depth_m, expected in [
+        (0.5, "saturated"),
+        (2.0, "poorly_drained"),
+        (4.0, "well_drained"),
+    ]:
+        ground = build_ground_map(
+            EXTENT, [], flatland=FLATLAND.iloc[0:0], default_gw_depth_m=depth_m
+        )
+        assert ground["gw_depth_class"].tolist() == [expected]
+        assert ground["gw_source"].tolist() == [gm.ASSUMED]
+        assert "gw_depth_m" not in ground.columns
+
+
+def test_a_groundwater_class_outside_the_vocabulary_is_refused():
+    source = GroundSource(
+        gm.NLM_GWD_SOURCE,
+        frame([EXTENT], gw_depth_class=["boggy"]),
+        "gw_depth_class",
+        "gw_depth_class",
+        "medium",
+    )
+    with pytest.raises(ValueError, match="boggy"):
+        build_ground_map(EXTENT, [source], flatland=FLATLAND, default_gw_depth_m=4.0)
+    depth_source = GroundSource(
+        gm.NLM_GWD_SOURCE,
+        frame([EXTENT], gw_depth_m=[2.0]),
+        "gw_depth_m",
+        "gw_depth_m",
+        "medium",
+    )
+    with pytest.raises(ValueError, match="an attribute is one of"):
+        build_ground_map(
+            EXTENT, [depth_source], flatland=FLATLAND, default_gw_depth_m=4.0
+        )
+
+
+def test_a_source_polygon_held_in_a_geometry_collection_still_cuts_the_map():
+    # A clip can return a polygon wrapped in a GeometryCollection with the stray
+    # lines and points where it touched the clipping edge. The collection has
+    # no boundary of its own, so its polygon must still cut the partition.
+    saturated = shapely.GeometryCollection(
+        [square(20, 20, 60, 60), shapely.LineString([(X0, Y0), (X0 + 10, Y0)])]
+    )
+    source = GroundSource(
+        gm.NLM_GWD_SOURCE,
+        frame([saturated], gw_depth_class=["saturated"]),
+        "gw_depth_class",
+        "gw_depth_class",
+        "medium",
+    )
+    ground = build_ground_map(
+        EXTENT, [source], flatland=FLATLAND.iloc[0:0], default_gw_depth_m=4.0
+    )
+    assert at(ground, 40, 40)["gw_depth_class"] == "saturated"
+    assert at(ground, 80, 80)["gw_depth_class"] == "well_drained"
+    assert ground.area.sum() == pytest.approx(SIZE**2)
 
 
 # ---------------------------------------------------------------------------
@@ -789,15 +880,208 @@ def test_slide_modification_sources_carry_only_the_fill_types():
     assert all((s.frame["modification"] == "fill").all() for s in sources)
 
 
+CELL_M = 10.0
+MIN_PATCH_M2 = 900.0  # nine 10 m cells
+SIMPLIFY_M = 10.0
+RESIDUAL_OF_CODE = {0: 0.0, 1: -2.0, 2: 2.0}  # natural, cut, fill
+
+
+def residual_from_codes(codes):
+    """A residual grid on 10 m cells that classes, at a 1 m threshold, to the codes."""
+    values = np.vectorize(RESIDUAL_OF_CODE.get)(np.asarray(codes))
+    return make_grid(values, resolution=CELL_M)
+
+
+def cut_beside_fill():
+    """A 40 by 40 cell raster, all cut or fill, with the faults the sieve is for.
+
+    Cut on the west and fill on the east, split by a 45 degree staircase of
+    one-cell steps that stops at column 34; a one-cell fill speckle inside the
+    cut at row 5, column 5; and a two by two natural pocket inside the fill at
+    rows 32-33, columns 36-37.
+    """
+    codes = np.ones((40, 40), dtype=np.uint8)
+    for row in range(40):
+        codes[row, min(5 + row, 34) :] = 2
+    codes[5, 5] = 2
+    codes[32:34, 36:38] = 0
+    return codes
+
+
+def polygonise_with(residual, *, min_patch_m2=MIN_PATCH_M2, simplify_m=SIMPLIFY_M):
+    return step.polygonise_residual(
+        residual,
+        threshold_m=1.0,
+        min_patch_m2=min_patch_m2,
+        simplify_m=simplify_m,
+    )
+
+
 @ignore_affine_matmul
-def test_the_residual_is_polygonised_into_cut_and_fill():
-    values = np.zeros((10, 10))
-    values[:, :3] = -2.0
-    values[:, 7:] = 2.0
-    polygons = step.polygonise_residual(make_grid(values), threshold_m=1.0)
+def test_a_one_cell_speckle_is_swallowed_and_a_natural_pocket_becomes_the_fill():
+    polygons = polygonise_with(residual_from_codes(cut_beside_fill()))
     assert sorted(polygons["modification"]) == ["cut", "fill"]
-    assert polygons.area.tolist() == pytest.approx([30.0, 30.0])
     assert list(polygons.columns) == ["geometry", "modification"]
+    assert (polygons.area >= MIN_PATCH_M2).all()
+
+    cut = polygons.loc[polygons["modification"] == "cut", "geometry"].iloc[0]
+    fill = polygons.loc[polygons["modification"] == "fill", "geometry"].iloc[0]
+    # The speckle at row 5, column 5 is cut again, with no hole in the cut.
+    assert cut.contains(Point(X0 + 55.0, Y0 + 400.0 - 55.0))
+    assert not cut.interiors
+    # The natural pocket is fill, not natural (D7): a sieved patch takes its
+    # largest neighbour's class.
+    assert fill.contains(Point(X0 + 370.0, Y0 + 400.0 - 330.0))
+    assert not fill.interiors
+
+
+@ignore_affine_matmul
+def test_the_sieved_residual_still_tiles_the_raster_with_no_gap_or_overlap():
+    polygons = polygonise_with(residual_from_codes(cut_beside_fill()))
+    footprint = box(X0, Y0, X0 + 400.0, Y0 + 400.0)
+    union = polygons.union_all()
+    assert polygons.area.sum() == pytest.approx(union.area)  # no overlap
+    # No gap, and nothing outside the raster.
+    assert union.symmetric_difference(footprint).area == pytest.approx(0.0, abs=1e-6)
+    assert polygons.is_valid.all()
+
+
+@ignore_affine_matmul
+def test_the_staircase_between_cut_and_fill_is_simplified_and_keeps_its_area():
+    residual = residual_from_codes(cut_beside_fill())
+    raw = polygonise_with(residual, simplify_m=0.0)
+    smooth = polygonise_with(residual)
+    vertices = shapely.get_num_coordinates
+    assert (
+        vertices(smooth.geometry.to_numpy()).sum()
+        < vertices(raw.geometry.to_numpy()).sum()
+    )
+    for kind in ("cut", "fill"):
+        before = raw.loc[raw["modification"] == kind].area.iloc[0]
+        after = smooth.loc[smooth["modification"] == kind].area.iloc[0]
+        # The edge moves by under a cell: a small share of a 400 m patch.
+        assert after == pytest.approx(before, rel=0.02)
+    # Simplifying only removes vertices of the cell grid, so none sit closer than
+    # a cell (the tolerance here). A property of this fixture, not a spacing
+    # guarantee: coverage_simplify works to an area criterion.
+    for geometry in smooth.geometry:
+        ring = np.asarray(geometry.exterior.coords)
+        gaps = np.hypot(*np.diff(ring, axis=0).T)
+        assert gaps.min() >= SIMPLIFY_M - 1e-9
+
+
+@ignore_affine_matmul
+def test_a_large_round_patch_keeps_its_area_to_within_three_percent():
+    rows, columns = np.mgrid[:60, :60]
+    disc = (rows - 30) ** 2 + (columns - 30) ** 2 <= 20**2  # 200 m radius
+    codes = np.where(disc, 2, 0).astype(np.uint8)
+    residual = residual_from_codes(codes)
+    raw = polygonise_with(residual, simplify_m=0.0)
+    smooth = polygonise_with(residual)
+    assert len(smooth) == 1
+    assert smooth.area.iloc[0] == pytest.approx(raw.area.iloc[0], rel=0.03)
+    assert shapely.get_num_coordinates(smooth.geometry.to_numpy()).sum() < (
+        0.5 * shapely.get_num_coordinates(raw.geometry.to_numpy()).sum()
+    )
+
+
+@ignore_affine_matmul
+def test_natural_ground_and_unknown_cells_are_left_out_of_the_residual_polygons():
+    codes = np.zeros((40, 40), dtype=np.uint8)
+    codes[10:30, 10:30] = 2  # a 200 m fill square among natural ground
+    values = np.vectorize(RESIDUAL_OF_CODE.get)(codes)
+    values[0:3, 0:3] = np.nan  # a block with no residual
+    polygons = polygonise_with(make_grid(values, resolution=CELL_M))
+    assert polygons["modification"].tolist() == ["fill"]
+    assert polygons.area.iloc[0] == pytest.approx(200.0**2, rel=0.01)
+
+
+@ignore_affine_matmul
+def test_a_cut_patch_below_the_minimum_beside_natural_ground_is_dropped():
+    codes = np.zeros((40, 40), dtype=np.uint8)
+    codes[5:7, 5:7] = 1  # four cells, 400 m2: below the minimum
+    codes[20:25, 20:25] = 1  # twenty-five cells, 2,500 m2: kept
+    polygons = polygonise_with(residual_from_codes(codes), simplify_m=0.0)
+    assert polygons.area.tolist() == pytest.approx([2_500.0])
+
+
+@ignore_affine_matmul
+def test_the_minimum_patch_is_rounded_up_to_whole_cells():
+    codes = np.zeros((20, 20), dtype=np.uint8)
+    codes[2:5, 2:5] = 1  # nine cells, 900 m2
+    codes[10:12, 10:15] = 1  # ten cells, 1,000 m2
+    residual = residual_from_codes(codes)
+
+    def kept(min_patch_m2):
+        found = polygonise_with(residual, min_patch_m2=min_patch_m2, simplify_m=0.0)
+        return sorted(found.area.round().astype(int))
+
+    assert kept(900.0) == [900, 1000]  # exactly the minimum stays
+    assert kept(901.0) == [1000]  # a hundredth of a cell over rounds up to ten
+    assert kept(1.0) == [900, 1000]
+
+
+@ignore_affine_matmul
+def test_a_1_m_residual_read_at_10_m_gives_the_block_means(tmp_path):
+    values = (np.arange(20 * 30).reshape(20, 30) % 7).astype("float32")
+    path = write_raster(make_grid(values).astype("float32"), tmp_path / "r.tif")
+    grid = step.read_residual(path, cell_m=10.0)
+    expected = values.reshape(2, 10, 3, 10).mean(axis=(1, 3))
+    assert grid.shape == (2, 3)
+    assert grid.to_numpy() == pytest.approx(expected, abs=1e-5)
+    transform = grid.rio.transform()
+    assert (transform.a, transform.e) == (10.0, -10.0)
+    assert (transform.c, transform.f) == (X0, Y0 + 20.0)
+    assert grid.rio.crs == CRS
+
+
+@ignore_affine_matmul
+def test_the_block_means_do_not_depend_on_how_many_rows_a_strip_reads(
+    tmp_path, monkeypatch
+):
+    values = (np.arange(40 * 30).reshape(40, 30) % 11).astype("float32")
+    values[3, 4] = np.nan
+    path = write_raster(make_grid(values).astype("float32"), tmp_path / "r.tif")
+    whole = step.read_residual(path, cell_m=10.0).to_numpy()
+    monkeypatch.setattr(step, "STRIP_BLOCK_ROWS", 1)
+    by_strip = step.read_residual(path, cell_m=10.0).to_numpy()
+    assert by_strip.shape == (4, 3)
+    assert by_strip == pytest.approx(whole, nan_ok=True)
+
+
+@ignore_affine_matmul
+def test_nodata_in_a_block_is_left_out_of_its_mean_and_a_block_of_it_stays_nodata(
+    tmp_path,
+):
+    values = np.full((20, 20), 2.0, dtype="float32")
+    values[0, 0] = np.nan  # one cell of the first block
+    values[0:10, 10:20] = 4.0
+    values[0, 10] = np.nan
+    values[10:, 10:] = np.nan  # the whole of the last block
+    path = write_raster(make_grid(values).astype("float32"), tmp_path / "r.tif")
+    grid = step.read_residual(path, cell_m=10.0).to_numpy()
+    assert grid[0, 0] == pytest.approx(2.0)  # the mean of the 99 cells with a value
+    assert grid[0, 1] == pytest.approx(4.0)
+    assert np.isnan(grid[1, 1])
+
+
+@ignore_affine_matmul
+def test_cells_short_of_a_whole_classing_cell_at_the_edge_are_not_read(tmp_path):
+    values = np.full((25, 35), 3.0, dtype="float32")
+    path = write_raster(make_grid(values).astype("float32"), tmp_path / "r.tif")
+    grid = step.read_residual(path, cell_m=10.0)
+    assert grid.shape == (2, 3)
+    assert grid.to_numpy() == pytest.approx(3.0)
+
+
+@ignore_affine_matmul
+def test_a_classing_cell_that_is_not_a_whole_multiple_of_the_grid_is_refused(tmp_path):
+    path = write_raster(
+        make_grid(np.zeros((20, 20)), resolution=4.0).astype("float32"),
+        tmp_path / "r.tif",
+    )
+    with pytest.raises(ValueError, match="whole multiple"):
+        step.read_residual(path, cell_m=10.0)
 
 
 @ignore_affine_matmul
@@ -807,27 +1091,120 @@ def test_the_groundwater_grid_is_polygonised_over_the_flat_land(tmp_path):
         depth.astype("float32").rename("gw_depth_m"), tmp_path / "gwd.tif"
     )
     flatland = frame([square(0, 0, 100, 25)])
-    polygons = step.polygonise_groundwater(path, EXTENT, flatland)
+    polygons = step.polygonise_groundwater(path, EXTENT, flatland, simplify_m=1.0)
     # The two 0.5 m cells are one run, clipped to the flat land's 25 m strip.
-    assert polygons["gw_depth_m"].tolist() == [0.5]
+    assert polygons["gw_depth_class"].tolist() == ["saturated"]
+    assert "gw_depth_m" not in polygons.columns
     assert polygons.area.sum() == pytest.approx(100.0 * 25.0)
-    assert step.polygonise_groundwater(path, EXTENT, flatland.iloc[0:0]).empty
+    assert step.polygonise_groundwater(
+        path, EXTENT, flatland.iloc[0:0], simplify_m=1.0
+    ).empty
 
 
 @ignore_affine_matmul
-def test_fill_thickness_is_the_mean_positive_residual_over_fill_pieces():
+def test_a_class_that_only_touches_the_flat_land_leaves_no_line_behind(tmp_path):
+    # The well-drained cell meets the flat land along one edge only, which the
+    # clip returns as a line. The groundwater layer keeps polygons alone.
+    depth = make_grid([[0.5, 5.0], [0.5, 5.0]], resolution=50.0)
+    path = write_raster(
+        depth.astype("float32").rename("gw_depth_m"), tmp_path / "gwd.tif"
+    )
+    flatland = frame([square(0, 0, 50, 100)])
+    polygons = step.polygonise_groundwater(path, EXTENT, flatland, simplify_m=0.0)
+    assert set(polygons.geom_type) <= {"Polygon", "MultiPolygon"}
+    assert polygons["gw_depth_class"].tolist() == ["saturated"]
+    assert polygons.area.sum() == pytest.approx(50.0 * 100.0)
+
+
+@ignore_affine_matmul
+def test_a_depth_grid_straddling_the_breaks_polygonises_one_polygon_per_class(
+    tmp_path,
+):
+    # Ten different depths, so the old polygonising, one polygon per run of
+    # equal depths, would give ten; the depth breaks at 1 m and 3 m give three.
+    # Exactly 1.0 is poorly drained and exactly 3.0 well drained.
+    depth = make_grid(
+        [[0.2, 0.9, 1.5, 2.5, 4.0], [0.5, 1.0, 2.0, 3.0, 8.0]], resolution=20.0
+    )
+    path = write_raster(
+        depth.astype("float32").rename("gw_depth_m"), tmp_path / "gwd.tif"
+    )
+    flatland = frame([square(0, 0, 100, 40)])
+
+    polygons = step.polygonise_groundwater(path, EXTENT, flatland, simplify_m=1.0)
+
+    by_class = polygons.set_index("gw_depth_class").area
+    assert sorted(by_class.index) == sorted(gm.GW_DEPTH_CLASSES)
+    assert by_class["saturated"] == pytest.approx(3 * 20.0**2)
+    assert by_class["poorly_drained"] == pytest.approx(4 * 20.0**2)
+    assert by_class["well_drained"] == pytest.approx(3 * 20.0**2)
+    assert len(polygons) == 3
+    assert set(polygons["gw_depth_class"]) <= set(gm.GW_DEPTH_CLASSES)
+
+
+@ignore_affine_matmul
+def test_the_groundwater_classes_are_simplified_as_a_coverage(tmp_path):
+    # A staircase boundary between two classes, in 10 m steps. Simplifying each
+    # polygon on its own would move the two sides of the shared edge
+    # differently; as a coverage the classes still tile the grid exactly.
+    rows = 10
+    depth = np.where(np.add.outer(np.arange(rows), np.arange(rows)) < rows, 0.5, 5.0)
+    path = write_raster(
+        make_grid(depth, resolution=10.0).astype("float32").rename("gw_depth_m"),
+        tmp_path / "gwd.tif",
+    )
+    flatland = frame([EXTENT])
+
+    sharp = step.polygonise_groundwater(path, EXTENT, flatland, simplify_m=0.0)
+    smooth = step.polygonise_groundwater(path, EXTENT, flatland, simplify_m=15.0)
+
+    def vertices(polygons):
+        return sum(len(g.exterior.coords) for g in polygons.geometry)
+
+    assert vertices(smooth) < vertices(sharp)
+    assert smooth.area.sum() == pytest.approx(SIZE**2)
+    assert smooth.union_all().area == pytest.approx(SIZE**2)
+    assert smooth.union_all().geom_type == "Polygon"
+    assert not smooth.union_all().interiors
+
+
+@ignore_affine_matmul
+def test_fill_thickness_is_the_mean_positive_residual_over_fill_pieces(tmp_path):
     values = np.full((100, 100), -1.0)
     values[:50, :] = 2.0  # the north half stands 2 m above the 100 m surface
     values[:10, :] = 4.0  # and its top 10 m, 4 m
-    residual = make_grid(values)
+    path = write_raster(make_grid(values).astype("float32"), tmp_path / "r100.tif")
     ground = frame(
         [square(0, 50, 100, 100), square(0, 0, 100, 50), square(0, 90, 100, 100)],
         modification=["fill", "fill", "cut"],
     )
-    thickness = step.mean_positive_residual(ground, residual)
+    # Strips of 30 rows cut every piece across several strips, so the sums have to
+    # carry from one strip to the next.
+    thickness = step.mean_positive_residual(ground, path, strip_cells=3000)
     assert thickness.iloc[0] == pytest.approx((40 * 2.0 + 10 * 4.0) / 50)
     assert np.isnan(thickness.iloc[1])  # fill with no positive cell
     assert np.isnan(thickness.iloc[2])  # not fill
+
+
+@ignore_affine_matmul
+def test_fill_thickness_of_two_pieces_is_the_hand_computed_mean_in_any_strips(
+    tmp_path,
+):
+    values = np.zeros((100, 100))
+    values[:50, :50] = 1.0  # the north-west quarter, 1 m
+    values[:50, 50:] = 3.0  # the north-east quarter, 3 m
+    values[50:, 50:] = np.nan  # no residual in the south-east
+    values[:, 20] = -5.0  # a negative column, left out of every mean
+    path = write_raster(make_grid(values).astype("float32"), tmp_path / "r100.tif")
+    ground = frame(
+        [square(0, 50, 50, 100), square(50, 0, 100, 100)],
+        modification=["fill", "fill"],
+    )
+    # West piece: 50 x 50 cells, of which column 20 is negative: 2,450 at 1 m.
+    # East piece: only the north half has a value: 50 x 50 cells at 3 m.
+    for strip_cells in (10_000, 4000, 700):
+        thickness = step.mean_positive_residual(ground, path, strip_cells=strip_cells)
+        assert thickness.tolist() == pytest.approx([1.0, 3.0])
 
 
 @pytest.fixture
@@ -892,6 +1269,11 @@ def test_the_step_writes_the_contracts_file_from_synthetic_sources(synthetic_inp
         use_cached_layers=True,
         default_gw_depth_m=4.0,
         residual_modification_threshold_m=1.0,
+        groundwater_simplify_m=10.0,
+        residual_class_cell_m=10.0,
+        residual_min_patch_m2=900.0,
+        residual_simplify_m=10.0,
+        thickness_strip_cells=4000,
     )
 
     ground = gpd.read_parquet(step.ground_map_path(extent="wlg-pilot"))
@@ -912,7 +1294,7 @@ def test_the_step_writes_the_contracts_file_from_synthetic_sources(synthetic_inp
     assert (ground["area_m2"] == ground.area).all()
 
     assert ground["is_flatland"].dtype == bool
-    assert ground["gw_depth_m"].dtype == float
+    assert "gw_depth_m" not in ground.columns
     assert pd.api.types.is_string_dtype(ground["strength_source"])
     assert pd.isna(at(ground, 85, 65)["strength_source"])
 
@@ -937,8 +1319,8 @@ def test_the_step_writes_the_contracts_file_from_synthetic_sources(synthetic_inp
     assert at(ground, 85, 65)["material"] == gm.UNKNOWN
     south_west = at(ground, 15, 15)
     assert south_west["is_flatland"]
-    assert (south_west["gw_depth_m"], south_west["gw_source"]) == (
-        0.5,
+    assert (south_west["gw_depth_class"], south_west["gw_source"]) == (
+        "saturated",
         gm.NLM_GWD_SOURCE,
     )
     assert at(ground, 15, 85)["gw_source"] == gm.ASSUMED

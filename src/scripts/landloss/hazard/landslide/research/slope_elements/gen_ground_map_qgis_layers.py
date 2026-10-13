@@ -37,15 +37,15 @@ from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
     polygonise_groundwater,
     polygonise_residual,
-    read_raster,
+    read_residual,
     residual_path,
 )
+from scripts.landloss.ground.steps.s2_ground_map import config as ground_config
 from scripts.landloss.paths import REPO_ROOT, TEMP_DIR
 
 OUT_DIR = TEMP_DIR / "qgis-ground-map"
 D2_DIR = "temp/qgis-d2-pilot"
 PROJECT_PATH = "C:/Users/mami/Downloads/landloss_ground_map.qgs"
-RESIDUAL_THRESHOLD_M = 1.0
 ALPHA = "d0"
 OUTLINE = "#4a4640"
 
@@ -114,14 +114,24 @@ def main(*, extent):
     geology = write(get_wellington_urban_geology(bbox=bbox), "in-geology-1-50k", area)
     landforms = write(get_nlm_geomorphology(bbox=bbox), "in-nlm-geomorphology", area)
     flatland = write(get_nlm_flatland(), "in-nlm-flatland", area)
-    write(
-        polygonise_groundwater(get_gwd_median_depth(), area, flatland),
+    groundwater = write(
+        polygonise_groundwater(
+            get_gwd_median_depth(),
+            area,
+            flatland,
+            simplify_m=ground_config.GROUNDWATER_SIMPLIFY_M,
+        ),
         "in-nlm-groundwater-depth",
         area,
     )
     residual_file = residual_path(MODIFICATION_RESIDUAL_M, extent=extent)
     write(
-        polygonise_residual(read_raster(residual_file), threshold_m=RESIDUAL_THRESHOLD_M),
+        polygonise_residual(
+            read_residual(residual_file, cell_m=ground_config.RESIDUAL_CLASS_CELL_M),
+            threshold_m=ground_config.RESIDUAL_MODIFICATION_THRESHOLD_M,
+            min_patch_m2=ground_config.RESIDUAL_MIN_PATCH_M2,
+            simplify_m=ground_config.RESIDUAL_SIMPLIFY_M,
+        ),
         "in-residual-30m-cut-fill",
         area,
     )
@@ -149,7 +159,7 @@ def main(*, extent):
             categorised("in-geology-1-50k", "INPUT 1:50k geology (unit and description)", "label", palette(geology["label"].unique())),
             categorised("in-nlm-geomorphology", "INPUT NLM geomorphology (l3_yp)", "l3_yp", palette(landforms["l3_yp"].unique())),
             vector("in-nlm-flatland", "INPUT NLM flatland", color="#2a78d640", outline="#2a78d6", width=0.4),
-            vector("in-nlm-groundwater-depth", "INPUT NLM groundwater depth (m)", field="gw_depth_m", cmap="viridis_r", bins=6, bin_mode="equal", outline="#00000000"),
+            categorised("in-nlm-groundwater-depth", "INPUT NLM groundwater depth class", "gw_depth_class", palette(groundwater["gw_depth_class"].unique())),
             categorised("in-residual-30m-cut-fill", "INPUT 30 m residual cut / fill (>1 m)", "modification", fixed(MODIFICATION_COLOURS)),
             {"path": str(residual_file.relative_to(REPO_ROOT)).replace("\\", "/"), "name": "INPUT 30 m cut-fill residual (m)", "checked": False, "style": "cmap", "cmap": "RdBu", "min": -5, "max": 5, "steps": 10, "opacity": 0.6},
             {"path": f"{D2_DIR}/hillshade.tif", "name": "Hillshade", "checked": True, "style": "gray", "min": 0, "max": 1, "opacity": 0.45},

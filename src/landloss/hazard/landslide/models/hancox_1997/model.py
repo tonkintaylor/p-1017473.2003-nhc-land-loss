@@ -59,13 +59,14 @@ def run(
     event_total_area_km2: float,
     size_class: str = "small",
     mm_threshold: float = relationships.MM_THRESHOLD_WELLINGTON,
+    share_factor: float = 1.0,
 ) -> HancoxResult:
     """Build Hancox model coverage on aligned cells.
 
     The event total is apportioned by the eligible modelled area divided by
-    Hancox's mean area affected, capped at the whole event total. Within that
-    area, each slope class receives failed area in proportion to
-    :data:`relationships.SLOPE_SHARES`.
+    Hancox's mean area affected, times ``share_factor``, capped at the whole
+    event total. Within that area, each slope class receives failed area in
+    proportion to :data:`relationships.SLOPE_SHARES`.
 
     Args:
         slope_deg: Slope angle per cell, in degrees.
@@ -76,16 +77,21 @@ def run(
         event_total_area_km2: Marc event-wide landslide area, in km².
         size_class: Hancox landslide size class used for the distance envelope.
         mm_threshold: Intensity below which coverage is zero.
+        share_factor: Multiplier on the study's area share of the event, for
+            a study that sits where the event shakes harder than its average.
 
     Returns:
         Coverage and its event, eligible-area and study-target totals.
 
     Raises:
-        ValueError: If the event total is negative or a finite cell area is not
-            positive.
+        ValueError: If the event total is negative, the share factor is not
+            positive or a finite cell area is not positive.
     """
     if event_total_area_km2 < 0:
         msg = "event total area must not be negative"
+        raise ValueError(msg)
+    if share_factor <= 0:
+        msg = "share factor must be positive"
         raise ValueError(msg)
 
     slope, mm, distance, area = _broadcast_inputs(
@@ -108,7 +114,7 @@ def run(
     )
     eligible_area_km2 = float(area[keep].sum())
     area_affected_km2 = float(relationships.area_affected_km2(mw))
-    study_fraction = min(eligible_area_km2 / area_affected_km2, 1.0)
+    study_fraction = min(share_factor * eligible_area_km2 / area_affected_km2, 1.0)
     target_km2 = event_total_area_km2 * study_fraction
 
     relative = np.full(slope.shape, np.nan, dtype=float)

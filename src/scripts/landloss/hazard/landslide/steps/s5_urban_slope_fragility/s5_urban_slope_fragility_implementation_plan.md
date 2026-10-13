@@ -109,16 +109,23 @@ built against.
       exposure rw step 6 (`drawn-walls-w000-pilot.geoparquet`) and shaking
       steps 2 and 3 exist. Review the printed counts, the table and the
       figure.
-- [ ] Run `hazard/landslide/validations/urban/fig_urban_fragility_anchors.py`,
-      which fits the localised median's two constants and a dispersion to the
-      anchor table at the rock-site PGV/PGA ratio and prints them; paste the
-      fitted `LOCALISED_THETA_AT_ZERO_RATING_M_S` and
-      `LOCALISED_THETA_AT_MAX_RATING_M_S` into
-      `landloss.hazard.landslide.urban.fragility`, and, if the fitted
-      dispersion is accepted, `LOCALISED_FRAGILITY_BETA` into
-      `landloss.domain.constants`. Write
-      `urban_fragility_anchors_findings.md` beside the validation scripts
-      from that first run.
+- [x] Set the localised curve. Superseded the fit of the PGV constants on
+      2026-10-12: the project lead set the curve on site PGA by judgement
+      against the anchors, as a p15 and a p50 at zone 3 (rating 80, 0.7 and
+      2.0 g) and zone 5 (rating 145, 0.3 and 0.6 g) on straight lines in log
+      PGA, the dispersion falling from 1.38 at zone 1 to 0.67 at zone 5
+      (`urban-localised-fragility.csv`, `localised_curve_pga_g()`). The
+      calibration fits of 2026-10-07 stay in
+      `hazard/landslide/validations/urban/` as the record.
+- [x] Move every curve to site PGA (the project lead, 2026-10-12): the model
+      carries `im` `pga_g` and every median in g; the wall curves are no
+      longer converted, so the step reads neither the PGV grid nor the
+      TS1170.5 PGA, and `theta_base_pga_g`, `pgv_pga_ratio_m_s_per_g` and
+      `RETURN_PERIOD_YR` are gone. On the Porirua pilot every median equals
+      the PGV median over its ratio, and step 6's failures and wall outcomes
+      are unchanged.
+- [ ] Rerun step 5 and step 6 on the pilot with the new localised curve and
+      record the change in failed polygons by zone.
 - [ ] Set the `low` and `high` entries of `URBAN_RATE_FACTORS` from the
       spread between the anchors read generously and conservatively (plan
       section 6); the committed 1.5 and 1/1.5 are placeholders.
@@ -161,6 +168,10 @@ for the lead:
       1.15). `wall_class` and `initial_condition` are gone from the model
       file; `wall_type` replaces them, and `retaining-wall-fragility.csv` is
       retired (2026-10-06).
+- [x] Replace the placeholder amplification factor: superseded on
+      2026-10-12 by the project lead's single factor of 1.3 for every
+      polygon off NLM flatland, 1.0 on it (`TOPOGRAPHIC_AMPLIFICATION`).
+      The researched proposal below is kept as the record.
 - [ ] Replace the amplification factor with the researched one (proposal
       for the lead, faces plan phase 3, reviewed 2026-10-02): the NZTA crest
       factors by face height and ridge or terrace setting, 1.0 to 1.4 for
@@ -176,11 +187,8 @@ for the lead:
 
 ## Potential future improvements
 
-- Read the PGV/PGA ratio per site class from the TS1170.5 spectrum shape
-  rather than from the two grids, if a per-class scalar is ever wanted for
-  the report; the grids are the products the shaking steps already use.
 - Carry a fitted dispersion per zone rather than one `beta` for every
   localised row, if the anchors turn out to want different spreads.
 - A PGV-native wall curve set (Cosentini and Bozzoni 2022 screened PGV as the
-  optimal measure for gravity walls) would remove the conversion for the
-  classes it covers.
+  optimal measure for gravity walls) would need the model back on PGV; it
+  has been on site PGA since 2026-10-12.

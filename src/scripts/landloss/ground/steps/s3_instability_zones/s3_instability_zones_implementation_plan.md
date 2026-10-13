@@ -74,6 +74,15 @@ per-extent work.
 - [ ] The old seeding code (`find_slope_elements`) is removed with
       `fig_toy_slope_elements.py` refactored off it.
 
+## Phase: wall lines and no-wall pieces (the lead, 2026-10-13)
+
+- [x] `wall_lines.wall_line` and `wall_pieces` ported from the research option 10
+      (parity with the pilot research lines: 4,740 units, 0 mismatches).
+- [x] Wired into `find_instability_zones` (`split_no_wall_pifs`), the siz table
+      (`has_wall`, `wall_line`, `wall_*`) and `SEARCH_CODE`.
+- [ ] Rerun the step on the wlg-pilot, then a tiled smoke run with a small
+      `MAX_UNTILED_CELLS`; check `wall_line` and `has_wall` survive the stitch.
+
 ## Potential future improvements
 
 - Store the outputs in the versioned store per territorial authority

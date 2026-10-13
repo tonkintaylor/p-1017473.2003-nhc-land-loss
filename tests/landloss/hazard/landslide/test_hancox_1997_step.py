@@ -50,6 +50,7 @@ def test_build_coverage_uses_pgv_for_the_mm_threshold():
         mw=8.1,
         site_distance_km=25.0,
         event_total_area_km2=10.0,
+        share_factor=1.0,
     )
 
     assert coverage.name == "hancox_1997_coverage"
@@ -59,6 +60,28 @@ def test_build_coverage_uses_pgv_for_the_mm_threshold():
     assert float((coverage * 0.0001).sum()) == pytest.approx(
         result.study_target_area_km2
     )
+
+
+def test_build_coverage_scales_the_study_total_by_the_share_factor():
+    slope = grid([[30.0, 40.0], [30.0, 40.0]], name="slope_degrees")
+    pgv = grid([[0.3, 0.3], [0.3, 0.3]], name="pgv_m_s")
+    arguments = {
+        "on_flatland": np.zeros((2, 2), dtype=bool),
+        "mw": 8.1,
+        "site_distance_km": 25.0,
+        "event_total_area_km2": 10.0,
+    }
+
+    _, unscaled = step.build_coverage(slope, pgv, share_factor=1.0, **arguments)
+    _, scaled = step.build_coverage(slope, pgv, share_factor=2.3, **arguments)
+
+    assert scaled.study_target_area_km2 == pytest.approx(
+        2.3 * unscaled.study_target_area_km2
+    )
+
+
+def test_beta_marc_share_factor_is_the_leads_interim_value():
+    assert step.config.BETA_MARC_SHARE_FACTOR == 2.3
 
 
 def test_marc_total_uses_the_explicit_forward_settings():
@@ -122,6 +145,7 @@ def test_main_writes_one_coverage_grid_per_realisation(monkeypatch):
         marc_onshore_fraction=1.0,
         marc_modal_slope_deg=22.0,
         marc_a_topo=1.0,
+        beta_marc_share_factor=2.3,
     )
 
     assert [path.name for _, path in written] == [
