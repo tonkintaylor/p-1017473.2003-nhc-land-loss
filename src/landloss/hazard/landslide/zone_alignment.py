@@ -27,6 +27,12 @@ ground is taken out of its imminent zone, and an imminent zone left with no area
 is dropped (the lead, 2026-10-13). Inundated ground overlaps the evacuated on
 purpose (the deposit), so it is not cut.
 
+**Imminent ground touches its own landslide.** Every polygon's imminent zone,
+aligned or not, keeps only the pieces that touch its own evacuated polygon; a
+piece cut off from it (by the alignment, or left apart by the outline smoothing)
+is deleted, and an imminent zone with no piece left is dropped
+(:func:`imminent_touching`, the lead, 2026-10-13).
+
 A polygon's volume is unchanged; its area is drawn again by the caller
 (``drawn_areas``), so its depth follows the new area.
 """
@@ -60,6 +66,10 @@ TRIM_COLUMNS = ("wall_trim_how", "wall_trim_removed_m2", "wall_trim_filled_m2")
 # An imminent zone with less area than this left, once its polygon's evacuated
 # ground is taken out, is dropped (square metres).
 MIN_IMMINENT_M2 = 1e-6
+
+# How far a piece of imminent ground may lie from its own evacuated polygon and
+# still touch it (metres): room for floating point, not a gap.
+IMMINENT_TOUCH_M = 1e-3
 
 
 def unit_falls(units: pd.DataFrame, directions: pd.Series) -> dict[Any, FloatArray]:
@@ -232,3 +242,43 @@ def imminent_outside(
     )
     gone = rows[shapely.area(geometry[rows]) < MIN_IMMINENT_M2]
     return zones.drop(index=zones.index[gone]).reset_index(drop=True)
+
+
+def imminent_touching(zones: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """The zones with each imminent zone cut to the pieces touching its own landslide.
+
+    Imminent ground is the ground left standing behind a failure, so it must
+    touch that failure's evacuated polygon (the lead, 2026-10-13). Each
+    imminent zone is split into its pieces; a piece further than
+    :data:`IMMINENT_TOUCH_M` from its own polygon's evacuated geometry is
+    deleted, and an imminent zone with no piece left is dropped. Every
+    polygon's imminent zone is checked, not only the aligned ones'.
+
+    Args:
+        zones: One scenario's zones, a row per polygon and zone.
+
+    Returns:
+        The zones, with the imminent geometries cut and the emptied imminent
+        rows dropped.
+    """
+    rows = np.flatnonzero((zones["zone"] == IMMINENT).to_numpy())
+    if not len(rows):
+        return zones
+    evacuated = zones[zones["zone"] == EVACUATED].drop_duplicates("polygon")
+    evacuated_of = pd.Series(evacuated.geometry.to_numpy(), index=evacuated["polygon"])
+    geometry = zones.geometry.to_numpy().copy()
+    pieces = gpd.GeoSeries(geometry[rows], index=rows).explode(index_parts=False)
+    owners = evacuated_of.reindex(zones["polygon"].to_numpy()[pieces.index]).to_numpy()
+    touching = shapely.dwithin(pieces.to_numpy(), owners, IMMINENT_TOUCH_M)
+    if touching.all():
+        return zones
+    kept = pieces[touching]
+    cut = np.setdiff1d(pieces.index[~touching], kept.index)
+    trimmed = np.unique(pieces.index[~touching])
+    trimmed = trimmed[np.isin(trimmed, kept.index)]
+    for row in trimmed:
+        geometry[row] = shapely.union_all(kept.loc[[row]].to_numpy())
+    zones[zones.geometry.name] = gpd.GeoSeries(
+        geometry, crs=zones.crs, index=zones.index
+    )
+    return zones.drop(index=zones.index[cut]).reset_index(drop=True)

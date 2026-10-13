@@ -182,9 +182,10 @@ WALL_LINE_CONE_ARC_N = 9
 # one-cell gap does not split them), are a pif with no wall when more than
 # WALL_LINE_MIN_NO_WALL_PIPS; fewer go back to the wall's pif, as does a group
 # with more than WALL_LINE_ENCLOSED_SHARE of its edge on it (within
-# WALL_LINE_EDGE_BUFFER_M).
+# WALL_LINE_EDGE_BUFFER_M). Raised from 5 to 7 to make fewer small no-wall pifs
+# (the lead, 2026-10-13).
 WALL_LINE_LEFTOVER_JOIN_M = 2.1
-WALL_LINE_MIN_NO_WALL_PIPS = 5
+WALL_LINE_MIN_NO_WALL_PIPS = 7
 WALL_LINE_ENCLOSED_SHARE = 0.5
 WALL_LINE_EDGE_BUFFER_M = 0.5
 

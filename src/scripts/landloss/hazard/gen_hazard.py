@@ -156,6 +156,7 @@ def main(*, extent, realisation_ids, world_ids):
                     marc_onshore_fraction=hancox_config.MARC_ONSHORE_FRACTION,
                     marc_modal_slope_deg=hancox_config.MARC_MODAL_SLOPE_DEG,
                     marc_a_topo=hancox_config.MARC_A_TOPO,
+                    beta_marc_share_factor=hancox_config.BETA_MARC_SHARE_FACTOR,
                 ),
             ),
             (

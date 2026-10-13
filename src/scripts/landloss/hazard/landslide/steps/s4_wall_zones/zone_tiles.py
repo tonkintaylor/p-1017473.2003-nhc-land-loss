@@ -23,7 +23,7 @@ from landloss.hazard.landslide.forced_polygons import gen_forced_zones
 from landloss.hazard.landslide.slope_polygons import ZONES, polygon_geometries
 from landloss.hazard.landslide.urban.face_polygons import ground_of_elements
 from landloss.hazard.landslide.wall_trim import WallTrimSettings
-from landloss.hazard.landslide.zone_alignment import align_zones
+from landloss.hazard.landslide.zone_alignment import align_zones, imminent_touching
 from scripts.landloss.ground.steps.s3_instability_zones import tiled
 from scripts.landloss.ground.steps.s3_instability_zones.grid import (
     CRS,
@@ -125,7 +125,10 @@ def align_walled_zones(zones, *, elements, units, flags, falls, settings):
     The post-step of landslide step 4 (the lead, 2026-10-13), run on a
     scenario's whole zones, so a unit's polygons are aligned together whichever
     tile built them: :func:`landloss.hazard.landslide.zone_alignment.align_zones`
-    (the rules are in its docstring) and then :func:`drawn_areas`, so
+    (the rules are in its docstring), then
+    :func:`~landloss.hazard.landslide.zone_alignment.imminent_touching`, so every
+    imminent zone keeps only the pieces touching its own evacuated polygon, and
+    then :func:`drawn_areas`, so
     ``area_m2``, ``imminent_area_m2``, ``inundated_area_m2`` and ``depth_m`` match
     the geometry. A polygon's volume is unchanged.
 
@@ -140,13 +143,15 @@ def align_walled_zones(zones, *, elements, units, flags, falls, settings):
     Returns:
         The aligned zones.
     """
-    aligned = align_zones(
-        zones,
-        elements=elements,
-        units=units,
-        flags=flags,
-        falls=falls,
-        settings=settings,
+    aligned = imminent_touching(
+        align_zones(
+            zones,
+            elements=elements,
+            units=units,
+            flags=flags,
+            falls=falls,
+            settings=settings,
+        )
     )
     return drawn_areas(aligned) if len(aligned) else aligned
 

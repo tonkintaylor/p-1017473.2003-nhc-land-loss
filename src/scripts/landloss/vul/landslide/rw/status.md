@@ -87,5 +87,34 @@ Not yet defined.
 
 Not yet defined.
 
+## Future improvements
+
+- A wall partly evacuated or inundated by another polygon's landslide is
+  replaced over its whole length (**T-158**). The line flag is set when more
+  than 1 cm of the line lies inside the ground, and loss replaces any flagged
+  wall in full. So a standing wall clipped by a neighbouring failure is
+  priced as though it fell. In the Porirua run of 2026-10-11 (world 0,
+  earthquake 0), wall `4eef7bbf-bfe3-40c4-91eb-a29515837562-RW01` is 46 m long
+  and stood on its own polygon, SP0003419. It lies 3.96 m inside the evacuated
+  ground of the neighbouring polygon SP0003334, where the two overlap by
+  13 m², yet it was replaced in full at $225k
+  (`temp/qgis/wall-neighbour-slide/wall_neighbour_slide.qgs`).
+  The proposed fix:
+  1. Write the length of the line inside evacuated ground, inside inundated
+     ground and inside both together, as extra columns next to the three
+     flags. Merge each kind of ground before measuring, so stretches where
+     overlapping polygons cover the same line are counted once.
+  2. Absorbed and superseded walls take their full length.
+  3. Have `build_rw_table` keep those columns.
+  4. Loss would then price the damaged stretch, for example with the slip
+     wall's 2 m margin at each end and 5 m minimum. Loss is not ours to
+     change, so that part is the loss owner's.
+
+  Storing the lengths in the existing flag columns does not work: loss reads
+  those columns as true or false, so any length above zero would still count
+  as a whole-wall replacement and nothing would fail. Same-scale polygons
+  that overlap make most of these clips, so making them tile removes the
+  cause; the lengths only make what is left proportionate.
+
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

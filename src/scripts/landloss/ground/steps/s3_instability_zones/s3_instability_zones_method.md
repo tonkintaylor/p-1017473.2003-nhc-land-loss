@@ -86,12 +86,14 @@
   - `wall_pieces`: a pip is on the wall when its fall, widened by 45° either
     side and 200 m long, meets the line. The pips left over are grouped (up to
     2.1 m apart, so a one-cell gap does not split a group). A group of more
-    than 5 pips is a pif piece with no wall; a smaller one goes back to the
+    than 7 pips (`WALL_LINE_MIN_NO_WALL_PIPS`, raised from 5 by the lead on
+    2026-10-13 to make fewer small no-wall pifs) is a pif piece with no wall;
+    a smaller one goes back to the
     wall piece, as does one with more than half its edge on the wall piece's
     cells. The wall piece must touch (8-connected): groups of wall pips within
     3 m of the line stay, any other joins the no-wall piece it shares most
     edge with, or is a no-wall piece of its own if it touches none and holds
-    more than 5 pips.
+    more than 7 pips.
   - Each no-wall group is a **new pif piece**: a new `pif_id` after the
     existing pieces, the same `parent_pif_id`, `has_wall` False. It has its
     own pips, siz test, seed, element and `siz_id`. The wall piece keeps its

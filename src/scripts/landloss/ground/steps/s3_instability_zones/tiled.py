@@ -466,7 +466,7 @@ def line_keys(found, first_new_label):
     elements = found.elements
     added = elements.loc[elements.index >= first_new_label]
     return {
-        label: (LINE, int(unit))
+        label: (LINE, unit)
         for label, unit in added["wall_unit_id"].items()
         if pd.notna(unit)
     }
@@ -557,7 +557,7 @@ def zones_tile(
         categories={"ground_row": position},
     )
     keys.update(line_keys(found, first_new))
-    on_line = set(found.elements["wall_unit_id"].dropna().astype(np.int64))
+    on_line = set(found.elements["wall_unit_id"].dropna())
     still = here[~here.index.isin(on_line)]
     first_forced = int(found.elements.index.max()) + 1 if len(found.elements) else 1
     forced = gen_forced_elements(
@@ -569,7 +569,7 @@ def zones_tile(
     )
     forced["majority_ground_row"] = ground_rows(forced.geometry, inputs["ground_map"])
     for label, unit in forced["wall_unit_id"].items():
-        keys[label] = (FORCED, int(unit))
+        keys[label] = (FORCED, unit)
     forced_fill, forced_thickness = fill_by_element(forced, inputs["ground_map"])
     forced_ground = ground_of_elements(forced, inputs["ground_map"])
 

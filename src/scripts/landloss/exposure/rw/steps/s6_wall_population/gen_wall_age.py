@@ -9,11 +9,12 @@ carrying the share of its walls in each age bin and the rule that set them:
 
 **The QV rating roll is read from the T: drive**
 (`landloss.io.qv_rating_roll.get_qv_rating_roll`), so this runs from a session
-that can reach it. Run exposure step 8 first (``gen_rwt_age.py`` then
-``table_rwt_age_by_suburb.py``) over ``AGE_EXTENT`` in ``config.py``, and
-ground step 4's ``gen_slope_faces.py`` over ``EXTENT``, whose DEM bbox
-the LINZ property boundaries are read on; that cache is shared with
-``gen_wall_probability.py``.
+that can reach it. Run on its own, it needs exposure step 8
+(``gen_rwt_age.py`` then ``table_rwt_age_by_suburb.py``) run first over
+``AGE_EXTENT`` in ``config.py``; ``gen_exposure.py`` runs step 8 just before it
+over the same extent. It also needs ground step 4's ``gen_slope_faces.py`` over
+``EXTENT``, whose DEM bbox the LINZ property boundaries are read on; that cache
+is shared with ``gen_wall_probability.py``.
 
 The wall type draw (``.agents/plans/assigning-retaining-wall-types.md``) picks
 each wall's bin from its property's shares. The rules and the 20 year gap that
@@ -67,7 +68,7 @@ OUT_STEM = "wall-age"
 # Said wherever exposure step 8's outputs are missing.
 RUN_STEP_8_FIRST = (
     "run exposure step 8 gen_rwt_age.py then table_rwt_age_by_suburb.py "
-    "over AGE_EXTENT first"
+    "over this extent first (gen_exposure.py runs them as 'rw s8')"
 )
 
 # The step 8 columns read: the lot's date, bin and the rule that set them, and

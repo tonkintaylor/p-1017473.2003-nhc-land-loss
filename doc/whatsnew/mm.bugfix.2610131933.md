@@ -1,0 +1,1 @@
+Fix the tiled build of hazard "landslide s4, wall zones per world", which failed on any extent with GNS-only wall units because it still cast the wall unit ids (now `WU0000219` style strings) to integers.

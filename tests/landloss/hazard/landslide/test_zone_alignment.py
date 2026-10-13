@@ -10,6 +10,7 @@ from landloss.hazard.landslide.zone_alignment import (
     HOW_NO_FALL,
     TRIM_COLUMNS,
     align_zones,
+    imminent_touching,
     unit_falls,
     unit_walled,
 )
@@ -231,3 +232,38 @@ def test_an_imminent_zone_the_evacuated_polygon_now_covers_is_dropped():
     )
     out = aligned(zones)
     assert list(out["zone"]) == ["evacuated"]
+
+
+def test_imminent_pieces_apart_from_their_own_evacuated_polygon_are_deleted():
+    zones = make_zones(
+        [
+            (1, "evacuated", 1, box(0, 0, 10, 4)),
+            # One piece against the evacuated polygon, one 2 m off it.
+            (1, "imminent", 1, box(0, 4, 10, 6).union(box(12, 0, 14, 4))),
+            (2, "evacuated", 2, box(30, 0, 34, 4)),
+            # Touching polygon 1's evacuated ground, not its own: deleted whole.
+            (2, "imminent", 2, box(10, 0, 11, 4)),
+        ]
+    )
+    out = imminent_touching(zones)
+    assert area_of(out, 1, "imminent") == pytest.approx(20.0)
+    assert area_of(out, 1, "evacuated") == pytest.approx(40.0)
+    assert list(out.loc[out["polygon"] == 2, "zone"]) == ["evacuated"]
+
+
+def test_the_step_deletes_detached_imminent_ground_of_unwalled_polygons_too():
+    zones = make_zones(
+        [
+            (2, "evacuated", 2, box(0, 0, 10, 4)),
+            (2, "imminent", 2, box(0, 4, 10, 6).union(box(0, 8, 10, 9))),
+        ]
+    )
+    out = align_walled_zones(
+        zones,
+        elements=make_elements(),
+        units=make_units(),
+        flags=False,
+        falls={"WU1": SOUTH},
+        settings=SETTINGS,
+    )
+    assert out["imminent_area_m2"].iloc[0] == pytest.approx(20.0)

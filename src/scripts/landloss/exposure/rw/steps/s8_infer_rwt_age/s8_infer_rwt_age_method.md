@@ -5,7 +5,9 @@
   `BIN_START_YEARS`) and justified in
   `src/landloss/exposure/rw/assets/choice-of-rwt-bin-ages.md`. The age of the
   oldest dwelling stands in for the age of the walls. It is run by
-  `gen_rwt_age.py`, with the extent set in `config.py`.
+  `gen_rwt_age.py`, with the extent set in `config.py`, and since 2026-10-13
+  by `gen_exposure.py` over the run's extent, after exposure step 3 and before
+  the wall age shares of step 6 that read it.
 - The claim properties are rebuilt from the LINZ NZ Property Boundaries over
   the extent exposure step 3 used, with
   `landloss.exposure.land.extent.build_claim_properties`, so that each carries

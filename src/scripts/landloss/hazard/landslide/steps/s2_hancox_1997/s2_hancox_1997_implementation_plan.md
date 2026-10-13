@@ -15,6 +15,8 @@ pilot run and the event validations remain open.
       landslide step 3's no-large-source-on-flatland rule does not reduce the Marc total.
 - [x] Take the event-wide amount from Marc et al. (2016), apportion it by the
       modelled share of Hancox's area affected, and cap coverage at one.
+- [x] Multiply that share by `BETA_MARC_SHARE_FACTOR` (2.3), the lead's
+      interim allowance for the study sitting above the rupture.
 - [x] Write one 10 m coverage raster per shaking realisation and hand it to
       landslide step 3's large-landslide placement.
 
@@ -34,6 +36,10 @@ shaking layer or replacement of that demand is part of this phase.
       onshore fractions from the NSHM 2022 Hikurangi interface geometry. This
       changes only Marc's event-wide amount; the Hancox MM threshold continues
       to use the TS1170.5-derived PGV.
+- [ ] Replace `BETA_MARC_SHARE_FACTOR` (a flat 2.3, from a rupture line
+      assumed beneath Lower Hutt) with the study's share of Marc's own
+      shaking-weighted landslide density, summed over the asperities of that
+      geometry, per cell or per territorial authority.
 - [ ] Report the present `R0 = 22.5 km`, all-onshore result as a sensitivity,
       not as a calibrated interface prediction.
 - [ ] Run the Hancox extent and Marc amount tests on Kaikōura, then the

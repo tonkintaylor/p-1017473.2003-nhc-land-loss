@@ -1095,6 +1095,14 @@
       "Phase": "1",
       "Source": "QV land valuation in loss 2026-10-11",
       "Status": "Open"
+    },
+    {
+      "ID": "T-158",
+      "Task": "Address when RWs are partially evacuated or inundated by other landslides: the RW is currently fully replaced, so record the length of each wall inside each kind of landslide ground and price only that length.",
+      "Owner": "Unassigned",
+      "Phase": "Future",
+      "Source": "Maxim Millen 2026-10-13, exec report map review (vul/landslide/rw status)",
+      "Status": "Open"
     }
   ],
   "Limitations": [

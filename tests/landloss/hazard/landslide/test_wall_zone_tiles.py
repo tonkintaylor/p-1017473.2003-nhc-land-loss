@@ -1,6 +1,7 @@
 """Tests for how landslide step 4 keeps, resumes and stitches its tiles."""
 
 import inspect
+from types import SimpleNamespace
 
 import geopandas as gpd
 import pandas as pd
@@ -464,3 +465,34 @@ def test_the_sharing_puts_the_builder_back_when_a_tile_fails(monkeypatch):
     with pytest.raises(RuntimeError), zone_tiles.sharing_between_scenarios():
         raise RuntimeError
     assert tiled.build_slope_polygons is builder
+
+
+def test_line_elements_are_keyed_by_their_wall_unit_id_as_minted():
+    elements = pd.DataFrame(
+        {"wall_unit_id": [None, "WU0000219", "WU0000007"]}, index=[1, 2, 3]
+    )
+    found = SimpleNamespace(elements=elements)
+
+    keys = tiled.line_keys(found, first_new_label=2)
+
+    assert keys == {2: (tiled.LINE, "WU0000219"), 3: (tiled.LINE, "WU0000007")}
+
+
+def test_line_and_forced_elements_follow_the_grown_ones_in_wall_unit_order():
+    grown = (tiled.GROWN, 5)
+    keys = [
+        (tiled.FORCED, "WU0000003"),
+        (tiled.LINE, "WU0000219"),
+        grown,
+        (tiled.LINE, "WU0000007"),
+    ]
+    tile = SimpleNamespace(elements=pd.DataFrame({"element_key": keys}))
+
+    labels = tiled.label_keys(SimpleNamespace(labels={grown: 1}), [tile])
+
+    assert labels == {
+        grown: 1,
+        (tiled.LINE, "WU0000007"): 2,
+        (tiled.LINE, "WU0000219"): 3,
+        (tiled.FORCED, "WU0000003"): 4,
+    }

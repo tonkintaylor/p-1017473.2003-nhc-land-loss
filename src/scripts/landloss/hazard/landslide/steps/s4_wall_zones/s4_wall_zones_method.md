@@ -161,7 +161,8 @@
   the tiled run after they are stitched (so a unit's polygons are seen together
   whichever tile built them), `gen_wall_zones.align_scenario()` calls
   `zone_tiles.align_walled_zones()`, which runs
-  `zone_alignment.align_zones()` and then `drawn_areas()`.
+  `zone_alignment.align_zones()`, then `zone_alignment.imminent_touching()`, then
+  `drawn_areas()`.
   - Which polygons: the evacuated polygon of a built element whose pif is a
     member of a wall unit that is walled in the scenario (`walled`: every unit,
     `bare`: none, a world: its draw, the same units `gen_element_walls` flags).
@@ -187,6 +188,13 @@
     dropped (`zone_alignment.imminent_outside`; the lead, 2026-10-13: imminent
     follows the evacuated polygon). Inundated ground overlaps the evacuated on
     purpose (the deposit) and is not cut.
+  - Imminent ground must touch its own landslide (the lead, 2026-10-13): every
+    polygon's imminent zone, aligned or not, keeps only the pieces within
+    `IMMINENT_TOUCH_M` (1 mm) of its own evacuated polygon, and an imminent zone
+    with no piece left is dropped (`zone_alignment.imminent_touching()`). The
+    pieces cut off come from the alignment (new evacuated ground splitting the
+    band) and from the outline smoothing, which leaves corner specks apart from
+    the evacuated outline in every scenario.
   - `volume_m3` is unchanged; `area_m2` and `depth_m` of an aligned evacuated
     polygon are redrawn from the geometry (`drawn_areas`), so the depth is the
     same volume over the new area.

@@ -209,7 +209,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   Landslide step 3 is configured to place that coverage directly. None has been run over
   Wellington. Landslide step 2 already takes each realisation's MM threshold from the
   TS1170.5-derived PGV; its separate Marc amount uses the plan's central
-  interface sensitivity rather than final NSHM source geometry.
+  interface sensitivity rather than final NSHM source geometry. The study's
+  area share of that amount is multiplied by `BETA_MARC_SHARE_FACTOR` (2.3,
+  the lead's interim choice on 2026-10-13): weighting the share by Marc's own
+  shaking, with the rupture beneath Lower Hutt, gave 2.3 times the area share.
+  Even so Lower Hutt gets about 1.1 km² against about 4.0 km² from ESNZ as
+  step 3 uses it; the asperity depth, not the share, sets most of that gap.
 - **Kritikos model 2** (`.agents/plans/building-kritikos-2015-landslide-model.md`)
   is built end to end: landslide step 8 (then step 11) has run over `wlg-pilot` with the real AF250
   traces and writes H and a coverage raster per realisation, and landslide step 3 reads
@@ -418,6 +423,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   to 63.3%). The drop is the wall's own polygon: walls inside only their own
   evacuated polygon fall from 935 to 235 (all of them `failed_with_polygon`, so
   already flagged by shaking), those inside another polygon from 146 to 134. Method in `s4_wall_zones_method.md`.
+- **Imminent land touches its own landslide (2026-10-13)**: step 4 deletes every
+  imminent piece not touching its own polygon's evacuated ground, walled or not
+  (`zone_alignment.imminent_touching`, the lead). Pilot world 0: 695 pieces,
+  1,029 m² of 147,015 m² (−0.7%), 11 imminent zones gone; realisation 0's
+  imminent land −0.8%. Damage and loss unchanged, as vul does not read imminent
+  land yet (T-45).
 - **Landslide step 4 tiles in parallel (2026-10-11)**: `TILE_WORKERS` worker
   processes, each tile kept on disk as built and a stopped run resumed from the
   tiles not yet built, cleared when the record (found elements, wall units and

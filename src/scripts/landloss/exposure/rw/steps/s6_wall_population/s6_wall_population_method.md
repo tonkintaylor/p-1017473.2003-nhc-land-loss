@@ -356,8 +356,10 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   steps, over `exposure/config.py`'s `EXTENT` and `WORLD_IDS`. The wall units
   read the ground module's tables, so `gen_all.py` runs the ground module first,
   and the hazard module's landslide step 4 reads the wall draws written here, so
-  it runs after. Exposure rw step 8, whose property ages `gen_wall_age.py`
-  reads, is run by hand.
+  it runs after. Since 2026-10-13 it also runs exposure rw step 8 ("rw s8,
+  wall age by property" and "rw s8, wall age by suburb") just before "rw s6,
+  wall age", over the same extent, and the age shares read that run rather than
+  `AGE_EXTENT`, which only a standalone `gen_wall_age.py` reads.
 
 ## The checks on the wall units (`table_wall_unit_checks.py`)
 
