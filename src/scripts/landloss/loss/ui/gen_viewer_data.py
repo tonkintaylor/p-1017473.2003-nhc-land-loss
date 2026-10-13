@@ -14,8 +14,8 @@ rates, wall geometry, the Canterbury cost, who has what damage -- all fixed by
 exposure and vul. What it deliberately leaves out is every figure the Act sets:
 the caps, the sub-caps, the excess, the fees, the specification uplift. Most
 are the page's controls, so a number that moves when a control moves is not in
-this file; the professional fees and the spoil removal rate are fixed on the
-page at the costing tool's figures rather than offered as controls. GST is
+this file; the professional fees, the wall works' on-costs and the spoil removal
+rate are fixed on the page rather than offered as controls. GST is
 not a control either: the page works wholly excluding GST (2026-10-12), backing
 it out of the land rate, while the module settles GST-inclusive as the Act
 compares; :func:`settled_in_python` checks the two agree at the module's rate.
@@ -58,6 +58,8 @@ from landloss.loss.pricing import (
     PROFESSIONAL_FEES_SHARE,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
+    contingency_incl_gst_nzd,
+    wall_on_costs_incl_gst_nzd,
 )
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     wall_udv_by_claim,
@@ -584,6 +586,11 @@ def settled_in_python(
         ),
         0.0,
     )
+    # The page applies the module's GST-free floor at its own GST rate.
+    on_costs = wall_on_costs_incl_gst_nzd(
+        wall + new_wall, fees, policy=PolicySettings(gst_rate=gst - 1.0)
+    )
+    on_costs_total = np.where(walled, on_costs.total, 0.0)
 
     land_rate = rows["land_rate_incl_gst"] / (1.0 + policy.gst_rate) * gst
     land_value = np.minimum(rows["damaged_area_m2"], policy.area_cap_m2) * land_rate
@@ -599,8 +606,9 @@ def settled_in_python(
         )
     )
     liq = rows["liq_cost_excl_gst"] * LIQ_COST_ESCALATION * gst
-    repair = wall + new_wall + spoil + fees + liq
+    repair = wall + new_wall + spoil + fees + on_costs_total + liq
     repair = repair + crossing_repair
+    repair = repair + contingency_incl_gst_nzd(repair)
     payable = np.minimum(repair, cap)
     excess = np.minimum(
         rows["dwellings"].clip(lower=1) * policy.excess_per_dwelling_nzd,

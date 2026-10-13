@@ -134,6 +134,11 @@
     <label title="The CSV holds several territorial authorities; every figure and the map follow this choice">Territorial authority
       <select id="taFilter"><option value="">All</option></select></label>
   </div>
+  <h2>Damage</h2>
+  <label class="check" title="Ticked: liquefaction land damage is counted -- its claims, its repair costs and what it settles for. Unticked: liquefaction is left out entirely, so a property damaged only by liquefaction is no longer a claim, and every figure, chart and map dot shows landslide, retaining wall and bridge or culvert damage alone. The liquefaction settings below then do nothing.">
+    <input type="checkbox" id="liqOn" checked>
+    <span>Include all liquefaction damage and costs <span class="i">&#9432;</span></span></label>
+
   <h2>Cover</h2>
   <label title="Land damage is paid at most the value of the smallest section the district plan allows a house on, or 4,000 m² where it sets none">Area cap: minimum-sized site (m²)<input type="number" id="areaCap" value="4000" step="100"></label>
   <label>Retaining wall sub-cap, per dwelling, excl GST
@@ -160,6 +165,14 @@
   <h2>Costs</h2>
   <label title="A failed retaining wall is usually rebuilt to a higher standard than the one that failed -- engineered, to the current code -- which the costing tool's rates do not allow for. 0.20 adds 20% to the cost of every wall built in a repair, replacement or new. It does not change what a damaged wall was worth (its undepreciated value), which builds the cap.">Replacement spec uplift <span class="i">&#9432;</span>
     <input type="number" id="spec" value="0.20" step="0.05"></label>
+  <div class="note" style="margin-top:4px">Fixed on every claim with wall works, on top of
+    the walls as built (site and specification allowances and the wall rate scaling all in),
+    each on the one before:
+    <br>Professional fees (20% of the walls, at least $5,100)
+    <br>Mob/demob (higher of $5,000 or 15% of the walls and professional fees)
+    <br>Project management (10% of the walls, professional fees and mob/demob)
+    <br>And on every claim, a contingency (20% of the whole repair cost &mdash;
+    liquefaction and culverts and bridges included &mdash; applied last)</div>
 
   <h2>Sensitivity</h2>
   <label title="Price surge on retaining walls: after a large event, demand pushes construction prices up. Multiplies the wall rates, so both what a damaged wall costs to replace and what it was worth move together. 1 is today's costing tool rates; 1.3 is a 30% price surge.">Retaining wall rates &times; <span class="i">&#9432;</span>
@@ -320,7 +333,14 @@ const num = id => +document.getElementById(id).value;
 const val = id => document.getElementById(id).value;
 const nz = d => d == null || d === "" ? 0 : +d;
 const money = d3.format("$,.0f");
-const short = d3.format("$~s");
+// Dollars shortened to thousands, millions and billions. Not d3's "$~s": SI
+// prefixes write a billion as G (giga), which no one reads as dollars.
+const sig3 = d3.format(".3~r");
+const short = v => {
+  const a = Math.abs(v);
+  const [d, unit] = a >= 1e9 ? [1e9, "B"] : a >= 1e6 ? [1e6, "M"] : a >= 1e3 ? [1e3, "k"] : [1, ""];
+  return `${v < 0 ? "−" : ""}$${sig3(a / d)}${unit}`;
+};
 // The headline totals are estimates, so they are shown no finer than the model
 // can support: the Act's to the nearest thousand dollars and each cap
 // scenario's to the nearest million, as John Leeves asked (T-131).
@@ -341,6 +361,15 @@ const pct = d3.format(".0%");
 const FEES_EXCL_GST = 5100;
 const FEES_SHARE = 0.20;
 const SPOIL_RATE_EXCL_GST = 150;
+// The wall works' on-costs, on the same claims as the fees and the second built
+// on the first (landloss.loss.pricing.wall_on_costs_incl_gst_nzd): mob/demob on
+// the walls as built and the fees, never less than MOB_EXCL_GST; project
+// management on the walls, fees and mob/demob. The contingency goes on every
+// claim's whole repair, last (landloss.loss.pricing.contingency_incl_gst_nzd).
+const MOB_SHARE = 0.15;
+const MOB_EXCL_GST = 5000;
+const PM_SHARE = 0.10;
+const CONTINGENCY_SHARE = 0.20;
 
 function settings() {
   return {
@@ -351,6 +380,7 @@ function settings() {
     wallScale: num("wallScale"), landScale: num("landScale"),
     penetration: num("penetration") / 100, liqEsc: num("liqEsc"),
     sva: document.getElementById("sva").checked,
+    liqOn: document.getElementById("liqOn").checked,
   };
 }
 
@@ -388,6 +418,9 @@ function settle(r, s) {
   // A share of what the walls cost to build, failed and invented together, with
   // the tool's total as the floor (landloss.loss.pricing.professional_fees_incl_gst_nzd).
   const fees = walled ? Math.max(FEES_SHARE * (wall + newWall), s.fees * gst) : 0;
+  const mob = walled ? Math.max(MOB_SHARE * (wall + newWall + fees), MOB_EXCL_GST * gst) : 0;
+  const pm = PM_SHARE * (wall + newWall + fees + mob);
+  const onCosts = fees + mob + pm;
   // The CSV carries the Canterbury cost in 2010/2011 dollars; it is brought to
   // today's here, as the module does with LIQ_COST_ESCALATION.
   // The part that is clearing ejecta is carried as the run priced it, and with
@@ -396,8 +429,11 @@ function settle(r, s) {
   const hasParts = r.liq_inundated_cost_sva_excl_gst != null;
   const ejectaNow = !hasParts ? nz(r.liq_inundated_cost_excl_gst)
     : nz(s.sva ? r.liq_inundated_cost_sva_excl_gst : r.liq_inundated_cost_no_sva_excl_gst);
-  const liq = (nz(r.liq_cost_excl_gst) - nz(r.liq_inundated_cost_excl_gst) + ejectaNow)
-    * s.liqEsc * gst;
+  // With liquefaction left out, its cost and its damage both go, so a property
+  // damaged only by liquefaction is no longer a claim.
+  const liq = !s.liqOn ? 0
+    : (nz(r.liq_cost_excl_gst) - nz(r.liq_inundated_cost_excl_gst) + ejectaNow)
+      * s.liqEsc * gst;
   const bcLimit = s.bcSub * gst * dwellings;
   // The claim's damaged culverts and bridges: what replacing or clearing them
   // costs, and what they are worth, which reaches the cap through the sub-cap.
@@ -416,11 +452,13 @@ function settle(r, s) {
   const wallCounted = Math.min(udv, rwLimit);
   const cap = landValue + wallCounted + crossingCounted;
 
-  const repair = wall + newWall + spoil + fees + liq + crossing;
-  // The existing walls' share of the professional fees, pro rata to what the
-  // walls cost to build, so the land structures can be costed apart from the
-  // walls invented to reinstate landslide ground.
-  const wallFees = wall + newWall > 0 ? fees * wall / (wall + newWall) : 0;
+  const contingency = CONTINGENCY_SHARE * (wall + newWall + spoil + onCosts + liq + crossing);
+  const repair = wall + newWall + spoil + onCosts + liq + crossing + contingency;
+  // The existing walls' share of the fees and on-costs, pro rata to what the
+  // walls cost to build, and the contingency on the two, so the land structures
+  // can be costed apart from the walls invented to reinstate landslide ground.
+  const wallShare = wall + newWall > 0 ? onCosts * wall / (wall + newWall) : 0;
+  const wallFees = wallShare + CONTINGENCY_SHARE * (wall + wallShare);
   // An uninsured property is still damaged, and still shown, but NHC pays it
   // nothing and it is not a claim.
   const insured = insuredDraw(r.claim_id) < s.penetration;
@@ -443,7 +481,7 @@ function settle(r, s) {
   // property draws a state, and None still carries the Canterbury average of
   // $200 -- non-claimants averaged in at $0 -- so its cost cannot be the test.
   // A CSV written before liq_state was carried falls back on the cost.
-  const liqDamage = r.liq_state != null ? nz(r.has_liquefaction) > 0 : liq > 0;
+  const liqDamage = s.liqOn && (r.liq_state != null ? nz(r.has_liquefaction) > 0 : liq > 0);
   const damaged = walled || liqDamage || crossing > 0;
   const claimed = insured && damaged;
 
@@ -459,7 +497,7 @@ function settle(r, s) {
   const basis = settlement <= 0 ? "Excess took it all"
     : repair <= cap ? "Paid the repair cost" : "Capped";
   return {...r, udv, rwLimit, wallCounted, bcLimit, crossingValue, crossingCounted, wall,
-          newWall, spoil, fees, wallFees, liq, crossing, landValue, cap,
+          newWall, spoil, fees, mob, pm, contingency, wallFees, liq, crossing, landValue, cap,
           repair, payable, excessIf, excess, settlement, insured, damaged, claimed,
           has_area_cap_limit,
           type, basis};
@@ -512,7 +550,7 @@ function mainHistogram(sel, rows, value, scenarios) {
   const shown = rows.filter(r => r.claimed && value(r) > 0);
   if (!shown.length) { box.append("p").attr("class", "empty").text("No claims to show."); return; }
   const W = box.node().clientWidth || 600, H = 300;
-  const m = {t: 34, r: 14, b: 34, l: 46};
+  const m = {t: 34, r: 14, b: 44, l: 58};
   const lo = Math.max(100, d3.min(shown, value)), hi = Math.max(lo * 10, d3.max(shown, value));
   const x = d3.scaleLog().domain([lo, hi]).range([m.l, W - m.r]).clamp(true);
   const edges = d3.range(41).map(i => lo * Math.pow(hi / lo, i / 40));
@@ -550,9 +588,11 @@ function mainHistogram(sel, rows, value, scenarios) {
   const y = d3.scaleLinear().domain([0, d3.max(bins, d => d.total) || 1]).nice()
               .range([H - m.b, m.t]);
   svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
-     .call(d3.axisBottom(x).ticks(6, "$~s"));
+     .call(d3.axisBottom(x).ticks(6, short));
   svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
      .call(d3.axisLeft(y).ticks(5).tickFormat(count));
+  axisTitle(svg, "Excluding GST, log scale", (m.l + W - m.r) / 2, H - 6);
+  axisTitle(svg, "Number of claims", -(m.t + H - m.b) / 2, 12, true);
 
   const series = d3.stack().keys(STACK)(bins);
   svg.append("g").selectAll("g").data(series).join("g")
@@ -571,17 +611,34 @@ function mainHistogram(sel, rows, value, scenarios) {
   });
 }
 
-function lines(sel, rows) {
+// An axis title, in the axis labels' style. A rotated one is placed in the
+// rotated frame, so x runs up the axis.
+function axisTitle(svg, text, x, y, rotate = false) {
+  svg.append("text").attr("x", x).attr("y", y)
+     .attr("transform", rotate ? "rotate(-90)" : null).attr("text-anchor", "middle")
+     .style("font-size", "10.5px").style("fill", "var(--muted)").text(text);
+}
+
+function lines(sel, rows, liqOn) {
+  // The percentages are the fixed shares each line is costed at; the tooltip
+  // gives what each is a share of.
   const parts = [
     ["Walls replaced", d3.sum(rows, r => r.wall)],
     ["New walls", d3.sum(rows, r => r.newWall)],
-    ["Spoil", d3.sum(rows, r => r.spoil)],
-    ["Fees and consents", d3.sum(rows, r => r.fees)],
+    ["Spoil removal", d3.sum(rows, r => r.spoil)],
+    ["Fees and consents (20%)", d3.sum(rows, r => r.fees),
+     "20% of the walls, at least $5,100"],
+    ["Mob/demob (15%)", d3.sum(rows, r => r.mob),
+     "higher of $5,000 or 15% of the walls and professional fees"],
+    ["Project management (10%)", d3.sum(rows, r => r.pm),
+     "10% of the walls, professional fees and mob/demob"],
     ["Liquefaction", d3.sum(rows, r => r.liq)],
     ["Crossings", d3.sum(rows, r => r.crossing)],
-  ];
+    ["Contingency (20%)", d3.sum(rows, r => r.contingency),
+     "20% of the whole repair cost, applied last"],
+  ].filter(d => liqOn || d[0] !== "Liquefaction");
   const box = d3.select(sel).html("");
-  const W = box.node().clientWidth || 360, H = 200, m = {t: 6, r: 8, b: 56, l: 52};
+  const W = box.node().clientWidth || 360, H = 250, m = {t: 6, r: 8, b: 106, l: 58};
   const svg = box.append("svg").attr("width", W).attr("height", H);
   const x = d3.scaleBand().domain(parts.map(d => d[0])).range([m.l, W - m.r]).padding(0.18);
   const y = d3.scaleLinear().domain([0, d3.max(parts, d => d[1]) || 1]).nice().range([H - m.b, m.t]);
@@ -593,23 +650,26 @@ function lines(sel, rows) {
   svg.append("g").selectAll("rect").data(parts).join("rect")
     .attr("fill", HUE.accent).attr("x", d => x(d[0])).attr("width", x.bandwidth())
     .attr("y", d => y(d[1])).attr("height", d => Math.max(0, y(0) - y(d[1])))
-    .on("mousemove", (e, d) => show(e, `${d[0]}<br>${money(d[1])}`)).on("mouseleave", hide);
+    .on("mousemove", (e, d) => show(e,
+      `${d[0]}<br>${money(d[1])}${d[2] ? `<br><span style="opacity:.75">${d[2]}</span>` : ""}`))
+    .on("mouseleave", hide);
+  axisTitle(svg, "Excluding GST", -(m.t + H - m.b) / 2, 12, true);
 }
 
 function capBands(sel, rows) {
   const edges = [100000, 250000, 500000, 750000, 1e6, 2e6];
-  const label = v => v >= 1e6 ? `${v / 1e6}m` : `${v / 1e3}k`;
+  const label = short;
   const bs = edges.map((hi, i) => ({lo: i ? edges[i - 1] : 0, hi}))
     .concat([{lo: edges[edges.length - 1], hi: Infinity}])
     .map(b => {
       const inside = rows.filter(r => r.cap > b.lo && r.cap <= b.hi);
-      const o = {key: b.hi === Infinity ? `over ${label(b.lo)}` : `${label(b.lo)}-${label(b.hi)}`,
+      const o = {key: b.hi === Infinity ? `over ${label(b.lo)}` : `${label(b.lo)} to ${label(b.hi)}`,
                  total: inside.length};
       STACK.forEach(t => o[t] = inside.filter(r => r.type === t).length);
       return o;
     });
   const box = d3.select(sel).html("");
-  const W = box.node().clientWidth || 360, H = 190, m = {t: 6, r: 8, b: 44, l: 44};
+  const W = box.node().clientWidth || 360, H = 250, m = {t: 6, r: 8, b: 82, l: 56};
   const svg = box.append("svg").attr("width", W).attr("height", H);
   const x = d3.scaleBand().domain(bs.map(d => d.key)).range([m.l, W - m.r]).padding(0.04);
   const y = d3.scaleLinear().domain([0, d3.max(bs, d => d.total) || 1]).nice().range([H - m.b, m.t]);
@@ -618,6 +678,8 @@ function capBands(sel, rows) {
      .attr("transform", "rotate(-32)").style("text-anchor", "end");
   svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
      .call(d3.axisLeft(y).ticks(4).tickFormat(count));
+  axisTitle(svg, "Land cover cap, excluding GST", (m.l + W - m.r) / 2, H - 4);
+  axisTitle(svg, "Number of claims", -(m.t + H - m.b) / 2, 12, true);
   svg.append("g").selectAll("g").data(d3.stack().keys(STACK)(bs)).join("g")
     .attr("fill", d => TYPE_FILL[d.key])
     .selectAll("rect").data(d => d.map(v => ({...v, key: d.key}))).join("rect")
@@ -649,7 +711,8 @@ function actSummary(rows) {
   };
   const crossings = {
     n: d3.sum(claims, r => counted(r, "damaged_crossing_count", "has_crossing")),
-    repair: d3.sum(claims, r => r.crossing), cap: d3.sum(claims, r => r.crossingCounted),
+    repair: d3.sum(claims, r => r.crossing * (1 + CONTINGENCY_SHARE)),
+    cap: d3.sum(claims, r => r.crossingCounted),
   };
   const structures = [["Retaining walls", walls], ["Bridges and culverts", crossings],
     ["<b>Land structures</b>", {n: walls.n + crossings.n, repair: walls.repair + crossings.repair,
@@ -663,7 +726,9 @@ function actSummary(rows) {
        <tr><td>&nbsp;&nbsp;&nbsp;&nbsp;of which insured: <b>claims</b></td><td class="n"><b>${count(claims.length)}</b></td></tr>
        <tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paid something after the excess</td><td class="n">${count(paid.length)}</td></tr>
      </table>
-     <div class="note">Liquefaction costs: ${rows[0]?.liq_method ?? "not recorded in this CSV"}</div>
+     <div class="note">Liquefaction costs: ${!document.getElementById("liqOn").checked
+       ? "<b>excluded</b> &mdash; liquefaction damage, claims and costs are all left out"
+       : rows[0]?.liq_method ?? "not recorded in this CSV"}</div>
      <table style="margin-top:8px">
        <tr><td>Total repair cost</td><td class="n">${thousands(d3.sum(claims, r => r.repair))}</td></tr>
        <tr><td>Repair cost not covered</td><td class="n">${thousands(d3.sum(claims, r => Math.max(0, r.repair - r.settlement)))}</td></tr>
@@ -679,9 +744,11 @@ function actSummary(rows) {
      </table>
      <div class="note">Existing structures on the claims, counted one by one; the new
        walls built to reinstate landslide ground are not counted. A wall's repair cost
-       is its replacement and its share of the professional fees. A damaged bridge or
+       is its replacement and its share of the professional fees, mob/demob and project
+       management, with the 20% contingency on them. A damaged bridge or
        culvert is replaced at $15,000 a metre of span over a 5 m default ($75,000),
-       or cleared for $1,000 where a landslide only buried it; it is worth its
+       or cleared for $1,000 where a landslide only buried it, with the 20%
+       contingency on either; it is worth its
        replacement, which counts toward the cap up to the sub-cap.</div>
      <h2 style="margin-top:14px">How the claims settle</h2>
      <table>${byBasis.map(([b, n]) => `
@@ -771,8 +838,12 @@ function claimDetail(r, mode) {
     // A new wall for each separate slip no damaged wall holds (T-124).
     [nz(r.new_wall_count) > 1 ? `New walls built (${count(nz(r.new_wall_count))}, one per slip)`
        : "New wall built", money(r.newWall)],
-    ["Spoil removal", money(r.spoil)], ["Professional fees including consents", money(r.fees)],
+    ["Spoil removal", money(r.spoil)],
+    ["Professional fees including consents (20% of the walls, at least $5,100)", money(r.fees)],
+    ["Mob/demob (higher of $5,000 or 15% of the walls and professional fees)", money(r.mob)],
+    ["Project management (10% of the walls, professional fees and mob/demob)", money(r.pm)],
     ["Liquefaction", money(r.liq)], ["Crossings", money(r.crossing)],
+    ["Contingency (20% of all of the above)", money(r.contingency)],
     ["Repair cost", `<b>${money(r.repair)}</b>`],
     ["<b>Settlement under NHI Act 2023</b>", ""],
     ["Lesser of repair and cap", money(r.payable)], ["Excess", money(r.excess)],
@@ -967,7 +1038,7 @@ function render({resettle = true} = {}) {
     `<span><svg class="dash" width="18" height="10"><line class="capline" x1="0" y1="5"
       x2="18" y2="5"></line></svg>Land cap scenario</span>`);
   // Claims only, so an uninsured property's repair is not counted as NHC's.
-  lines("#hLines", rows.filter(r => r.claimed));
+  lines("#hLines", rows.filter(r => r.claimed), document.getElementById("liqOn").checked);
   capBands("#hCap", rows.filter(r => r.claimed && r.cap > 0));
   actSummary(rows);
   capSummary(scenarios, mode, histOf);
@@ -1066,6 +1137,12 @@ d3.select("#taFilter").on("input", () => {
   MARKERS = null;
   REFIT = true;
   render({resettle: false});
+});
+// With liquefaction left out, its own settings do nothing, so they are disabled.
+d3.select("#liqOn").on("input.show", () => {
+  const on = document.getElementById("liqOn").checked;
+  document.getElementById("sva").disabled = !on;
+  document.getElementById("liqEsc").disabled = !on;
 });
 // Only the excess basis in use shows its inputs.
 d3.select("#exBasis").on("input.show", () => {

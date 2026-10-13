@@ -61,15 +61,18 @@ from landloss.loss.pricing import (
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
+    CONTINGENCY_COLUMN,
     CROSSING_REPAIR_COLUMN,
     FEES_COLUMN,
     LAND_REPAIR_COLUMN,
     LANDSLIDE_REPAIR_AREA_COLUMN,
     LIQ_REPAIR_COLUMN,
+    MOB_DEMOB_COLUMN,
     NEW_WALL_COUNT_COLUMN,
     NEW_WALL_HEIGHT_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
     NEW_WALL_SIZE_COLUMN,
+    PROJECT_MANAGEMENT_COLUMN,
     REPLACEMENT_WALL_LENGTH_COLUMN,
     REPLACEMENT_WALL_RATE_COLUMN,
     REPLACEMENT_WALL_SIZE_COLUMN,
@@ -623,8 +626,11 @@ def write_overview(sheet, claims: pd.DataFrame, policy: PolicySettings) -> None:
         {
             "Walls replaced": claims[WALL_REPAIR_COLUMN].sum(),
             "New walls": claims[LAND_REPAIR_COLUMN].sum(),
-            "Spoil cleared": claims[SPOIL_REPAIR_COLUMN].sum(),
+            "Spoil removal": claims[SPOIL_REPAIR_COLUMN].sum(),
             "Fees": claims[FEES_COLUMN].sum(),
+            "Mob/demob": claims[MOB_DEMOB_COLUMN].sum(),
+            "Project management": claims[PROJECT_MANAGEMENT_COLUMN].sum(),
+            "Contingency": claims[CONTINGENCY_COLUMN].sum(),
             "Liquefaction": claims[LIQ_REPAIR_COLUMN].sum(),
             "Crossings": claims[CROSSING_REPAIR_COLUMN].sum(),
         }
@@ -977,9 +983,33 @@ BLOCKS = [
             ("dwellings", "Dwellings", "dwelling_count", COUNT, 10),
             ("fees", "Professional fees ($)", None, MONEY, 13),
             (
+                "mob",
+                "Mob/demob (higher of $5,000 or 15% of walls and fees) ($)",
+                None,
+                MONEY,
+                16,
+            ),
+            (
+                "pm",
+                "Project management (10% of walls, fees and mob/demob) ($)",
+                None,
+                MONEY,
+                16,
+            ),
+            (
+                "contingency",
+                "Contingency (20% of the whole repair) ($)",
+                None,
+                MONEY,
+                14,
+            ),
+            (
                 "repair_excl",
                 "Total repair, excl GST ($)",
-                Formula("={ls_repair}{r}+{rw_repair}{r}+{liq_repair}{r}+{fees}{r}"),
+                Formula(
+                    "={ls_repair}{r}+{rw_repair}{r}+{liq_repair}{r}+{fees}{r}"
+                    "+{mob}{r}+{pm}{r}+{contingency}{r}"
+                ),
                 MONEY,
                 15,
             ),
@@ -1073,6 +1103,9 @@ DIVIDE_BY_GST = {
     "rw_repair": WALL_REPAIR_COLUMN,
     "liq_repair": LIQ_REPAIR_COLUMN,
     "fees": FEES_COLUMN,
+    "mob": MOB_DEMOB_COLUMN,
+    "pm": PROJECT_MANAGEMENT_COLUMN,
+    "contingency": CONTINGENCY_COLUMN,
     "nw_cost": LAND_REPAIR_COLUMN,
     "spoil_cost": SPOIL_REPAIR_COLUMN,
 }
@@ -1243,7 +1276,11 @@ REPAIR_NOTES = [
         "excluding GST, charged once on a claim that involves a wall and added "
         "before the site multiplier, so a difficult site costs more to design "
         "as well as to build. Mileage is excluded, and they never reach the "
-        "undepreciated value."
+        "undepreciated value. A claim that carries the fees also carries the "
+        "wall works' on-costs: mob/demob at the higher of $5,000 or 15% of the "
+        "walls and fees, and project management at 10% of the walls, fees and "
+        "mob/demob. Every claim then carries a 20% contingency on its whole "
+        "repair, liquefaction and culverts and bridges included, applied last."
     ),
     (
         "D2. The retaining wall's contribution is the LESSER of its "

@@ -357,6 +357,23 @@ PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD = sum(PROFESSIONAL_FEES_EXCL_GST_NZD.values
 # and supervision than the flat fee allows; a small one still needs a consent.
 PROFESSIONAL_FEES_SHARE = 0.20
 
+# The on-costs a claim's wall works carry beyond the walls and their fees, and
+# the contingency on the whole repair (Perrie Gilbert, 2026-10-13), each
+# excluding GST and each built on the one before, in this order:
+#
+# - **Mobilisation and demobilisation**: 15% of the walls as built -- site
+#   multiplier, specification uplift and rate scaling all in -- plus the
+#   professional fees, never less than $5,000.
+# - **Project management**: 10% of the walls, the professional fees and the
+#   mobilisation.
+# - **Contingency**: 20% of the whole repair cost -- the wall works above, and
+#   spoil removal, liquefaction and culverts and bridges as well -- applied
+#   last, on every claim, with wall works or without.
+MOB_DEMOB_SHARE = 0.15
+MOB_DEMOB_MIN_EXCL_GST_NZD = 5_000.0
+PROJECT_MANAGEMENT_SHARE = 0.10
+CONTINGENCY_SHARE = 0.20
+
 # What a Canterbury liquefaction land cost in 2010/2011 dollars is multiplied by
 # to bring it to today's, **a placeholder on instruction** (L-23): the growth in
 # construction labour costs since the February 2011 earthquake.
@@ -517,6 +534,91 @@ def professional_fees_incl_gst_nzd(
         raise ValueError(msg)
     floor = floor_excl_gst_nzd * (1.0 + policy.gst_rate)
     return np.maximum(share * cost, floor)
+
+
+@dataclass(frozen=True)
+class WallOnCosts:
+    """The on-costs a claim's wall works carry, including GST, one per claim.
+
+    Attributes:
+        mob_demob: Mobilisation and demobilisation.
+        project_management: Project management.
+    """
+
+    mob_demob: np.ndarray
+    project_management: np.ndarray
+
+    @property
+    def total(self) -> np.ndarray:
+        """Return the two summed."""
+        return self.mob_demob + self.project_management
+
+
+def wall_on_costs_incl_gst_nzd(
+    wall_cost_incl_gst_nzd: np.ndarray | float,
+    fees_incl_gst_nzd: np.ndarray | float,
+    *,
+    policy: PolicySettings,
+) -> WallOnCosts:
+    """Return the on-costs of a claim's wall works, including GST.
+
+    Each is built on the one before (:data:`MOB_DEMOB_SHARE` and below):
+    mobilisation on the walls and fees, with a floor, then project management on
+    the walls, fees and mobilisation. Like the fees, they are per claim, and the
+    caller decides which claims carry them. The contingency is not among them:
+    it goes on the whole repair (:func:`contingency_incl_gst_nzd`).
+
+    Args:
+        wall_cost_incl_gst_nzd: What the claim's walls cost to build, failed and
+            invented together, as built, including GST.
+        fees_incl_gst_nzd: The claim's professional fees, from
+            :func:`professional_fees_incl_gst_nzd`.
+        policy: The settings this scenario runs under, which carry the GST rate.
+
+    Returns:
+        The two on-costs in GST-inclusive dollars.
+
+    Raises:
+        ValueError: If any wall cost or fee is negative or not finite.
+    """
+    cost = np.asarray(wall_cost_incl_gst_nzd, dtype=float)
+    fees = np.asarray(fees_incl_gst_nzd, dtype=float)
+    for name, values in (
+        ("wall_cost_incl_gst_nzd", cost),
+        ("fees_incl_gst_nzd", fees),
+    ):
+        if not np.all(np.isfinite(values)) or np.any(values < 0):
+            msg = f"{name} must be finite and not negative"
+            raise ValueError(msg)
+    floor = MOB_DEMOB_MIN_EXCL_GST_NZD * (1.0 + policy.gst_rate)
+    mob = np.maximum(MOB_DEMOB_SHARE * (cost + fees), floor)
+    pm = PROJECT_MANAGEMENT_SHARE * (cost + fees + mob)
+    return WallOnCosts(mob_demob=mob, project_management=pm)
+
+
+def contingency_incl_gst_nzd(
+    repair_cost_incl_gst_nzd: np.ndarray | float,
+) -> np.ndarray:
+    """Return the contingency on a claim's repair, including GST.
+
+    :data:`CONTINGENCY_SHARE` of everything else the repair costs -- walls,
+    spoil, fees, on-costs, liquefaction and crossings -- applied last.
+
+    Args:
+        repair_cost_incl_gst_nzd: The claim's repair cost before contingency,
+            including GST.
+
+    Returns:
+        The contingency in GST-inclusive dollars.
+
+    Raises:
+        ValueError: If any repair cost is negative or not finite.
+    """
+    repair = np.asarray(repair_cost_incl_gst_nzd, dtype=float)
+    if not np.all(np.isfinite(repair)) or np.any(repair < 0):
+        msg = "repair_cost_incl_gst_nzd must be finite and not negative"
+        raise ValueError(msg)
+    return CONTINGENCY_SHARE * repair
 
 
 def inundation_removal_cost_incl_gst_nzd(

@@ -37,6 +37,12 @@ assumption named here:
   gets designed and consented:
   clearing spoil on its own does not attract them, and neither does a Canterbury
   liquefaction cost, that being a settled amount rather than a works estimate.
+- **The same claims carry the wall works' on-costs** (2026-10-13), each built
+  on the one before: mobilisation and demobilisation at 15% of the walls and
+  fees, never less than $5,000; then project management at 10% of the walls,
+  fees and mobilisation.
+- **Every claim carries a 20% contingency on its whole repair** (2026-10-13):
+  walls, spoil, fees, on-costs, liquefaction and crossings, applied last.
 - **Landslide spoil is cleared at a rate per cubic metre**, on top of whatever
   wall the ground needs. The volume still sets the earthworks rating as well,
   which is worth watching for a double count -- the rating is how hard the site
@@ -102,6 +108,7 @@ from landloss.loss.pricing import (
     classify_construction_access,
     classify_inundation_earthworks,
     classify_landslide_wall_size,
+    contingency_incl_gst_nzd,
     inundation_removal_cost_incl_gst_nzd,
     inundation_volume_m3,
     landslide_wall_length_m,
@@ -109,6 +116,7 @@ from landloss.loss.pricing import (
     replacement_rate_excl_gst_nzd_per_m2,
     timber_pole_rate_excl_gst_nzd_per_m2,
     wall_face_area_m2,
+    wall_on_costs_incl_gst_nzd,
 )
 from landloss.loss.settlement import DamagedClaim, settle
 from landloss.vul.loss_input import PARENT_RW_ID_COLUMN, WORLD_ID_COLUMN
@@ -161,6 +169,9 @@ CROSSING_UDV_COLUMN = loss_claims.CROSSING_UDV_COLUMN
 SPOIL_REPAIR_COLUMN = "spoil_removal_cost_incl_gst_nzd"
 SPOIL_VOLUME_COLUMN = "inundated_volume_m3"
 FEES_COLUMN = "professional_fees_incl_gst_nzd"
+MOB_DEMOB_COLUMN = "mob_demob_incl_gst_nzd"
+PROJECT_MANAGEMENT_COLUMN = "project_management_incl_gst_nzd"
+CONTINGENCY_COLUMN = "contingency_incl_gst_nzd"
 REPAIR_COST_COLUMN = "repair_cost_incl_gst_nzd"
 SETTLEMENT_COLUMN = "settlement_incl_gst_nzd"
 EXCESS_COLUMN = "excess_nzd"
@@ -812,11 +823,17 @@ def describe_repair(claims):
         (LAND_REPAIR_COLUMN, "new walls to reinstate landslide ground"),
         (SPOIL_REPAIR_COLUMN, "clearing landslide spoil off the ground"),
         (FEES_COLUMN, "consent, design, engineering, H&S, PM and survey"),
+        (MOB_DEMOB_COLUMN, "mob/demob (15% of walls and fees, min $5,000)"),
+        (
+            PROJECT_MANAGEMENT_COLUMN,
+            "project management (10% of walls, fees and mob/demob)",
+        ),
         (
             LIQ_REPAIR_COLUMN,
             f"Canterbury liquefaction land costs, x{LIQ_COST_ESCALATION} to today",
         ),
         (CROSSING_REPAIR_COLUMN, "replacing or clearing culverts and bridges"),
+        (CONTINGENCY_COLUMN, "contingency (20% of the whole repair)"),
     ):
         total = claims[column].sum()
         reached = int((claims[column] > 0).sum())
@@ -1029,15 +1046,31 @@ def main(*, extent, world_ids, realisation_ids):
                 professional_fees_incl_gst_nzd(wall_cost.to_numpy(), policy=policy),
                 0.0,
             )
+            # The wall works' on-costs fall on the same claims as the fees.
+            on_costs = wall_on_costs_incl_gst_nzd(
+                wall_cost.to_numpy(), claims[FEES_COLUMN].to_numpy(), policy=policy
+            )
+            for column, cost in (
+                (MOB_DEMOB_COLUMN, on_costs.mob_demob),
+                (PROJECT_MANAGEMENT_COLUMN, on_costs.project_management),
+            ):
+                claims[column] = np.where(works, cost, 0.0)
 
-            claims[REPAIR_COST_COLUMN] = (
+            # The contingency goes on the whole repair, last, on every claim.
+            before_contingency = (
                 claims[WALL_REPAIR_COLUMN]
                 + claims[LAND_REPAIR_COLUMN]
                 + claims[SPOIL_REPAIR_COLUMN]
                 + claims[FEES_COLUMN]
+                + claims[MOB_DEMOB_COLUMN]
+                + claims[PROJECT_MANAGEMENT_COLUMN]
                 + claims[LIQ_REPAIR_COLUMN]
                 + claims[CROSSING_REPAIR_COLUMN]
             )
+            claims[CONTINGENCY_COLUMN] = contingency_incl_gst_nzd(
+                before_contingency.to_numpy()
+            )
+            claims[REPAIR_COST_COLUMN] = before_contingency + claims[CONTINGENCY_COLUMN]
 
             # The invented wall is a remediation cost and never an asset, so the
             # undepreciated value handed to the cap is the real walls' alone, taken
