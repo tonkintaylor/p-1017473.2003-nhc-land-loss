@@ -51,8 +51,10 @@
   aside { padding: 14px 16px 40px; background: var(--panel); }
   #config { border-right: 1px solid var(--line); }
   #summary { border-left: 1px solid var(--line); min-width: 0; }
-  /* The panel is a fixed width, so a long claim id or ratings line has to wrap
-     inside it rather than push the panel wider than the screen. */
+  /* The claim sits under the map, as wide as the charts; held to a readable width
+     so each value stays beside its label. A long claim id or ratings line wraps
+     rather than push the card wider than the screen. */
+  #claimDetail { max-width: 640px; }
   #claimDetail table { table-layout: fixed; }
   #claimDetail td.n { width: 46%; white-space: normal; overflow-wrap: anywhere; }
   #claimDetail code { word-break: break-all; }
@@ -283,6 +285,11 @@
       No claim data ever leaves this page.</p>
     <div id="map"></div><div class="legend" id="mapLegend"></div>
   </div>
+
+  <div class="card">
+    <h3>Selected claim</h3>
+    <div id="claimDetail" class="empty">Click a dot on the map.</div>
+  </div>
 </section>
 
 <aside id="summary">
@@ -290,8 +297,6 @@
   <div id="actSummary" class="empty">Load a CSV to begin.</div>
   <h2>Under each land cap</h2>
   <div id="capSummary"></div>
-  <h2>Selected claim</h2>
-  <div id="claimDetail" class="empty">Click a dot on the map.</div>
 </aside>
 </main>
 <div class="tip" id="tip"></div>
