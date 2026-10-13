@@ -1,0 +1,1 @@
+Builds can now be run over Lower Hutt City: set `EXTENT = "lower-hutt"`. Like `"upper-hutt"`, it is the city's bounding box widened by about 500 m, so it also takes in edges of Wellington City and Upper Hutt and the hill country south to Turakirae Head.

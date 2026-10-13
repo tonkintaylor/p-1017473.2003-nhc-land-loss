@@ -155,6 +155,22 @@ PORIRUA = AreaOfInterest(
     north=-40.999,
 )
 
+# The bounding box of Lower Hutt City, from the Territorial Authority 2025
+# boundary in get_study_areas(), widened by about 500 m as PORIRUA is. Lower
+# Hutt runs from Petone and the harbour to Wainuiomata and the south coast at
+# Pencarrow, so the box is about 20 by 34 km and also takes in the eastern
+# suburbs of Wellington City, a stretch of the harbour, and the hill country
+# on the Upper Hutt edge, whose outputs are not Lower Hutt's until the steps
+# clip to the outline (Phase 0 of
+# .agents/plans/running-per-territorial-authority.md).
+LOWER_HUTT = AreaOfInterest(
+    name="Lower Hutt City",
+    west=174.842,
+    south=-41.442,
+    east=175.093,
+    north=-41.127,
+)
+
 # The bounding box of Upper Hutt City, from the Territorial Authority 2025
 # boundary in get_study_areas(), widened by about 500 m so it still holds the
 # whole boundary once it is reprojected to NZTM. Like PORIRUA it is a box, so it
@@ -167,21 +183,6 @@ UPPER_HUTT = AreaOfInterest(
     south=-41.232,
     east=175.313,
     north=-40.944,
-)
-
-# The bounding box of Lower Hutt City, from the Territorial Authority 2025
-# boundary in get_study_areas(), widened by about 500 m so it still holds the
-# whole boundary once it is reprojected to NZTM. Like UPPER_HUTT it is a box, so
-# it also takes in edges of Wellington City (Ngauranga and the Belmont side of
-# the western hills) and Upper Hutt, and the Remutaka and Orongorongo hill
-# country south to Turakirae Head, whose outputs are not Lower Hutt's until the
-# steps clip to the outline.
-LOWER_HUTT = AreaOfInterest(
-    name="Lower Hutt City",
-    west=174.841,
-    south=-41.443,
-    east=175.094,
-    north=-41.127,
 )
 
 # The Canterbury earthquake sequence study area, covering Christchurch city and
@@ -218,8 +219,8 @@ EXTENTS = {
     "porirua-pilot": PORIRUA_PILOT,
     "porirua-exec-map": PORIRUA_EXEC_MAP,
     "porirua": PORIRUA,
-    "upper-hutt": UPPER_HUTT,
     "lower-hutt": LOWER_HUTT,
+    "upper-hutt": UPPER_HUTT,
 }
 
 # The file name suffix of an extent whose outputs predate the extent names. The
