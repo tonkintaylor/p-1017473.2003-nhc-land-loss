@@ -757,9 +757,10 @@ function actSummary(rows) {
            <td class="n">${pct(n / Math.max(1, claims.length))}</td></tr>`).join("")}
      </table>
      <div class="note">A claim is a property with damage. ${count(undamaged)} more insured
-       properties have none &mdash; hill land the landslides missed, or flat land in the
-       None liquefaction state, which still carries the Canterbury average cost but has
-       nothing to claim for &mdash; and are left out of every count. ${count(uninsured)}
+       properties have none &mdash; no landslide, retaining wall, culvert, bridge or
+       liquefaction damage &mdash; and are left out of every count.${
+       document.getElementById("liqOn").checked ? "" : ` With liquefaction excluded,
+       properties damaged only by liquefaction are counted here too.`} ${count(uninsured)}
        damaged properties are uninsured at the penetration set, so are not claims either;
        their repair cost is left out of the totals.</div>`);
 }
