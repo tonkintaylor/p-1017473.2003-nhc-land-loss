@@ -1,0 +1,1 @@
+The loss viewer's Apply button sits against the right-hand edge of the scenario panel, in line with the quick comparisons, so the panel takes less of the page and the button reads as applying to the whole panel. Rebuild the viewer to issue the page.

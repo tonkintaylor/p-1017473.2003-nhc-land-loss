@@ -24,8 +24,11 @@ answer leans on them; at a scale of one each, it is the module's answer, less
 GST.
 
 The land cap scenarios NHC is weighing are drawn over the main histogram, with
-the share of claims above each cap and the total settled under it. Those are
-the page's own arithmetic over the same rows, not something this file carries.
+the share of claims above each cap and the total settled under it. The page also
+compares a scenario the user designs -- a fixed land cap per dwelling, land
+structure sub-caps on top of it or none, and its own excess -- with the Act as
+the baseline, figure by figure and claim by claim. Those are the page's own
+arithmetic over the same rows, not something this file carries.
 
 That split is also what keeps the page honest. It cannot show a settlement that
 the module would not produce, because it is running the same arithmetic on the
