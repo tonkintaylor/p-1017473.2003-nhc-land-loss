@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import shapely
+from rasterio.transform import Affine
 from scipy import ndimage
 
 from landloss.hazard.landslide import slope_polygons
@@ -44,6 +45,7 @@ from landloss.hazard.landslide.slope_elements import (
     BANK,
     CREST,
     FREE_FACE,
+    SOIL_LIKE_CODE,
     SlopeElements,
     find_slope_elements,
 )
@@ -686,6 +688,27 @@ def test_case_1_wall_takes_the_minimum_width_behind_its_crest(noise):
         19.5,
         20.5,
     }
+
+
+def test_a_diagonal_wall_keeps_the_first_cell_behind_its_crest():
+    # A 1 m step across the grid's diagonal: each ray's first cell behind the
+    # crest cell is the diagonal one, whose centre is root 2 m back, past the
+    # 1 m minimum width, yet the ray keeps it.
+    n = 40
+    rows, cols = np.mgrid[0:n, 0:n]
+    dem = np.where(rows + cols < n, 1.0, 0.0)
+    transform = Affine(1.0, 0.0, ORIGIN_EASTING, 0.0, -1.0, 5_420_000.0)
+    found = find_slope_elements(
+        dem, np.full(dem.shape, SOIL_LIKE_CODE, dtype=np.int8), transform
+    )
+    result = build_slope_polygons(found, dem, transform)
+    polygon = result.polygons.iloc[0]
+    assert polygon["width_behind_crest_m"] == pytest.approx(BETA_MIN_EVACUATED_WIDTH_M)
+    assert polygon["width_realised_m"] == pytest.approx(math.sqrt(2.0))
+    # The evacuated ground is the element and a strip of cells behind it.
+    evacuated = zone_cells(result, EVACUATED)
+    behind = evacuated[found.labels[evacuated["row"], evacuated["col"]] == 0]
+    assert len(behind) >= 0.9 * (n - 4)
 
 
 @pytest.mark.usefixtures("type_rules_only")

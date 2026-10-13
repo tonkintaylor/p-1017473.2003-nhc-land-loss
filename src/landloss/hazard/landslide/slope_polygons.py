@@ -957,7 +957,9 @@ def _march_uphill(
       behind the crest it last left; a climbing ray (a stack-dominant
     free-face's)
       takes every element facing the same way that it enters while still
-      evacuating, and that element's width then holds;
+      evacuating, and that element's width then holds; where the width is a
+      cell or more, it keeps its first cell past the crest even if that
+      cell's centre lies further back, and the band then ends there;
     - imminent: from the end of the evacuated band, it marks cells within the
       T-45 band or above the repose line from its own toe;
     - probe: the first element facing the same way that it meets and did not
@@ -991,6 +993,10 @@ def _march_uphill(
     imminent = np.ones(n_rays, dtype=bool)
     probe = np.ones(n_rays, dtype=bool)
     evac_end = np.full(n_rays, np.nan)
+    # Whether each ray has marked a cell yet, and how far behind its crest
+    # the first cell lies where it was kept past the band.
+    marked_any = np.zeros(n_rays, dtype=bool)
+    first_d = np.full(n_rays, np.nan)
 
     evac_parts: list[pd.DataFrame] = []
     imminent_parts: list[pd.DataFrame] = []
@@ -1046,10 +1052,22 @@ def _march_uphill(
         top_z[took] = z[absorb]
         top_d[took] = dist[absorb]
         band = e & ~absorb & ~own
-        within = band & (
-            dist - exit_d[index] <= width_m[current[index]] + _DISTANCE_SLACK_M
+        band_m = width_m[current[index]]
+        within = band & (dist - exit_d[index] <= band_m + _DISTANCE_SLACK_M)
+        # A band a cell or more wide keeps the ray's first cell past the
+        # crest, however far back its centre: across the grid's diagonal the
+        # nearest is root 2 cells back, past a 1 m band, and a polygon kept
+        # no ground behind its crest at all (the lead, 2026-10-13).
+        first = (
+            band
+            & ~within
+            & ~marked_any[index]
+            & (band_m + _DISTANCE_SLACK_M >= cell_size_m)
         )
+        first_d[index[first]] = dist[first]
+        within |= first
         marked = absorb | within
+        marked_any[index[marked]] = True
         if marked.any():
             evac_parts.append(
                 pd.DataFrame(
@@ -1064,7 +1082,10 @@ def _march_uphill(
         if absorb.any():
             absorbed_parts.append(pd.DataFrame({"ray": took, "element": lab[absorb]}))
         ended = band & ~within
-        evac_end[index[ended]] = exit_d[index[ended]] + width_m[current[index[ended]]]
+        evac_end[index[ended]] = np.fmax(
+            exit_d[index[ended]] + width_m[current[index[ended]]],
+            first_d[index[ended]],
+        )
         evac[index[ended | (evac[index] & stop)]] = False
 
         # The imminent band, from the first cell past the evacuated one.
@@ -1108,7 +1129,9 @@ def _march_uphill(
 
     # A ray stopped while evacuating (at a ridge, nodata or the edge) ends
     # its band where its width would have.
-    evac_end = np.where(np.isnan(evac_end), exit_d + width_m[current], evac_end)
+    evac_end = np.where(
+        np.isnan(evac_end), np.fmax(exit_d + width_m[current], first_d), evac_end
+    )
     return _UphillResult(
         evacuated=frame(evac_parts, ["ray", "cell", "dist", "owner"]),
         imminent=frame(imminent_parts, ["ray", "cell", "dist"]),

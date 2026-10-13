@@ -1,0 +1,1 @@
+Fix urban landslide polygons on low faces running diagonally across the grid, which kept no evacuated ground behind their crest: the nearest cell behind the crest is √2 m back, past the 1 m minimum width. Each ray of a band a cell or more wide now keeps its first cell past the crest.

@@ -65,7 +65,13 @@
   the type's rule: the wall's wedge on fill's 42° (0.45 H) and the fill bank
   (0.45 H) always, the half-metre headscarp band always, and the one-metre band
   above 2 m high. `width_rule` stays the type's rule and `width_floored` says
-  where the floor set the width.
+  where the floor set the width. A width of a cell or more keeps each ray's
+  first cell past the crest, however far back its centre lies, and the
+  evacuated band then ends at that cell (`slope_polygons._march_uphill`, the
+  lead, 2026-10-13). Across the grid's diagonal that cell's centre is √2 m
+  back, past the 1 m floor, so before this a low face running diagonally kept
+  no ground behind its crest. That was 12,117 of the 13,684 such polygons
+  over Lower Hutt, and a one-cell-wide face was drawn as a string of discs.
 - Fill and its thickness are read onto each element by `fill_by_element()` from
   the element's majority ground map row. A fill bank (no wall) is cut on the
   same slip plane as a wall's face, from its toe to the back of its width, each

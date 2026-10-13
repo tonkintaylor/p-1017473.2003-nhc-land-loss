@@ -486,6 +486,13 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     widths are now the same. 185 of world 0's 1,570 insured sloping walls
     have no polygon in landslide step 6 (573 of 2,004 before): 175 GNS-only, 4 on
     `low_height` pifs and 6 at the DEM margin landslide step 5 leaves out.
+  - **Every ray keeps its first cell past the crest (the lead, 2026-10-13).**
+    Across the grid's diagonal that cell is √2 m back, past the 1 m floor, so
+    12,117 of Lower Hutt's 13,684 low, diagonal polygons kept no ground behind
+    their crest (wall WU0048768's drew as a string of discs). Fixed in the
+    evacuated band; the imminent band and the 1 m runout miss the diagonal
+    cell the same way and are not yet fixed. Lower Hutt needs landslide steps 4
+    to 6 rerun.
   - **Buildings, wall lines and boundaries (the lead, 2026-10-06).** Pifs
     with most of their pips in a LINZ building outline are dropped (334 on
     the pilot); each wall unit is one line of at most 3 bends and no
