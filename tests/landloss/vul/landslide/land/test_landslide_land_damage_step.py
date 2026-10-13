@@ -182,6 +182,11 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
         "evacuated_depth_m",
         "inundated_depth_m",
         "landslide_footprint_area_m2",
+        "landslide_ids",
+        "landslide_rw_ids",
+        "landslide_areas",
+        "landslide_inundated_areas",
+        "landslide_inundated_depths",
         "cause_evacuated",
         "cause_inundated",
     ]

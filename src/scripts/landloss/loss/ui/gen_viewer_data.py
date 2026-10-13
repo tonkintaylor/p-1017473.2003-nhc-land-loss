@@ -56,7 +56,6 @@ from landloss.loss.pricing import (
     PROFESSIONAL_FEES_SHARE,
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
-    timber_pole_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     wall_udv_by_claim,
@@ -69,8 +68,9 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     EARTHWORKS_COLUMN,
     LAND_REPAIR_COLUMN,
     LIQ_REPAIR_COLUMN,
-    NEW_WALL_HEIGHT_COLUMN,
-    NEW_WALL_LENGTH_COLUMN,
+    NEW_WALL_COUNT_COLUMN,
+    NEW_WALL_FACE_COLUMN,
+    NEW_WALL_RATE_COLUMN,
     REPLACEMENT_WALL_FACE_COLUMN,
     REPLACEMENT_WALL_RATE_COLUMN,
     SPOIL_VOLUME_COLUMN,
@@ -437,10 +437,6 @@ def viewer_rows(
     Returns:
         The viewer's rows.
     """
-    new_height = claims[NEW_WALL_HEIGHT_COLUMN].fillna(0.0)
-    new_rate = np.where(
-        new_height > 0, timber_pole_rate_excl_gst_nzd_per_m2(new_height), 0.0
-    )
     return pd.DataFrame(
         {
             "dwellings": claims["dwelling_count"].astype(int),
@@ -455,16 +451,16 @@ def viewer_rows(
             # cap; this builds the repair.
             "replacement_face_m2": claims[REPLACEMENT_WALL_FACE_COLUMN].round(6),
             "replacement_rate_excl_gst": claims[REPLACEMENT_WALL_RATE_COLUMN].round(6),
-            "new_wall_face_m2": (
-                claims[NEW_WALL_HEIGHT_COLUMN] * claims[NEW_WALL_LENGTH_COLUMN]
-            ).round(6),
-            # An invented wall is priced at the timber pole rate its height
-            # calls for rather than at the claim's own wall rate -- it has no
-            # wall of its own to take a construction from, and a claim needing
-            # one often has no damaged wall at all, so there is no rate to
-            # borrow. Carried separately so the page does not silently price it
-            # at zero.
-            "new_wall_rate_excl_gst": np.round(new_rate, 6),
+            # A new wall for each slip no damaged wall holds (T-124): their
+            # face summed and the bare rate face-weighted, so face by rate is
+            # their bare cost, as for the replacements. An invented wall is
+            # priced at the timber pole rate its height calls for rather than
+            # at the claim's own wall rate -- it has no wall of its own to take
+            # a construction from. Carried separately so the page does not
+            # silently price it at zero.
+            "new_wall_face_m2": claims[NEW_WALL_FACE_COLUMN].round(6),
+            "new_wall_rate_excl_gst": claims[NEW_WALL_RATE_COLUMN].round(6),
+            "new_wall_count": claims[NEW_WALL_COUNT_COLUMN].astype(int),
             "spoil_m3": claims[SPOIL_VOLUME_COLUMN].round(6),
             # The Canterbury cost is a settled amount, so it arrives whole --
             # but in 2010/2011 dollars and before GST, because the page applies

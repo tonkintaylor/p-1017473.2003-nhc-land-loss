@@ -47,6 +47,26 @@ LANDSLIDE_AREA_COLUMN = "land_slide_total_insured_land_area"
 INUNDATED_AREA_COLUMN = "inundated_insured_area"
 INUNDATED_MEAN_DEPTH_COLUMN = "inundated_mean_depth"
 EVACUATED_AREA_COLUMN = "evacuated_area"
+# Each landslide that reached the polygon, one entry per failure and in the same
+# order in every list (T-124, 2026-10-13), so loss can hold each failure with its
+# own wall: the failure's id; the retaining wall it failed with, as the hazard
+# realisation names it -- the whole wall, before it is split across properties
+# -- or missing; the ground it took on the polygon, evacuated and inundated
+# counted once; and its inundated area and depth. Not in LAND_COLUMNS: a land
+# table from before they were written has none, and loss then takes a claim's
+# ground as one failure of unknown origin.
+LANDSLIDE_IDS_COLUMN = "landslide_ids"
+LANDSLIDE_RW_IDS_COLUMN = "landslide_rw_ids"
+LANDSLIDE_AREAS_COLUMN = "landslide_areas"
+LANDSLIDE_INUNDATED_AREAS_COLUMN = "landslide_inundated_areas"
+LANDSLIDE_INUNDATED_DEPTHS_COLUMN = "landslide_inundated_depths"
+LANDSLIDE_FAILURE_COLUMNS = (
+    LANDSLIDE_IDS_COLUMN,
+    LANDSLIDE_RW_IDS_COLUMN,
+    LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_INUNDATED_AREAS_COLUMN,
+    LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
+)
 
 # Retaining wall, culvert and bridge columns, asset-pricing-approach.md section 1.
 RW_SIZE_COLUMN = "rw_size"

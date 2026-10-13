@@ -46,6 +46,7 @@ from landloss.domain.loss_contract import (
     LAND_PROPERTY_AREA_COLUMN,
     LAND_SUBURB_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_FAILURE_COLUMNS,
     LANDSLIDE_FOOTPRINT_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
     LIQ_LD_COST_COLUMN,
@@ -174,16 +175,20 @@ def build_land_table(
             dollars excluding GST, as the Canterbury rates are stated; `loss`
             puts it on the Act's basis.
         landslide: The landslide land step's areas, inundated depth and the
-            damaged ground under the footprint per ``land_id``. Land without a
-            row has no damaged area.
+            damaged ground under the footprint per ``land_id``, and the
+            landslides that reached it as the lists of
+            :data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`
+            where the step wrote them. Land without a row has no damaged area
+            and empty lists.
         ld_state_column: The damage state's column in ``liquefaction``.
         ld_cost_column: The settled cost's column in ``liquefaction``.
         ld_area_column: The damaged area's column in ``liquefaction``.
 
     Returns:
         :data:`~landloss.domain.loss_contract.LAND_COLUMNS`, then the dwelling
-        count as an extra column (pending Q-07), then the geometry, in the order
-        and CRS of ``insured``.
+        count as an extra column (pending Q-07), then the failure lists where
+        ``landslide`` carries them, then the geometry, in the order and CRS of
+        ``insured``.
 
     Raises:
         ValueError: If ``land_id`` is duplicated in ``insured``, or a contract
@@ -227,9 +232,25 @@ def build_land_table(
         },
         index=insured.index,
     )
-    land = _geo(table, [*LAND_COLUMNS, DWELLING_COUNT_COLUMN], insured.crs)
+    # Each failure apart, for loss to give each its own wall (T-124). A step 3
+    # run from before the lists were written has none, and loss then pools a
+    # claim's ground as before.
+    failures = [column for column in LANDSLIDE_FAILURE_COLUMNS if column in slides]
+    for column in failures:
+        table[column] = [_as_list(values) for values in land_ids.map(slides[column])]
+    land = _geo(table, [*LAND_COLUMNS, DWELLING_COUNT_COLUMN, *failures], insured.crs)
     check_contract_columns(land.columns, LAND_COLUMNS, table="land")
     return land
+
+
+def _as_list(values: object) -> list:
+    """Return a failure list as a list, a polygon no landslide reached as empty.
+
+    Parquet hands lists back as arrays, and a polygon with no row as missing.
+    """
+    if values is None or (isinstance(values, float) and pd.isna(values)):
+        return []
+    return list(values)
 
 
 def split_walls_by_property(

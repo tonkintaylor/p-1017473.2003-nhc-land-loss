@@ -66,9 +66,21 @@
   built by `landslide_land_damage_path(world_id, realisation_id, extent=...)`,
   with columns `realisation_id`, `world_id`, `land_id`, `claim_id`,
   `evacuated_area_m2`, `inundated_area_m2`, `landslide_area_m2`,
-  `evacuated_depth_m`, `inundated_depth_m`, `cause_evacuated` and
-  `cause_inundated`. Outputs named on the realisation alone are from before
-  the combined realisation existed and are stale.
+  `evacuated_depth_m`, `inundated_depth_m`, `landslide_footprint_area_m2`,
+  the five failure lists below, `cause_evacuated` and `cause_inundated`.
+  Outputs named on the realisation alone are from before the combined
+  realisation existed and are stale.
+- **Each failure apart** (**T-124**, 2026-10-13). The areas above pool every
+  landslide that reached a polygon. Beside them, each polygon lists those
+  landslides, one entry per failure in the same order in every list:
+  `landslide_ids`; `landslide_rw_ids`, the retaining wall the failure took with
+  it as the realisation names it (the whole wall), or missing; `landslide_areas`,
+  the ground it took on the polygon, its own deposit over its own scar counted
+  once; and `landslide_inundated_areas` and `landslide_inundated_depths`. Two
+  failures that buried the same ground each count it, because each is held by
+  its own wall; the pooled union does not. Built by `damaged_area_per_failure`
+  and `failures_per_property`, carried into the loss contract by vul step 10,
+  and read by loss step 1 to give each slip its own wall.
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/landslide/land/test_landslide_land_damage_step.py`.
 

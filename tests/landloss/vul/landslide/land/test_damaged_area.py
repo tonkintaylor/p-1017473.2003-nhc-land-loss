@@ -11,7 +11,9 @@ from landloss.vul.landslide.land.damaged_area import (
     INUNDATED,
     UNION_AREA_COLUMN,
     check_within_insured_area,
+    damaged_area_per_failure,
     damaged_area_per_property,
+    failures_per_property,
 )
 
 CRS = "EPSG:2193"
@@ -212,3 +214,87 @@ def test_imminent_ground_measures_nothing():
     assert row["evacuated_area_m2"] == pytest.approx(200.0)
     assert row["inundated_area_m2"] == 0.0
     assert row[UNION_AREA_COLUMN] == pytest.approx(200.0)
+
+
+# ---------------------------------------------------------------------------
+# Each failure apart (T-124).
+# ---------------------------------------------------------------------------
+
+
+def failures(*specs):
+    """(landslide id, rw id, land class, depth, box) per polygon."""
+    return gpd.GeoDataFrame(
+        {
+            "landslide_id": [spec[0] for spec in specs],
+            "rw_id": [spec[1] for spec in specs],
+            "land_class": [spec[2] for spec in specs],
+            "depth_m": [spec[3] for spec in specs],
+        },
+        geometry=[box(*spec[4]) for spec in specs],
+        crs=CRS,
+    )
+
+
+def test_two_separate_landslides_on_a_property_stay_apart():
+    land = insured(("A-001", (0, 0, 20, 20)))
+    hazard = failures(
+        ("LS1", None, EVACUATED, 1.0, (0, 0, 5, 20)),
+        ("LS2", None, EVACUATED, 1.0, (15, 0, 20, 20)),
+    )
+    out = damaged_area_per_failure(land, hazard)
+    assert out["landslide_id"].tolist() == ["LS1", "LS2"]
+    assert out["area_m2"].tolist() == pytest.approx([100.0, 100.0])
+
+
+def test_a_failures_own_deposit_over_its_scar_counts_once():
+    land = insured(("A-001", (0, 0, 20, 20)))
+    hazard = failures(
+        ("S1", "RW1", EVACUATED, 1.0, (0, 0, 10, 20)),
+        ("S1", "RW1", INUNDATED, 0.4, (5, 0, 15, 20)),
+    )
+    row = damaged_area_per_failure(land, hazard).iloc[0]
+    assert row["area_m2"] == pytest.approx(300.0)
+    assert row["inundated_area_m2"] == pytest.approx(200.0)
+    assert row["inundated_depth_m"] == pytest.approx(0.4)
+    assert row["rw_id"] == "RW1"
+
+
+def test_two_failures_burying_the_same_ground_each_count_it():
+    # Each wall holds its own slip; the property union still counts it once.
+    land = insured(("A-001", (0, 0, 20, 20)))
+    hazard = failures(
+        ("LS1", None, INUNDATED, 0.5, (0, 0, 10, 20)),
+        ("LS2", None, INUNDATED, 0.5, (0, 0, 10, 20)),
+    )
+    out = damaged_area_per_failure(land, hazard)
+    assert out["area_m2"].tolist() == pytest.approx([200.0, 200.0])
+    union = damaged_area_per_property(land, hazard)[UNION_AREA_COLUMN].iloc[0]
+    assert union == pytest.approx(200.0)
+
+
+def test_imminent_ground_is_no_failure_of_its_own():
+    land = insured(("A-001", (0, 0, 20, 20)))
+    hazard = failures(("S1", None, IMMINENT, 1.0, (0, 0, 10, 20)))
+    assert damaged_area_per_failure(land, hazard).empty
+
+
+def test_the_failures_are_listed_per_property_in_one_order():
+    land = insured(("A-001", (0, 0, 20, 20)), ("A-002", (30, 0, 50, 20)))
+    hazard = failures(
+        ("LS2", None, EVACUATED, 1.0, (15, 0, 20, 20)),
+        ("S1", "RW1", EVACUATED, 1.0, (0, 0, 5, 20)),
+        ("LS2", None, INUNDATED, 0.5, (30, 0, 35, 20)),
+    )
+    lists = failures_per_property(damaged_area_per_failure(land, hazard))
+    first = lists.loc["A-001"]
+    assert first["landslide_ids"] == ["LS2", "S1"]
+    assert first["landslide_rw_ids"] == [None, "RW1"]
+    assert first["landslide_areas"] == pytest.approx([100.0, 100.0])
+    assert first["landslide_inundated_depths"] == [None, None]
+    assert lists.loc["A-002", "landslide_inundated_depths"] == [0.5]
+
+
+def test_landslides_without_ids_are_refused():
+    land = insured(("A-001", (0, 0, 20, 20)))
+    with pytest.raises(ValueError, match="landslide_id"):
+        damaged_area_per_failure(land, slides((EVACUATED, 1.0, (0, 0, 10, 20))))

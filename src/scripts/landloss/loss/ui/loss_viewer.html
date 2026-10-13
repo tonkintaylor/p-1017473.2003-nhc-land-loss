@@ -682,7 +682,10 @@ function claimDetail(r, mode) {
     ["Bridges and culverts", money(r.crossing)],
     ["Cap", `<b>${money(r.cap)}</b>`],
     ["<b>Repair cost</b>", ""],
-    ["Walls replaced", money(r.wall)], ["New wall built", money(r.newWall)],
+    ["Walls replaced", money(r.wall)],
+    // A new wall for each separate slip no damaged wall holds (T-124).
+    [nz(r.new_wall_count) > 1 ? `New walls built (${count(nz(r.new_wall_count))}, one per slip)`
+       : "New wall built", money(r.newWall)],
     ["Spoil removal", money(r.spoil)], ["Professional fees including consents", money(r.fees)],
     ["Liquefaction", money(r.liq)], ["Crossings", money(r.crossing)],
     ["Repair cost", `<b>${money(r.repair)}</b>`],

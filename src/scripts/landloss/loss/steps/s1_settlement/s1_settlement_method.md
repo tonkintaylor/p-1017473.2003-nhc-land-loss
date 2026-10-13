@@ -21,23 +21,31 @@ Every line rests on an assumption, and each is named here rather than buried.
   sprayed concrete yet (**T-119**). Face area is `rw_height` by `rw_length`, or
   the taller and longer wall a slip on the claim needs. Undepreciated value, in
   step 0, stays at the failed type's rate.
-- **One wall per property.** Where a retaining wall is already there it is
-  assumed damaged, is replaced, and that replacement is the whole of the wall
-  cost; where there is none, one is invented for the ground. The two are never
-  both charged (2026-09-29) — doing so priced the same structure twice.
-- **A replacement is never smaller than the wall it replaces, but a landslide
-  can make it larger** (2026-09-30). Where the claim has landslide ground, the
-  wall the slip would need is sized as below, and the replacement takes the
-  larger size class and the longer length of the two. Only a claim's largest
-  damaged wall is compared. Concrete stays concrete; a timber wall takes the
-  pile its new height calls for. UDV stays on the wall as it was.
-- **Damaged land on a property with no wall** is repaired by building a wall
-  that was never there. Its size comes from
+- **One wall per slip** (**T-124**, 2026-10-13). `vul` lists each landslide
+  that reached a property, and the retaining wall it failed with, if any. A
+  slip that came with a wall is held by that wall's replacement; **every other
+  slip gets a new wall of its own**, even on a property whose wall failed
+  elsewhere, because two separate failures want two walls. The same slip is
+  never charged both a replacement and a new wall — doing so priced one
+  structure twice (2026-09-29). A slip across two of a claim's polygons is one
+  slip. A wall split across properties holds its slip on each property it
+  stands on. A land table from before the lists were written pools each
+  claim's ground as one slip, held as before: by the claim's largest damaged
+  wall, or by one new wall.
+- **A replacement is never smaller than the wall it replaces, but its slip
+  can make it larger** (2026-09-30). The wall the slip would need is sized as
+  below, and the replacement takes the larger size class and the longer length
+  of the two. Each wall is sized against its own slip only. Concrete stays
+  concrete; a timber wall takes the pile its new height calls for. UDV stays on
+  the wall as it was.
+- **A slip no damaged wall holds** is repaired by building a wall that was
+  never there. Its size comes from
   `classify_landslide_wall_size()`, on the damaged area and — where an
   inundated depth makes one available — the volume, taking the **larger** of
   the two classes. Its length follows the **width of the failure**: ground goes
   as a strip twice as wide as it is deep, plus a 2 m margin at each end, floored
-  at a 10 m minimum below which nobody mobilises. That floor is what stops the
+  at a 5 m minimum below which nobody mobilises
+  (`MIN_LANDSLIDE_WALL_LENGTH_M`). That floor is what stops the
   pilot's many small slips -- a median of 17 m2 -- pricing at almost nothing.
   The size bands were set at 10 m2 and 100 m2 on the reasoning that ground which
   has failed is not retained by a garden edge.

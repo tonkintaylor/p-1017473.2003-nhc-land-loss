@@ -2,9 +2,11 @@
 
 `land_repair_by_claim` lives in `src/scripts` because it orchestrates rather
 than calculates, but the rule it encodes is a policy decision worth pinning
-down: **one wall stands on a property, so a claim is charged for one wall.**
-Where a wall is already there it is replaced; where there is none, one is
-invented to hold the ground. Never both.
+down: **each separate slip is held by one wall** (T-124). A slip that came
+with a wall is held by that wall's replacement; any other slip gets a new wall
+of its own, even beside a wall that failed elsewhere. Ground of unknown origin,
+from a land table that lists no failures, is pooled as one slip and held as
+before: by the claim's largest damaged wall, or one new wall.
 
 **A replacement is never smaller than the wall it replaces, but a landslide can
 make it larger.** `replacement_wall_shape` sizes the wall the slip would need and
@@ -23,6 +25,11 @@ from landloss.domain.loss_contract import (
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_IDS_COLUMN,
+    LANDSLIDE_INUNDATED_AREAS_COLUMN,
+    LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
+    LANDSLIDE_RW_IDS_COLUMN,
     LIQ_LD_COST_COLUMN,
     RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
@@ -44,6 +51,8 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     EARTHWORKS_COLUMN,
     LAND_REPAIR_COLUMN,
     LANDSLIDE_REPAIR_AREA_COLUMN,
+    NEW_WALL_COUNT_COLUMN,
+    NEW_WALL_FACE_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
     NEW_WALL_SIZE_COLUMN,
     REPLACEMENT_WALL_LENGTH_COLUMN,
@@ -52,8 +61,9 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     SYNTHETIC_WALL_COLUMN,
     WALL_ENLARGED_COLUMN,
     WALL_REPAIR_COLUMN,
+    attach_failures_to_walls,
     land_repair_by_claim,
-    landslide_ground_by_claim,
+    landslide_failures,
     liquefaction_repair_by_claim,
     replacement_wall_shape,
     wall_repair_by_claim,
@@ -96,12 +106,17 @@ def ratings() -> pd.DataFrame:
 
 
 def repair(land, ratings, *, walled: pd.Index) -> pd.DataFrame:
-    """Hold the claim's land, given whether its own wall is being replaced."""
+    """Hold the claim's land, given whether its own wall is being replaced.
+
+    The land here lists no separate failures, so the claim's ground is pooled
+    as one slip of unknown origin, held by the claim's wall where it has one.
+    """
+    rw = walls(("medium", 9.6)) if len(walled) else walls()
     return land_repair_by_claim(
         land,
         ratings,
-        ground=landslide_ground_by_claim(land),
-        walled=walled,
+        failures=landslide_failures(land),
+        rw=rw,
         policy=PolicySettings(),
     )
 
@@ -186,8 +201,8 @@ def walls(
 
 
 def slip(area_m2: float) -> pd.DataFrame:
-    """Return the ground on the claim, with no inundated deposit."""
-    return landslide_ground_by_claim(
+    """Return the claim's ground as one pooled slip, with no inundated deposit."""
+    return landslide_failures(
         pd.DataFrame(
             {
                 CLAIM_ID_COLUMN: [CLAIM],
@@ -231,8 +246,8 @@ def test_each_dimension_takes_the_larger_on_its_own():
     assert length == pytest.approx(landslide_wall_length_m(11.6))
 
 
-def test_only_the_largest_of_several_walls_is_sized_against_the_slip():
-    # The slip is one piece of ground and wants one wall.
+def test_pooled_ground_is_sized_against_only_the_largest_of_several_walls():
+    # Ground of unknown origin is one piece of ground and wants one wall.
     size, _height, length = replacement_wall_shape(
         walls(("small", 4.0), ("medium", 6.0)), slip(208.8)
     )
@@ -244,10 +259,10 @@ def test_only_the_largest_of_several_walls_is_sized_against_the_slip():
 def test_an_enlarged_wall_costs_more_and_is_priced_on_its_new_height(ratings):
     policy = PolicySettings()
     kept = wall_repair_by_claim(
-        walls(("medium", 9.6)), ratings, ground=slip(0.0), policy=policy
+        walls(("medium", 9.6)), ratings, failures=slip(0.0), policy=policy
     ).loc[CLAIM]
     grown = wall_repair_by_claim(
-        walls(("medium", 9.6)), ratings, ground=slip(208.8), policy=policy
+        walls(("medium", 9.6)), ratings, failures=slip(208.8), policy=policy
     ).loc[CLAIM]
     assert not kept[WALL_ENLARGED_COLUMN]
     assert grown[WALL_ENLARGED_COLUMN]
@@ -273,7 +288,7 @@ def test_a_concrete_block_wall_is_rebuilt_in_kind(ratings):
     out = wall_repair_by_claim(
         walls(("medium", 9.6), wall_type="concrete_block"),
         ratings,
-        ground=slip(0.0),
+        failures=slip(0.0),
         policy=PolicySettings(),
     ).loc[CLAIM]
     assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(1_010.58)
@@ -283,7 +298,7 @@ def test_a_brick_wall_is_rebuilt_as_timber_pole(ratings):
     out = wall_repair_by_claim(
         walls(("medium", 9.6), wall_type="brick_rock"),
         ratings,
-        ground=slip(0.0),
+        failures=slip(0.0),
         policy=PolicySettings(),
     ).loc[CLAIM]
     # 1.75 m takes the 250 mm pile, not the mortar bed rock rate.
@@ -294,7 +309,7 @@ def test_a_claim_with_several_walls_reports_a_face_weighted_rate(ratings):
     out = wall_repair_by_claim(
         walls(("small", 4.0), ("large", 6.0)),
         ratings,
-        ground=slip(0.0),
+        failures=slip(0.0),
         policy=PolicySettings(),
     ).loc[CLAIM]
     faces = np.array([0.75 * 4.0, 2.75 * 6.0])
@@ -313,3 +328,110 @@ def test_the_canterbury_liquefaction_cost_is_brought_to_today_then_taxed() -> No
     cost = liquefaction_repair_by_claim(land)
     assert cost["a"] == pytest.approx(1500.0 * LIQ_COST_ESCALATION * 1.15)
     assert cost["b"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Separate failures, each with its own wall (T-124).
+# ---------------------------------------------------------------------------
+
+
+def failure_land(*polygons) -> pd.DataFrame:
+    """Return land polygons listing their failures.
+
+    Each polygon is (claim, [(landslide id, rw id, area, inundated area)]).
+    """
+    rows = [
+        {
+            CLAIM_ID_COLUMN: claim,
+            LANDSLIDE_AREA_COLUMN: sum(f[2] for f in failures),
+            INUNDATED_AREA_COLUMN: sum(f[3] for f in failures),
+            INUNDATED_MEAN_DEPTH_COLUMN: 0.3,
+            LANDSLIDE_IDS_COLUMN: [f[0] for f in failures],
+            LANDSLIDE_RW_IDS_COLUMN: [f[1] for f in failures],
+            LANDSLIDE_AREAS_COLUMN: [f[2] for f in failures],
+            LANDSLIDE_INUNDATED_AREAS_COLUMN: [f[3] for f in failures],
+            LANDSLIDE_INUNDATED_DEPTHS_COLUMN: [0.3 for _ in failures],
+        }
+        for claim, failures in polygons
+    ]
+    return pd.DataFrame(rows)
+
+
+def hold(land, ratings, rw) -> pd.Series:
+    """Hold the land, and return the claim's row."""
+    return land_repair_by_claim(
+        land,
+        ratings,
+        failures=landslide_failures(land),
+        rw=rw,
+        policy=PolicySettings(),
+    ).loc[CLAIM]
+
+
+def test_two_separate_slips_get_two_walls(ratings):
+    land = failure_land((CLAIM, [("LS1", None, 40.0, 0.0), ("LS2", None, 30.0, 0.0)]))
+    both = hold(land, ratings, walls())
+    one = hold(failure_land((CLAIM, [("LS1", None, 40.0, 0.0)])), ratings, walls())
+    other = hold(failure_land((CLAIM, [("LS2", None, 30.0, 0.0)])), ratings, walls())
+    assert both[NEW_WALL_COUNT_COLUMN] == 2
+    assert both[LAND_REPAIR_COLUMN] == pytest.approx(
+        one[LAND_REPAIR_COLUMN] + other[LAND_REPAIR_COLUMN]
+    )
+    assert both[NEW_WALL_LENGTH_COLUMN] == pytest.approx(
+        landslide_wall_length_m(40.0) + landslide_wall_length_m(30.0)
+    )
+    assert both[NEW_WALL_FACE_COLUMN] == pytest.approx(
+        one[NEW_WALL_FACE_COLUMN] + other[NEW_WALL_FACE_COLUMN]
+    )
+
+
+def test_a_slip_that_came_with_the_wall_is_held_by_its_replacement(ratings):
+    land = failure_land((CLAIM, [("S1", "rw0", 40.0, 0.0)]))
+    out = hold(land, ratings, walls(("medium", 9.6)))
+    assert out[NEW_WALL_COUNT_COLUMN] == 0
+    assert out[LAND_REPAIR_COLUMN] == 0.0
+
+
+def test_a_slip_beside_a_failed_wall_still_gets_its_own_wall(ratings):
+    # The wall failed with one slip; a second, separate slip has no wall to
+    # hold it, so it gets one.
+    land = failure_land((CLAIM, [("S1", "rw0", 40.0, 0.0), ("LS9", None, 30.0, 0.0)]))
+    out = hold(land, ratings, walls(("medium", 9.6)))
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(30.0))
+
+
+def test_a_slip_whose_wall_stood_on_another_property_gets_a_new_wall(ratings):
+    land = failure_land((CLAIM, [("S1", "rw-next-door", 40.0, 0.0)]))
+    out = hold(land, ratings, walls(("medium", 9.6)))
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+
+
+def test_a_slip_across_two_of_a_claims_polygons_is_one_failure():
+    land = failure_land(
+        (CLAIM, [("LS1", None, 25.0, 5.0)]), (CLAIM, [("LS1", None, 15.0, 5.0)])
+    )
+    failures = landslide_failures(land)
+    assert len(failures) == 1
+    assert failures["area"].iloc[0] == pytest.approx(40.0)
+    assert failures["volume"].iloc[0] == pytest.approx(10.0 * 0.3)
+
+
+def test_a_split_walls_piece_holds_the_slip_its_whole_wall_failed_with():
+    # The failure names the whole wall; the claim holds a piece of it.
+    pieces = walls(("medium", 9.6)).assign(
+        **{RW_ID_COLUMN: ["rwA~2"], "parent_rw_id": ["rwA"]}
+    )
+    failures = landslide_failures(failure_land((CLAIM, [("S1", "rwA", 40.0, 0.0)])))
+    assert list(attach_failures_to_walls(failures, pieces)) == [0]
+
+
+def test_each_wall_is_sized_against_its_own_slip_only():
+    # Each wall failed with its own slip; the large slip enlarges only its own.
+    land = failure_land((CLAIM, [("S0", "rw0", 1.4, 0.0), ("S1", "rw1", 208.8, 0.0)]))
+    size, _height, length = replacement_wall_shape(
+        walls(("medium", 9.6), ("medium", 6.0)), landslide_failures(land)
+    )
+    assert list(size) == ["medium", "large"]
+    assert length[0] == pytest.approx(9.6)
+    assert length[1] == pytest.approx(landslide_wall_length_m(208.8))

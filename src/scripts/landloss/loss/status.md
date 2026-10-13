@@ -325,11 +325,13 @@ Raised by Perrie Gilbert, 2026-09-24. Not yet numbered in
   the slip would need, so it is never smaller than what was there but can be
   larger. Where a claim has several damaged walls only the largest is compared.
   Four of the pilot's five such claims are enlarged, adding $123k of repair.
-- **Open:** nothing says whether a slip and a wall are in the same place. `vul`
-  sends the landslide extent as an area with no polygon, so a property with a
-  slip at the back and a shaken wall at the front cannot be told from one
-  where the slip took the wall. The adjacency flag on Maxim Millen's list
-  would settle it; until then one wall is assumed.
+- **Decided 2026-10-13: one wall per slip (T-124).** `vul` lists each
+  landslide on a property and the wall it failed with, if any. A slip that
+  came with a wall is held by that wall's replacement, sized against that slip
+  alone; every other slip gets a new wall of its own, even on a claim whose
+  wall failed elsewhere. This settles the question of a slip at the back and a
+  shaken wall at the front: they are two walls. A land table from before the
+  lists were written pools a claim's ground as one slip, as before.
 - Does that make the claim the right unit — one repair cost for the whole claim,
   compared against the summed UDV and land value across it? That is what `settle`
   does today, and it is an assumption rather than a finding.
@@ -337,4 +339,5 @@ Raised by Perrie Gilbert, 2026-09-24. Not yet numbered in
   and at what size? Does that need the slope of the land?
 - Where one property carries both — a wall damaged in one place, and independent
   land damage elsewhere on the same property that would need a new wall — how are
-  the two kept apart?
+  the two kept apart? **Answered 2026-10-13**: by the landslide each came
+  from, above.

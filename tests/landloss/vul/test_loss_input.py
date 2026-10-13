@@ -8,6 +8,7 @@ from landloss.domain.loss_contract import (
     BRIDGE_COLUMNS,
     CULVERT_COLUMNS,
     LAND_COLUMNS,
+    LANDSLIDE_FAILURE_COLUMNS,
     RW_COLUMNS,
 )
 from landloss.loss.pricing import wall_type_rate_excl_gst_nzd_per_m2
@@ -339,3 +340,24 @@ def test_the_rw_types_and_heights_are_ones_the_loss_module_prices():
         rw["rw_type"].to_numpy(), rw["rw_height"].to_numpy()
     )
     assert rates.shape == (3,)
+
+
+def test_the_failure_lists_are_carried_and_unreached_land_has_none():
+    slides = landslide().assign(
+        landslide_ids=[np.array(["LS1", "S2"])],
+        landslide_rw_ids=[np.array([None, "1-RW01"], dtype=object)],
+        landslide_areas=[np.array([120.0, 80.0])],
+        landslide_inundated_areas=[np.array([150.0, 0.0])],
+        landslide_inundated_depths=[np.array([1.5, np.nan])],
+    )
+    land = build_land_table(insured(), liquefaction(), slides).set_index("land_id")
+    assert land.loc["1-L01", "landslide_ids"] == ["LS1", "S2"]
+    assert land.loc["1-L01", "landslide_rw_ids"] == [None, "1-RW01"]
+    assert land.loc["1-L01", "landslide_areas"] == pytest.approx([120.0, 80.0])
+    for column in LANDSLIDE_FAILURE_COLUMNS:
+        assert land.loc["2-L01", column] == []
+
+
+def test_a_landslide_step_without_the_lists_writes_none():
+    land = build_land_table(insured(), liquefaction(), landslide())
+    assert not set(LANDSLIDE_FAILURE_COLUMNS) & set(land.columns)
