@@ -1557,13 +1557,12 @@ function load(text) {
   // Open on the module's choice too: volunteers in unless the run priced
   // clearing without them.
   document.getElementById("sva").checked = RAW[0]?.liq_sva == null || nz(RAW[0].liq_sva) > 0;
-  // The CSV says which version built it; the page beside it may be newer, and
-  // an issued pair should match, so a different commit is called out.
-  const built = RAW[0]?.built_with, page = document.getElementById("version").textContent;
-  const commit = v => String(v).split(",")[0];
-  document.getElementById("dataVersion").textContent = built == null
-    ? " · data: version not recorded"
-    : ` · data: ${built}${commit(built) === commit(page) ? "" : " (a different version from this page)"}`;
+  // The CSV says which version built it, which is shown beside the page's as a
+  // plain label. A CSV older than the page is expected -- a change to the page
+  // alone needs no new data -- so a difference is not called out to whoever the
+  // page is sent to.
+  const built = RAW[0]?.built_with;
+  document.getElementById("dataVersion").textContent = built == null ? "" : ` · data: ${built}`;
   MARKERS = null;
   ROWS = [];
   SELECTED = null;

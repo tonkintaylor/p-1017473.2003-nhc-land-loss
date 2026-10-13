@@ -371,13 +371,12 @@ def viewer_version() -> str:
 
     The first six characters of the commit they are built from and the date,
     so an issued copy can be traced to the code that made it. Uncommitted
-    changes under ``src`` mean the commit alone does not say what was issued,
-    so the version says so.
+    changes are not flagged: the page goes to the client, and a warning there
+    would only confuse. Build from a clean tree to issue.
 
     Returns:
-        For example ``v1a2b3c, built 2026-10-09``, ending ``, with uncommitted
-        changes`` when there are any, or ``unknown`` in place of the commit
-        when git cannot be read.
+        For example ``v1a2b3c, built 2026-10-09``, or ``unknown`` in place of
+        the commit when git cannot be read.
     """
 
     def git(*args: str) -> str:
@@ -392,10 +391,7 @@ def viewer_version() -> str:
 
     commit = git("rev-parse", "--short=6", "HEAD")
     built = datetime.now(UTC).astimezone().date().isoformat()
-    version = f"v{commit}, built {built}" if commit else f"unknown, built {built}"
-    if git("status", "--porcelain", "--", "src"):
-        version += ", with uncommitted changes"
-    return version
+    return f"v{commit}, built {built}" if commit else f"unknown, built {built}"
 
 
 def write_viewer(out_dir, version: str):

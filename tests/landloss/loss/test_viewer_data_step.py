@@ -89,9 +89,7 @@ def test_the_method_is_whichever_cost_was_settled(
 
 def test_the_version_names_the_commit_and_the_build_date() -> None:
     version = gen_viewer_data.viewer_version()
-    assert re.fullmatch(
-        r"v[0-9a-f]{6}, built \d{4}-\d{2}-\d{2}(, with uncommitted changes)?", version
-    )
+    assert re.fullmatch(r"v[0-9a-f]{6}, built \d{4}-\d{2}-\d{2}", version)
 
 
 def test_the_written_page_carries_the_version_in_place_of_the_placeholder(

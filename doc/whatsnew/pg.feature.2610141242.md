@@ -1,0 +1,1 @@
+The loss viewer no longer warns that it was built "with uncommitted changes" or that its data is "a different version from this page": the page goes to the client, where those notes would only confuse. The page and data versions are still shown. Rebuild the viewer to issue the page.
