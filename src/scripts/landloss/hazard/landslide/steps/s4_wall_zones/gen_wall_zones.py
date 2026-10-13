@@ -55,6 +55,7 @@ from landloss.common.utils import tiles
 from landloss.domain import constants
 from landloss.hazard.landslide import (
     bend_split,
+    directions,
     forced_polygons,
     instability_zones,
     pif_cut_fill,
@@ -62,7 +63,9 @@ from landloss.hazard.landslide import (
     slope_polygons,
     susceptibility,
     wall_candidates,
+    wall_trim,
     wall_units,
+    zone_alignment,
 )
 from landloss.hazard.landslide import geometry as landslide_geometry
 from landloss.hazard.landslide import ground_map as landslide_ground_map
@@ -102,14 +105,19 @@ from scripts.landloss.ground.steps.s4_slope_faces.gen_slope_faces import (
 )
 from scripts.landloss.hazard.landslide.steps.s4_wall_zones import config, zone_tiles
 from scripts.landloss.hazard.landslide.steps.s4_wall_zones.zone_tiles import (
+    align_walled_zones,
     fill_by_element,
     ground_rows,
+    wall_trim_settings,
     with_forced,
 )
 from scripts.landloss.paths import TEMP_DIR
 
 WORK_DIR = TEMP_DIR / "hazard" / "landslide"
 SCENARIOS = {"walled": True, "bare": False}
+
+# The share of walled polygons that may have no fall before the step stops.
+MAX_NO_FALL_SHARE = 0.05
 
 
 def wall_elements_path(*, extent):
@@ -169,6 +177,50 @@ def describe_forced(forced, zones):
     )
 
 
+def read_unit_falls(units, *, extent):
+    """Each wall unit's fall (a unit vector) from its first pif's pips in the siz table."""
+    directions = pd.read_parquet(
+        siz_table_path(extent=extent), columns=["pip_direction"]
+    )
+    return zone_alignment.unit_falls(units, directions["pip_direction"])
+
+
+def align_scenario(zones, *, scenario, elements, units, flags, falls):
+    """Align one scenario's zones with the wall lines and say what it did.
+
+    The post-step of landslide step 4 (:func:`zone_tiles.align_walled_zones`),
+    applied to the whole zones in the whole run and to the stitched zones over
+    tiles, so the two paths do the same.
+    """
+    aligned = align_walled_zones(
+        zones,
+        elements=elements,
+        units=units,
+        flags=flags,
+        falls=falls,
+        settings=wall_trim_settings(config),
+    )
+    done = aligned[aligned["wall_trim_how"] != ""]
+    unaligned = int((done["wall_trim_how"] == zone_alignment.HOW_NO_FALL).sum())
+    if unaligned:
+        print(f"{scenario}: {unaligned:,} walled polygons left as built: no fall")
+        if unaligned > MAX_NO_FALL_SHARE * len(done):
+            msg = (
+                f"{scenario}: {unaligned:,} of {len(done):,} walled polygons have "
+                "no fall (their unit's pif is not in the siz table); the siz "
+                "table is stale or does not match the wall units"
+            )
+            raise ValueError(msg)
+    if len(done):
+        print(
+            f"{scenario}: {len(done):,} evacuated polygons aligned with their wall "
+            f"({done['wall_trim_how'].value_counts().to_dict()}); "
+            f"{done['wall_trim_removed_m2'].sum():,.0f} m2 trimmed, "
+            f"{done['wall_trim_filled_m2'].sum():,.0f} m2 filled"
+        )
+    return aligned
+
+
 def world_scenario(world_id):
     """The scenario name, and zones file tag, of one world's wall draw."""
     return f"w{world_id:03d}"
@@ -203,6 +255,9 @@ TILE_CODE = (
     slope_polygons,
     forced_polygons,
     wall_units,
+    wall_trim,
+    zone_alignment,
+    directions,
     face_polygons,
     urban_geometry,
     bend_split,
@@ -500,11 +555,19 @@ def build_tiled(
         )
     tile_zones = read_kept_tiles(found, extent=extent)
     labels = tiled.label_keys(found, tile_zones)
-    tiled.stitch_elements(tile_zones, labels).to_parquet(
-        wall_elements_path(extent=extent)
-    )
-    for scenario in flags:
+    stitched = tiled.stitch_elements(tile_zones, labels)
+    stitched.to_parquet(wall_elements_path(extent=extent))
+    falls = read_unit_falls(units, extent=extent)
+    for scenario, scenario_flags in flags.items():
         zones = tiled.stitch_zones(tile_zones, labels, scenario)
+        zones = align_scenario(
+            zones,
+            scenario=scenario,
+            elements=stitched,
+            units=units,
+            flags=scenario_flags,
+            falls=falls,
+        )
         zones.to_parquet(zones_path(scenario, extent=extent))
         evacuated = zones[zones["zone"] == "evacuated"]
         print(
@@ -605,9 +668,15 @@ def main(*, extent, use_cached_layers, world_ids, rebuild, tile_workers):
         f"{int((~in_unit & ~on_line).sum()):,}"
     )
 
+    falls = read_unit_falls(units, extent=extent)
     for scenario, walled in SCENARIOS.items():
+        # A bound walls every unit; an element of a pif in no unit (a pif piece
+        # with no wall) stays bare in it, as in every world.
+        bound_flags = gen_element_walls(
+            units, pd.Series(walled, index=units.index), elements
+        )
         result = build_slope_polygons(
-            with_walls(found, walled),
+            with_walls(found, bound_flags),
             dem,
             transform,
             is_fill=is_fill,
@@ -622,6 +691,14 @@ def main(*, extent, use_cached_layers, world_ids, rebuild, tile_workers):
             forced_fill,
             forced_thickness,
             forced_ground,
+        )
+        zones = align_scenario(
+            zones,
+            scenario=scenario,
+            elements=elements,
+            units=units,
+            flags=walled,
+            falls=falls,
         )
         zones.to_parquet(zones_path(scenario, extent=extent))
         if scenario == "walled":
@@ -654,7 +731,7 @@ def main(*, extent, use_cached_layers, world_ids, rebuild, tile_workers):
             forced["wall_unit_id"].map(walled).fillna(value=False).to_numpy(dtype=bool),
             index=forced.index,
         )
-        with_forced(
+        zones = with_forced(
             result,
             scenario,
             forced,
@@ -662,6 +739,14 @@ def main(*, extent, use_cached_layers, world_ids, rebuild, tile_workers):
             forced_fill,
             forced_thickness,
             forced_ground,
+        )
+        align_scenario(
+            zones,
+            scenario=scenario,
+            elements=elements,
+            units=units,
+            flags=walled,
+            falls=falls,
         ).to_parquet(zones_path(scenario, extent=extent))
         print(
             f"World {world_id}: {flags.mean():.1%} of elements walled, "

@@ -61,8 +61,9 @@ from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
 from landloss.domain.constants import MIN_WALL_HEIGHT_M
-from landloss.hazard.landslide import bend_split
+from landloss.hazard.landslide import bend_split, wall_lines
 from landloss.hazard.landslide.bend_split import cut_path
+from landloss.hazard.landslide.directions import DIRECTIONS
 from landloss.hazard.landslide.slope_elements import (
     BANK,
     BETA_FREE_FACE_GROW_TOL_DEG,
@@ -132,9 +133,8 @@ SIZ_PASS = "siz_pass"
 # What an element built on a GNS-only wall unit's line was grown in.
 WALL_LINE = "wall_line"
 
-# The eight directions as (row, column) steps, cardinals first so that a tie
-# in the drop goes to a cardinal, and each one's bearing in degrees.
-DIRECTIONS = ((-1, 0), (0, 1), (1, 0), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1))
+# Each of the eight directions' (row, column) step (DIRECTIONS, cardinals first
+# so that a tie in the drop goes to a cardinal) and bearing in degrees.
 _STEPS = np.array(DIRECTIONS)
 BEARING_DEG = np.array([0.0, 90.0, 180.0, 270.0, 45.0, 135.0, 225.0, 315.0])
 
@@ -503,6 +503,138 @@ def split_pifs(
     pieces = np.zeros_like(labels)
     pieces[rows, cols] = piece
     return pieces, np.array(parent, dtype=np.int64), lines
+
+
+def _map_line(xy: NDArray[np.float64], transform: Affine) -> shapely.LineString:
+    """A line given as (row, column) points in metres, in map coordinates."""
+    cell_size_m = _cell_size(transform)
+    return shapely.LineString(
+        np.column_stack(
+            [
+                transform.c + (xy[:, 1] / cell_size_m + 0.5) * transform.a,
+                transform.f + (xy[:, 0] / cell_size_m + 0.5) * transform.e,
+            ]
+        )
+    )
+
+
+@dataclass(frozen=True)
+class WallSplit:
+    """The pif pieces after the pips no wall holds were taken out of them.
+
+    Attributes:
+        labels: The pieces on their pips' cells; each no-wall group is a piece
+            of its own, numbered after the wall pieces.
+        parent: The pif each piece came from, indexed by piece (entry 0 is 0);
+            a no-wall piece has its wall piece's parent.
+        has_wall: Whether the piece has a wall, indexed by piece.
+        wall_line: The wall piece's wall line in map coordinates, indexed by
+            piece; None for a no-wall piece.
+        method: How the wall line was found (``outline``, ``outline-wide`` or
+            ``fallback``), indexed by piece; None for a no-wall piece.
+        cut_line: Each piece's cut line in map coordinates, indexed by piece;
+            None for a no-wall piece (its spine is drawn through its pips by
+            :func:`gen_pif_spines`).
+    """
+
+    labels: NDArray[np.int32]
+    parent: NDArray[np.int64]
+    has_wall: NDArray[np.bool_]
+    wall_line: list[shapely.LineString | None]
+    method: list[str | None]
+    cut_line: list[shapely.LineString | None]
+
+
+def split_no_wall_pifs(
+    labels: NDArray[np.int32],
+    parent: NDArray[np.int64],
+    cut_lines: list[shapely.LineString | None],
+    pips: Pips,
+    transform: Affine,
+    settings: wall_lines.WallLineSettings | None,
+) -> WallSplit:
+    """Draw each piece's wall line and take the pips the wall does not hold out.
+
+    The lead's decision (2026-10-13): each piece gets a wall line along its
+    downhill outline (:func:`landloss.hazard.landslide.wall_lines.wall_line`,
+    the piece's cut line standing in where it finds no downhill run), and the
+    pips that line does not hold
+    (:func:`landloss.hazard.landslide.wall_lines.wall_pieces`) leave the
+    piece. Each group of them over ``settings.min_no_wall_pips`` is a pif
+    piece of its own, numbered after the existing pieces, with the same
+    parent, ``has_wall`` False and no wall line. It is tested, seeded and
+    grown like any piece, and never becomes a wall candidate.
+
+    A piece keeps its cut line, the stretch of path it was cut on, so the line
+    rules were kept when it was cut. A no-wall piece has none (None): its
+    pips are not on a path of the pif, and it has no wall for the rules to
+    apply to. Its spine is the longest shortest path through its own pips
+    (:func:`gen_pif_spines` with no line given).
+
+    Args:
+        labels: The pieces on their pips' cells, from :func:`split_pifs`.
+        parent: The pif each piece came from.
+        cut_lines: Each piece's cut line in map coordinates, indexed by piece.
+        pips: The pips.
+        transform: The grid's affine transform.
+        settings: The wall line settings; None leaves every piece whole and
+            walled, its wall line its cut line.
+
+    Returns:
+        The :class:`WallSplit`.
+    """
+    n = parent.size
+    if settings is None:
+        return WallSplit(
+            labels.copy(),
+            parent,
+            np.ones(n, dtype=bool),
+            list(cut_lines),
+            [wall_lines.METHOD_FALLBACK] * n,
+            list(cut_lines),
+        )
+    rows, cols = np.nonzero(pips.mask & (labels > 0))
+    piece = labels[rows, cols]
+    xy = np.column_stack(
+        [
+            transform.c + (cols + 0.5) * transform.a,
+            transform.f + (rows + 0.5) * transform.e,
+        ]
+    )
+    direction = pips.direction[rows, cols].astype(np.int64)
+    order = np.argsort(piece, kind="stable")
+    starts = np.flatnonzero(np.r_[True, np.diff(piece[order]) != 0])
+    new_labels = labels.copy()
+    parents = list(parent)
+    has_wall = [True] * n
+    lines: list[shapely.LineString | None] = list(cut_lines)
+    methods: list[str | None] = [wall_lines.METHOD_FALLBACK] * n
+    cuts = list(cut_lines)
+    for members in np.split(order, starts[1:]) if order.size else []:
+        index = int(piece[members[0]])
+        points = xy[members]
+        line, method, _ = wall_lines.wall_line(
+            points, direction[members], cut_lines[index], settings
+        )
+        lines[index], methods[index] = line, method
+        label, _ = wall_lines.wall_pieces(points, direction[members], line, settings)
+        for k in range(1, int(label.max()) + 1):
+            held = members[label == k]
+            new = len(parents)
+            parents.append(parents[index])
+            has_wall.append(False)
+            lines.append(None)
+            methods.append(None)
+            cuts.append(None)
+            new_labels[rows[held], cols[held]] = new
+    return WallSplit(
+        new_labels,
+        np.array(parents, dtype=np.int64),
+        np.array(has_wall, dtype=bool),
+        lines,
+        methods,
+        cuts,
+    )
 
 
 def drop_short_pifs(
@@ -919,7 +1051,11 @@ class InstabilityZones:
         n_pifs_short: The pifs dropped for a spine under
             :data:`BETA_MIN_PIF_LENGTH_M`.
         pif_lines: Each pif piece's line, in map coordinates, indexed by
-            ``pif_id``: the stretch of path :func:`split_pifs` cut it on.
+            ``pif_id``: the stretch of path :func:`split_pifs` cut it on; None
+            for a no-wall piece (:func:`split_no_wall_pifs`).
+        wall_lines: Each wall piece's wall line, in map coordinates, indexed
+            by ``pif_id`` (:func:`split_no_wall_pifs`); None for a no-wall
+            piece.
         cap_cuts: The pieces the 50 m cap cut, by stage (``bends``,
             ``even``).
     """
@@ -931,6 +1067,7 @@ class InstabilityZones:
     n_pifs_excluded: int = 0
     n_pifs_short: int = 0
     pif_lines: pd.Series | None = None
+    wall_lines: pd.Series | None = None
     cap_cuts: dict[str, int] | None = None
 
 
@@ -948,6 +1085,7 @@ def find_instability_zones(
     min_segment_m: float = 0.0,
     max_turn_deg: float = math.inf,
     siz_test: str = FALL_LINE_TEST,
+    wall_settings: wall_lines.WallLineSettings | None = None,
 ) -> InstabilityZones:
     """Find the pips, pifs and sizs on a DEM and grow the sizs into elements.
 
@@ -988,6 +1126,11 @@ def find_instability_zones(
         max_turn_deg: The most a piece's line may turn in all.
         siz_test: The siz test each piece is put to (:func:`assess_pifs`):
             :data:`FALL_LINE_TEST`, or :data:`PAIRS_TEST` for comparison.
+        wall_settings: The wall line settings (the lead, 2026-10-13): each
+            piece gets a wall line, and the pips it does not hold become
+            no-wall pieces (:func:`split_no_wall_pifs`). None draws no wall
+            lines: every piece keeps all its pips and its cut line is its wall
+            line.
 
     Returns:
         The elements, pips, pifs and the siz table.
@@ -1041,6 +1184,15 @@ def find_instability_zones(
         max_turn_deg=max_turn_deg,
         counts=(cap_cuts := Counter()),
     )
+    split = split_no_wall_pifs(
+        pif_labels,
+        parent,
+        [None if xy is None else _map_line(xy, transform) for xy in piece_xy],
+        pips,
+        transform,
+        wall_settings,
+    )
+    pif_labels, parent = split.labels, split.parent
     sizs = assess_pifs(
         elevation,
         pips,
@@ -1051,25 +1203,21 @@ def find_instability_zones(
         downhill=(layers.downhill_row, layers.downhill_col),
     )
     sizs.insert(0, "parent_pif_id", parent[sizs.index.to_numpy()].astype(np.int64))
+    sizs["has_wall"] = split.has_wall[sizs.index.to_numpy()]
+    sizs["wall_line_method"] = pd.Series(
+        [split.method[i] for i in sizs.index], index=sizs.index, dtype=object
+    )
     pif_lines = pd.Series(
-        [
-            shapely.LineString(
-                np.column_stack(
-                    [
-                        transform.c + (xy[:, 1] / cell_size_m + 0.5) * transform.a,
-                        transform.f + (xy[:, 0] / cell_size_m + 0.5) * transform.e,
-                    ]
-                )
-            )
-            for xy in piece_xy[1:]
-        ],
-        index=pd.RangeIndex(1, len(piece_xy), name="pif_id"),
-        dtype=object,
-    ).reindex(sizs.index)
+        [split.cut_line[i] for i in sizs.index], index=sizs.index, dtype=object
+    )
+    wall_line_series = pd.Series(
+        [split.wall_line[i] for i in sizs.index], index=sizs.index, dtype=object
+    )
     breaks = {
         pif: broken
         for pif, line in pif_lines.items()
-        if (
+        if line is not None
+        and (
             broken := bend_split.rule_breaks(
                 line,
                 max_bends=max_bends if max_bends is not None else 10**6,
@@ -1159,6 +1307,7 @@ def find_instability_zones(
         n_pifs_excluded=n_excluded,
         n_pifs_short=n_short,
         pif_lines=pif_lines,
+        wall_lines=wall_line_series,
         cap_cuts=dict(cap_cuts),
     )
 

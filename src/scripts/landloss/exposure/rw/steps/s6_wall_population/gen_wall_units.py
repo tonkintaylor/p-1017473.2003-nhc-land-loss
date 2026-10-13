@@ -88,10 +88,10 @@ from scripts.landloss.paths import TEMP_DIR
 
 WORK_DIR = TEMP_DIR / "exposure"
 
-# The siz table columns that only a run of the faces script with the spines
-# and the rateable property writes, and the GNS-only column that only a run
-# with the GNS-only rateable property writes.
-SIZ_COLUMNS_NEEDED = ("pip_direction", "spine", "rateable_property_id")
+# The siz table columns that only a run of ground steps 3 and 4 with the wall
+# lines (2026-10-13) and the rateable property write, and the GNS-only column
+# that only a run with the GNS-only rateable property writes.
+SIZ_COLUMNS_NEEDED = ("pip_direction", "wall_line", "rateable_property_id")
 GNS_ONLY_COLUMNS_NEEDED = ("rateable_property_id",)
 
 RULE = "-" * 72
@@ -312,6 +312,11 @@ def describe_lines(units):
     )
     counts = units["n_properties"].value_counts().sort_index().to_dict()
     print(f"Units by the properties they enter by 1 m or more: {counts}")
+    short = units["length_m"] < config.WALL_MIN_SEGMENT_M
+    print(
+        f"Units under {config.WALL_MIN_SEGMENT_M:g} m: {int(short.sum()):,} "
+        "(pif wall lines on small pifs; the shortest-line rule is not applied)"
+    )
     long = units["length_m"] > 50.0
     print(
         f"Units over 50 m: {int(long.sum()):,}, longest "

@@ -155,6 +155,45 @@
   2026-10-08): each polygon's wall is its element's wall unit, the id exposure rw
   step 6 writes as the drawn wall's `wall_line_id`, so the hazard and the
   exposure share one draw. The bounds are never read downstream.
+- **Alignment with the wall line** (the lead, 2026-10-13: the walled element's
+  evacuated polygons end at the wall; see `s6_wall_population_method.md` for the
+  wall line they are aligned to). After a scenario's zones are built, and for
+  the tiled run after they are stitched (so a unit's polygons are seen together
+  whichever tile built them), `gen_wall_zones.align_scenario()` calls
+  `zone_tiles.align_walled_zones()`, which runs
+  `zone_alignment.align_zones()` and then `drawn_areas()`.
+  - Which polygons: the evacuated polygon of a built element whose pif is a
+    member of a wall unit that is walled in the scenario (`walled`: every unit,
+    `bare`: none, a world: its draw, the same units `gen_element_walls` flags).
+    Not aligned: line elements (`siz_id` 0, the GNS-only and low-height units,
+    which have no pips and so no fall), forced polygons (drawn from the line
+    already), and the elements of a pif piece with no wall (in no unit, so not
+    walled; their polygons stay as built).
+  - The unit's line is `units.geometry`; its fall is the mean fall of its first
+    member pif's pips (`zone_alignment.unit_falls()`, `pip_direction` of the siz
+    table).
+  - The trim and fill are `wall_trim.align_unit()`, with the settings in
+    `config.WALL_TRIM_*` (`zone_tiles.wall_trim_settings()`): the polygon within
+    2 m of the line is cut by the line extended along its end sections, the
+    pieces downhill are removed, then the gaps between the polygons and the
+    line are filled by ribbons along the line's normal. How each polygon went
+    is written on its evacuated rows (`wall_trim_how`, `wall_trim_removed_m2`,
+    `wall_trim_filled_m2`; "" where not aligned).
+  - Imminent and inundated zones are left as built (the lead chose a rule for the
+    evacuated polygon only, 2026-10-13). No rule for them has been chosen, so a
+    band can still overlap or leave a gap against an aligned outline. Ask the
+    lead before adding one.
+  - `volume_m3` is unchanged; `area_m2` and `depth_m` of an aligned evacuated
+    polygon are redrawn from the geometry (`drawn_areas`), so the depth is the
+    same volume over the new area.
+  - A walled polygon whose unit has no fall is left as built and marked
+    `wall_trim_how` = `no fall`; the step prints the count and stops if more than
+    `MAX_NO_FALL_SHARE` (5%) of the walled polygons have no fall.
+  - The `walled` bound walls every unit through `gen_element_walls`, so the
+    elements of a no-wall pif piece stay bare in it, as in every world.
+  - Smoke test on the existing pilot world 0 zones with the research lines: 2,637
+    polygons aligned, 24,743 m2 trimmed and 4,595 m2 filled, in 16 s (run when
+    the imminent and inundated zones were also altered; since removed).
 - `fig_wall_zones.py` draws, at each site of `FIG_SITES` (the stage D2 pilot
   sites), one panel per zone file in `FIG_ZONE_SCENARIOS`: the evacuated zones
   coloured by whether the element is walled, the imminent and inundated zones at
@@ -221,7 +260,9 @@ Implemented 2026-10-11 from `doc/specs/optimise-landslide-s4-wall-zones/spec.md`
   modified of the 1 m DEM, the ground map, the elements file and each tile's
   found elements; the scenarios, world ids and the fill modification name
   (`tile_settings()`); and the SHA-256 of the source of every module and function
-  that builds a tile (`TILE_CODE`: `zone_tiles`, `tiled`, `tiles`, the landslide
+  that builds a tile (`TILE_CODE`: `zone_tiles`, `tiled`, `tiles`, `wall_trim` and
+  `zone_alignment` (the alignment is run after the stitch, so they are listed for
+  the record's sake and a change to them builds the tiles again), the landslide
   library modules the tile reads, including `geometry`, `susceptibility`,
   `ground_map`, `pif_cut_fill`, `wall_candidates`, `urban.fragility` and
   `domain.constants`, ground step 3's `grid`, and the lineless and world

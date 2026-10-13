@@ -169,6 +169,21 @@ UPPER_HUTT = AreaOfInterest(
     north=-40.944,
 )
 
+# The bounding box of Lower Hutt City, from the Territorial Authority 2025
+# boundary in get_study_areas(), widened by about 500 m so it still holds the
+# whole boundary once it is reprojected to NZTM. Like UPPER_HUTT it is a box, so
+# it also takes in edges of Wellington City (Ngauranga and the Belmont side of
+# the western hills) and Upper Hutt, and the Remutaka and Orongorongo hill
+# country south to Turakirae Head, whose outputs are not Lower Hutt's until the
+# steps clip to the outline.
+LOWER_HUTT = AreaOfInterest(
+    name="Lower Hutt City",
+    west=174.841,
+    south=-41.443,
+    east=175.094,
+    north=-41.127,
+)
+
 # The Canterbury earthquake sequence study area, covering Christchurch city and
 # the flat land around it. This is the extent the observed land damage evidence
 # is drawn from -- the only New Zealand dataset holding both settled land claims
@@ -204,6 +219,7 @@ EXTENTS = {
     "porirua-exec-map": PORIRUA_EXEC_MAP,
     "porirua": PORIRUA,
     "upper-hutt": UPPER_HUTT,
+    "lower-hutt": LOWER_HUTT,
 }
 
 # The file name suffix of an extent whose outputs predate the extent names. The

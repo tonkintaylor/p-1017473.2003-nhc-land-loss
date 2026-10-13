@@ -10,6 +10,7 @@ from landloss.hazard.landslide.wall_candidates import (
     GNS_ONLY_CLASS,
     GNS_WALL_SOURCE,
     LOW_HEIGHT_CLASS,
+    NO_WALL_CLASS,
     NOT_CANDIDATE,
     SIZ_CLASS,
     TT_MANUAL_WALL_SOURCE,
@@ -69,6 +70,24 @@ def test_a_siz_is_a_candidate_and_a_mapped_wall_makes_a_low_height_one(pifs):
         NOT_CANDIDATE,
     ]
     assert evidence["is_wall_candidate"].tolist() == [True, True, False]
+
+
+def test_a_piece_with_no_wall_is_no_candidate_siz_or_not(pifs):
+    # The lead, 2026-10-13: the pips a wall line does not hold are a pif of
+    # their own with no wall, so even a siz or a mapped wall on it is no wall.
+    pifs["has_wall"] = [False, False, True]
+    evidence = _evidence(pifs)
+    assert evidence["candidate_class"].tolist() == [
+        NO_WALL_CLASS,
+        NO_WALL_CLASS,
+        NOT_CANDIDATE,
+    ]
+    assert not evidence["is_wall_candidate"].any()
+    assert evidence["gns_wall"].tolist() == [False, True, False]
+
+
+def test_a_table_with_no_has_wall_column_has_a_wall_on_every_piece(pifs):
+    assert NO_WALL_CLASS not in _evidence(pifs)["candidate_class"].tolist()
 
 
 def test_distances_are_nan_beyond_the_search_distance(pifs):
@@ -192,6 +211,18 @@ def _gns_only(sizs, walls, properties):
         stray_tolerance_m=2.0,
         max_turn_deg=185.0,
     )
+
+
+def test_a_mapped_wall_near_only_a_no_wall_piece_is_a_gns_only_candidate(properties):
+    sizs = _pif_table([[(100, 0), (101, 0)], [(105, 0), (106, 0)]])
+    walls = _layer([shapely.LineString([(100.0, 1.0), (115.0, 1.0)])])
+    both = _gns_only(sizs, walls, properties)
+    assert len(both) == 1
+    sizs["has_wall"] = [True, False]
+    walled = _gns_only(sizs, walls, properties)
+    assert walled["length_m"].sum() > both["length_m"].sum()
+    sizs["has_wall"] = [False, False]
+    assert _gns_only(sizs, walls, properties)["length_m"].sum() == pytest.approx(15.0)
 
 
 def test_gns_only_candidates_are_indexed_by_gns_only_id(properties):

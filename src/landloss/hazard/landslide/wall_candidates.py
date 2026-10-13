@@ -38,6 +38,9 @@ SIZ_CLASS = "siz"
 LOW_HEIGHT_CLASS = "low_height"
 GNS_ONLY_CLASS = "gns_only"
 NOT_CANDIDATE = "none"
+# A pif piece the wall line of its parent does not hold (the lead, 2026-10-13):
+# it has no wall, so it is no candidate, siz or not.
+NO_WALL_CLASS = "no_wall"
 
 # Where a mapped wall comes from: GNS SLIDE [townsend_2020], or T+T's walls
 # mapped by hand from aerial imagery (Koordinates layer 125317).
@@ -99,6 +102,13 @@ def _touches(pifs: gpd.GeoDataFrame, other: gpd.GeoDataFrame) -> pd.Series:
     return pd.Series(pifs.index.isin(joined.index.unique()), index=pifs.index)
 
 
+def _has_wall(sizs: pd.DataFrame) -> pd.Series:
+    """Whether each piece has a wall: all do in a table with no ``has_wall``."""
+    if "has_wall" not in sizs.columns:
+        return pd.Series(data=True, index=sizs.index)
+    return sizs["has_wall"].astype(bool)
+
+
 def wall_candidate_evidence(
     sizs: gpd.GeoDataFrame,
     *,
@@ -133,8 +143,10 @@ def wall_candidate_evidence(
         within ``wall_match_m``), ``cut_fill_line_m``,  ``in_slide_cut``,
         ``in_slide_fill``, ``ground_material``, ``ground_modification``,
         ``building_m``, ``height_band`` (of its largest delta_h),
-        ``is_wall_candidate`` and ``candidate_class`` (``siz`` for a siz,
-        ``low_height`` for a mapped wall with no siz, else ``none``).
+        ``is_wall_candidate`` and ``candidate_class`` (``no_wall`` for a piece
+        with ``has_wall`` False, whatever else it is, then ``siz`` for a siz,
+        ``low_height`` for a mapped wall with no siz, else ``none``). A siz
+        table with no ``has_wall`` column has a wall on every piece.
     """
     pifs = sizs[["geometry"]]
     evidence = pd.DataFrame(index=sizs.index)
@@ -153,11 +165,16 @@ def wall_candidate_evidence(
     evidence["height_band"] = height_band(sizs["max_delta_h_m"].to_numpy())
 
     is_siz = sizs["is_siz"].astype(bool)
-    evidence["is_wall_candidate"] = is_siz | evidence["gns_wall"]
+    has_wall = _has_wall(sizs)
+    evidence["is_wall_candidate"] = (is_siz | evidence["gns_wall"]) & has_wall
     evidence["candidate_class"] = np.where(
-        is_siz,
-        SIZ_CLASS,
-        np.where(evidence["gns_wall"], LOW_HEIGHT_CLASS, NOT_CANDIDATE),
+        ~has_wall,
+        NO_WALL_CLASS,
+        np.where(
+            is_siz,
+            SIZ_CLASS,
+            np.where(evidence["gns_wall"], LOW_HEIGHT_CLASS, NOT_CANDIDATE),
+        ),
     )
     return evidence
 
@@ -443,7 +460,9 @@ def gen_gns_only_candidates(
     and each piece is an independent candidate, classed ``gns_only``.
 
     Args:
-        sizs: The siz table with each pif's pips as geometry.
+        sizs: The siz table with each pif's pips as geometry; the pips of a
+            piece with ``has_wall`` False are not counted (a wall near only
+            those is a candidate of its own).
         walls: Mapped retaining walls (lines), from :func:`gen_mapped_walls`
             or GNS alone; without a ``wall_source`` column every wall is GNS.
         properties: LINZ property boundaries.
@@ -467,7 +486,10 @@ def gen_gns_only_candidates(
         a pif's, on length),
         ``ground_material``, ``ground_modification`` and ``building_m``.
     """
-    pips = shapely.get_parts(sizs.geometry.to_numpy())
+    # A mapped wall near only a no-wall piece's pips is on no wall piece (that
+    # piece has no wall and is no candidate), so it is a candidate of its own:
+    # no mapped wall is lost.
+    pips = shapely.get_parts(sizs.geometry[_has_wall(sizs)].to_numpy())
     tree = shapely.STRtree(pips)
     boundaries = _property_frame(properties).reset_index(drop=True)
     if "wall_source" in walls.columns:

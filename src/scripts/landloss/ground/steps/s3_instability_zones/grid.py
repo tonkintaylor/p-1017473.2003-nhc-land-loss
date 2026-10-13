@@ -18,10 +18,24 @@ from landloss.hazard.landslide.instability_zones import (
 CRS = 2193
 
 
+def wall_column(name):
+    """The siz table's name for a spine column read along the wall line."""
+    return {"spine": "wall_line", "spine_length_m": "wall_length_m"}.get(
+        name, f"wall_{name}"
+    )
+
+
 def grid_table(
     zones, dem, transform, *, end_window_m, wall_height_reach_m, wall_height_quantile
 ):
-    """The siz table with the columns read off the grid: drops, verticality, spines."""
+    """The siz table with the columns read off the grid: drops, verticality, spines.
+
+    Besides each piece's spine (its cut line) the table carries its wall line
+    (the lead, 2026-10-13: ``wall_line``, ``wall_length_m``, ``wall_end_a_x`` and
+    the other spine columns read along the wall line, but for
+    ``fall_resultant``), None and NaN on a piece with no wall (``has_wall``
+    False).
+    """
     table = gen_siz_table(zones, transform, crs=CRS)
     table["near_drop_p80_m"] = gen_pif_near_drops(
         dem,
@@ -34,7 +48,7 @@ def grid_table(
     table["verticality"] = gen_pif_verticality(
         dem, zones.pips, zones.pif_labels
     ).reindex(table.index)
-    return table.join(
+    table = table.join(
         gen_pif_spines(
             table,
             cell_size_m=abs(transform.a),
@@ -42,6 +56,14 @@ def grid_table(
             lines=zones.pif_lines,
         )
     )
+    walled = table[table["has_wall"]]
+    walls = gen_pif_spines(
+        walled,
+        cell_size_m=abs(transform.a),
+        end_window_m=end_window_m,
+        lines=zones.wall_lines,
+    ).drop(columns="fall_resultant")
+    return table.join(walls.rename(columns=wall_column))
 
 
 def element_polygons(found, transform):

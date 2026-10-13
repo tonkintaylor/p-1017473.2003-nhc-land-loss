@@ -49,21 +49,21 @@ def _layer(geometries, **columns):
 
 
 def _pif(start, end, fall, *, property_id="1", **overrides):
-    """One candidate pif along a straight spine, falling one way at both ends."""
+    """One candidate pif with a straight wall line, falling one way at both ends."""
     (x0, y0), (x1, y1) = sorted([start, end])
     n = max(round(np.hypot(x1 - x0, y1 - y0)) + 1, 2)
     xs, ys = np.linspace(x0, x1, n), np.linspace(y0, y1, n)
     row = {
         "candidate_class": "siz",
         "rateable_property_id": property_id,
-        "spine": shapely.LineString([(x0, y0), (x1, y1)]),
-        "spine_length_m": float(np.hypot(x1 - x0, y1 - y0)),
-        "end_a_x": x0,
-        "end_a_y": y0,
-        "end_b_x": x1,
-        "end_b_y": y1,
-        "end_a_fall_deg": fall,
-        "end_b_fall_deg": fall,
+        "wall_line": shapely.LineString([(x0, y0), (x1, y1)]),
+        "wall_length_m": float(np.hypot(x1 - x0, y1 - y0)),
+        "wall_end_a_x": x0,
+        "wall_end_a_y": y0,
+        "wall_end_b_x": x1,
+        "wall_end_b_y": y1,
+        "wall_end_a_fall_deg": fall,
+        "wall_end_b_fall_deg": fall,
         "max_delta_h_m": 2.0,
         "near_drop_p80_m": 2.0,
         "building_m": 10.0,
@@ -81,7 +81,7 @@ def _pif(start, end, fall, *, property_id="1", **overrides):
 
 def _pifs(*rows):
     table = gpd.GeoDataFrame(list(rows), geometry="geometry", crs=CRS)
-    table["spine"] = gpd.GeoSeries(table["spine"], crs=CRS)
+    table["wall_line"] = gpd.GeoSeries(table["wall_line"], crs=CRS)
     table.index = pd.Index(range(1, len(rows) + 1), name="pif_id")
     return table
 
@@ -147,6 +147,23 @@ def test_a_candidate_breaking_a_line_rule_is_refused():
     long_pif = _pif((0, 0), (0, 60), 90.0)
     with pytest.raises(ValueError, match="line rules"):
         _units(_pifs(long_pif))
+
+
+def test_a_pif_wall_line_under_the_shortest_length_is_kept():
+    # An outline line on a small pif can be under 3 m (the lead, 2026-10-13):
+    # it is a unit; the other rules still apply, to it and to a GNS-only piece.
+    units = _units(_pifs(_pif((0, 0), (0, 2), 90.0)))
+    assert len(units) == 1
+    assert units["length_m"].iloc[0] == pytest.approx(2.0)
+    with pytest.raises(ValueError, match="line rules"):
+        _units(_pifs(_pif((0, 0), (0, 2), 90.0)), _gns_only([(4, 0), (4, 2)]))
+
+
+def test_a_no_wall_piece_is_no_member():
+    sizs = _pifs(_pif((0, 0), (0, 10), 90.0), _pif((5, 0), (5, 10), 90.0))
+    sizs.loc[2, "candidate_class"] = "no_wall"
+    units = _units(sizs)
+    assert units["member_pif_ids"].tolist() == [[1]]
 
 
 BASE = 0.3

@@ -41,6 +41,18 @@
   candidate if it is a siz (class `siz`) or a GNS mapped wall lies within
   `GNS_WALL_MATCH_M` of it (class `low_height`, called `small` until
   2026-10-07). No probability is put on a candidate.
+- **No-wall pieces** (the lead, 2026-10-13). A pif piece that ground step 3
+  made of the pips its parent's wall line does not hold (`has_wall` False) is
+  class `no_wall`, siz or not, and `is_wall_candidate` is False. It never
+  becomes a wall unit (`CANDIDATE_CLASSES` is unchanged), and its element is
+  bare in every world. A mapped wall within `GNS_WALL_MATCH_M` of only a
+  no-wall piece's pips is not on a wall piece, so `gen_gns_only_candidates`
+  does not count those pips and the wall becomes a `gns_only` candidate; no
+  mapped wall is lost. This
+  rule is the build's own judgement and is pending the lead's confirmation;
+  compare the `gns_only` count with the old 857 after the rerun. The siz table's `has_wall` and `wall_line` columns pass
+  through from ground step 3. Ground step 5 reads pips by `pif_id` only, so the
+  new pieces need no change there.
 - Each pif is tied to a property by `wall_candidates.property_of_pifs`: the LINZ
   NZ Property Boundaries polygon (`get_nz_property_boundaries`) holding most of
   its pips. The siz table carries `property_id`, `property_source`,

@@ -586,7 +586,11 @@ def zones_tile(
     zones = {}
     for scenario, walled in flags_by_scenario.items():
         if isinstance(walled, bool):
-            flags = walled
+            # A bound walls every unit; an element of a pif in no unit (a pif
+            # piece with no wall) stays bare in it, as in every world.
+            flags = gen_element_walls(
+                units, pd.Series(walled, index=units.index), found.elements
+            )
             forced_walled = pd.Series(walled, index=forced.index)
         else:
             flags = gen_element_walls(units, walled, found.elements)

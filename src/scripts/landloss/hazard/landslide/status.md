@@ -21,7 +21,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05 (now exposure rw step 6); the per-zone fragility is next.
 
-**Updated:** 2026-10-11
+**Updated:** 2026-10-13
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -400,6 +400,21 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
   code stays for the toy figures (`fig_toy_slope_elements.py`), is marked
   deprecated and is to be retired; the shared slope table is now the two-band
   one, so the old pilot and toy figure scripts read it too.
+- **Landslide step 4 aligns walled polygons with the wall line (2026-10-13)**:
+  after each scenario's zones are built (and stitched, over tiles), the evacuated
+  polygons of walled elements are cut at the wall unit's line (the ends projected
+  on, the part downhill removed) and the gaps to the line filled
+  (`wall_trim.align_unit`, `zone_alignment.align_zones`). Imminent and inundated
+  zones are left as built (the lead, 2026-10-13); evacuated areas and depths are
+  redrawn. Only units walled in the scenario are aligned; an unwalled polygon
+  stays as built. Pilot rebuilt from ground step 3 to the loss tables on
+  2026-10-13: 1,339 no-wall pif pieces, 5,689 wall units (961 GNS-only, 857
+  before), 3,340 expected walls (3,300 before); world 0 aligned 2,606 polygons,
+  17,578 m2 trimmed and 4,535 m2 filled. Downstream, a wall's line now sits on
+  its polygon's edge, so vul's inside test gives fewer walls `is_evacuated`
+  (1,128 to 424 against today's code on the old zones) and more `is_inundated`
+  (300 to 798); walls with any flag, one replacement each, barely move (64.1%
+  to 63.3%). Method in `s4_wall_zones_method.md`.
 - **Landslide step 4 tiles in parallel (2026-10-11)**: `TILE_WORKERS` worker
   processes, each tile kept on disk as built and a stopped run resumed from the
   tiles not yet built, cleared when the record (found elements, wall units and

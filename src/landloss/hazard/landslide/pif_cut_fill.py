@@ -40,7 +40,7 @@ from numpy.typing import NDArray
 from rasterio.transform import Affine
 from scipy import ndimage
 
-from landloss.hazard.landslide.instability_zones import DIRECTIONS
+from landloss.hazard.landslide.directions import DIRECTIONS
 
 CUT = "cut"
 FILL = "fill"

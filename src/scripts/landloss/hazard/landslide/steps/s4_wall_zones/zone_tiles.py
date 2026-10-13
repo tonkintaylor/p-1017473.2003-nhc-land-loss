@@ -22,6 +22,8 @@ import pandas as pd
 from landloss.hazard.landslide.forced_polygons import gen_forced_zones
 from landloss.hazard.landslide.slope_polygons import ZONES, polygon_geometries
 from landloss.hazard.landslide.urban.face_polygons import ground_of_elements
+from landloss.hazard.landslide.wall_trim import WallTrimSettings
+from landloss.hazard.landslide.zone_alignment import align_zones
 from scripts.landloss.ground.steps.s3_instability_zones import tiled
 from scripts.landloss.ground.steps.s3_instability_zones.grid import (
     CRS,
@@ -99,6 +101,54 @@ def drawn_areas(zones):
     with np.errstate(invalid="ignore", divide="ignore"):
         zones["depth_m"] = zones["volume_m3"] / zones["area_m2"]
     return zones
+
+
+def wall_trim_settings(config):
+    """The trim and fill settings of ``config.py``, for :func:`align_walled_zones`."""
+    return WallTrimSettings(
+        beside_m=config.WALL_TRIM_BESIDE_M,
+        extend_pad_m=config.WALL_TRIM_EXTEND_PAD_M,
+        sliver_m2=config.WALL_TRIM_SLIVER_M2,
+        sample_m=config.WALL_TRIM_SAMPLE_M,
+        close_m=config.WALL_TRIM_CLOSE_M,
+        gap_m=config.WALL_TRIM_GAP_M,
+        ray_m=config.WALL_TRIM_RAY_M,
+        overlap_m=config.WALL_TRIM_OVERLAP_M,
+        oblique_factor=config.WALL_TRIM_OBLIQUE_FACTOR,
+        oblique_pad_m=config.WALL_TRIM_OBLIQUE_PAD_M,
+    )
+
+
+def align_walled_zones(zones, *, elements, units, flags, falls, settings):
+    """Align a scenario's walled elements' zones with their wall lines, then redraw areas.
+
+    The post-step of landslide step 4 (the lead, 2026-10-13), run on a
+    scenario's whole zones, so a unit's polygons are aligned together whichever
+    tile built them: :func:`landloss.hazard.landslide.zone_alignment.align_zones`
+    (the rules are in its docstring) and then :func:`drawn_areas`, so
+    ``area_m2``, ``imminent_area_m2``, ``inundated_area_m2`` and ``depth_m`` match
+    the geometry. A polygon's volume is unchanged.
+
+    Args:
+        zones: The scenario's zones (a row per polygon and zone).
+        elements: The scenario's elements, indexed by label, with ``siz_id``.
+        units: The wall units (the wall's line as geometry).
+        flags: True, False, or a bool per wall unit: where the unit is walled.
+        falls: Each unit's fall (``zone_alignment.unit_falls``).
+        settings: The :class:`WallTrimSettings` (:func:`wall_trim_settings`).
+
+    Returns:
+        The aligned zones.
+    """
+    aligned = align_zones(
+        zones,
+        elements=elements,
+        units=units,
+        flags=flags,
+        falls=falls,
+        settings=settings,
+    )
+    return drawn_areas(aligned) if len(aligned) else aligned
 
 
 def ground_rows(geometries, ground_map):

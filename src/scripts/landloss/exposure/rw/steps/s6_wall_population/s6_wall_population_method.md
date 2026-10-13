@@ -56,8 +56,8 @@ Moved here from landslide step 12 on 2026-10-08, which built it from 2026-10-05
 (the plan is `.agents/plans/placing-retaining-walls-on-pifs.md`; the library is
 `landloss.hazard.landslide.wall_units`). It reads what the ground module wrote:
 ground step 4's siz table (`siz_table_path()`, read by `read_sizs()`, which
-stops and says to rerun `gen_slope_faces.py` if the spine or rateable property
-columns are missing) and GNS-only candidates (`gns_only_path()`,
+stops and says to rerun ground steps 3 and 4 if the `wall_line` or rateable
+property columns are missing) and GNS-only candidates (`gns_only_path()`,
 `read_gns_only()`), and ground step 5's pif cut and fill table
 (`pif_cut_fill_path()`, `read_cut_fill()`, which stops and says to run
 `gen_pif_cut_fill.py` after `gen_slope_faces.py` if the table is missing or
@@ -68,10 +68,17 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   each `low_height` pif piece (a pif piece that is not a siz with a GNS mapped
   wall within 2 m) and each `gns_only` piece. Nothing is joined
   (`wall_units.gen_wall_units`). A unit's line is its member's: a pif piece's
-  line, the stretch of spine it was cut on, or a GNS-only piece's line, both
-  cut by `bend_split`, so every unit is one LineString of 3 to 50 m with at
-  most 3 bends turning at most 185°; `gen_wall_units` refuses any that is not
-  (`describe_lines()` prints the counts). `length_m` is the line's length (what
+  wall line, or a GNS-only piece's line. Since 2026-10-13 (the lead) a pif
+  piece's wall line is the one ground step 3 draws along its downhill outline
+  (`wall_lines.wall_line`, the siz table's `wall_line`, `wall_length_m` and
+  `wall_end_*`, read in `wall_units.gen_wall_members` in place of the spine),
+  not the spine it was cut on. A `no_wall` piece is no member. Every unit is
+  one LineString of up to 50 m with at most 3 bends turning at most 185°;
+  `gen_wall_units` refuses any that is not. A pif piece's wall line may be
+  under 3 m (small pifs: 154 of the 4,740 pilot lines, the shortest 1.4 m): the
+  shortest-length rule is not applied to a pif member, the others are, and a
+  GNS-only piece still has to be 3 m long.
+  `describe_lines()` prints the counts. `length_m` is the line's length (what
   `gen_wall_population.py` draws), `n_bends` its bends. The line rules are
   ground step 3's config (`WALL_MAX_BENDS`, `WALL_MIN_SEGMENT_M`,
   `WALL_MAX_LENGTH_M`, `MAX_TOTAL_TURN_DEG`), re-exported by this step's

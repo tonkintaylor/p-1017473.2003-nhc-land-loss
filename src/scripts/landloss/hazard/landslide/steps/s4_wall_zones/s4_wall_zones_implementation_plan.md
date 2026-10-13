@@ -94,6 +94,17 @@ the wall placement as a whole is `.agents/plans/placing-retaining-walls-on-pifs.
       fails in a realisation, against the order of 1% the literature gives (the
       check the first pilot missed by a factor of about 40).
 
+## Phase: align evacuated polygons with the wall line (the lead, 2026-10-13)
+
+- [x] `wall_trim.align_unit` ported from the evacuated cut and align scratch
+      (parity on 3,725 polygons: 0 m2 difference).
+- [x] `zone_alignment.align_zones` applied per scenario after the zones are built
+      or stitched; evacuated geometry only.
+- [ ] Rerun on the wlg-pilot after ground step 3 and exposure rw step 6; check
+      the `no fall` count and the 922 units with a no-wall part.
+- [ ] Decide with the lead whether imminent and inundated zones follow the
+      aligned outline (no rule chosen).
+
 ## Potential future improvements
 
 - A `low_height` pif piece grows no element; its line element gives it the
