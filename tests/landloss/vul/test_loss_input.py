@@ -8,9 +8,10 @@ from landloss.domain.loss_contract import (
     BRIDGE_COLUMNS,
     CULVERT_COLUMNS,
     LAND_COLUMNS,
+    LANDSLIDE_FAILURE_COLUMNS,
     RW_COLUMNS,
 )
-from landloss.loss.pricing import beta_wall_height_m
+from landloss.loss.pricing import wall_type_rate_excl_gst_nzd_per_m2
 from landloss.vul.landslide.land.damaged_area import UNION_AREA_COLUMN
 from landloss.vul.loss_input import (
     build_crossing_tables,
@@ -26,9 +27,10 @@ def insured():
         {
             "land_id": ["1-L01", "2-L01"],
             "claim_id": [1, 2],
-            "land_rate_excl_gst_nzd_per_m2": [500.0, 700.0],
-            "land_rate_incl_gst_nzd_per_m2": [575.0, 805.0],
             "area_m2": [400.0, 900.0],
+            "property_area_m2": [600.0, 900.0],
+            "footprint_area_m2": [120.0, 200.0],
+            "suburb_locality": ["Kelburn", "Karori"],
             "dwelling_count": [1, 2],
         },
         geometry=[box(0, 0, 20, 20), box(100, 0, 130, 30)],
@@ -55,6 +57,7 @@ def landslide():
             "inundated_area_m2": [150.0],
             UNION_AREA_COLUMN: [200.0],
             "inundated_depth_m": [1.5],
+            "landslide_footprint_area_m2": [30.0],
         }
     )
 
@@ -66,6 +69,8 @@ def walls():
             "rw_id": ["1-RW01", "1-RW02", "2-RW01"],
             "claim_id": [1, 1, 2],
             "size_class": ["small", "large", "medium"],
+            "wall_type": ["garden_timber", "concrete_block", "timber_pole_pre_1992"],
+            "height_m": [0.8, 2.7, 1.6],
             "length_m": [12, 30, 8],
             "is_flatland": [True, True, False],
         },
@@ -100,6 +105,63 @@ def wall_flags():
     )
 
 
+def shared_walls():
+    """The population with 1-RW02 crossing onto claims 2 and 9.
+
+    30 m long: 18 m on claim 1, 10 m on claim 2, 1.2 m on claim 9; the other
+    0.8 m is in slivers under 1 m, which the population does not list.
+    """
+    population = walls()
+    population["property_lengths_m"] = [
+        [{"property_id": 1, "length_m": 12.0}],
+        [
+            {"property_id": 1, "length_m": 18.0},
+            {"property_id": 2, "length_m": 10.0},
+            {"property_id": 9, "length_m": 1.2},
+        ],
+        [],
+    ]
+    return population
+
+
+def test_a_wall_across_properties_is_split_onto_each():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags())
+    shared = rw[rw["parent_rw_id"] == "1-RW02"]
+    assert shared["rw_id"].tolist() == ["1-RW02-P1", "1-RW02-P2", "1-RW02-P3"]
+    assert shared["claim_id"].tolist() == [1, 2, 9]
+    # The primary keeps the slivers, so the wall's length is conserved.
+    assert shared["rw_length"].tolist() == pytest.approx([18.8, 10.0, 1.2])
+    assert shared["rw_length"].sum() == pytest.approx(30.0)
+
+
+def test_each_piece_carries_the_whole_walls_type_height_and_damage():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags())
+    shared = rw[rw["parent_rw_id"] == "1-RW02"]
+    for column in ("rw_type", "rw_height", "rw_size", "is_evacuated"):
+        assert shared[column].nunique() == 1
+    assert shared["is_evacuated"].all()
+
+
+def test_a_wall_on_one_property_keeps_its_own_id():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags())
+    assert {"1-RW01", "2-RW01"} <= set(rw["rw_id"])
+
+
+def test_a_piece_on_a_property_with_no_claim_is_dropped():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags(), claims={1, 2})
+    shared = rw[rw["parent_rw_id"] == "1-RW02"]
+    assert shared["claim_id"].tolist() == [1, 2]
+    # Claim 9's 1.2 m is not insured on this policy, so nobody carries it.
+    assert shared["rw_length"].tolist() == pytest.approx([18.8, 10.0])
+
+
+def test_a_wall_left_on_its_primary_alone_keeps_its_id_and_its_share():
+    rw = build_rw_table(shared_walls(), wall_states(), wall_flags(), claims={1})
+    wall = rw[rw["parent_rw_id"] == "1-RW02"]
+    assert wall["rw_id"].tolist() == ["1-RW02"]
+    assert wall["rw_length"].tolist() == pytest.approx([18.8])
+
+
 def crossings():
     return gpd.GeoDataFrame(
         {
@@ -128,8 +190,11 @@ def test_the_land_table_carries_the_contract_columns_and_the_extras():
     assert list(land.columns) == [*LAND_COLUMNS, "dwelling_count", "geometry"]
     assert land.crs == CRS
     assert land["Liq_LD_state"].tolist() == [3, 1]
-    # Only the GST-inclusive rate is handed on.
-    assert land["$/m2 market value"].tolist() == [575.0, 805.0]
+    # No land value: loss values the land from where it lies.
+    assert land["footprint_area"].tolist() == [120.0, 200.0]
+    assert land["property_area"].tolist() == [600.0, 900.0]
+    assert land["suburb"].tolist() == ["Kelburn", "Karori"]
+    assert land["land_slide_footprint_area"].tolist() == [30.0, 0.0]
     assert land["total_insured_land_area"].tolist() == [400.0, 900.0]
 
 
@@ -167,10 +232,18 @@ def test_a_duplicated_land_id_is_refused():
 
 def test_the_rw_table_is_spined_on_the_population_in_its_order():
     rw = build_rw_table(walls(), wall_states(), wall_flags())
-    assert list(rw.columns) == [*RW_COLUMNS, "geometry"]
+    assert list(rw.columns) == [*RW_COLUMNS, "parent_rw_id", "geometry"]
+    # No wall here carries property lengths, so none is split.
+    assert rw["parent_rw_id"].tolist() == rw["rw_id"].tolist()
     assert rw["rw_id"].tolist() == ["1-RW01", "1-RW02", "2-RW01"]
     assert rw["claim_id"].tolist() == [1, 1, 2]
     assert rw["rw_size"].tolist() == ["small", "large", "medium"]
+    assert rw["rw_type"].tolist() == [
+        "garden_timber",
+        "concrete_block",
+        "timber_pole_pre_1992",
+    ]
+    assert rw["rw_height"].tolist() == [0.8, 2.7, 1.6]
     assert rw["rw_length"].dtype == np.float64
     assert rw["rw_length"].tolist() == [12.0, 30.0, 8.0]
     assert rw.crs == CRS
@@ -261,7 +334,30 @@ def test_no_crossings_gives_two_empty_tables_with_the_full_schema():
     assert bridges["is_evacuated"].dtype == bool
 
 
-def test_the_rw_sizes_are_ones_the_loss_module_prices():
+def test_the_rw_types_and_heights_are_ones_the_loss_module_prices():
     rw = build_rw_table(walls(), wall_states(), wall_flags())
-    heights = beta_wall_height_m(rw["rw_size"].to_numpy())
-    assert heights.shape == (3,)
+    rates = wall_type_rate_excl_gst_nzd_per_m2(
+        rw["rw_type"].to_numpy(), rw["rw_height"].to_numpy()
+    )
+    assert rates.shape == (3,)
+
+
+def test_the_failure_lists_are_carried_and_unreached_land_has_none():
+    slides = landslide().assign(
+        landslide_ids=[np.array(["LS1", "S2"])],
+        landslide_rw_ids=[np.array([None, "1-RW01"], dtype=object)],
+        landslide_areas=[np.array([120.0, 80.0])],
+        landslide_inundated_areas=[np.array([150.0, 0.0])],
+        landslide_inundated_depths=[np.array([1.5, np.nan])],
+    )
+    land = build_land_table(insured(), liquefaction(), slides).set_index("land_id")
+    assert land.loc["1-L01", "landslide_ids"] == ["LS1", "S2"]
+    assert land.loc["1-L01", "landslide_rw_ids"] == [None, "1-RW01"]
+    assert land.loc["1-L01", "landslide_areas"] == pytest.approx([120.0, 80.0])
+    for column in LANDSLIDE_FAILURE_COLUMNS:
+        assert land.loc["2-L01", column] == []
+
+
+def test_a_landslide_step_without_the_lists_writes_none():
+    land = build_land_table(insured(), liquefaction(), landslide())
+    assert not set(LANDSLIDE_FAILURE_COLUMNS) & set(land.columns)

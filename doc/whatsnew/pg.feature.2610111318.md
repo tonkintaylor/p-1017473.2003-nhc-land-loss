@@ -1,0 +1,1 @@
+The loss viewer can now charge the excess as a fixed amount per claim, $5,000 by default, with no per-dwelling part: choose "Fixed per claim" under Excess. The per-dwelling excess with a ceiling remains the default.

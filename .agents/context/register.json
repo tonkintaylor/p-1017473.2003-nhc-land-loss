@@ -814,7 +814,7 @@
       "Owner": "Maxim Millen",
       "Phase": "3",
       "Source": "Wgtn Land Model 2026-10-07",
-      "Status": "Open"
+      "Status": "Done"
     },
     {
       "ID": "T-125",
@@ -966,6 +966,134 @@
       "Owner": "Unassigned",
       "Phase": "Unassigned",
       "Source": "Shaking task review 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-116",
+      "Task": "Produce a spreadsheet version of the loss calculation for NHC, simplified from the loss viewer.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-117",
+      "Task": "Agree the report's size with John Leeves, who expects about five pages within budget, against the three-page summary and 100-page technical document in T-59.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "Wgtn land model sense check 2026-10-05",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-144",
+      "Task": "Send Bridget Attwood the loss viewer and results for all four territorial authorities (or three if one is not finished) by Monday 2026-10-12, emailing her that morning on how it is tracking.",
+      "Owner": "Maxim Millen, Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-145",
+      "Task": "Sense-check the model outputs before they are sent to Bridget Attwood.",
+      "Owner": "Virginie Lacrosse, John Leeves",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-146",
+      "Task": "Review the loss viewer on Monday 2026-10-12 and send any changes NHC needs that day, as Bridget Attwood is on leave on Tuesday.",
+      "Owner": "Bridget Attwood",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-147",
+      "Task": "Issue the final model and the draft five-page report, without appendices, on Wednesday 2026-10-14, then finalise the report over the following ten days or so.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-148",
+      "Task": "Revise the process overview diagram for the report so it shows the inputs apply to both landslides and liquefaction, with a short appendix explaining the technical basis of each step.",
+      "Owner": "Virginie Lacrosse",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-149",
+      "Task": "Add a loss viewer map option showing the claims limited by the land area cap (the minimum-sized site), following the cap set on the page.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-150",
+      "Task": "Email the team an explanation of the minimum-sized site rule, so it can be implemented correctly.",
+      "Owner": "Bridget Attwood",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Done"
+    },
+    {
+      "ID": "T-151",
+      "Task": "Break the results down by capital value band so Bridget Attwood can speak to equity (who is most affected by the caps), agreeing the approach internally first.",
+      "Owner": "Virginie Lacrosse, Maxim Millen",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-152",
+      "Task": "Send John Leeves the contact details of Andrew Parkin at QV.",
+      "Owner": "Mike Tyson",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-153",
+      "Task": "Ask Andrew Parkin at QV for a rule of thumb splitting a section's land value between the land under the dwelling, the land within about 8 m of it, and the rest.",
+      "Owner": "John Leeves",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-154",
+      "Task": "Add the further LINZ waterways, such as the Porirua Stream, to the lateral spreading free faces in the next build, before Wednesday 2026-10-14.",
+      "Owner": "Maxim Millen",
+      "Phase": "2",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-155",
+      "Task": "Agree which model changes to make after Wednesday 2026-10-14 and before the board, against the remaining budget.",
+      "Owner": "Maxim Millen, John Leeves, Virginie Lacrosse",
+      "Phase": "4",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-156",
+      "Task": "Confirm with QV or NHC that per-property land rates derived from the QV rating roll may be shared outside T+T, including in the loss viewer's CSV.",
+      "Owner": "Unassigned",
+      "Phase": "4",
+      "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-157",
+      "Task": "Rerun exposure step 5, vul (landslide s3, liquefaction s2, property damage s10) and loss for Porirua, Upper Hutt and Lower Hutt so they value land from the QV roll in tiers.",
+      "Owner": "Unassigned",
+      "Phase": "1",
+      "Source": "QV land valuation in loss 2026-10-11",
       "Status": "Open"
     }
   ],
@@ -1424,6 +1552,97 @@
       "Affects": "Shaking hazard: PGA and PGV demand and realisations (hazard/shaking s3_pgv, s4_pga_realisation, s5_pgv_realisation)",
       "Source": "Maxim Millen, shaking task review 2026-10-09",
       "Status": "Open"
+    },
+    {
+      "ID": "L-60",
+      "Limitation": "A wall on the property but beyond 8 m of the dwelling that supports insured land attracts the retaining wall sub-cap, while a wall outside the property boundary does not (see L-65).",
+      "Affects": "loss",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-61",
+      "Limitation": "A wall crossing two properties is taken as split between each property's cap, which is believed but not yet confirmed to be how the model handles it.",
+      "Affects": "exposure/rw, loss",
+      "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-70",
+      "Limitation": "The repair rates were fitted over the Wellington pilot's 644 claims from one realisation, with only 24 to 30 claims in each of Major, Severe and Very severe, so the mean areas per state they rest on are noisy.",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-71",
+      "Limitation": "Major and Very severe claims are priced at 0.71 and 0.76 of the Canterbury means. Totals balance only on Canterbury's mix of states, which Moderate dominates, so a region with a more severe mix will have its liquefaction losses understated; Very severe's mean inundated area (219 m2) is also below Severe's (501 m2) (L-39).",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-72",
+      "Limitation": "The drop-out rates are placeholders that depart from the rough settlement likelihoods given with the claimant-only costs (Minor 0.75 against about 0.90, Major 0.15 against about 0.40). With the drop-out now on, they set the number of liquefaction claims directly (T-64).",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-73",
+      "Limitation": "The loss viewer chooses which properties are uninsured at random, fixed per property, to meet the insurance penetration (L-10). Real uninsured homes are unlikely to be random and may cluster by suburb, so totals hold but the spread of losses between suburbs, and between NHC and homeowners, may not.",
+      "Affects": "loss viewer",
+      "Source": "Loss viewer review 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-74",
+      "Limitation": "The Canterbury liquefaction costs are brought from 2010/2011 to today's dollars by a placeholder factor of 1.42, on instruction: the Stats NZ construction Labour Cost Index from the March 2011 to the December 2025 quarter (L-23). It follows pay rates only, not the plant and materials a land repair also uses.",
+      "Affects": "loss, loss viewer",
+      "Source": "Liquefaction cost escalation 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-75",
+      "Limitation": "The fitted inundated rate is near zero ($1.28 per m2), so a liquefaction claim's cost is mostly the fixed per-claim cost and the ground lost matters little. The no-SVA multiplier of 2.9 raises it only to about $3.70 per m2, far below a contractor rate for removing ejecta, so the toggle understates what clearing without volunteers would cost (L-40).",
+      "Affects": "vul/liquefaction/land, loss",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-76",
+      "Limitation": "Culverts and bridges are probably undercounted, particularly in Lower Hutt, so their losses, which liquefaction would add to, are likely understated.",
+      "Affects": "exposure/culverts_bridges, loss",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-77",
+      "Limitation": "Losses are given as a single central estimate, with no low or high scenarios for landslide rates or retaining wall numbers. Agreed to keep it simple, since the study tests the policy rather than where landslides will occur.",
+      "Affects": "loss, report",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Accepted"
+    },
+    {
+      "ID": "L-78",
+      "Limitation": "NHC has no rule for valuing part of a section for a landslide claim: adjusted rating values are only used for uniform land with flooding or inundation, and land claims are settled on repair cost, so the model's land rate rests on T+T's own rule.",
+      "Affects": "exposure/land value, loss",
+      "Source": "Wgtn Land Model 2026-10-09",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-79",
+      "Limitation": "Damaged land is valued from each property's QV rating valuation spread over three tiers (footprint, rest of the insured land at 0.2, uninsured remainder at 0.02). The ratios were set 2026-10-13 from a valuer's view of one 3,000 m2 example (about half its value under the house) and are unchecked on suburban sections, where they put about three quarters of the value under the house (T-153).",
+      "Affects": "loss land cover cap",
+      "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-80",
+      "Limitation": "Liquefaction damage has no location within the insured land, so it is valued at the insured land's average rate rather than by the tier it lies in; landslide damage is valued by how much lies under the footprint.",
+      "Affects": "loss land cover cap",
+      "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
     }
   ],
   "Improvements": [
@@ -1584,6 +1803,78 @@
       "Rationale": "Walls are often only partly damaged, though Wellington has little earthquake experience to set the share; rejected for now in favour of stating full replacement as an assumption.",
       "Phase": "Future",
       "Source": "Wgtn Land Model 2026-10-07",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-21",
+      "Improvement": "Slow the growth of land value with section size past about 1,500 m2 per rating unit (an elasticity of about 0.10 there, against 0.5 below), so lifestyle blocks are not valued at several times a suburban section.",
+      "Rationale": "Against the QV rating roll (2026-10-02 supply) it removed the 2.3 to 3 times overvaluation of Mākara, Ohariu, Whitemans Valley, Wainuiomata Coast and Akatarawa and moved Upper Hutt's median ratio from 0.86 to 1.02, but left Porirua's lifestyle blocks (Pāuatahanui, Judgeford, Paekākāriki Hill) at about 0.45 of the roll. Implemented and parked in the stash 'land value size curve kink, elevated flat 1.45 and QV comparison (parked 2026-10-08)'.",
+      "Phase": "Future",
+      "Source": "Land value review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-22",
+      "Improvement": "Lower the elevated flat landform factor from 2.06 to about 1.45, since its premium is already carried by the topographic position, sea view and winter sun modifiers.",
+      "Rationale": "Elevated flat came out at a median 46% above the roll; at 1.45 it is a median 1.19 against 1.14 for flat. A factor below flat's 1.72 needs explaining to a reviewer. Parked in the same stash 'land value size curve kink, elevated flat 1.45 and QV comparison (parked 2026-10-08)'.",
+      "Phase": "Future",
+      "Source": "Land value review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-23",
+      "Improvement": "Strengthen the location signal so suburb land values spread as widely as the roll's: high-value suburbs are valued low (Oriental Bay 0.44, Wellington Central) and cheaper ones high (Broadmeadows 1.84, Moera 1.75).",
+      "Rationale": "Seen in the QV rating roll comparison of 2026-10-08; it is a location shortfall rather than a section size one, so the size curve cannot fix it, and it is the bigger change of the two.",
+      "Phase": "Future",
+      "Source": "Land value review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-24",
+      "Improvement": "Check whether Porirua's rural and lifestyle blocks are dwelling land NHC would cover before tuning the model for them.",
+      "Rationale": "Porirua's modelled values have no rank correlation with the roll (0.07 before the size curve change, 0.00 after), driven by its rural suburbs; excluding non-residential land is simpler and more explainable than a Porirua-specific size slope.",
+      "Phase": "Future",
+      "Source": "Land value review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-25",
+      "Improvement": "Price inundated land in the no-SVA case from a contractor rate for removing ejecta, such as the study's rate sheet, keeping the fitted rate for the case with volunteers.",
+      "Rationale": "A multiplier on a near-zero fitted rate cannot show what clearing without volunteers costs (L-75).",
+      "Phase": "2",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-26",
+      "Improvement": "Refit the repair rates over several realisations and a larger extent, then freeze them before the full model is run region by region.",
+      "Rationale": "The pilot fit is thin (L-70), and every region should settle on the same rates.",
+      "Phase": "2",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-27",
+      "Improvement": "Revisit the evacuated and inundated area ranges of Major, Severe and Very severe so their modelled mean costs come closer to Canterbury's, rather than adjusting the rates.",
+      "Rationale": "Major and Very severe are under-priced and Very severe carries less inundated ground than Severe (L-71, L-39).",
+      "Phase": "2",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-28",
+      "Improvement": "Set the drop-out rates from the settlement likelihoods given with the claimant-only costs, or from Virginie Lacrosse's counts of damaged properties and claimants, and record why any rate departs from them.",
+      "Rationale": "The placeholders differ from the source's rough likelihoods for Minor and Major (L-72, T-64).",
+      "Phase": "2",
+      "Source": "Liquefaction repair rate review 2026-10-08",
+      "Status": "Parked"
+    },
+    {
+      "ID": "I-29",
+      "Improvement": "Remap the retaining wall types to how a wall is rebuilt: a gravity masonry type for brick, stone and stacked concrete blocks, a reinforced block masonry type, and a sprayed concrete type (T-119), with the type shares and fragilities following.",
+      "Rationale": "The replacement rule (T-122) rebuilds reinforced block and sprayed concrete in kind and everything else as timber pole, but concrete_block mixes reinforced and stacked blocks and no type is sprayed concrete, so the rule cannot yet be applied exactly.",
+      "Phase": "Future",
+      "Source": "Wall replacement rule, Perrie Gilbert 2026-10-12",
       "Status": "Parked"
     }
   ],

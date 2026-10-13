@@ -4,6 +4,9 @@
 each through its own `gen_<module>.py`. The settings here override every
 module's own, so the whole pipeline runs over one extent, one set of exposure
 worlds and one set of realisations and ends at the tables the loss module reads.
+
+`gen_extents.py` uses EXTENTS instead of EXTENT and runs the loss module after
+each extent's pipeline, using START_FROM_BY_EXTENT for individual restarts.
 """
 
 # The extent to run over: "wlg-pilot" for the small Wellington pilot box,
@@ -11,7 +14,13 @@ worlds and one set of realisations and ends at the tables the loss module reads.
 # landloss.io.area_of_interest.EXTENTS. Each extent's outputs carry it in their
 # file names, so a pilot build and a full build sit side by side.
 # Name outputs with extent_suffix(EXTENT); see landloss.io.area_of_interest.
-EXTENT = "wlg-pilot"
+EXTENT = "lower-hutt"
+
+EXTENTS = ["wellington-city"]
+
+START_FROM_BY_EXTENT = {
+    "wellington-city": {"module": "exposure", "step": "rw s6, wall age"},
+}
 
 # Which exposure worlds to run. A world is one draw of the wall population,
 # seeded apart from the earthquakes because whether a wall exists is not

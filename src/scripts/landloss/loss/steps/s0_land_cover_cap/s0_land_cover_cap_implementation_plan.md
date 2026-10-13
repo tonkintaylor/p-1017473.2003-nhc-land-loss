@@ -20,9 +20,9 @@
 
 - [ ] Price culverts and bridges, which contribute nothing today. Until then a
       claim whose only damaged structure is a crossing caps on its land alone.
-- [ ] Replace the beta flat wall rate with a real mapping from size class and
-      condition onto a construction type. The rates span a factor of 21, so this
-      moves the wall half of the cap more than anything else.
+- [x] Replace the beta flat wall rate with a real mapping onto a construction
+      type: each wall at the row its drawn type is mapped to, at its drawn
+      height (2026-10-12).
 - [x] Value liquefied land over the damaged area `vul` sends,
       `Liq_LD_damaged_area`, rather than the whole insured area (**T-56**).
 - [ ] Confirm the overlap assumption inside that area -- 30% of the evacuated

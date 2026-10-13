@@ -25,11 +25,13 @@ The arithmetic is all in :mod:`landloss.loss.settlement` and
 over comes from ``config.py`` beside it, and the policy it runs under is
 :class:`~landloss.loss.policy.PolicySettings` as the Act stands.
 
-**A damaged crossing contributes its sub-cap limit outright.** Nothing prices a
-culvert or a bridge, and the agreed simplification is that both its replacement
-cost and its undepreciated value exceed the limit in every case, so
-``min(udv, limit)`` is the limit and the cap can be built without a price. Every
-crossing `vul` sends is wholly inside insured land, so all of them qualify.
+**A damaged crossing contributes the lesser of its value and its sub-cap.** Its
+undepreciated value is its replacement cost, $15,000 a metre of span over a
+5 m default (:func:`~landloss.loss.claims.crossing_costs_by_claim`), whether it
+needs replacing or only clearing: the structure is worth what it costs to
+build. At $75,000 a crossing that is above the one-dwelling limit, so the limit
+is what most claims get. Every crossing `vul` sends is wholly inside insured
+land, so all of them qualify.
 
 Every wall, by contrast, is priced -- at the beta flat rate, an average of four
 timber pole rates standing in for a construction type nothing supplies.
@@ -39,24 +41,25 @@ import sys
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
     REALISATION_ID_COLUMN,
-    RW_ID_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
-    RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
 )
+from landloss.exposure.land.land_value import load_base_rates
 from landloss.io.area_of_interest import extent_suffix
+from landloss.io.qv_rating_roll import get_qv_rating_roll
 from landloss.loss import claims as loss_claims
+from landloss.loss import qv_land_value
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
-    beta_wall_face_area_m2,
-    beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
     beta_wall_udv_incl_gst_nzd,
+    wall_face_area_m2,
+    wall_type_rate_excl_gst_nzd_per_m2,
 )
 from landloss.loss.settlement import (
     area_cap_bound,
@@ -66,6 +69,9 @@ from landloss.loss.settlement import (
     structure_sub_cap_bound,
 )
 from landloss.vul.loss_input import WORLD_ID_COLUMN
+from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
+    valuation_links_path,
+)
 from scripts.landloss.loss.steps.s0_land_cover_cap import config
 from scripts.landloss.paths import TEMP_DIR
 from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
@@ -90,7 +96,7 @@ LOSS_TABLES = ("land", "rw", "culverts", "bridges")
 LAND_VALUE_COLUMN = "land_value_incl_gst_nzd"
 RW_UDV_COLUMN = "retaining_wall_udv_incl_gst_nzd"
 RW_CONTRIBUTION_COLUMN = "retaining_wall_contribution_incl_gst_nzd"
-CROSSING_UDV_COLUMN = "bridge_culvert_udv_incl_gst_nzd"
+CROSSING_UDV_COLUMN = loss_claims.CROSSING_UDV_COLUMN
 CROSSING_CONTRIBUTION_COLUMN = "bridge_culvert_contribution_incl_gst_nzd"
 CAP_COLUMN = "land_cover_cap_incl_gst_nzd"
 AREA_CAP_BOUND_COLUMN = "area_cap_bound"
@@ -115,6 +121,48 @@ def land_cover_cap_path(world_id: int, realisation_id: int, *, extent: str) -> P
     return WORK_DIR / f"{stem}{suffix}.parquet"
 
 
+def load_qv_land_values(*, extent: str) -> pd.Series:
+    """Return the indexed QV land value of each claim property, read from T:.
+
+    Read once per run: the roll does not change between realisations.
+
+    Args:
+        extent: The extent the run is over, which names the valuation links
+            exposure wrote.
+
+    Returns:
+        The land value in dollars excluding GST, indexed by claim id, for the
+        claims whose value can be read off the roll and is not a non-residential
+        unit's (:func:`~landloss.loss.qv_land_value.residential_land_values`).
+    """
+    links = pd.read_parquet(valuation_links_path(extent=extent))
+    print("Reading the QV rating roll from T: ...", flush=True)
+    values = qv_land_value.qv_land_value_by_claim(
+        get_qv_rating_roll(), links, load_base_rates()
+    )
+    return qv_land_value.residential_land_values(values)
+
+
+def value_land(land: pd.DataFrame, qv_values: pd.Series) -> pd.DataFrame:
+    """Return the land table with the rate its damaged land is valued at.
+
+    Args:
+        land: The contract's land table.
+        qv_values: From :func:`load_qv_land_values`.
+
+    Returns:
+        ``land`` with the rates of
+        :func:`~landloss.loss.qv_land_value.damaged_land_rates` added.
+    """
+    values = qv_land_value.claim_land_values(land, qv_values)
+    sources = values[qv_land_value.VALUE_SOURCE_COLUMN].value_counts()
+    print(
+        "  Land valued from: "
+        + ", ".join(f"{source} {count:,}" for source, count in sources.items())
+    )
+    return qv_land_value.damaged_land_rates(land, values)
+
+
 def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
     """Return each claim's damaged retaining wall undepreciated value.
 
@@ -134,44 +182,24 @@ def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
     damaged = loss_claims.damaged_walls(rw)
     if damaged.empty:
         return pd.Series(dtype=float)
-    face_area = beta_wall_face_area_m2(
-        damaged[RW_SIZE_COLUMN].to_numpy(), damaged[RW_LENGTH_COLUMN].to_numpy()
-    )
+    height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)
+    face_area = wall_face_area_m2(height, damaged[RW_LENGTH_COLUMN].to_numpy())
     walls = pd.DataFrame(
         {
             CLAIM_ID_COLUMN: damaged[CLAIM_ID_COLUMN].to_numpy(),
-            # The same per-wall rate the repair cost uses. A concrete wall
-            # valued at the timber rate would understate the cap while the
-            # repair understated nothing, which is a bias with no basis.
+            # The same per-wall rate the repair cost uses, from the wall's own
+            # type and height. A wall valued at one rate and repaired at
+            # another would bias the cap against the repair with no basis.
             "udv": beta_wall_udv_incl_gst_nzd(
                 face_area,
-                rate_excl_gst_nzd_per_m2=beta_wall_rate_excl_gst_nzd_per_m2(
-                    damaged[RW_ID_COLUMN].to_numpy(),
-                    beta_wall_height_m(damaged[RW_SIZE_COLUMN].to_numpy()),
+                rate_excl_gst_nzd_per_m2=wall_type_rate_excl_gst_nzd_per_m2(
+                    damaged[RW_TYPE_COLUMN].to_numpy(), height
                 ),
                 policy=policy,
             ),
         }
     )
     return walls.groupby(CLAIM_ID_COLUMN)["udv"].sum()
-
-
-def claims_with_damaged_crossing(culverts: pd.DataFrame, bridges: pd.DataFrame) -> set:
-    """Return the claims carrying a damaged culvert or bridge.
-
-    Args:
-        culverts: The contract's culvert table.
-        bridges: The contract's bridge table.
-
-    Returns:
-        The claim ids, as a set.
-    """
-    found = set()
-    for table in (culverts, bridges):
-        damaged = loss_claims.damaged_crossings(table)
-        if not damaged.empty:
-            found |= set(damaged[CLAIM_ID_COLUMN])
-    return found
 
 
 def describe_land(caps):
@@ -234,10 +262,9 @@ def describe_crossings(caps, culverts, bridges):
     if with_crossing.empty:
         return
     print(
-        f"  Each contributes its sub-cap limit outright, "
-        f"{caps[CROSSING_CONTRIBUTION_COLUMN].sum():,.0f} NZD in all, on the "
-        "agreed reading that replacement cost and undepreciated value both "
-        "exceed it"
+        f"  Worth {caps[CROSSING_UDV_COLUMN].sum():,.0f} NZD at their replacement "
+        f"cost; the sub-cap lets {caps[CROSSING_CONTRIBUTION_COLUMN].sum():,.0f} "
+        "NZD of it into the cap"
     )
 
 
@@ -268,6 +295,7 @@ def main(*, extent, world_ids, realisation_ids):
         realisation_ids: Which modelled earthquakes to cap.
     """
     policy = PolicySettings()
+    qv_values = load_qv_land_values(extent=extent)
 
     for world_id in world_ids:
         for realisation_id in realisation_ids:
@@ -282,7 +310,7 @@ def main(*, extent, world_ids, realisation_ids):
                 for name in LOSS_TABLES
             }
 
-            caps = loss_claims.land_by_claim(tables["land"])
+            caps = loss_claims.land_by_claim(value_land(tables["land"], qv_values))
             caps[RW_UDV_COLUMN] = (
                 wall_udv_by_claim(tables["rw"], policy=policy)
                 .reindex(caps.index)
@@ -300,19 +328,16 @@ def main(*, extent, world_ids, realisation_ids):
             udv = caps[RW_UDV_COLUMN].to_numpy()
             limit = policy.retaining_wall_limit_nzd(n_dwellings)
 
-            # A damaged crossing is given an undepreciated value of exactly its own
-            # sub-cap limit, so `min(udv, limit)` returns the limit. That is the
-            # agreed simplification: nothing prices a crossing, and both its
-            # replacement cost and its value are taken to exceed the limit, so the
-            # limit is what it contributes whatever the true figures are.
-            with_crossing = claims_with_damaged_crossing(
-                tables["culverts"], tables["bridges"]
+            # A damaged crossing is worth its replacement cost, summed over the
+            # claim's crossings; the sub-cap limits what that adds to the cap.
+            crossings = loss_claims.crossing_costs_by_claim(
+                tables["culverts"], tables["bridges"], policy=policy
+            ).reindex(caps.index)
+            caps[HAS_CROSSING_COLUMN] = (
+                crossings[CROSSING_UDV_COLUMN].notna().to_numpy()
             )
-            caps[HAS_CROSSING_COLUMN] = caps.index.isin(with_crossing)
             crossing_limit = policy.bridge_culvert_limit_nzd(n_dwellings)
-            crossing_udv = np.where(
-                caps[HAS_CROSSING_COLUMN].to_numpy(), crossing_limit, 0
-            )
+            crossing_udv = crossings[CROSSING_UDV_COLUMN].fillna(0.0).to_numpy(float)
             caps[CROSSING_UDV_COLUMN] = crossing_udv
 
             caps[LAND_VALUE_COLUMN] = damaged_land_value_nzd(area, rate, policy=policy)

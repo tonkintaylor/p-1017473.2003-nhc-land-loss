@@ -164,6 +164,16 @@ difficulty — a hard site costs more to design and consent as well as to build.
 Mileage is excluded. Fees never form part of an asset's value, only the cost of
 putting it right.
 
+The same claims carry mobilisation and demobilisation, at the higher of
+\$5,000 or 15% of the walls (as built, with the site and specification
+allowances) and the fees. Project management is then 10% of the walls, the
+fees, the mobilisation and any culvert or bridge, so a claim whose only works
+are a crossing carries it too.
+
+Every claim then carries a 20% contingency on its whole repair cost --
+retaining walls, spoil removal, fees, on-costs, liquefaction, and culverts and
+bridges -- applied last.
+
 === The excess
 
 #a[19] The excess is *\$500 per dwelling, capped at \$5,000*, so it stops

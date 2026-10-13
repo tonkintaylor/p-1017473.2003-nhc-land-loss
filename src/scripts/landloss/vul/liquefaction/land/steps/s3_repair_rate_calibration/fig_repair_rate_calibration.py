@@ -1,0 +1,833 @@
+"""Draw how the liquefied land repair rates were fitted, as an aid to explaining it.
+
+Six figures, read off the claims step 2 last wrote and the rates step 2 is
+configured with -- four for the stages of the fit in step 3 and two for how the
+rates behave:
+
+    uv run --frozen python src/scripts/landloss/vul/liquefaction/land/steps/s3_repair_rate_calibration/fig_repair_rate_calibration.py
+
+- **Ground lost.** The mean inundated and evacuated area of a modelled claim
+  per land damage state: what the rates per m² multiply. Inundated runs to
+  hundreds of m² from Moderate up; evacuated stays in single figures until
+  Severe.
+- **Cost build-up.** The back-calculation: the median cost of a 500 m² section
+  in each state, stacked as the median per-claim cost, the evacuated cost and
+  the inundated cost, against the Canterbury claimant-only median the three
+  rates were fitted to, each labelled in dollars. None is drawn too, its
+  median hollow: the model charges it nothing and does not fit it.
+- **Quartiles.** The lower quartile, median and upper quartile of a claim's
+  cost per state over the extent's own claims, modelled against Canterbury,
+  with no spread and with the fitted spread: why the spread is there, and how
+  far it gets on real sections.
+- **Spread fit.** The claim-weighted miss against the Canterbury quartiles on
+  the section as the spread varies, the median held, with the minimum the fit
+  chose.
+- **Rate curves**, one for inundated land and one for evacuated: what a claim
+  costs against that area, the per-claim cost plus the rate, with its spread,
+  and for inundated land the no-SVA rate beside it; under each, the range of
+  that ground a modelled claim in each damage state loses. The cost build-up
+  figure is where the rates meet the Canterbury means.
+
+The Canterbury figures are a calibration target only, drawn to compare with.
+The modelled quartiles integrate the per-claim draw, as step 3 does, rather
+than reading step 2's single draw, so a small state is not drawn noisy.
+
+It reads step 3's ``config.py`` for the extent and realisations, and step 2's
+for the rates. Run step 3 first if the two might disagree; it says when they
+do. The figures go under ``report/vul/liquefaction/repair-rates/fig/``, which
+is gitignored -- the script is the record of how they were made, not the PNGs.
+"""
+
+import sys
+
+import matplotlib as mpl
+
+mpl.use("Agg")  # non-interactive: this script only writes PNGs
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter
+
+from landloss.io.area_of_interest import extent_suffix
+from landloss.vul.liquefaction.costs import (
+    CLAIMS_COLUMN,
+    QUARTILE_COLUMNS,
+    load_claimant_costs,
+)
+from landloss.vul.liquefaction.damaged_area import (
+    EVACUATED_AREA_COLUMN,
+    INUNDATED_AREA_COLUMN,
+)
+from landloss.vul.liquefaction.repair_rates import (
+    MAX_SIGMA,
+    NO_DAMAGE_STATE,
+    RepairRates,
+    inundated_cost_nzd,
+    modelled_quartiles,
+    section_ground,
+)
+from scripts.landloss.paths import REPORT_DIR
+from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage import (
+    config as s2_config,
+)
+from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage.gen_liq_land_damage import (
+    CLAIMED_COLUMN,
+    STATE_COLUMN,
+    liq_land_damage_path,
+)
+from scripts.landloss.vul.liquefaction.land.steps.s3_repair_rate_calibration import (
+    config,
+)
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+FIG_DIR = REPORT_DIR / "vul" / "liquefaction" / "repair-rates" / "fig"
+DPI = 200
+
+# Ink and chrome, and the categorical slots in fixed order: per claim, then
+# evacuated, then inundated, in every figure that shows them.
+SURFACE = "#fcfcfb"
+INK = "#0b0b0b"
+INK_SECONDARY = "#52514e"
+INK_MUTED = "#898781"
+GRID = "#e1e0d9"
+BASELINE = "#c3c2b7"
+PER_CLAIM = "#2a78d6"
+EVACUATED = "#eb6834"
+INUNDATED = "#1baf7a"
+# Canterbury is the reference, so it wears ink rather than a series hue.
+CANTERBURY = INK_SECONDARY
+MODELLED = PER_CLAIM
+
+# A quartile range narrower than this share of its median is drawn as a line.
+FLAT_SHARE = 0.02
+# How many spreads the miss is drawn at in the spread-fit figure.
+SIGMA_STEPS = 121
+
+STATE_LABELS = {
+    1: "None",
+    2: "Minor",
+    3: "Moderate",
+    4: "Major",
+    5: "Severe",
+    6: "Very severe",
+}
+
+plt.rcParams.update(
+    {
+        "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE,
+        "axes.edgecolor": BASELINE,
+        "axes.labelcolor": INK_SECONDARY,
+        "axes.titlecolor": INK,
+        "axes.titlesize": 11,
+        "axes.titleweight": "bold",
+        "axes.titlelocation": "left",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "axes.axisbelow": True,
+        "grid.color": GRID,
+        "grid.linewidth": 0.6,
+        "xtick.color": INK_MUTED,
+        "ytick.color": INK_MUTED,
+        "xtick.labelcolor": INK_SECONDARY,
+        "ytick.labelcolor": INK_SECONDARY,
+        "font.size": 9,
+        # Labels carry dollar amounts, two of which would otherwise be read as
+        # maths markup.
+        "text.parse_math": False,
+        "legend.frameon": False,
+        "legend.labelcolor": INK_SECONDARY,
+    }
+)
+
+DOLLARS = FuncFormatter(lambda value, _: f"${value:,.0f}")
+
+
+def load_claims(extent, realisation_ids):
+    """Return the modelled claims, pooled over the realisations."""
+    damage = pd.concat(
+        pd.read_parquet(liq_land_damage_path(realisation_id, extent=extent))
+        for realisation_id in realisation_ids
+    )
+    claims = damage.loc[damage[CLAIMED_COLUMN]].copy()
+    claims[STATE_COLUMN] = claims[STATE_COLUMN].astype(int)
+    # None has no damage and costs nothing, so it is not drawn.
+    return claims.loc[claims[STATE_COLUMN] != NO_DAMAGE_STATE]
+
+
+def per_claim_median(rates):
+    """Return the median of the per-claim cost: its mean less the spread."""
+    return rates.per_claim_nzd * float(np.exp(-(rates.per_claim_sigma**2) / 2))
+
+
+def area_cost_by_state(claims, rates):
+    """Return each claim's cost of ground lost, before the per-claim cost."""
+    cost = (
+        inundated_cost_nzd(claims[INUNDATED_AREA_COLUMN], rates)
+        + claims[EVACUATED_AREA_COLUMN] * rates.evacuated_nzd_per_m2
+    )
+    return {
+        int(state): group.to_numpy()
+        for state, group in cost.groupby(claims[STATE_COLUMN])
+    }
+
+
+def finish(fig, name, extent):
+    """Write a figure and say where it went."""
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    path = FIG_DIR / f"{name}{extent_suffix(extent)}.png"
+    fig.savefig(path, dpi=DPI, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    print(f"Wrote {path}")
+
+
+def label_bars(ax, bars, fmt):
+    """Write each bar's value just above it, in text ink."""
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(
+            fmt(height),
+            (bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            color=INK_SECONDARY,
+            fontsize=8,
+        )
+
+
+def fig_ground_lost(claims, states, extent):
+    """Mean inundated and evacuated area of a claim per state, two panels."""
+    means = claims.groupby(STATE_COLUMN)[
+        [INUNDATED_AREA_COLUMN, EVACUATED_AREA_COLUMN]
+    ].mean()
+    counts = claims.groupby(STATE_COLUMN).size()
+    labels = [f"{STATE_LABELS[s]}\n{counts.get(s, 0)} claims" for s in states]
+    x = np.arange(len(states))
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), sharey=False)
+    panels = (
+        (INUNDATED_AREA_COLUMN, INUNDATED, "Inundated (under ejecta)"),
+        (EVACUATED_AREA_COLUMN, EVACUATED, "Evacuated (cracked or spread)"),
+    )
+    for ax, (column, colour, title) in zip(axes, panels, strict=True):
+        values = means[column].reindex(states).fillna(0).to_numpy()
+        bars = ax.bar(x, values, width=0.6, color=colour, edgecolor=SURFACE)
+        label_bars(ax, bars, lambda v: f"{v:,.0f} m²")
+        ax.set_xticks(x, labels)
+        ax.set_ylabel("Mean area per claim (m²)")
+        ax.set_title(title)
+        ax.grid(axis="x", visible=False)
+        ax.margins(y=0.15)
+    fig.suptitle(
+        "Ground lost by a modelled claim, by land damage state",
+        x=0.01,
+        ha="left",
+        fontsize=12,
+        fontweight="bold",
+        color=INK,
+    )
+    fig.text(
+        0.01,
+        -0.04,
+        "Drawn uniformly within each state's agreed ranges (L-39), over the claims "
+        "step 2 wrote. The rates per m² multiply these.",
+        color=INK_MUTED,
+        fontsize=8,
+    )
+    fig.tight_layout()
+    finish(fig, "liq-repair-ground-lost", extent)
+
+
+def fig_cost_build_up(canterbury, rates, fit_states, extent, *, section_m2):
+    """A standard section's median cost per state, stacked, against Canterbury's.
+
+    None is drawn beside the fitted states with its Canterbury median hollow:
+    the model charges it nothing, so it is shown only to say it is not fitted.
+    """
+    states = [NO_DAMAGE_STATE, *(s for s in fit_states if s != NO_DAMAGE_STATE)]
+    fitted = np.array([s != NO_DAMAGE_STATE for s in states])
+    inundated_m2, evacuated_m2 = section_ground(
+        s2_config.EVACUATED_AREA_M2, s2_config.INUNDATED_SHARE, section_m2
+    )
+    per_claim = np.where(fitted, per_claim_median(rates), 0.0)
+    evacuated = (
+        np.array([evacuated_m2[s] for s in states])
+        * rates.evacuated_nzd_per_m2
+        * fitted
+    )
+    inundated = (
+        inundated_cost_nzd(np.array([inundated_m2[s] for s in states]), rates) * fitted
+    )
+    target = canterbury.loc[states, QUARTILE_COLUMNS[50]].to_numpy(float)
+    modelled = per_claim + evacuated + inundated
+    x = np.arange(len(states))
+    width = 0.55
+
+    fig, ax = plt.subplots(figsize=(11, 4.8))
+    bottom = np.zeros(len(states))
+    segments = (
+        (
+            per_claim,
+            PER_CLAIM,
+            f"Per claim, ${per_claim_median(rates):,.0f} at the median",
+        ),
+        (
+            evacuated,
+            EVACUATED,
+            f"Evacuated, ${rates.evacuated_nzd_per_m2:,.2f} per m²",
+        ),
+        (
+            inundated,
+            INUNDATED,
+            (
+                f"Inundated, ${rates.inundated_nzd_per_m2:,.2f} per m² beyond the "
+                f"first {rates.volunteer_cleared_m2:,.0f} m² volunteers clear"
+            ),
+        ),
+    )
+    handles = []
+    for values, colour, label in segments:
+        ax.bar(
+            x,
+            values,
+            width,
+            bottom=bottom,
+            color=colour,
+            edgecolor=SURFACE,
+            linewidth=1.5,
+        )
+        bottom += values
+        handles.append(Patch(facecolor=colour, label=label))
+    ax.scatter(
+        x[fitted],
+        target[fitted],
+        marker="D",
+        s=46,
+        color=CANTERBURY,
+        edgecolor=SURFACE,
+        linewidth=1.5,
+        zorder=4,
+    )
+    ax.scatter(
+        x[~fitted],
+        target[~fitted],
+        marker="D",
+        s=46,
+        facecolor=SURFACE,
+        edgecolor=INK_MUTED,
+        linewidth=1.5,
+        zorder=4,
+    )
+    handles.extend(
+        [
+            Line2D(
+                [],
+                [],
+                marker="D",
+                linestyle="none",
+                color=CANTERBURY,
+                markersize=7,
+                label="Canterbury claimant-only median (target)",
+            ),
+            Line2D(
+                [],
+                [],
+                marker="D",
+                linestyle="none",
+                markerfacecolor=SURFACE,
+                markeredgecolor=INK_MUTED,
+                markersize=7,
+                label="Canterbury median, not fitted (None is charged $0)",
+            ),
+        ]
+    )
+    for i, (m, t, fit) in enumerate(zip(modelled, target, fitted, strict=True)):
+        # The Canterbury median beside its diamond, the modelled total and the
+        # ratio of the two above the taller of bar and diamond.
+        ax.annotate(
+            f"${t:,.0f}",
+            (x[i] + width / 2, t),
+            xytext=(3, 0),
+            textcoords="offset points",
+            ha="left",
+            va="center",
+            color=CANTERBURY if fit else INK_MUTED,
+            fontsize=8,
+        )
+        ax.annotate(
+            (
+                f"${m:,.0f}\n{m / t:.2f}\N{MULTIPLICATION SIGN}"
+                if fit
+                else "not fitted\n$0 modelled"
+            ),
+            (x[i], max(m, t)),
+            xytext=(0, 8),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            color=INK if fit else INK_MUTED,
+            fontsize=8,
+            fontweight="bold" if fit else "normal",
+            linespacing=1.2,
+        )
+    claims_n = canterbury.loc[states, CLAIMS_COLUMN]
+    ax.set_xticks(
+        x,
+        [
+            f"{STATE_LABELS[s]}\n{inundated_m2[s]:,.0f} m² inundated\n"
+            f"{evacuated_m2[s]:,.1f} m² evacuated\n{n:,} Canterbury claims"
+            for s, n in zip(states, claims_n, strict=True)
+        ],
+        fontsize=8,
+    )
+    ax.yaxis.set_major_formatter(DOLLARS)
+    ax.set_ylabel("Median cost of a claim, 2010/2011 NZD excl. GST")
+    ax.grid(axis="x", visible=False)
+    ax.margins(y=0.18)
+    ax.set_title(
+        f"How the rates build the median cost of a {section_m2:,.0f} m² section"
+    )
+    ax.legend(handles=handles, loc="upper left", fontsize=8)
+    fig.text(
+        0.01,
+        -0.06,
+        f"Back-calculated: a {section_m2:,.0f} m² section losing the middle of each "
+        "state's ground ranges is priced at the Canterbury claimant-only median,\n"
+        "least squares weighted by Canterbury claim count, all non-negative. "
+        "None is charged nothing and not fitted. Above each bar: the modelled "
+        "median and modelled over Canterbury.",
+        color=INK_MUTED,
+        fontsize=8,
+    )
+    fig.tight_layout()
+    finish(fig, "liq-repair-cost-build-up", extent)
+
+
+def draw_quartiles(ax, x, quartiles, colour, offset, width):
+    """Draw lower to upper quartile as a bar, with the median as a tick.
+
+    A state with no spread at all has no bar to draw, so it is drawn as a line
+    in the series colour at its one value instead.
+    """
+    lower, median, upper = quartiles
+    flat = (upper - lower) < FLAT_SHARE * median
+    ax.hlines(
+        median[flat],
+        (x + offset - width / 2)[flat],
+        (x + offset + width / 2)[flat],
+        color=colour,
+        linewidth=3,
+    )
+    lower, median, upper, x = lower[~flat], median[~flat], upper[~flat], x[~flat]
+    ax.bar(
+        x + offset,
+        upper - lower,
+        width,
+        bottom=lower,
+        color=colour,
+        alpha=0.85,
+        edgecolor=SURFACE,
+        linewidth=1.5,
+    )
+    ax.hlines(
+        median,
+        x + offset - width / 2,
+        x + offset + width / 2,
+        color=SURFACE,
+        linewidth=2.5,
+    )
+
+
+def fig_quartiles(area_cost, canterbury, rates, states, extent):
+    """Modelled against Canterbury quartiles, without and with the spread."""
+    columns = list(QUARTILE_COLUMNS.values())
+    target = canterbury.loc[states, columns].to_numpy(float).T
+    x = np.arange(len(states))
+    width = 0.34
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4), sharey=True)
+    panels = (
+        (0.0, per_claim_median(rates), "One per-claim cost for every claim"),
+        (
+            rates.per_claim_sigma,
+            rates.per_claim_nzd,
+            f"Per-claim cost spread, sigma {rates.per_claim_sigma:.2f}",
+        ),
+    )
+    for ax, (sigma, mean, title) in zip(axes, panels, strict=True):
+        modelled = np.array(
+            [modelled_quartiles(area_cost[s], mean, sigma) for s in states]
+        ).T
+        draw_quartiles(ax, x, target, CANTERBURY, -width / 2 - 0.02, width)
+        draw_quartiles(ax, x, modelled, MODELLED, width / 2 + 0.02, width)
+        ax.set_yscale("log")
+        ax.yaxis.set_major_formatter(DOLLARS)
+        ax.yaxis.set_minor_formatter(FuncFormatter(lambda *_: ""))
+        ax.set_yticks([250, 500, 1000, 2000, 4000, 8000])
+        ax.set_xticks(x, [STATE_LABELS[s] for s in states])
+        ax.grid(axis="x", visible=False)
+        ax.set_title(title)
+    axes[0].set_ylabel("Cost of a claim, 2010/2011 NZD excl. GST (log)")
+    axes[0].legend(
+        handles=[
+            Patch(facecolor=CANTERBURY, label="Canterbury claimants (target)"),
+            Patch(facecolor=MODELLED, label="Modelled"),
+            Line2D([], [], color=INK_MUTED, linewidth=2.5, label="Median (white tick)"),
+        ],
+        loc="upper left",
+        fontsize=8,
+    )
+    fig.suptitle(
+        "Lower quartile to upper quartile of a claim's cost, by land damage state",
+        x=0.01,
+        ha="left",
+        fontsize=12,
+        fontweight="bold",
+        color=INK,
+    )
+    fig.text(
+        0.01,
+        -0.04,
+        "Over this extent's own claims, each priced from the ground step 2 drew "
+        "for it.\nLeft: every claim's per-claim cost at its median, a floor under "
+        "every claim. Right: the per-claim cost drawn lognormally, its median "
+        "held; sigma fitted to the Canterbury quartiles on the standard section.",
+        color=INK_MUTED,
+        fontsize=8,
+    )
+    fig.tight_layout()
+    finish(fig, "liq-repair-quartiles", extent)
+
+
+def fig_spread_fit(canterbury, rates, states, weights, extent, *, section_m2):
+    """The miss against the Canterbury quartiles as the spread varies.
+
+    On the standard section with the per-claim median held, as step 3 fits it.
+    """
+    columns = list(QUARTILE_COLUMNS.values())
+    targets = {s: canterbury.loc[s, columns].to_numpy(float) for s in states}
+    sigmas = np.linspace(0.0, min(MAX_SIGMA, 2.0), SIGMA_STEPS)
+    total = weights.sum()
+    inundated_m2, evacuated_m2 = section_ground(
+        s2_config.EVACUATED_AREA_M2, s2_config.INUNDATED_SHARE, section_m2
+    )
+    section_cost = {
+        s: np.array(
+            [
+                float(inundated_cost_nzd(inundated_m2[s], rates))
+                + evacuated_m2[s] * rates.evacuated_nzd_per_m2
+            ]
+        )
+        for s in states
+    }
+    median = per_claim_median(rates)
+
+    def miss(sigma, state):
+        mean = median * np.exp(sigma**2 / 2)
+        modelled = modelled_quartiles(section_cost[state], mean, sigma)
+        return float(np.sum(np.log(modelled / targets[state]) ** 2))
+
+    curve = np.array(
+        [sum(weights[s] * miss(sigma, s) for s in states) / total for sigma in sigmas]
+    )
+    fitted = sum(weights[s] * miss(rates.per_claim_sigma, s) for s in states) / total
+
+    fig, ax = plt.subplots(figsize=(7, 3.8))
+    ax.plot(sigmas, curve, color=MODELLED, linewidth=2)
+    ax.scatter(
+        [rates.per_claim_sigma],
+        [fitted],
+        s=60,
+        color=MODELLED,
+        edgecolor=SURFACE,
+        linewidth=2,
+        zorder=4,
+    )
+    ax.annotate(
+        f"fitted sigma {rates.per_claim_sigma:.2f}",
+        (rates.per_claim_sigma, fitted),
+        xytext=(0, 36),
+        textcoords="offset points",
+        ha="center",
+        color=INK,
+        fontsize=9,
+    )
+    ax.set_xlabel("Spread of the per-claim cost (lognormal sigma)")
+    ax.set_ylabel("Weighted squared log miss")
+    ax.set_ylim(bottom=0)
+    ax.set_title("Choosing the spread: miss against the Canterbury quartiles")
+    fig.text(
+        0.01,
+        -0.06,
+        f"On the {section_m2:,.0f} m² section, the per-claim median held: sum over "
+        "the lower quartile, median and upper quartile of ln(modelled / "
+        "Canterbury)², averaged over states weighted by Canterbury claim count.",
+        color=INK_MUTED,
+        fontsize=8,
+    )
+    fig.tight_layout()
+    finish(fig, "liq-repair-spread-fit", extent)
+
+
+# The damage states as an ordinal ramp, None lightest, so a band's shade says how
+# bad the state is. One hue, light to dark, starting no lighter than the ramp's
+# 250 step so None still reads against the surface.
+STATE_RAMP = {
+    1: "#86b6ef",
+    2: "#5598e7",
+    3: "#3987e5",
+    4: "#256abf",
+    5: "#184f95",
+    6: "#0d366b",
+}
+# The normal quantile at the upper quartile: the per-claim spread band runs
+# between the quartiles of the lognormal multiplier.
+Z_QUARTILE = 0.6744897501960817
+
+
+def draw_state_bands(strip, claims, column, states):
+    """Draw each state's ground lost per claim as a horizontal band.
+
+    The band runs from the 10th to the 90th percentile of the modelled claims in
+    the state, with a dot at the median; a state that loses none of this ground
+    is marked at zero and said so.
+    """
+    for row, state in enumerate(states):
+        area = claims.loc[claims[STATE_COLUMN] == state, column]
+        colour = STATE_RAMP[state]
+        if area.empty or area.max() <= 0:
+            strip.plot([0], [row], marker="|", color=colour, markersize=9)
+            strip.annotate(
+                "none lost",
+                (0, row),
+                xytext=(6, 0),
+                textcoords="offset points",
+                va="center",
+                color=INK_MUTED,
+                fontsize=8,
+            )
+            continue
+        low, mid, high = area.quantile([0.1, 0.5, 0.9])
+        strip.plot(
+            [low, high], [row, row], color=colour, linewidth=7, solid_capstyle="round"
+        )
+        strip.plot(
+            [mid],
+            [row],
+            marker="o",
+            markersize=4.5,
+            color=SURFACE,
+            markeredgecolor=INK,
+            markeredgewidth=0.8,
+        )
+    strip.set_yticks(range(len(states)), [STATE_LABELS[s] for s in states])
+    strip.set_ylim(-0.7, len(states) - 0.3)
+    strip.grid(axis="y", visible=False)
+    strip.tick_params(axis="y", length=0)
+
+
+def fig_rate_curve(claims, rates, states, extent, *, ground):
+    """Draw what a claim costs against its inundated or evacuated area.
+
+    The line is the per-claim cost plus the rate times the area, with the other
+    kind of ground held at zero, so its slope is the rate; the light band either
+    side is the spread of the per-claim cost between claims, its quartiles. The
+    strip below says how much of that ground a modelled claim in each state
+    loses. How the rates meet the Canterbury means is the cost build-up figure.
+    """
+    inundated = ground == "inundated"
+    column = INUNDATED_AREA_COLUMN if inundated else EVACUATED_AREA_COLUMN
+    rate = rates.inundated_nzd_per_m2 if inundated else rates.evacuated_nzd_per_m2
+    hue = INUNDATED if inundated else EVACUATED
+
+    # Wide enough for every state's 90th percentile, not the long tail beyond.
+    tops = [claims.loc[claims[STATE_COLUMN] == s, column].quantile(0.9) for s in states]
+    x_max = max([t for t in tops if t > 0] or [10.0]) * 1.15
+    x = np.linspace(0.0, x_max, 200)
+    # The line is drawn at the median per-claim cost, the basis the rates were
+    # back-calculated on; the band is its quartiles.
+    sigma = rates.per_claim_sigma
+    fixed = per_claim_median(rates)
+    low = fixed * np.exp(-sigma * Z_QUARTILE)
+    high = fixed * np.exp(sigma * Z_QUARTILE)
+
+    fig, (ax, strip) = plt.subplots(
+        2,
+        1,
+        sharex=True,
+        figsize=(8.0, 5.6),
+        gridspec_kw={"height_ratios": [3.0, 1.6], "hspace": 0.12},
+    )
+
+    # With volunteers, the first of a site's ejecta is cleared for nothing, so
+    # its cost bends at the allowance; without them all of it is paid.
+    # Evacuated land is one rate either way.
+    def ground_cost(area, *, volunteers=True):
+        if inundated:
+            return inundated_cost_nzd(area, rates, volunteers=volunteers)
+        return rate * np.asarray(area, dtype=float)
+
+    ax.fill_between(
+        x,
+        low + ground_cost(x),
+        high + ground_cost(x),
+        color=hue,
+        alpha=0.12,
+        linewidth=0,
+    )
+    ax.plot(x, fixed + ground_cost(x), color=hue, linewidth=2)
+    tiers = f"${rate:,.2f} per m² beyond the first {rates.volunteer_cleared_m2:,.0f} m²"
+    lines = [(None, f"With volunteers: {tiers}", "-")]
+    if inundated:
+        ax.axvline(
+            rates.volunteer_cleared_m2,
+            color=INK_MUTED,
+            linewidth=0.8,
+            linestyle=":",
+        )
+        ax.annotate(
+            "volunteers clear up to here",
+            (rates.volunteer_cleared_m2, 0),
+            xytext=(-4, 4),
+            textcoords="offset points",
+            ha="right",
+            color=INK_MUTED,
+            fontsize=8,
+        )
+        ax.plot(
+            x,
+            fixed + ground_cost(x, volunteers=False),
+            color=hue,
+            linewidth=2,
+            linestyle=(0, (5, 3)),
+        )
+        lines.append(
+            (None, f"Without volunteers: ${rate:,.2f} per m² on all of it", "--")
+        )
+    else:
+        lines[0] = (
+            lines[0][0],
+            f"${rate:,.2f} per m², with or without volunteers",
+            "-",
+        )
+    # Each line is labelled just above it, the steeper one further left, so the
+    # two labels sit apart and neither runs into the other line.
+    for (_, text, style), share in zip(lines, (0.98, 0.55), strict=False):
+        at = x_max * share
+        ax.annotate(
+            text,
+            (at, fixed + float(ground_cost(at, volunteers=style == "-"))),
+            xytext=(0, 7),
+            textcoords="offset points",
+            ha="right",
+            va="bottom",
+            color=INK_SECONDARY,
+            fontsize=8.5,
+        )
+    ax.annotate(
+        f"Per-claim cost: ${fixed:,.0f} at the median, quartiles ${low:,.0f} to "
+        f"${high:,.0f} (shaded)",
+        (0, fixed),
+        xytext=(4, -14),
+        textcoords="offset points",
+        color=INK_SECONDARY,
+        fontsize=8,
+    )
+    ax.set_ylim(bottom=0)
+    ax.yaxis.set_major_formatter(DOLLARS)
+    ax.set_ylabel("Cost of a claim (2010/2011 $, excl GST)")
+    note = (
+        "Dashed: without volunteers, all the ejecta paid for (L-40). "
+        if inundated
+        else "The no-SVA multiplier applies to inundated land only. "
+    )
+    # Title and subtitle as figure text above the plot, so neither runs into
+    # the other however the subtitle wraps.
+    fig.text(
+        0.125,
+        0.985,
+        f"Cost of a liquefaction claim against its {ground} land",
+        fontsize=11,
+        fontweight="bold",
+        color=INK,
+        va="top",
+    )
+    fig.text(
+        0.125,
+        0.952,
+        f"Median per-claim cost plus {tiers if inundated else f'${rate:,.2f} per m²'} "
+        f"of {ground} land, the other "
+        "ground held at zero. Shaded: the spread of the per-claim cost.\n"
+        f"{note}2010/2011 dollars excluding GST; the loss module multiplies by "
+        "1.42 to today's and adds GST.",
+        fontsize=8,
+        color=INK_SECONDARY,
+        va="top",
+        linespacing=1.4,
+    )
+    fig.subplots_adjust(top=0.86)
+
+    draw_state_bands(strip, claims, column, states)
+    strip.set_xlim(0, x_max)
+    strip.set_xlabel(f"{ground.capitalize()} land per claim (m²)")
+    strip.set_title(
+        "Ground lost by a modelled claim in each state: 10th to 90th percentile, "
+        "dot at the median",
+        fontsize=8.5,
+        fontweight="normal",
+        color=INK_SECONDARY,
+    )
+    finish(fig, f"liq-rate-curve-{ground}", extent)
+
+
+def main(
+    *,
+    extent,
+    realisation_ids,
+    fit_states,
+    weight_by_claims,
+    repair_rates,
+    section_m2,
+):
+    """Draw the six figures."""
+    rates = RepairRates(**repair_rates)
+    claims = load_claims(extent, realisation_ids)
+    canterbury = load_claimant_costs()
+    states = sorted(fit_states)
+    area_cost = area_cost_by_state(claims, rates)
+    weights = (
+        canterbury.loc[states, CLAIMS_COLUMN].astype(float)
+        if weight_by_claims
+        else pd.Series(1.0, index=states)
+    )
+    fig_ground_lost(claims, states, extent)
+    fig_cost_build_up(canterbury, rates, states, extent, section_m2=section_m2)
+    fig_quartiles(area_cost, canterbury, rates, states, extent)
+    fig_spread_fit(canterbury, rates, states, weights, extent, section_m2=section_m2)
+    for ground in ("inundated", "evacuated"):
+        fig_rate_curve(
+            claims,
+            rates,
+            states,
+            extent,
+            ground=ground,
+        )
+
+
+if __name__ == "__main__":
+    main(
+        extent=config.COMPARE_EXTENT,
+        realisation_ids=config.COMPARE_REALISATION_IDS,
+        fit_states=config.FIT_STATES,
+        weight_by_claims=config.WEIGHT_BY_CLAIMS,
+        repair_rates=s2_config.REPAIR_RATES,
+        section_m2=config.SECTION_M2,
+    )

@@ -31,11 +31,11 @@
   insured land.
 - **Land**, one row per insured land polygon, spined on the insured land so a
   polygon no hazard reached still appears:
-  - columns `land_id`, `claim_id`, `$/m2 market value` (the exposure land
-    rate including GST, `land_rate_incl_gst_nzd_per_m2`; the exclusive rate
-    stays in the exposure file), `Liq_LD_state`, `total_insured_land_area`,
+  - columns `land_id`, `claim_id`, `Liq_LD_state`, `total_insured_land_area`,
     `land_slide_total_insured_land_area`, `inundated_insured_area`,
-    `inundated_mean_depth` and `evacuated_area`;
+    `inundated_mean_depth`, `evacuated_area`, `footprint_area`,
+    `property_area`, `land_slide_footprint_area` and `suburb`. No land value:
+    `loss` values the land from these (`landloss.loss.qv_land_value`);
   - `land_slide_total_insured_land_area` is the union of evacuated and
     inundated ground from vul step 3, not their sum;
   - landslide areas default to zero where no landslide reached the polygon,
@@ -46,7 +46,7 @@
 - **Retaining walls**, one row per insured wall, **spined on the world's wall
   population** (`build_rw_table(walls, states, flags)`), so a wall on sloping
   ground, which the shaking step never sees, appears beside the flat-land walls
-  it does: `rw_id`, `claim_id`, `rw_size`, `rw_length`,
+  it does: `rw_id`, `claim_id`, `rw_size`, `rw_type`, `rw_height`, `rw_length`,
   `is_damaged_by_shaking`, `is_evacuated` and `is_inundated`.
   `is_damaged_by_shaking` is true when the shaking step's damage state is
   replace **or** the wall landslide step's flag is set (a sloping wall whose
@@ -55,6 +55,16 @@
   the wall landslide step, which already OR-ed the urban outcome with the
   geometry. The run prints how many walls carry a damage state and how many
   take their shaking flag from the urban outcome (`describe_walls()`).
+- **A wall crossing property boundaries is split onto each insured property**
+  (`split_walls_by_property`, 2026-10-12, RW-A31): one row per property in its
+  `property_lengths_m`, `<rw_id>-P<n>`, each on that property's claim at the
+  length of wall inside it, and each carrying the whole wall's type, height and
+  damage, since the wall stands or fails as one. The primary keeps the slivers
+  under 1 m; a piece on a property with no insured land is dropped. A wall on
+  one property keeps its own id. `parent_rw_id` is written after the contract
+  columns to tie the pieces back to the wall. Each piece keeps the whole wall's
+  line. Over Lower Hutt world 0, 7,772 walls become 10,590 rows and the claims
+  with a damaged wall rise from 4,961 to 6,244.
 - **Culverts and bridges** are split from the crossings by structure kind, the
   `crossing_id` becoming `culvert_id` or `bridge_id`:
   - culverts: `culvert_id`, `claim_id`, `is_inundated`, `is_damaged` (the

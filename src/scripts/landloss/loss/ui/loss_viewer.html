@@ -25,14 +25,22 @@
   header .title { flex: 1 1 320px; }
   h1 { margin: 0; font-size: 19px; }
   .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .version { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums;
+             margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
   #drop {
-    flex: 1 1 320px; border: 2px dashed var(--line); border-radius: 8px;
-    padding: 12px 16px; text-align: center; color: var(--muted); background: #fff;
-    cursor: pointer;
+    flex: 1 1 320px; border: 2px dashed var(--accent); border-radius: 8px;
+    padding: 12px 16px; text-align: center; color: var(--ink); background: #f3f8fb;
+    cursor: pointer; font-weight: 600;
   }
-  #drop.over { border-color: var(--accent); background: #eef4f8; color: var(--ink); }
-  main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 320px; }
-  @media (max-width: 1180px) {
+  #drop:hover { background: #eef4f8; }
+  #drop .hint { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+  #drop.over { border-style: solid; background: #e2eef6; }
+  #drop.loaded { border-color: var(--line); background: #fff; }
+  .i { color: var(--muted); cursor: help; font-size: 11px; }
+  label.check { display: flex; gap: 6px; align-items: flex-start; }
+  label.check input { margin-top: 3px; }
+  main { display: grid; grid-template-columns: 240px minmax(0, 1fr) 440px; }
+  @media (max-width: 1280px) {
     main { grid-template-columns: 240px minmax(0, 1fr); }
     #summary { grid-column: 2; border-left: none; border-top: 1px solid var(--line); }
   }
@@ -49,6 +57,8 @@
   #claimDetail td.n { width: 46%; white-space: normal; overflow-wrap: anywhere; }
   #claimDetail code { word-break: break-all; }
   #capSummary th { white-space: normal; }
+  /* Six columns, so the cells are packed tighter than elsewhere to fit the panel. */
+  #capSummary th, #capSummary td { padding: 4px 4px; }
   section { padding: 16px 20px 40px; min-width: 0; }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
        color: var(--muted); margin: 18px 0 8px; }
@@ -74,6 +84,7 @@
   .charts .card { margin-top: 0; }
   .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; margin: 4px 0 0; }
   .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+  .legend svg.dash { display: inline-block; vertical-align: middle; margin-right: 4px; }
   .bar rect { shape-rendering: crispEdges; }
   .axis text { font-size: 10.5px; fill: var(--muted); }
   .axis path, .axis line { stroke: #cfcfca; }
@@ -111,42 +122,89 @@
     <div class="sub">Every settlement is computed here, in the browser &mdash; move a setting
       and the whole portfolio answers. Nothing is uploaded.</div>
   </div>
-  <div id="drop">Drop the viewer CSV here, or click to choose</div>
+  <div id="drop">&#x2B07; Drag the viewer CSV here
+    <span class="hint">or click to choose the file</span></div>
   <input type="file" id="file" accept=".csv" hidden>
 </header>
 
 <main>
 <aside id="config">
+  <div id="taBox" hidden>
+    <h2>Area</h2>
+    <label title="The CSV holds several territorial authorities; every figure and the map follow this choice">Territorial authority
+      <select id="taFilter"><option value="">All</option></select></label>
+  </div>
+  <h2>Damage</h2>
+  <label class="check" title="Ticked: liquefaction land damage is counted -- its claims, its repair costs and what it settles for. Unticked: liquefaction is left out entirely, so a property damaged only by liquefaction is no longer a claim, and every figure, chart and map dot shows landslide, retaining wall and bridge or culvert damage alone. The liquefaction settings below then do nothing.">
+    <input type="checkbox" id="liqOn" checked>
+    <span>Include all liquefaction damage and costs <span class="i">&#9432;</span></span></label>
+
   <h2>Cover</h2>
-  <label>Area cap (m²)<input type="number" id="areaCap" value="4000" step="100"></label>
+  <label title="Land damage is paid at most the value of the smallest section the district plan allows a house on, or 4,000 m² where it sets none">Area cap: minimum-sized site (m²)<input type="number" id="areaCap" value="4000" step="100"></label>
   <label>Retaining wall sub-cap, per dwelling, excl GST
     <input type="number" id="rwSub" value="50000" step="1000"></label>
   <label>Bridge / culvert sub-cap, per dwelling, excl GST
     <input type="number" id="bcSub" value="25000" step="1000"></label>
 
   <h2>Excess</h2>
-  <label>Per dwelling ($)
-    <input type="number" id="exEach" value="500" step="100" min="0"></label>
-  <label>Ceiling ($)<input type="number" id="exCeil" value="5000" step="500"></label>
+  <label>Basis
+    <select id="exBasis">
+      <option value="dwelling" title="The Act: per dwelling, up to a ceiling">Per dwelling (Act)</option>
+      <option value="fixed">Fixed per claim</option>
+    </select></label>
+  <div id="exDwelling">
+    <label>Per dwelling ($)
+      <input type="number" id="exEach" value="500" step="100" min="0"></label>
+    <label>Ceiling ($)<input type="number" id="exCeil" value="5000" step="500"></label>
+  </div>
+  <div id="exFixedBox" hidden>
+    <label title="Charged once on every claim that is paid anything, however many dwellings it covers">Per claim ($)
+      <input type="number" id="exFixed" value="5000" step="500" min="0"></label>
+  </div>
 
   <h2>Costs</h2>
-  <label>Replacement spec uplift
+  <label title="A failed retaining wall is usually rebuilt to a higher standard than the one that failed -- engineered, to the current code -- which the costing tool's rates do not allow for. 0.20 adds 20% to the cost of every wall built in a repair, replacement or new. It does not change what a damaged wall was worth (its undepreciated value), which builds the cap.">Replacement spec uplift <span class="i">&#9432;</span>
     <input type="number" id="spec" value="0.20" step="0.05"></label>
-  <label>Professional fees per wall claim, excl GST
-    <input type="number" id="fees" value="5100" step="100"></label>
-  <label>Spoil removal ($/m³, excl GST)
-    <input type="number" id="spoilRate" value="150" step="10"></label>
+  <div class="note" style="margin-top:4px">Fixed on every claim with wall works, on top of
+    the walls as built (site and specification allowances and the wall rate scaling all in),
+    each on the one before:
+    <br>Professional fees (20% of the walls, at least $5,100)
+    <br>Mob/demob (higher of $5,000 or 15% of the walls and professional fees)
+    <br>Project management (10% of the walls, professional fees, mob/demob and
+    any culvert or bridge &mdash; so on a claim with only a crossing too)
+    <br>And on every claim, a contingency (20% of the whole repair cost &mdash;
+    liquefaction and culverts and bridges included &mdash; applied last)</div>
 
   <h2>Sensitivity</h2>
-  <label>Retaining wall rates &times;
+  <label title="Price surge on retaining walls: after a large event, demand pushes construction prices up. Multiplies the wall rates, so both what a damaged wall costs to replace and what it was worth move together. 1 is today's costing tool rates; 1.3 is a 30% price surge.">Retaining wall rates &times; <span class="i">&#9432;</span>
     <input class="sens" type="number" id="wallScale" value="1" step="0.1" min="0"></label>
-  <label>Land value &times;
+  <label title="Price surge on land: multiplies the value of every property's land, and so the land cover cap. 1 is the QV land value indexed to 1 September 2025; 1.1 is a 10% price surge.">Land value &times; <span class="i">&#9432;</span>
     <input class="sens" type="number" id="landScale" value="1" step="0.1" min="0"></label>
+  <label title="The share of residential properties with a home insurance policy, and so NHC cover. Which properties are insured is not known, so that share of them is chosen at random, fixed per property; the rest are paid nothing and are not claims.">Insurance penetration (%) <span class="i">&#9432;</span>
+    <input class="sens" type="number" id="penetration" value="90" step="5" min="0" max="100"></label>
+  <label class="check" title="On: as in Canterbury, the Student Volunteer Army clears the first 250 m² of each site's ejecta for nothing, so only the ejecta beyond it is paid for -- which is why a Moderate claim in Canterbury cost about the same as a Minor one. Off: all of each site's ejecta is paid for, at the same rate per m². Only the liquefaction cost of inundated land changes.">
+    <input type="checkbox" id="sva" checked>
+    <span>Student Volunteer Army clears ejecta <span class="i">&#9432;</span></span></label>
+  <label title="Brings the Canterbury liquefaction repair costs, which are in 2010/2011 dollars, to today's. See the note below for where 1.42 comes from.">Liquefaction costs, 2011 to today &times; <span class="i">&#9432;</span>
+    <input class="sens" type="number" id="liqEsc" value="1.42" step="0.01" min="0"></label>
+  <div class="note" style="margin-top:2px">The Canterbury liquefaction costs are in
+    2010/2011 dollars. 1.42 is a placeholder: the growth in construction labour costs
+    from the March 2011 quarter (1,030) to the December 2025 quarter (1,465) in the
+    <a href="https://www.stats.govt.nz/information-releases/labour-market-statistics-december-2025-quarter/"
+    target="_blank" rel="noopener">Stats NZ Labour Cost Index</a> (salary and ordinary time
+    wage rates, construction, series LCIQ.SG51E9). It follows pay rates, not plant or
+    materials.</div>
   <div class="note">Yellow fields are the policy settings; blue fields scale the model's
     own estimates, to see how far an answer leans on them. The wall rates set both what a
     wall costs to replace and what it was worth, since both come from the same rate.
-    Every figure is GST-inclusive at 15%. Everything else in the CSV is fixed by
+    Which properties are insured is not known, so that share of them, chosen at random
+    but fixed per property, is insured; the rest are paid nothing and are not claims.
+    Every figure excludes GST, including the excess and land caps typed in. Everything else in the CSV is fixed by
     exposure and vulnerability.</div>
+  <!-- gen_viewer_data.py writes the version over the placeholder when it copies
+       this page beside its CSVs; this source copy is never issued. -->
+  <div class="version">Version: <span id="version">__VIEWER_VERSION__</span><span
+    id="dataVersion"></span></div>
 </aside>
 
 <section>
@@ -156,7 +214,11 @@
       <div class="row">
         <select id="histOf" style="width: auto">
           <option value="repair">Repair cost</option>
-          <option value="settlement">Settlement under the Act</option>
+          <option value="settlement">Settlement under NHI Act 2023</option>
+        </select>
+        <select id="histClaims" style="width: auto" aria-label="Claims shown in the chart">
+          <option value="all">All claims</option>
+          <option value="structures">Land structure claims only</option>
         </select>
         <button id="editCaps">Update cap settings</button>
       </div>
@@ -180,7 +242,10 @@
   </div>
 
   <div class="card">
-    <h3>Where the claims are</h3>
+    <h3>Map viewer: where the claims are</h3>
+    <p><b>These map settings only change how the map is drawn</b> &mdash; which dots show,
+      how they are coloured, the basemap. They do not change any figure or chart: the
+      settlements, totals and charts follow the settings on the left only.</p>
     <div class="mapsettings">
       <label>Colour the dots by
         <select id="colourBy">
@@ -192,12 +257,14 @@
           <option value="has_damaged_wall">Has a damaged retaining wall</option>
           <option value="has_new_wall">Needs a new wall built</option>
           <option value="has_liquefaction">Has liquefaction damage</option>
+          <option value="has_landslide">Has landslide damage</option>
+          <option value="has_area_cap_limit">Limited by the land area cap</option>
           <option value="access">Construction access rating</option>
         </select></label>
       <label>Show
         <select id="showDots">
           <option value="claims">Claims (properties with damage)</option>
-          <option value="all">Every insured property</option>
+          <option value="all">All properties (uninsured in dark grey)</option>
           <option value="paid">Claims paid anything</option>
           <option value="capped">Claims capped by the Act</option>
         </select></label>
@@ -206,7 +273,6 @@
           <option value="grey">Light grey &mdash; best under the dots</option>
           <option value="aerial">Aerial imagery</option>
           <option value="topo">Topographic</option>
-          <option value="osm">OpenStreetMap</option>
           <option value="none">None &mdash; works offline</option>
         </select></label>
       <label>Dot size
@@ -231,39 +297,106 @@
 <div class="tip" id="tip"></div>
 
 <script>
-const TYPE = {liq: "Liquefaction only", wall: "Retaining wall only", both: "Both", none: "No damage"};
+const TYPE = {liq: "Liquefaction only", wall: "Retaining wall only",
+              slide: "Landslide only", crossing: "Culvert or bridge only",
+              combo: "Combination (more than one form of damage)", none: "No damage"};
 // Literal hex rather than var(--liq): Leaflet paints the dots onto a canvas,
 // and a canvas cannot resolve a CSS custom property -- it just loses the fill.
-const HUE = {liq: "#2a78d6", wall: "#eb6834", both: "#1baf7a", none: "#b4b4b0",
-             accent: "#3b6e8f", cap: "#b23a48"};
-const TYPE_FILL = {[TYPE.liq]: HUE.liq, [TYPE.wall]: HUE.wall, [TYPE.both]: HUE.both, [TYPE.none]: HUE.none};
-const STACK = [TYPE.liq, TYPE.wall, TYPE.both];
+const HUE = {liq: "#2a78d6", wall: "#eb6834", slide: "#1baf7a", combo: "#eda100",
+             crossing: "#e87ba4", both: "#1baf7a", none: "#b4b4b0", accent: "#3b6e8f",
+             cap: "#b23a48", uninsured: "#3d3d3a"};
+const TYPE_FILL = {[TYPE.liq]: HUE.liq, [TYPE.wall]: HUE.wall, [TYPE.slide]: HUE.slide,
+                   [TYPE.combo]: HUE.combo, [TYPE.crossing]: HUE.crossing,
+                   [TYPE.none]: HUE.none};
+const STACK = [TYPE.liq, TYPE.wall, TYPE.slide, TYPE.crossing, TYPE.combo];
 const BASES = ["Paid the repair cost", "Capped", "Excess took it all"];
-// GST is fixed rather than a control (T-86): the Act compares every amount
-// GST-inclusive at 15%, and landloss.loss.policy.GST_RATE fixes the same rate.
+// The page works wholly excluding GST (2026-10-12): every rate, value, cap,
+// cost and setting is before GST, including the excess and the land cap
+// scenarios typed in. The module settles GST-inclusive, as the Act compares;
+// with no fixed amount in the comparison the two differ by exactly the 15%,
+// and the excess and land caps are the only amounts read differently.
+// GST_RATE is kept to back the GST out of the land rate the CSV carries.
 const GST_RATE = 0.15;
-// The land cap scenarios NHC is weighing, from Bridget Attwood's document. A
-// placeholder set until the scenarios are confirmed; "Update cap settings"
-// changes them on the page.
-const DEFAULT_CAPS = [15000, 30000, 90000, 120000];
+const PAGE_GST_RATE = 0;
+// The land cap scenarios NHC is weighing, as set on 2026-10-09, and the name
+// each goes by. "Update cap settings" changes them on the page; a cap typed in
+// that is not one of these is shown by its amount alone.
+const DEFAULT_CAPS = [30000, 65000, 100000, 150000];
+const CAP_NAMES = {30000: "low", 65000: "medium", 100000: "high", 150000: "higher"};
+const capName = (k, fmt = money) => CAP_NAMES[k] ? `${fmt(k)} (${CAP_NAMES[k]})` : fmt(k);
 const tip = d3.select("#tip");
 let RAW = [], ROWS = [], CAPS = DEFAULT_CAPS.slice(), SELECTED = null;
+// Whether the map should frame the claims shown on its next draw: on a new CSV
+// and on a change of territorial authority.
+let REFIT = true;
 
 const num = id => +document.getElementById(id).value;
 const val = id => document.getElementById(id).value;
 const nz = d => d == null || d === "" ? 0 : +d;
 const money = d3.format("$,.0f");
-const short = d3.format("$~s");
+// Dollars shortened to thousands, millions and billions. Not d3's "$~s": SI
+// prefixes write a billion as G (giga), which no one reads as dollars.
+const sig3 = d3.format(".3~r");
+const short = v => {
+  const a = Math.abs(v);
+  const [d, unit] = a >= 1e9 ? [1e9, "B"] : a >= 1e6 ? [1e6, "M"] : a >= 1e3 ? [1e3, "k"] : [1, ""];
+  return `${v < 0 ? "−" : ""}$${sig3(a / d)}${unit}`;
+};
+// The headline totals are estimates, so they are shown no finer than the model
+// can support: the Act's to the nearest thousand dollars and each cap
+// scenario's to the nearest million, as John Leeves asked (T-131).
+const thousands = v => money(Math.round(v / 1e3) * 1e3);
+const millions = v => {
+  const m = Math.round(v / 1e6);
+  return `${m < 0 ? "−" : ""}$${d3.format(",")(Math.abs(m))}m`;
+};
+const change = v => (Math.abs(v) < 0.005 ? "0%" : d3.format("+.0%")(v));
 const count = d3.format(",.0f");
 const pct = d3.format(".0%");
+
+// Fixed by the costing tool rather than offered as controls: the professional
+// fees per wall claim (consent, design, engineering, H&S, project management
+// and survey) -- FEES_SHARE of what the walls cost to build, never less than
+// the tool's total -- and the rate for loading, carting and tipping landslide
+// spoil, both excluding GST (landloss.loss.pricing).
+const FEES_EXCL_GST = 5100;
+const FEES_SHARE = 0.20;
+const SPOIL_RATE_EXCL_GST = 150;
+// The on-costs, the second built on the first
+// (landloss.loss.pricing.on_costs_incl_gst_nzd): mob/demob on the walls as built
+// and the fees, never less than MOB_EXCL_GST, on the same claims as the fees;
+// project management on the walls, fees, mob/demob and crossings. The contingency goes on every
+// claim's whole repair, last (landloss.loss.pricing.contingency_incl_gst_nzd).
+const MOB_SHARE = 0.15;
+const MOB_EXCL_GST = 5000;
+const PM_SHARE = 0.10;
+const CONTINGENCY_SHARE = 0.20;
 
 function settings() {
   return {
     areaCap: num("areaCap"), rwSub: num("rwSub"), bcSub: num("bcSub"),
-    exEach: num("exEach"), exCeil: num("exCeil"),
-    spec: num("spec"), fees: num("fees"), spoilRate: num("spoilRate"),
+    exBasis: val("exBasis"), exEach: num("exEach"), exCeil: num("exCeil"),
+    exFixed: num("exFixed"),
+    spec: num("spec"), fees: FEES_EXCL_GST, spoilRate: SPOIL_RATE_EXCL_GST,
     wallScale: num("wallScale"), landScale: num("landScale"),
+    penetration: num("penetration") / 100, liqEsc: num("liqEsc"),
+    sva: document.getElementById("sva").checked,
+    liqOn: document.getElementById("liqOn").checked,
   };
+}
+
+// Which properties are insured is not knowable, so a share of them is (L-10).
+// Each property draws a fixed number from its claim id and is insured when it
+// falls below the penetration, so the same properties stay insured as the
+// share changes and a property insured at 80% is still insured at 90%.
+function insuredDraw(id) {
+  let h = 0x811c9dc5;
+  const text = String(id ?? "");
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) / 4294967296;
 }
 
 // The same arithmetic landloss.loss.settlement does. Kept deliberately literal
@@ -271,7 +404,9 @@ function settings() {
 // one it is the module's answer; gen_viewer_data.py checks that before writing
 // the CSV.
 function settle(r, s) {
-  const gst = 1 + GST_RATE, spec = 1 + s.spec, mult = 1 + nz(r.site_multiplier);
+  const gst = 1 + PAGE_GST_RATE, spec = 1 + s.spec, mult = 1 + nz(r.site_multiplier);
+  // The CSV carries the land rate GST-inclusive; backed out to before GST.
+  const landRate = nz(r.land_rate_incl_gst) / (1 + GST_RATE) * gst;
   const dwellings = Math.max(1, nz(r.dwellings));
 
   const udv = nz(r.wall_value_excl_gst) * gst * s.wallScale;
@@ -281,20 +416,69 @@ function settle(r, s) {
     * gst * mult * spec * s.wallScale;
   const spoil = nz(r.spoil_m3) * s.spoilRate * gst;
   const walled = nz(r.has_damaged_wall) > 0 || nz(r.has_new_wall) > 0;
-  const fees = walled ? s.fees * mult * gst : 0;
-  const liq = nz(r.liq_cost_excl_gst) * gst;
-  const crossing = nz(r.has_crossing) > 0 ? s.bcSub * gst * dwellings : 0;
+  // A share of what the walls cost to build, failed and invented together, with
+  // the tool's total as the floor (landloss.loss.pricing.professional_fees_incl_gst_nzd).
+  const fees = walled ? Math.max(FEES_SHARE * (wall + newWall), s.fees * gst) : 0;
+  const mob = walled ? Math.max(MOB_SHARE * (wall + newWall + fees), MOB_EXCL_GST * gst) : 0;
+  // The CSV carries the Canterbury cost in 2010/2011 dollars; it is brought to
+  // today's here, as the module does with LIQ_COST_ESCALATION.
+  // The part that is clearing ejecta is carried as the run priced it, and with
+  // and without volunteers; the switch takes the one out and puts the other in.
+  // A CSV from before the parts were carried leaves the cost as it is.
+  const hasParts = r.liq_inundated_cost_sva_excl_gst != null;
+  const ejectaNow = !hasParts ? nz(r.liq_inundated_cost_excl_gst)
+    : nz(s.sva ? r.liq_inundated_cost_sva_excl_gst : r.liq_inundated_cost_no_sva_excl_gst);
+  // With liquefaction left out, its cost and its damage both go, so a property
+  // damaged only by liquefaction is no longer a claim.
+  const liq = !s.liqOn ? 0
+    : (nz(r.liq_cost_excl_gst) - nz(r.liq_inundated_cost_excl_gst) + ejectaNow)
+      * s.liqEsc * gst;
+  const bcLimit = s.bcSub * gst * dwellings;
+  // The claim's damaged culverts and bridges: what replacing or clearing them
+  // costs, and what they are worth, which reaches the cap through the sub-cap.
+  // A CSV from before crossings were priced carries only whether there is one,
+  // which was then priced at the sub-cap on both sides.
+  const pricedCrossings = r.crossing_repair_excl_gst != null;
+  const crossing = pricedCrossings ? nz(r.crossing_repair_excl_gst) * gst
+    : (nz(r.has_crossing) > 0 ? bcLimit : 0);
+  const crossingValue = pricedCrossings ? nz(r.crossing_value_excl_gst) * gst : crossing;
+  const crossingCounted = Math.min(crossingValue, bcLimit);
+  const pm = PM_SHARE * (wall + newWall + fees + mob + crossing);
 
-  const landValue = Math.min(nz(r.damaged_area_m2), s.areaCap)
-    * nz(r.land_rate_incl_gst) * s.landScale;
+  const landValue = Math.min(nz(r.damaged_area_m2), s.areaCap) * landRate * s.landScale;
   const rwLimit = s.rwSub * gst * dwellings;
-  const cap = landValue + Math.min(udv, rwLimit) + crossing;
+  // What the damaged walls add to the cap: their undepreciated value, up to
+  // the sub-cap.
+  const wallCounted = Math.min(udv, rwLimit);
+  const cap = landValue + wallCounted + crossingCounted;
 
-  const repair = wall + newWall + spoil + fees + liq + crossing;
-  const payable = Math.min(repair, cap);
+  const before = wall + newWall + spoil + fees + mob + pm + liq + crossing;
+  const contingency = CONTINGENCY_SHARE * before;
+  const repair = before + contingency;
+  // Each land structure's share of the on-costs, so the land structures can be
+  // costed apart from the walls invented to reinstate landslide ground. The
+  // existing walls take the fees and mob/demob pro rata to what the walls cost
+  // to build; project management goes by the base it is a share of; and the
+  // contingency is on each.
+  const wallShare = wall + newWall > 0 ? (fees + mob) * wall / (wall + newWall) : 0;
+  const wallFees = (wallShare + PM_SHARE * (wall + wallShare)) * (1 + CONTINGENCY_SHARE)
+    - wall;
+  const crossingFees = crossing * ((1 + PM_SHARE) * (1 + CONTINGENCY_SHARE) - 1);
+  // An uninsured property is still damaged, and still shown, but NHC pays it
+  // nothing and it is not a claim.
+  const insured = insuredDraw(r.claim_id) < s.penetration;
+  const payable = insured ? Math.min(repair, cap) : 0;
+  // Whether the area cap -- the minimum-sized site, 4,000 m2 by default --
+  // lowers what the claim is paid: its cap with all the damaged land valued
+  // would pay more than it does.
+  const fullCap = cap - landValue
+    + nz(r.damaged_area_m2) * landRate * s.landScale;
+  const has_area_cap_limit = insured && Math.min(repair, fullCap) > payable + 0.5;
   // The excess a claim would pay if anything were payable, kept apart so each
   // cap scenario can apply it to its own payable amount.
-  const excessIf = Math.min(dwellings * s.exEach, s.exCeil);
+  const excessIf = s.exBasis === "fixed"
+    ? s.exFixed
+    : Math.min(dwellings * s.exEach, s.exCeil);
   const excess = payable > 0 ? excessIf : 0;
   const settlement = Math.max(0, payable - excess);
   // A claim exists only where there is damage, whether or not the excess then
@@ -302,15 +486,31 @@ function settle(r, s) {
   // property draws a state, and None still carries the Canterbury average of
   // $200 -- non-claimants averaged in at $0 -- so its cost cannot be the test.
   // A CSV written before liq_state was carried falls back on the cost.
-  const liqDamage = r.liq_state != null ? nz(r.has_liquefaction) > 0 : liq > 0;
-  const claimed = walled || liqDamage || crossing > 0;
+  const liqDamage = s.liqOn && (r.liq_state != null ? nz(r.has_liquefaction) > 0 : liq > 0);
+  const damaged = walled || liqDamage || crossing > 0;
+  const claimed = insured && damaged;
 
-  const type = liqDamage && walled ? TYPE.both : liqDamage ? TYPE.liq : walled ? TYPE.wall : TYPE.none;
+  // The type is which kinds of damage the claim has: liquefaction, a damaged
+  // existing wall, landslide ground, or a damaged culvert or bridge. A CSV
+  // written before has_landslide was carried takes a new wall as its landslide.
+  const wallDamage = nz(r.has_damaged_wall) > 0;
+  const slide = r.has_landslide != null ? nz(r.has_landslide) > 0 : nz(r.has_new_wall) > 0;
+  const crossed = crossing > 0;
+  const kinds = [liqDamage, wallDamage, slide, crossed].filter(Boolean).length;
+  const type = kinds > 1 ? TYPE.combo : liqDamage ? TYPE.liq : wallDamage ? TYPE.wall
+    : slide ? TYPE.slide : crossed ? TYPE.crossing : TYPE.none;
   const basis = settlement <= 0 ? "Excess took it all"
     : repair <= cap ? "Paid the repair cost" : "Capped";
-  return {...r, udv, wall, newWall, spoil, fees, liq, crossing, landValue, cap,
-          repair, payable, excessIf, excess, settlement, claimed, type, basis};
+  return {...r, udv, rwLimit, wallCounted, bcLimit, crossingValue, crossingCounted, wall,
+          newWall, spoil, fees, mob, pm, contingency, wallFees, crossingFees, liq, crossing, landValue, cap,
+          repair, payable, excessIf, excess, settlement, insured, damaged, claimed,
+          has_area_cap_limit,
+          type, basis};
 }
+
+// A claim whose settlement under a cap moves by less than this against the Act
+// is counted as unchanged: the difference is rounding, not a gain or a loss.
+const UNCHANGED_NZD = 1;
 
 // One claim's settlement under a land cap of `k`. "replace" is the scheme NHC
 // is weighing: the cap stands in for the Act's land cover cap, so the land is
@@ -318,6 +518,7 @@ function settle(r, s) {
 // keeps the Act's cap and limits it further, which is what
 // PolicySettings.total_cap_nzd does in the loss module.
 function settleUnderCap(r, k, mode) {
+  if (!r.insured) return 0;
   const payable = mode === "replace" ? Math.min(r.repair, k) : Math.min(r.repair, r.cap, k);
   return Math.max(0, payable - (payable > 0 ? r.excessIf : 0));
 }
@@ -326,9 +527,23 @@ function capScenarios(rows, mode, value) {
   const claims = rows.filter(r => r.claimed);
   const act = d3.sum(rows, r => r.settlement);
   return CAPS.map(k => {
-    const total = d3.sum(claims, r => settleUnderCap(r, k, mode));
+    const paid = claims.map(r => settleUnderCap(r, k, mode));
+    const total = d3.sum(paid);
     const above = claims.filter(r => value(r) > k).length;
-    return {k, total, above, share: above / Math.max(1, claims.length), delta: total - act};
+    // What properties miss out on (T-132): the repair cost the settlement does
+    // not cover, the excess included, and how many claims are left short.
+    const gaps = claims.map((r, i) => Math.max(0, r.repair - paid[i]));
+    // Who the cap leaves better or worse off than the Act, claim by claim. A
+    // difference under a dollar is rounding, so it counts as unchanged.
+    const moved = claims.map((r, i) => paid[i] - r.settlement);
+    const better = moved.filter(d => d > UNCHANGED_NZD).length;
+    const worse = moved.filter(d => d < -UNCHANGED_NZD).length;
+    return {
+      k, total, above, share: above / Math.max(1, claims.length), delta: total - act,
+      deltaShare: act > 0 ? (total - act) / act : 0,
+      shortfall: d3.sum(gaps), short: gaps.filter(g => g > 0).length,
+      claims: claims.length, better, worse, unchanged: claims.length - better - worse,
+    };
   });
 }
 
@@ -340,7 +555,7 @@ function mainHistogram(sel, rows, value, scenarios) {
   const shown = rows.filter(r => r.claimed && value(r) > 0);
   if (!shown.length) { box.append("p").attr("class", "empty").text("No claims to show."); return; }
   const W = box.node().clientWidth || 600, H = 300;
-  const m = {t: 34, r: 14, b: 34, l: 46};
+  const m = {t: 34, r: 14, b: 44, l: 46};
   const lo = Math.max(100, d3.min(shown, value)), hi = Math.max(lo * 10, d3.max(shown, value));
   const x = d3.scaleLog().domain([lo, hi]).range([m.l, W - m.r]).clamp(true);
   const edges = d3.range(41).map(i => lo * Math.pow(hi / lo, i / 40));
@@ -354,13 +569,34 @@ function mainHistogram(sel, rows, value, scenarios) {
     STACK.forEach(t => o[t] = inside.filter(r => r.type === t).length);
     return o;
   });
+  const svg = box.append("svg").attr("width", W).attr("height", H);
+
+  // The cap labels are laid out before the plot: each goes in the highest row
+  // where it clears the label before it, one near the right edge is flipped to
+  // the left of its line, and the plot starts below the rows used.
+  const labels = scenarios.filter(s => s.k >= lo && s.k <= hi).map(s => {
+    const text = svg.append("text").attr("class", "caplabel")
+      .text(`${capName(s.k, short)} · ${pct(s.share)} above`);
+    return {s, text, cx: x(s.k), w: text.node().getComputedTextLength()};
+  });
+  const ends = [];
+  labels.forEach(l => {
+    const left = l.cx + 3 + l.w > W - m.r ? l.cx - 3 - l.w : l.cx + 3;
+    let row = ends.findIndex(end => end < left);
+    if (row < 0) { row = ends.length; ends.push(0); }
+    ends[row] = left + l.w + 8;
+    l.y = 12 + row * 13;
+    l.text.attr("x", left).attr("y", l.y);
+  });
+  m.t = 12 + Math.max(1, ends.length) * 13 + 4;
+
   const y = d3.scaleLinear().domain([0, d3.max(bins, d => d.total) || 1]).nice()
               .range([H - m.b, m.t]);
-  const svg = box.append("svg").attr("width", W).attr("height", H);
   svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
-     .call(d3.axisBottom(x).ticks(6, "$~s"));
+     .call(d3.axisBottom(x).ticks(6, short));
   svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
      .call(d3.axisLeft(y).ticks(5).tickFormat(count));
+  axisTitle(svg, "Excluding GST, log scale", (m.l + W - m.r) / 2, H - 6);
 
   const series = d3.stack().keys(STACK)(bins);
   svg.append("g").selectAll("g").data(series).join("g")
@@ -373,29 +609,37 @@ function mainHistogram(sel, rows, value, scenarios) {
         `${d.key}<br>${count(d[1] - d[0])} claims, ${money(d.data.a)} to ${money(d.data.b)}`))
       .on("mouseleave", hide);
 
-  scenarios.forEach((s, i) => {
-    const cx = x(s.k);
-    if (s.k < lo || s.k > hi) return;
+  labels.forEach(l => {
     svg.append("line").attr("class", "capline")
-       .attr("x1", cx).attr("x2", cx).attr("y1", m.t - 4).attr("y2", H - m.b);
-    // Stagger the labels so neighbouring caps do not print over each other.
-    svg.append("text").attr("class", "caplabel")
-       .attr("x", cx + 3).attr("y", m.t - 20 + (i % 2) * 12)
-       .text(`${short(s.k)} · ${pct(s.share)} above`);
+       .attr("x1", l.cx).attr("x2", l.cx).attr("y1", l.y - 9).attr("y2", H - m.b);
   });
 }
 
-function lines(sel, rows) {
+// An axis title under the x axis, in the axis labels' style.
+function axisTitle(svg, text, x, y) {
+  svg.append("text").attr("x", x).attr("y", y).attr("text-anchor", "middle")
+     .style("font-size", "10.5px").style("fill", "var(--muted)").text(text);
+}
+
+function lines(sel, rows, liqOn) {
+  // The tooltip gives the share each on-cost is costed at, and of what.
   const parts = [
     ["Walls replaced", d3.sum(rows, r => r.wall)],
     ["New walls", d3.sum(rows, r => r.newWall)],
-    ["Spoil", d3.sum(rows, r => r.spoil)],
-    ["Fees", d3.sum(rows, r => r.fees)],
-    ["Liquefaction", d3.sum(rows, r => r.liq)],
+    ["Fees and consents", d3.sum(rows, r => r.fees),
+     "20% of the walls, min $5,100"],
+    ["Mob/demob", d3.sum(rows, r => r.mob),
+     "15% of the walls and fees, min $5,000"],
     ["Crossings", d3.sum(rows, r => r.crossing)],
-  ];
+    ["Project management", d3.sum(rows, r => r.pm),
+     "10% of the walls, fees, mob/demob and crossings"],
+    ["Spoil removal", d3.sum(rows, r => r.spoil)],
+    ["Liquefaction", d3.sum(rows, r => r.liq)],
+    ["Contingency", d3.sum(rows, r => r.contingency),
+     "20% of the whole repair cost, applied last"],
+  ].filter(d => liqOn || d[0] !== "Liquefaction");
   const box = d3.select(sel).html("");
-  const W = box.node().clientWidth || 360, H = 190, m = {t: 6, r: 8, b: 44, l: 52};
+  const W = box.node().clientWidth || 360, H = 250, m = {t: 6, r: 8, b: 92, l: 52};
   const svg = box.append("svg").attr("width", W).attr("height", H);
   const x = d3.scaleBand().domain(parts.map(d => d[0])).range([m.l, W - m.r]).padding(0.18);
   const y = d3.scaleLinear().domain([0, d3.max(parts, d => d[1]) || 1]).nice().range([H - m.b, m.t]);
@@ -407,23 +651,25 @@ function lines(sel, rows) {
   svg.append("g").selectAll("rect").data(parts).join("rect")
     .attr("fill", HUE.accent).attr("x", d => x(d[0])).attr("width", x.bandwidth())
     .attr("y", d => y(d[1])).attr("height", d => Math.max(0, y(0) - y(d[1])))
-    .on("mousemove", (e, d) => show(e, `${d[0]}<br>${money(d[1])}`)).on("mouseleave", hide);
+    .on("mousemove", (e, d) => show(e,
+      `${d[0]}<br>${money(d[1])}${d[2] ? `<br><span style="opacity:.75">${d[2]}</span>` : ""}`))
+    .on("mouseleave", hide);
 }
 
 function capBands(sel, rows) {
   const edges = [100000, 250000, 500000, 750000, 1e6, 2e6];
-  const label = v => v >= 1e6 ? `${v / 1e6}m` : `${v / 1e3}k`;
+  const label = short;
   const bs = edges.map((hi, i) => ({lo: i ? edges[i - 1] : 0, hi}))
     .concat([{lo: edges[edges.length - 1], hi: Infinity}])
     .map(b => {
       const inside = rows.filter(r => r.cap > b.lo && r.cap <= b.hi);
-      const o = {key: b.hi === Infinity ? `over ${label(b.lo)}` : `${label(b.lo)}-${label(b.hi)}`,
+      const o = {key: b.hi === Infinity ? `over ${label(b.lo)}` : `${label(b.lo)} to ${label(b.hi)}`,
                  total: inside.length};
       STACK.forEach(t => o[t] = inside.filter(r => r.type === t).length);
       return o;
     });
   const box = d3.select(sel).html("");
-  const W = box.node().clientWidth || 360, H = 190, m = {t: 6, r: 8, b: 44, l: 44};
+  const W = box.node().clientWidth || 360, H = 250, m = {t: 6, r: 8, b: 82, l: 44};
   const svg = box.append("svg").attr("width", W).attr("height", H);
   const x = d3.scaleBand().domain(bs.map(d => d.key)).range([m.l, W - m.r]).padding(0.04);
   const y = d3.scaleLinear().domain([0, d3.max(bs, d => d.total) || 1]).nice().range([H - m.b, m.t]);
@@ -432,6 +678,7 @@ function capBands(sel, rows) {
      .attr("transform", "rotate(-32)").style("text-anchor", "end");
   svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`)
      .call(d3.axisLeft(y).ticks(4).tickFormat(count));
+  axisTitle(svg, "Land cover cap, excluding GST", (m.l + W - m.r) / 2, H - 4);
   svg.append("g").selectAll("g").data(d3.stack().keys(STACK)(bs)).join("g")
     .attr("fill", d => TYPE_FILL[d.key])
     .selectAll("rect").data(d => d.map(v => ({...v, key: d.key}))).join("rect")
@@ -446,19 +693,63 @@ function capBands(sel, rows) {
 function actSummary(rows) {
   const paid = rows.filter(r => r.settlement > 0);
   const claims = rows.filter(r => r.claimed);
-  const undamaged = rows.length - claims.length;
+  const damagedCount = rows.filter(r => r.damaged).length;
+  const undamaged = rows.filter(r => r.insured && !r.damaged).length;
+  const uninsured = rows.filter(r => !r.insured && r.damaged).length;
   const total = d3.sum(rows, r => r.settlement);
   const byBasis = BASES.map(b => [b, claims.filter(r => r.basis === b).length]);
   const most = d3.max(byBasis, d => d[1]) || 1;
+  // The existing land structures the claims damaged: retaining walls, and
+  // bridges and culverts. Not the walls the module invents to reinstate
+  // landslide ground. A CSV from before the counts were carried counts one of
+  // each per claim that has any.
+  const counted = (r, column, flag) => r[column] != null ? nz(r[column]) : (nz(r[flag]) > 0 ? 1 : 0);
+  const walls = {
+    n: d3.sum(claims, r => counted(r, "damaged_wall_count", "has_damaged_wall")),
+    repair: d3.sum(claims, r => r.wall + r.wallFees), cap: d3.sum(claims, r => r.wallCounted),
+  };
+  const crossings = {
+    n: d3.sum(claims, r => counted(r, "damaged_crossing_count", "has_crossing")),
+    repair: d3.sum(claims, r => r.crossing + r.crossingFees),
+    cap: d3.sum(claims, r => r.crossingCounted),
+  };
+  const structures = [["Retaining walls", walls], ["Bridges and culverts", crossings],
+    ["<b>Land structures</b>", {n: walls.n + crossings.n, repair: walls.repair + crossings.repair,
+                                cap: walls.cap + crossings.cap}]];
   d3.select("#actSummary").attr("class", null).html(
-    `<div class="big">${money(total)}</div>
-     <div class="note" style="margin-top:0">total settlement, ${count(paid.length)} of
-       ${count(claims.length)} claims paid</div>
-     <table style="margin-top:8px">
-       <tr><td>Total repair cost</td><td class="n">${money(d3.sum(rows, r => r.repair))}</td></tr>
-       <tr><td>Average per claim paid</td><td class="n">${money(total / Math.max(1, paid.length))}</td></tr>
-       <tr><td>Average over every claim</td><td class="n">${money(total / Math.max(1, claims.length))}</td></tr>
+    `<div class="big">${thousands(total)}</div>
+     <div class="note" style="margin-top:0">total settlement, excluding GST</div>
+     <table style="margin-top:6px">
+       <tr><td>Properties</td><td class="n">${count(rows.length)}</td></tr>
+       <tr><td>&nbsp;&nbsp;with damage</td><td class="n">${count(damagedCount)}</td></tr>
+       <tr><td>&nbsp;&nbsp;&nbsp;&nbsp;of which insured: <b>claims</b></td><td class="n"><b>${count(claims.length)}</b></td></tr>
+       <tr><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paid something after the excess</td><td class="n">${count(paid.length)}</td></tr>
      </table>
+     <div class="note">Liquefaction costs: ${!document.getElementById("liqOn").checked
+       ? "<b>excluded</b> &mdash; liquefaction damage, claims and costs are all left out"
+       : rows[0]?.liq_method ?? "not recorded in this CSV"}</div>
+     <table style="margin-top:8px">
+       <tr><td>Total repair cost</td><td class="n">${thousands(d3.sum(claims, r => r.repair))}</td></tr>
+       <tr><td>Repair cost not covered</td><td class="n">${thousands(d3.sum(claims, r => Math.max(0, r.repair - r.settlement)))}</td></tr>
+       <tr><td>Average settlement per claim</td><td class="n">${thousands(total / Math.max(1, claims.length))}</td></tr>
+     </table>
+     <h2 style="margin-top:14px">Damaged land structures</h2>
+     <table>
+       <tr><th></th><th class="n">Damaged</th><th class="n">Repair cost</th>
+           <th class="n" title="The lesser of the undepreciated value and the sub-cap">Counted toward cap</th></tr>
+       ${structures.map(([name, x]) => `
+       <tr><td>${name}</td><td class="n">${count(x.n)}</td>
+           <td class="n">${thousands(x.repair)}</td><td class="n">${thousands(x.cap)}</td></tr>`).join("")}
+     </table>
+     <div class="note">Existing structures on the claims, counted one by one; the new
+       walls built to reinstate landslide ground are not counted. A wall's repair cost
+       is its replacement with its share of the professional fees, mob/demob, project
+       management and contingency. A damaged bridge or
+       culvert is replaced at $15,000 a metre of span over a 5 m default ($75,000),
+       or cleared for $1,000 where a landslide only buried it, with project
+       management and contingency on either; it is worth its
+       replacement. What a structure counts toward the cap is the lesser of its
+       undepreciated value and the sub-cap.</div>
      <h2 style="margin-top:14px">How the claims settle</h2>
      <table>${byBasis.map(([b, n]) => `
        <tr><td>${b}<div class="basisbar" style="width:${100 * n / most}%"></div></td>
@@ -468,7 +759,9 @@ function actSummary(rows) {
      <div class="note">A claim is a property with damage. ${count(undamaged)} more insured
        properties have none &mdash; hill land the landslides missed, or flat land in the
        None liquefaction state, which still carries the Canterbury average cost but has
-       nothing to claim for &mdash; and are left out of every count.</div>`);
+       nothing to claim for &mdash; and are left out of every count. ${count(uninsured)}
+       damaged properties are uninsured at the penetration set, so are not claims either;
+       their repair cost is left out of the totals.</div>`);
 }
 
 function capSummary(scenarios, mode, histOf) {
@@ -476,54 +769,107 @@ function capSummary(scenarios, mode, histOf) {
   d3.select("#capSummary").html(
     `<table>
        <tr><th>Cap</th><th class="n">Claims above</th><th class="n">Total settlement</th>
-           <th class="n">vs the Act</th></tr>
+           <th class="n">vs the Act</th><th class="n">Change</th>
+           <th class="n">Not covered</th></tr>
        ${scenarios.map(s => `
-       <tr><td>${money(s.k)}</td>
+       <tr><td>${money(s.k)}${CAP_NAMES[s.k]
+             ? `<div class="note" style="margin:0">${CAP_NAMES[s.k]}</div>` : ""}</td>
            <td class="n">${count(s.above)} (${pct(s.share)})</td>
-           <td class="n">${short(s.total)}</td>
-           <td class="n ${s.delta > 0 ? "up" : "down"}">${s.delta > 0 ? "+" : ""}${short(s.delta)}</td></tr>`).join("")}
+           <td class="n">${millions(s.total)}</td>
+           <td class="n ${s.delta > 0 ? "up" : "down"}">${s.delta > 0 ? "+" : ""}${millions(s.delta)}</td>
+           <td class="n ${s.delta > 0 ? "up" : "down"}">${change(s.deltaShare)}</td>
+           <td class="n" title="${count(s.short)} claims left short">${millions(s.shortfall)}</td></tr>`).join("")}
      </table>
      <div class="note">"Claims above" counts claims whose ${what} is over the cap.
+       "Not covered" is the repair cost the settlement leaves unpaid, the excess
+       included; hover over it for the number of claims left short.
        ${mode === "replace"
-         ? "The cap <b>replaces</b> the Act's land cover cap: land is no longer valued and each claim is paid its repair cost up to the cap, less the excess."
+         ? "The land cap <b>replaces</b> the Act's land value cover cap: land is no longer valued and each claim is paid its repair cost up to the land cap, less the excess."
          : "The cap <b>limits</b> the Act's land cover cap, as PolicySettings.total_cap_nzd does in the loss module, so it can only lower a settlement."}
-     </div>`);
+     </div>
+     <table style="margin-top:10px">
+       <tr><th>Cap</th><th class="n">Better off</th><th class="n">Worse off</th>
+           <th class="n">Unchanged</th></tr>
+       ${scenarios.map(s => {
+         const of = n => `<span title="${count(n)} of ${count(s.claims)} claims">${pct(n / Math.max(1, s.claims))}</span>`;
+         return `
+       <tr><td>${money(s.k)}${CAP_NAMES[s.k]
+             ? `<div class="note" style="margin:0">${CAP_NAMES[s.k]}</div>` : ""}</td>
+           <td class="n">${of(s.better)}</td>
+           <td class="n">${of(s.worse)}</td>
+           <td class="n">${of(s.unchanged)}</td></tr>`;
+       }).join("")}
+     </table>
+     <div class="note">Each claim's settlement under the cap against its settlement
+       under the Act: better off where the cap pays more, worse off where it pays
+       less, unchanged where the two are within a dollar. Shares of claims; hover
+       for the counts.</div>`);
 }
 
 function claimDetail(r, mode) {
   if (!r) return;
   const lines = [
     ["Claim", `<code>${r.claim_id ?? ""}</code>`],
-    ["Type", r.type], ["Dwellings", count(Math.max(1, nz(r.dwellings)))],
+    ["Type", r.type], ["Insured", r.insured ? "Yes" : "No, so paid nothing"],
+    ["Dwellings", count(Math.max(1, nz(r.dwellings)))],
     ["Damaged land", `${d3.format(",.1f")(nz(r.damaged_area_m2))} m²`],
-    ["Land rate (incl GST)", `${money(nz(r.land_rate_incl_gst))}/m²`],
+    ["&nbsp;&nbsp;Evacuated", `${d3.format(",.1f")(nz(r.evacuated_m2))} m²`],
+    ["&nbsp;&nbsp;Inundated", `${d3.format(",.1f")(nz(r.inundated_m2))} m²`],
+    [`<span class="note">&nbsp;&nbsp;Evacuated and inundated land overlap, so they do not
+      sum to the damaged land.</span>`, "&nbsp;"],
+    ["Cause", r.cause || "-"],
+    ["Land rate (excl GST)", `${money(nz(r.land_rate_incl_gst) / (1 + GST_RATE))}/m²`],
     ["Site ratings (access, earthworks, constructability)",
      `${r.access ?? "-"}, ${r.earthworks ?? "-"}, ${r.constructability ?? "-"} &rarr; &times;${d3.format(".2f")(1 + nz(r.site_multiplier))}`],
     ["<b>Land cover cap</b>", ""],
-    ["Value of the damaged land", money(r.landValue)],
-    ["Damaged walls' value", money(r.udv)],
-    ["Bridges and culverts", money(r.crossing)],
-    ["Cap", `<b>${money(r.cap)}</b>`],
+    ["Value of damaged land", money(r.landValue)],
+    // Each kind of land structure adds the lesser of its undepreciated value and
+    // its sub-cap: the sub-cap is the most it can add, per dwelling.
+    ["<i>Undepreciated value of land structures</i>", ""],
+    ["&nbsp;&nbsp;Retaining walls", money(r.udv)],
+    ["&nbsp;&nbsp;Bridges and culverts", money(r.crossingValue)],
+    ["<i>Land structures sub-cap</i>", ""],
+    ["&nbsp;&nbsp;Retaining walls", money(r.rwLimit)],
+    ["&nbsp;&nbsp;Bridges and culverts", money(r.bcLimit)],
+    ["<i>Counted toward the cap (the lesser of the two)</i>", ""],
+    ["&nbsp;&nbsp;Retaining walls", money(r.wallCounted)],
+    ["&nbsp;&nbsp;Bridges and culverts", money(r.crossingCounted)],
+    ["Total cap value", `<b>${money(r.cap)}</b>`],
     ["<b>Repair cost</b>", ""],
-    ["Walls replaced", money(r.wall)], ["New wall built", money(r.newWall)],
-    ["Spoil removal", money(r.spoil)], ["Professional fees", money(r.fees)],
-    ["Liquefaction", money(r.liq)], ["Crossings", money(r.crossing)],
+    ["Walls replaced", money(r.wall)],
+    // A new wall for each separate slip no damaged wall holds (T-124).
+    [nz(r.new_wall_count) > 1 ? `New walls built (${count(nz(r.new_wall_count))}, one per slip)`
+       : "New wall built", money(r.newWall)],
+    ["Professional fees incl. consents (20% of walls, min $5,100)", money(r.fees)],
+    ["Mob/demob (15% of walls and fees, min $5,000)", money(r.mob)],
+    ["Crossings", money(r.crossing)],
+    ["Project management (10% of above)", money(r.pm)],
+    ["Spoil removal", money(r.spoil)],
+    ["Liquefaction", money(r.liq)],
+    ["Contingency (20% of above)", money(r.contingency)],
     ["Repair cost", `<b>${money(r.repair)}</b>`],
-    ["<b>Settlement under the Act</b>", ""],
+    ["<b>Settlement under NHI Act 2023</b>", ""],
     ["Lesser of repair and cap", money(r.payable)], ["Excess", money(r.excess)],
     ["Settlement", `<b>${money(r.settlement)}</b>`], ["How it settled", r.basis],
   ];
-  const caps = CAPS.map(k => [`Under a ${money(k)} cap`, money(settleUnderCap(r, k, mode))]);
+  const caps = CAPS.map(k => [`Under the ${capName(k)} cap`, money(settleUnderCap(r, k, mode))]);
   d3.select("#claimDetail").attr("class", null).html(
     `<table>${lines.concat([["<b>Under each land cap</b>", ""]], caps).map(([k, v]) =>
       v === "" ? `<tr><td colspan="2" style="padding-top:8px">${k}</td></tr>`
-               : `<tr><td>${k}</td><td class="n">${v}</td></tr>`).join("")}</table>`);
+               : `<tr><td>${k}</td><td class="n">${v}</td></tr>`).join("")}</table>
+     <div class="note">Ground can be both evacuated and inundated, so the two can add to
+       more than the damaged land, which counts it once. A retaining wall failure is a
+       wall on the property that failed and brought ground down; whether a landslide on
+       a property with one came from the wall or the slope is not yet known.</div>`);
 }
 
 // ---- map ----------------------------------------------------------------
 // Every basemap here is key-free. CARTO's tiles now want an API key, and a key
 // embedded in a file handed to a client is a problem of its own.
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+// How far the map zooms in, whatever the basemap: close enough to tell one
+// property's dot from its neighbour's (21 is a few centimetres a pixel).
+const MAP_MAX_ZOOM = 21;
 const BASEMAPS = {
   grey: {
     url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
@@ -536,10 +882,6 @@ const BASEMAPS = {
   topo: {
     url: `${ESRI}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`,
     attribution: "Esri, HERE, Garmin, &copy; OpenStreetMap contributors", max: 19,
-  },
-  osm: {
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: "&copy; OpenStreetMap contributors", max: 19,
   },
 };
 let MAP = null, TILES = null, TILE_KEY = null, DOTS = null, MARKERS = null;
@@ -564,10 +906,14 @@ function colouring(rows, mode) {
     return [d => c(Math.min(d[key], max)),
             [["$0", c(0)], [money(max / 2), c(max / 2)], [money(max) + "+", c(max)]]];
   }
-  const vals = Array.from(new Set(rows.map(r => String(r[mode])))).sort();
+  // The has_ columns are flags, carried as 1 and 0, and read as True and False.
+  const label = mode.startsWith("has_")
+    ? d => (nz(d[mode]) > 0 ? "True" : "False")
+    : d => String(d[mode]);
+  const vals = Array.from(new Set(rows.map(label))).sort();
   const c = d3.scaleOrdinal().domain(vals)
     .range([HUE.none, HUE.liq, HUE.wall, HUE.both]);
-  return [d => c(String(d[mode])), vals.map(v => [v, c(v)])];
+  return [d => c(label(d)), vals.map(v => [v, c(v)])];
 }
 
 function visible(r, which) {
@@ -579,9 +925,10 @@ function visible(r, which) {
 
 function drawMap(rows) {
   const lon = d3.extent(rows, r => +r.lon), lat = d3.extent(rows, r => +r.lat);
-  if (!MAP) {
-    MAP = L.map("map", {preferCanvas: true, zoomSnap: 0.25});
+  if (!MAP) MAP = L.map("map", {preferCanvas: true, zoomSnap: 0.25, maxZoom: MAP_MAX_ZOOM});
+  if (REFIT && rows.length) {
     MAP.fitBounds([[lat[0], lon[0]], [lat[1], lon[1]]], {padding: [18, 18]});
+    REFIT = false;
   }
 
   // Tiles are the one thing here that reaches the internet, so they are a
@@ -592,8 +939,12 @@ function drawMap(rows) {
   if (want !== TILE_KEY) {
     if (TILES) { MAP.removeLayer(TILES); TILES = null; }
     if (BASEMAPS[want]) {
+      // Past a basemap's own last zoom its tiles are stretched rather than the
+      // map stopping there, so the dots can be zoomed in on far enough to pick
+      // one out of a street.
       TILES = L.tileLayer(BASEMAPS[want].url, {
-        attribution: BASEMAPS[want].attribution, maxZoom: BASEMAPS[want].max,
+        attribution: BASEMAPS[want].attribution,
+        maxNativeZoom: BASEMAPS[want].max, maxZoom: MAP_MAX_ZOOM,
       }).addTo(MAP);
     }
     TILE_KEY = want;
@@ -619,13 +970,17 @@ function drawMap(rows) {
     MARKERS[i].claim = rows[i];
     MARKERS[i].index = i;
     MARKERS[i].setStyle({
-      fillColor: fill(rows[i]), radius: picked ? radius * 2 : radius,
+      fillColor: rows[i].insured ? fill(rows[i]) : HUE.uninsured,
+      radius: picked ? radius * 2 : radius,
       opacity: on ? 0.9 : 0, fillOpacity: on ? 0.85 : 0,
       color: picked ? "#1c1c1a" : "#ffffff", weight: picked ? 2 : 0.6,
     });
   }
 
-  d3.select("#mapLegend").html(legend.map(([label, colour]) =>
+  // Uninsured properties are drawn in one colour whatever the map is coloured by,
+  // and only "All properties" shows them.
+  const keyed = which === "all" ? legend.concat([["Uninsured", HUE.uninsured]]) : legend;
+  d3.select("#mapLegend").html(keyed.map(([label, colour]) =>
     `<span><i style="background:${colour}"></i>${label}</span>`).join(""));
 }
 
@@ -649,6 +1004,11 @@ function show(e, html) {
 }
 const hide = () => tip.style("opacity", 0);
 
+// Whether a claim damaged an existing land structure: a retaining wall, or a
+// bridge or culvert. A wall built to reinstate landslide ground is a remedy,
+// not a damaged structure.
+const hasLandStructure = r => nz(r.has_damaged_wall) > 0 || nz(r.has_crossing) > 0;
+
 // ---- render -------------------------------------------------------------
 function render({resettle = true} = {}) {
   if (!RAW.length) return;
@@ -656,18 +1016,33 @@ function render({resettle = true} = {}) {
     const s = settings();
     ROWS = RAW.map(r => settle(r, s));
   }
-  const rows = ROWS;
+  // A CSV of several territorial authorities shows one of them or all; the
+  // whole page, totals and map, follows.
+  const ta = val("taFilter");
+  const rows = ta ? ROWS.filter(r => r.territorial_authority === ta) : ROWS;
   const mode = val("capMode"), histOf = val("histOf");
   const value = histOf === "repair" ? r => r.repair : r => r.settlement;
   const scenarios = capScenarios(rows, mode, value);
 
-  d3.select("#histTitle").text(histOf === "repair" ? "repair cost" : "settlement under the Act");
-  mainHistogram("#hMain", rows, value, scenarios);
+  // The chart can show only the claims with a damaged land structure -- an
+  // existing retaining wall, bridge or culvert, not a wall built to reinstate
+  // landslide ground. The filter is the chart's alone: its cap lines are
+  // labelled over the claims it shows, and every total stays on all claims.
+  const structuresOnly = val("histClaims") === "structures";
+  const histRows = structuresOnly ? rows.filter(hasLandStructure) : rows;
+  d3.select("#histTitle").text(
+    (histOf === "repair" ? "repair cost" : "settlement under NHI Act 2023")
+    + (structuresOnly ? " (land structure claims only)" : ""));
+  mainHistogram("#hMain", histRows, value,
+    structuresOnly ? capScenarios(histRows, mode, value) : scenarios);
   d3.select("#legend").html(STACK.map(t =>
     `<span><i style="background:${TYPE_FILL[t]}"></i>${t}</span>`).join("") +
-    `<span><i style="background:${HUE.cap}"></i>Land cap scenario</span>`);
-  lines("#hLines", rows);
-  capBands("#hCap", rows.filter(r => r.cap > 0));
+    // Drawn as the dashed line it stands for, in the histogram's own style.
+    `<span><svg class="dash" width="18" height="10"><line class="capline" x1="0" y1="5"
+      x2="18" y2="5"></line></svg>Land cap scenario</span>`);
+  // Claims only, so an uninsured property's repair is not counted as NHC's.
+  lines("#hLines", rows.filter(r => r.claimed), document.getElementById("liqOn").checked);
+  capBands("#hCap", rows.filter(r => r.claimed && r.cap > 0));
   actSummary(rows);
   capSummary(scenarios, mode, histOf);
   claimDetail(SELECTED == null ? null : rows[SELECTED], mode);
@@ -686,12 +1061,47 @@ function debounce(fn, ms) {
 }
 const rerender = debounce(() => render(), 180);
 
+// The source copy of this page is never stamped, so it says so rather than
+// showing the placeholder. The token is split so the stamping in
+// gen_viewer_data.py, which replaces every copy of it, leaves this check alone.
+if (document.getElementById("version").textContent === "__VIEWER" + "_VERSION__") {
+  document.getElementById("version").textContent =
+    "unversioned source copy; issue the one gen_viewer_data.py writes to report/loss/viewer/";
+}
+
 function load(text) {
   RAW = d3.csvParse(text, d3.autoType);
+  // Open on the module's escalation, which the CSV carries, so the page and
+  // the module agree; a CSV from before it was carried keeps the field's own.
+  if (RAW[0]?.liq_escalation != null) {
+    document.getElementById("liqEsc").value = RAW[0].liq_escalation;
+  }
+  // Open on the module's choice too: volunteers in unless the run priced
+  // clearing without them.
+  document.getElementById("sva").checked = RAW[0]?.liq_sva == null || nz(RAW[0].liq_sva) > 0;
+  // The CSV says which version built it; the page beside it may be newer, and
+  // an issued pair should match, so a different commit is called out.
+  const built = RAW[0]?.built_with, page = document.getElementById("version").textContent;
+  const commit = v => String(v).split(",")[0];
+  document.getElementById("dataVersion").textContent = built == null
+    ? " · data: version not recorded"
+    : ` · data: ${built}${commit(built) === commit(page) ? "" : " (a different version from this page)"}`;
   MARKERS = null;
   ROWS = [];
   SELECTED = null;
-  document.getElementById("drop").textContent = `${RAW.length.toLocaleString()} claims loaded`;
+  REFIT = true;
+  // The authorities the CSV holds, if it holds more than one -- a combined
+  // regional CSV carries territorial_authority, a single TA's does not.
+  const authorities = Array.from(
+    new Set(RAW.map(r => r.territorial_authority).filter(v => v != null))).sort();
+  const pick = document.getElementById("taFilter");
+  pick.innerHTML = '<option value="">All</option>' +
+    authorities.map(a => `<option value="${a}">${a}</option>`).join("");
+  document.getElementById("taBox").hidden = authorities.length < 2;
+  const dropBox = document.getElementById("drop");
+  dropBox.classList.add("loaded");
+  dropBox.innerHTML = `${RAW.length.toLocaleString()} properties loaded` +
+    '<span class="hint">drag another CSV here to replace it</span>';
   render();
 }
 
@@ -722,8 +1132,28 @@ drop.addEventListener("drop", e => e.dataTransfer.files[0].text().then(load));
 // A policy or sensitivity control changes the answer, so it re-settles --
 // debounced, because it is the expensive one. Everything else changes what is
 // shown rather than what is owed, so it repaints only.
-d3.selectAll("#config input").on("input", rerender);
-d3.selectAll("#colourBy, #basemap, #showDots, #dotSize, #histOf, #capMode")
+d3.selectAll("#config input, #config select:not(#taFilter)").on("input", rerender);
+// Choosing an authority changes what is shown, not what is owed, so nothing is
+// re-settled; the markers are rebuilt for the claims shown and the map reframed.
+d3.select("#taFilter").on("input", () => {
+  SELECTED = null;
+  MARKERS = null;
+  REFIT = true;
+  render({resettle: false});
+});
+// With liquefaction left out, its own settings do nothing, so they are disabled.
+d3.select("#liqOn").on("input.show", () => {
+  const on = document.getElementById("liqOn").checked;
+  document.getElementById("sva").disabled = !on;
+  document.getElementById("liqEsc").disabled = !on;
+});
+// Only the excess basis in use shows its inputs.
+d3.select("#exBasis").on("input.show", () => {
+  const fixed = val("exBasis") === "fixed";
+  document.getElementById("exDwelling").hidden = fixed;
+  document.getElementById("exFixedBox").hidden = !fixed;
+});
+d3.selectAll("#colourBy, #basemap, #showDots, #dotSize, #histOf, #histClaims, #capMode")
   .on("input", () => render({resettle: false}));
 window.addEventListener("resize", debounce(() => RAW.length && render({resettle: false}), 200));
 </script>

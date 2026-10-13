@@ -24,7 +24,6 @@ def test_tuples_hold_the_exact_contract_strings():
     assert LAND_COLUMNS == (
         "land_id",
         "claim_id",
-        "$/m2 market value",
         "Liq_LD_state",
         "Liq_LD_cost_excl_gst_nzd",
         "Liq_LD_damaged_area",
@@ -33,11 +32,17 @@ def test_tuples_hold_the_exact_contract_strings():
         "inundated_insured_area",
         "inundated_mean_depth",
         "evacuated_area",
+        "footprint_area",
+        "property_area",
+        "land_slide_footprint_area",
+        "suburb",
     )
     assert RW_COLUMNS == (
         "rw_id",
         "claim_id",
         "rw_size",
+        "rw_type",
+        "rw_height",
         "rw_length",
         "is_damaged_by_shaking",
         "is_evacuated",

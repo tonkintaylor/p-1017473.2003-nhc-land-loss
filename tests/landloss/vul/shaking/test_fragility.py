@@ -12,6 +12,7 @@ from landloss.hazard.landslide.urban.wall_type_fragility import (
 from landloss.hazard.realisation import realisation_seed
 from landloss.vul.shaking.fragility import (
     BETA_FAILURE_PROBABILITY,
+    CROSSING_REPLACEMENT_BY_LD_STATE,
     DAMAGE_STATES,
     NO_DAMAGE,
     PGA_IM,
@@ -20,6 +21,7 @@ from landloss.vul.shaking.fragility import (
     WALL_FRAGILITY_COLUMNS,
     WALL_RATE_FACTOR,
     beta_failure_probability,
+    crossing_failure_probability,
     draw_damage_states,
     wall_failure_probability,
 )
@@ -244,3 +246,29 @@ def test_no_walls_gives_an_empty_frame_with_the_columns():
     result = wall_failure_probability(frame, np.array([]), wall_table())
     assert result.empty
     assert list(result.columns) == list(WALL_FRAGILITY_COLUMNS)
+
+
+# --- culverts and bridges, from the land damage state (T-36) -------------------
+
+
+def test_a_crossings_chance_follows_its_land_damage_state():
+    probability = crossing_failure_probability(pd.Series([1, 2, 3, 4, 5, 6]))
+    assert probability == pytest.approx([0.0, 0.01, 0.05, 0.20, 0.40, 0.40])
+
+
+def test_a_crossing_off_the_liquefaction_grid_cannot_be_broken_by_it():
+    probability = crossing_failure_probability(pd.Series([pd.NA, 5], dtype="Int64"))
+    assert probability == pytest.approx([0.0, 0.40])
+
+
+def test_a_land_damage_state_outside_one_to_six_is_refused():
+    with pytest.raises(ValueError, match="1 to 6"):
+        crossing_failure_probability(pd.Series([7]))
+
+
+def test_the_chances_never_fall_as_the_land_damage_worsens():
+    chances = [
+        CROSSING_REPLACEMENT_BY_LD_STATE[s]
+        for s in sorted(CROSSING_REPLACEMENT_BY_LD_STATE)
+    ]
+    assert chances == sorted(chances)

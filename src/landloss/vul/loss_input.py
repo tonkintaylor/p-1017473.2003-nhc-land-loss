@@ -41,16 +41,22 @@ from landloss.domain.loss_contract import (
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LAND_COLUMNS,
+    LAND_FOOTPRINT_AREA_COLUMN,
     LAND_ID_COLUMN,
+    LAND_PROPERTY_AREA_COLUMN,
+    LAND_SUBURB_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_FAILURE_COLUMNS,
+    LANDSLIDE_FOOTPRINT_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
     LIQ_LD_COST_COLUMN,
     LIQ_LD_STATE_COLUMN,
-    MARKET_VALUE_COLUMN,
     RW_COLUMNS,
+    RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
     TOTAL_INSURED_LAND_AREA_COLUMN,
     check_contract_columns,
 )
@@ -58,7 +64,9 @@ from landloss.exposure.culverts_bridges.crossings import BRIDGE, CULVERT
 from landloss.exposure.land.extent import (
     AREA_COLUMN,
     DWELLING_COUNT_COLUMN,
-    LAND_RATE_INCL_GST_COLUMN,
+    FOOTPRINT_AREA_COLUMN,
+    PROPERTY_AREA_COLUMN,
+    SUBURB_COLUMN,
 )
 from landloss.vul.landslide.land.damaged_area import (
     AREA_COLUMNS,
@@ -66,6 +74,9 @@ from landloss.vul.landslide.land.damaged_area import (
     EVACUATED,
     INUNDATED,
     UNION_AREA_COLUMN,
+)
+from landloss.vul.landslide.land.damaged_area import (
+    FOOTPRINT_AREA_COLUMN as SLIDE_FOOTPRINT_COLUMN,
 )
 from landloss.vul.shaking.fragility import DAMAGE_STATE_COLUMN, REPLACE
 
@@ -78,10 +89,21 @@ WORLD_ID_COLUMN = "world_id"
 
 # Exposure's column names for what the contract renames.
 SIZE_CLASS_COLUMN = "size_class"
+# Each property a wall enters by at least 1 m and its length there, primary
+# first (exposure rw step 6): a list of {"property_id", "length_m"}.
+PROPERTY_LENGTHS_COLUMN = "property_lengths_m"
+WALL_TYPE_COLUMN = "wall_type"
+HEIGHT_COLUMN = "height_m"
 LENGTH_COLUMN = "length_m"
 ASSET_COLUMN = "asset"
 
 FLAG_COLUMNS = (IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN)
+
+# The wall a row of the rw table is a piece of, written after the contract
+# columns. A wall on one property is its own piece; a wall crossing several is
+# one row per property (split_walls_by_property), each ``<rw_id>-P<n>``.
+PARENT_RW_ID_COLUMN = "parent_rw_id"
+PIECE_SUFFIX = "-P"
 
 
 def _geo(
@@ -144,24 +166,29 @@ def build_land_table(
     """Assemble the land table, one row per insured land polygon.
 
     Args:
-        insured: The insured land, carrying ``land_id``, ``claim_id``, the land
-            rate including GST, the polygon area and the dwelling count. Only
-            the GST-inclusive rate is handed on, as the market value.
+        insured: The insured land, carrying ``land_id``, ``claim_id``, the
+            polygon, footprint and property areas, the suburb and the dwelling
+            count. No land value: the loss module values the land itself.
         liquefaction: The liquefaction land damage state, settled cost and
             damaged area per ``land_id``. Land without a row keeps a missing
             state, no cost and no damaged area. The cost is 2010/2011
             dollars excluding GST, as the Canterbury rates are stated; `loss`
             puts it on the Act's basis.
-        landslide: The landslide land step's areas and inundated depth per
-            ``land_id``. Land without a row has no damaged area.
+        landslide: The landslide land step's areas, inundated depth and the
+            damaged ground under the footprint per ``land_id``, and the
+            landslides that reached it as the lists of
+            :data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`
+            where the step wrote them. Land without a row has no damaged area
+            and empty lists.
         ld_state_column: The damage state's column in ``liquefaction``.
         ld_cost_column: The settled cost's column in ``liquefaction``.
         ld_area_column: The damaged area's column in ``liquefaction``.
 
     Returns:
         :data:`~landloss.domain.loss_contract.LAND_COLUMNS`, then the dwelling
-        count as an extra column (pending Q-07), then the geometry, in the order
-        and CRS of ``insured``.
+        count as an extra column (pending Q-07), then the failure lists where
+        ``landslide`` carries them, then the geometry, in the order and CRS of
+        ``insured``.
 
     Raises:
         ValueError: If ``land_id`` is duplicated in ``insured``, or a contract
@@ -184,7 +211,6 @@ def build_land_table(
         {
             LAND_ID_COLUMN: land_ids,
             CLAIM_ID_COLUMN: insured[CLAIM_ID_COLUMN],
-            MARKET_VALUE_COLUMN: insured[LAND_RATE_INCL_GST_COLUMN].astype("float64"),
             LIQ_LD_STATE_COLUMN: land_ids.map(states),
             LIQ_LD_COST_COLUMN: land_ids.map(costs).astype("float64").fillna(0.0),
             LIQ_LD_AREA_COLUMN: land_ids.map(liquefied_areas)
@@ -195,39 +221,141 @@ def build_land_table(
             INUNDATED_AREA_COLUMN: from_slides(AREA_COLUMNS[INUNDATED], 0.0),
             INUNDATED_MEAN_DEPTH_COLUMN: from_slides(DEPTH_COLUMNS[INUNDATED], None),
             EVACUATED_AREA_COLUMN: from_slides(AREA_COLUMNS[EVACUATED], 0.0),
+            LAND_FOOTPRINT_AREA_COLUMN: insured[FOOTPRINT_AREA_COLUMN].astype(
+                "float64"
+            ),
+            LAND_PROPERTY_AREA_COLUMN: insured[PROPERTY_AREA_COLUMN].astype("float64"),
+            LANDSLIDE_FOOTPRINT_AREA_COLUMN: from_slides(SLIDE_FOOTPRINT_COLUMN, 0.0),
+            LAND_SUBURB_COLUMN: insured[SUBURB_COLUMN],
             DWELLING_COUNT_COLUMN: insured[DWELLING_COUNT_COLUMN],
             "geometry": insured.geometry,
         },
         index=insured.index,
     )
-    land = _geo(table, [*LAND_COLUMNS, DWELLING_COUNT_COLUMN], insured.crs)
+    # Each failure apart, for loss to give each its own wall (T-124). A step 3
+    # run from before the lists were written has none, and loss then pools a
+    # claim's ground as before.
+    failures = [column for column in LANDSLIDE_FAILURE_COLUMNS if column in slides]
+    for column in failures:
+        table[column] = [_as_list(values) for values in land_ids.map(slides[column])]
+    land = _geo(table, [*LAND_COLUMNS, DWELLING_COUNT_COLUMN, *failures], insured.crs)
     check_contract_columns(land.columns, LAND_COLUMNS, table="land")
     return land
 
 
-def build_rw_table(
-    walls: gpd.GeoDataFrame, states: pd.DataFrame, flags: pd.DataFrame
+def _as_list(values: object) -> list:
+    """Return a failure list as a list, a polygon no landslide reached as empty.
+
+    Parquet hands lists back as arrays, and a polygon with no row as missing.
+    """
+    if values is None or (isinstance(values, float) and pd.isna(values)):
+        return []
+    return list(values)
+
+
+def split_walls_by_property(
+    rw: gpd.GeoDataFrame,
+    property_lengths: pd.Series,
+    claims: set | None = None,
 ) -> gpd.GeoDataFrame:
-    """Assemble the retaining wall table, one row per insured wall.
+    """Return the wall table with each wall split onto the properties it crosses.
+
+    A wall on one property is one row, as it was. A wall crossing several is one
+    row per property it enters by at least 1 m, each carrying that property's
+    claim and the length of wall on it, and everything else -- type, height,
+    damage -- from the wall, since the wall stands or fails as one. So each
+    property settles the wall on its own land against its own sub-cap and
+    excess, rather than the property holding most of it settling all of it.
+
+    The primary property takes the wall's length less the other pieces, so the
+    slivers under 1 m stay with it and the wall's length is conserved. A piece
+    on a property that is not a claim is dropped: that wall is not insured
+    there, and the primary keeps only its own share. Each piece keeps the whole
+    wall's line, since the population carries no line per property.
+
+    Args:
+        rw: The retaining wall table, one row per wall, keyed on ``rw_id``.
+        property_lengths: Each wall's :data:`PROPERTY_LENGTHS_COLUMN` by
+            ``rw_id``; a wall with none, or an empty list, is not split.
+        claims: The claim ids a piece may land on; ``None`` keeps every piece.
+
+    Returns:
+        ``rw`` with :data:`PARENT_RW_ID_COLUMN` added, one row per piece, in the
+        order of ``rw`` and, within a wall, primary first.
+    """
+    rows = []
+    for record in rw.to_dict("records"):
+        parent = record[RW_ID_COLUMN]
+        entries = property_lengths.get(parent)
+        entries = [] if entries is None else list(entries)
+        others = [
+            entry
+            for entry in entries
+            if entry["property_id"] != record[CLAIM_ID_COLUMN]
+        ]
+        kept = [
+            entry
+            for entry in others
+            if claims is None or entry["property_id"] in claims
+        ]
+        if not others:
+            rows.append({**record, PARENT_RW_ID_COLUMN: parent})
+            continue
+        primary = record[RW_LENGTH_COLUMN] - sum(
+            float(entry["length_m"]) for entry in others
+        )
+        pieces = [(record[CLAIM_ID_COLUMN], max(primary, 0.0))] + [
+            (entry["property_id"], float(entry["length_m"])) for entry in kept
+        ]
+        for number, (claim, length) in enumerate(pieces, start=1):
+            # A wall left on its primary alone keeps its own id.
+            piece_id = parent if len(pieces) == 1 else f"{parent}{PIECE_SUFFIX}{number}"
+            rows.append(
+                {
+                    **record,
+                    RW_ID_COLUMN: piece_id,
+                    CLAIM_ID_COLUMN: claim,
+                    RW_LENGTH_COLUMN: length,
+                    PARENT_RW_ID_COLUMN: parent,
+                }
+            )
+    columns = [*rw.columns, PARENT_RW_ID_COLUMN]
+    frame = pd.DataFrame(rows, columns=columns)
+    return gpd.GeoDataFrame(frame, geometry=rw.geometry.name, crs=rw.crs)
+
+
+def build_rw_table(
+    walls: gpd.GeoDataFrame,
+    states: pd.DataFrame,
+    flags: pd.DataFrame,
+    *,
+    claims: set | None = None,
+) -> gpd.GeoDataFrame:
+    """Assemble the retaining wall table, one row per insured wall per property.
 
     The table is spined on the world's wall population, so a wall on sloping
     ground, which the shaking step never sees, appears beside the flat-land
-    walls it does (contract section 7.14).
+    walls it does (contract section 7.14). A wall crossing property boundaries
+    is then split onto each property (:func:`split_walls_by_property`).
 
     Args:
         walls: The world's wall population, carrying ``rw_id``, ``claim_id``,
-            ``size_class``, ``length_m`` and the line geometry.
+            ``size_class``, ``wall_type``, ``height_m``, ``length_m`` and the
+            line geometry.
         states: The shaking step's ``damage_state`` per ``rw_id``, for the
             flat-land walls only. A wall with no row has no shaking damage
             from this source.
         flags: The wall landslide step's ``is_damaged_by_shaking``,
             ``is_evacuated`` and ``is_inundated`` per ``rw_id``, for every
             wall.
+        claims: The claims a piece of a wall may land on, normally those with
+            insured land; ``None`` keeps every piece.
 
     Returns:
-        :data:`~landloss.domain.loss_contract.RW_COLUMNS` then the geometry, in
-        the order and CRS of ``walls``. A wall is damaged by shaking when its
-        damage state is replace or the landslide step's flag says so.
+        :data:`~landloss.domain.loss_contract.RW_COLUMNS`, then
+        :data:`PARENT_RW_ID_COLUMN`, then the geometry, in the order and CRS of
+        ``walls``. A wall is damaged by shaking when its damage state is replace
+        or the landslide step's flag says so.
 
     Raises:
         ValueError: If ``rw_id`` repeats in ``walls`` or ``states``, a state
@@ -253,6 +381,8 @@ def build_rw_table(
             RW_ID_COLUMN: walls[RW_ID_COLUMN],
             CLAIM_ID_COLUMN: walls[CLAIM_ID_COLUMN],
             RW_SIZE_COLUMN: walls[SIZE_CLASS_COLUMN],
+            RW_TYPE_COLUMN: walls[WALL_TYPE_COLUMN],
+            RW_HEIGHT_COLUMN: walls[HEIGHT_COLUMN].astype("float64"),
             RW_LENGTH_COLUMN: walls[LENGTH_COLUMN].astype("float64"),
             "geometry": walls.geometry,
         },
@@ -269,6 +399,15 @@ def build_rw_table(
         replaced | merged[IS_DAMAGED_BY_SHAKING_COLUMN].to_numpy()
     )
     rw = _geo(merged, list(RW_COLUMNS), walls.crs)
+    if PROPERTY_LENGTHS_COLUMN in walls.columns:
+        lengths = pd.Series(
+            walls[PROPERTY_LENGTHS_COLUMN].to_numpy(),
+            index=walls[RW_ID_COLUMN].to_numpy(),
+        )
+    else:
+        lengths = pd.Series(dtype=object)
+    rw = split_walls_by_property(rw, lengths, claims)
+    rw = _geo(rw, [*RW_COLUMNS, PARENT_RW_ID_COLUMN], walls.crs)
     check_contract_columns(rw.columns, RW_COLUMNS, table="rw")
     return rw
 

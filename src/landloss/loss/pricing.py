@@ -15,10 +15,11 @@ difference between them is the site allowance::
 
 Access, earthworks and constructability are what it costs to work on this
 particular site; they are not part of what the wall cost to build, so they have
-no place in undepreciated value. Two things follow. Repair cost can never come
-out below UDV, because the multiplier is never negative -- which is the
-direction the two are known to run, though here it holds by construction rather
-than by evidence. And nothing about age or condition enters UDV at all:
+no place in undepreciated value. Two things follow. For the same construction,
+repair cost can never come out below UDV, because the multiplier is never
+negative -- though here it holds by construction rather than by evidence. A
+wall rebuilt as a cheaper type than the one that failed (T-122) can come out
+below it. And nothing about age or condition enters UDV at all:
 undepreciated means no deduction for age, so a twenty-year-old wall and a new
 one of the same construction and size are worth the same.
 
@@ -69,12 +70,14 @@ obtained rather than because it was decided against:
   ``min(repair, cap)`` less the excess, so understating repair can only lower a
   settlement, never raise it. Carried as **L-34**; the same-rate approach is the
   agreed basis meanwhile, not a stand-in for something better specified.
-- **Which wall type a modelled wall is.** The rates are keyed on construction
-  type, and :mod:`landloss.exposure.rw.beta_population` emits a size class and
-  an initial condition instead. Until the study settles that mapping, a share
-  of walls is priced as concrete and the rest as a timber pole wall whose pile
-  size is set by its height, :data:`TIMBER_POLE_HEIGHT_BANDS_M` -- see the note
-  on it below, because the choice of type moves the answer further than
+- **Whether the rate rows the wall types are mapped to are the right ones.**
+  Exposure draws each wall one of eight types and a retained height, and each
+  type is priced at the costing tool row ``retaining-wall-types.csv`` names
+  for it (:func:`construction_type`); the two timber pole types take their pile
+  size from the height. Two rows are proposals awaiting the lead --
+  ``garden_timber`` on the 175 mm pole rather than Sleepers, and
+  ``reinforced_concrete_post_1992`` on MSE rather than Soil Nail -- and the
+  rates span a factor of 21, so the mapping moves the answer further than
   anything else in this module.
 - **Enabling works, and the compliance items.** Chris Ewens was explicit that
   the wall rates carry no enabling works allowance. Whether enabling works is a
@@ -86,11 +89,12 @@ The rates and the multiplier table came from the costing tool itself; the
 meeting they were walked through at is ``.agents/context/nhc-costing-tool.md``.
 """
 
-import hashlib
 from dataclasses import dataclass
+from functools import cache
 
 import numpy as np
 
+from landloss.hazard.landslide.urban.wall_type_fragility import load_wall_types
 from landloss.loss.policy import PolicySettings
 
 # Retaining wall rates in dollars per square metre of wall face, **excluding
@@ -133,18 +137,22 @@ WALL_RATE_EXCL_GST_NZD_PER_M2 = {
 # months, so a run made long after this date is pricing on stale figures.
 WALL_RATES_AS_AT = "2026-09-23"
 
-# The beta's stand-in for a construction type. Nothing maps a modelled wall onto
-# one of the 29 types, so a share of walls is priced as concrete and the rest as
-# timber pole, with the pile size set by the wall's height
+# The costing tool row ``retaining-wall-types.csv`` gives a timber pole wall
+# type: no single row, but the pile its height calls for
 # (:data:`TIMBER_POLE_HEIGHT_BANDS_M`).
+TIMBER_POLE_BY_HEIGHT = "Timber Pole: 175mm SED to 350mm SED, by height"
+
+# The wall types a failed wall is rebuilt as, rather than as a timber pole wall
+# (T-122; Wgtn Land Model 2026-10-07, confirmed by Perrie Gilbert 2026-10-12).
+# Reinforced masonry block walls and sprayed concrete walls go back like for
+# like; everything else -- brick, stone, stacked concrete blocks, crib, old
+# poured concrete, garden timber -- is rebuilt as the timber pole wall its
+# height calls for. Undepreciated value is always the failed type's.
 #
-# The point is a **spread, not a mean**. Every wall at one rate gives a
-# population with no cheap walls and no dear ones, so no wall ever approaches a
-# sub-cap and the question of whether the sub-caps bind is answered by the
-# averaging rather than by the evidence. Agreed with Maxim Millen on 2026-09-24.
-# **The share is assumed.**
-BETA_CONCRETE_SHARE = 0.30
-BETA_CONCRETE_WALL_TYPE = "Reinforced Concrete"
+# No wall type is sprayed concrete yet (T-119); add it here when one is.
+# `concrete_block` is taken as reinforced block masonry throughout, so stacked
+# unreinforced blocks belong under `brick_rock`, the gravity masonry type.
+REPLACED_IN_KIND = frozenset({"concrete_block"})
 
 EASY = "E"
 MODERATE = "M"
@@ -168,16 +176,12 @@ MAX_SITE_MULTIPLIER = 3 * RATING_MARKUP[DIFFICULT]
 # family in the tool and are deliberately left out.
 #
 # **The bands are assumed**, set on 2026-09-30 as a first cut rather than taken
-# from a design guide. Every wall of a size class is priced at one height
-# (:data:`BETA_SIZE_CLASS_HEIGHT_M`), so each class lands in one band -- small
-# on 175 mm, medium on 250 mm, large on 300 mm -- and the 350 mm rate is not
-# reached until heights are drawn rather than set (**I-14**).
+# from a design guide. An existing wall is priced at the height exposure drew
+# for it; a wall invented for a landslide at its size class's set height
+# (:data:`BETA_SIZE_CLASS_HEIGHT_M`).
 #
-# What the stand-in costs: the tool's rates span a factor of 21, so a population
-# that is really part steel is priced well below what it would settle at.
-# Initial condition does not move the rate at all -- condition belongs to
-# whether the wall fails, which is `vul`'s question, not to what replacing it
-# costs.
+# Age and condition do not move the rate -- they belong to whether the wall
+# fails, which is `vul`'s question, not to what replacing it costs.
 TIMBER_POLE_HEIGHT_BANDS_M = (
     (1.0, "Timber Pole: 175mm SED"),
     (2.0, "Timber Pole: 250mm SED"),
@@ -185,9 +189,9 @@ TIMBER_POLE_HEIGHT_BANDS_M = (
     (np.inf, "Timber Pole: 350mm SED"),
 )
 
-# The retained height each size class is priced at. `vul` sends a size class and
-# a length, and the rate is charged on wall face, so a band has to become a
-# height before anything can be priced.
+# The retained height each size class is priced at. An existing wall carries its
+# own height from exposure; this is for a size class with no wall behind it --
+# the wall a landslide needs, which is a class before it is a height.
 #
 # Each is the midpoint of what its class can actually contain. The class bands
 # in `landloss.exposure.rw.beta_population` are small below 1 m, medium 1 to
@@ -320,6 +324,15 @@ MIN_LANDSLIDE_WALL_LENGTH_M = 5.0
 INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3 = 150.0
 INUNDATION_REMOVAL_LINE_ITEM = "Clear site: Load, cart and tip material"
 
+# What a damaged culvert or bridge costs (John Leeves, 2026-10-13), both
+# excluding GST and the same for either kind. A replacement is a rate per lineal
+# metre of span; nothing supplies a span, so every crossing takes the default,
+# $75,000 in all. A crossing a landslide buried but did not break is cleared
+# for a fixed sum instead.
+CROSSING_RATE_EXCL_GST_NZD_PER_M = 15_000.0
+CROSSING_DEFAULT_SPAN_M = 5.0
+CROSSING_CLEARING_EXCL_GST_NZD = 1_000.0
+
 # The professional fees a claim carries beyond the physical work, **from the
 # costing tool's own `lists` sheet**, its "Fee type" table. Mileage is the one
 # fee left out, on instruction; the tool carries it at zero in any case, so
@@ -337,6 +350,47 @@ PROFESSIONAL_FEES_EXCL_GST_NZD = {
     "Survey costs": 1000.0,
 }
 PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD = sum(PROFESSIONAL_FEES_EXCL_GST_NZD.values())
+
+# Professional fees as a share of the walls they are for (Perrie Gilbert,
+# 2026-10-12): 20% of what the claim's walls cost to build, with the costing
+# tool's own fee total as the floor. A large wall needs more design, engineering
+# and supervision than the flat fee allows; a small one still needs a consent.
+PROFESSIONAL_FEES_SHARE = 0.20
+
+# The on-costs a claim's works carry beyond the walls and their fees, and the
+# contingency on the whole repair (Perrie Gilbert, 2026-10-13), each excluding
+# GST and each built on the one before, in this order:
+#
+# - **Mobilisation and demobilisation**, on a claim with wall works: 15% of the
+#   walls as built -- site multiplier, specification uplift and rate scaling
+#   all in -- plus the professional fees, never less than $5,000.
+# - **Project management**: 10% of the walls, the professional fees, the
+#   mobilisation and the culverts and bridges, so a claim whose only works are
+#   a crossing carries it too.
+# - **Contingency**: 20% of the whole repair cost -- the wall works above, and
+#   spoil removal, liquefaction and culverts and bridges as well -- applied
+#   last, on every claim, with wall works or without.
+MOB_DEMOB_SHARE = 0.15
+MOB_DEMOB_MIN_EXCL_GST_NZD = 5_000.0
+PROJECT_MANAGEMENT_SHARE = 0.10
+CONTINGENCY_SHARE = 0.20
+
+# What a Canterbury liquefaction land cost in 2010/2011 dollars is multiplied by
+# to bring it to today's, **a placeholder on instruction** (L-23): the growth in
+# construction labour costs since the February 2011 earthquake.
+#
+# From the Stats NZ Labour Cost Index, salary and ordinary time wage rates for
+# the construction industry (series LCIQ.SG51E9, base June 2009 quarter = 1000):
+# 1,030 in the March 2011 quarter to 1,465 in the December 2025 quarter, the
+# latest published, is 1.422. Taken from the September 2010 or June 2011
+# quarter instead it is 1.438 or 1.413, and all industries combined
+# (LCIQ.SG51Z9) gives 1.400. The index measures pay rates only, so it does not
+# follow the plant and materials a land repair also uses (L-74).
+LIQ_COST_ESCALATION = 1.42
+LIQ_COST_ESCALATION_SOURCE = (
+    "Stats NZ Labour Cost Index, construction salary and ordinary time wage rates "
+    "(LCIQ.SG51E9), March 2011 quarter 1,030 to December 2025 quarter 1,465"
+)
 
 EASY_INUNDATION_MAX_VOLUME_M3 = 20.0
 MODERATE_INUNDATION_MAX_VOLUME_M3 = 200.0
@@ -441,22 +495,20 @@ def inundation_volume_m3(
 
 
 def professional_fees_incl_gst_nzd(
+    wall_cost_incl_gst_nzd: np.ndarray | float,
     *,
-    ratings: SiteRatings,
     policy: PolicySettings,
-    fees_excl_gst_nzd: float = PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
+    share: float = PROFESSIONAL_FEES_SHARE,
+    floor_excl_gst_nzd: float = PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
 ) -> np.ndarray:
     """Return a claim's professional fees, including GST.
 
     Consent, design, engineering, health and safety, project management and
-    survey, summed from :data:`PROFESSIONAL_FEES_EXCL_GST_NZD`. Mileage is
-    excluded on instruction.
-
-    **The site multiplier applies to the fees too.** They are added before it,
-    so a difficult site costs more to design, consent and manage as well as more
-    to build, which is the reading agreed on 2026-09-24. They do not carry the
-    specification uplift: that is about the wall being built to a better
-    standard, not about the paperwork around it.
+    survey: :data:`PROFESSIONAL_FEES_SHARE` of what the claim's walls cost to
+    build, as built -- site multiplier, specification uplift and all -- and
+    never less than the costing tool's own total,
+    :data:`PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD`, which takes no multiplier.
+    Mileage is excluded on instruction.
 
     **Fees are per claim, not per wall or per cost line.** A claim gets one
     consent, one design and one survey however many walls stand on it, so this
@@ -465,15 +517,115 @@ def professional_fees_incl_gst_nzd(
     designed and consented.
 
     Args:
-        ratings: How hard the site is to work on.
+        wall_cost_incl_gst_nzd: What the claim's walls cost to build, failed and
+            invented together, including GST.
         policy: The settings this scenario runs under, which carry the GST rate.
-        fees_excl_gst_nzd: The fees before GST, defaulting to the tool's own.
+        share: The fees as a share of the wall cost.
+        floor_excl_gst_nzd: The least the fees can be, before GST.
 
     Returns:
         The fees in GST-inclusive dollars, one per claim.
+
+    Raises:
+        ValueError: If any wall cost is negative or not finite.
     """
-    scaled = fees_excl_gst_nzd * (1.0 + ratings.multiplier)
-    return np.asarray(scaled, dtype=float) * (1.0 + policy.gst_rate)
+    cost = np.asarray(wall_cost_incl_gst_nzd, dtype=float)
+    if not np.all(np.isfinite(cost)) or np.any(cost < 0):
+        msg = "wall_cost_incl_gst_nzd must be finite and not negative"
+        raise ValueError(msg)
+    floor = floor_excl_gst_nzd * (1.0 + policy.gst_rate)
+    return np.maximum(share * cost, floor)
+
+
+@dataclass(frozen=True)
+class OnCosts:
+    """The on-costs a claim's works carry, including GST, one per claim.
+
+    Attributes:
+        mob_demob: Mobilisation and demobilisation.
+        project_management: Project management.
+    """
+
+    mob_demob: np.ndarray
+    project_management: np.ndarray
+
+    @property
+    def total(self) -> np.ndarray:
+        """Return the two summed."""
+        return self.mob_demob + self.project_management
+
+
+def on_costs_incl_gst_nzd(
+    wall_cost_incl_gst_nzd: np.ndarray | float,
+    fees_incl_gst_nzd: np.ndarray | float,
+    crossing_cost_incl_gst_nzd: np.ndarray | float,
+    *,
+    policy: PolicySettings,
+) -> OnCosts:
+    """Return the on-costs of a claim's works, including GST.
+
+    Each is built on the one before (:data:`MOB_DEMOB_SHARE` and below):
+    mobilisation on the walls and fees, with a floor, on a claim with wall
+    works only; then project management on the walls, fees, mobilisation and
+    crossings, so a claim whose only works are a crossing carries project
+    management and no mobilisation. The contingency is not among them: it goes
+    on the whole repair (:func:`contingency_incl_gst_nzd`).
+
+    Args:
+        wall_cost_incl_gst_nzd: What the claim's walls cost to build, failed and
+            invented together, as built, including GST. Zero where it has none.
+        fees_incl_gst_nzd: The claim's professional fees, from
+            :func:`professional_fees_incl_gst_nzd`.
+        crossing_cost_incl_gst_nzd: What replacing or clearing the claim's
+            culverts and bridges costs, including GST.
+        policy: The settings this scenario runs under, which carry the GST rate.
+
+    Returns:
+        The two on-costs in GST-inclusive dollars.
+
+    Raises:
+        ValueError: If any cost or fee is negative or not finite.
+    """
+    cost = np.asarray(wall_cost_incl_gst_nzd, dtype=float)
+    fees = np.asarray(fees_incl_gst_nzd, dtype=float)
+    crossing = np.asarray(crossing_cost_incl_gst_nzd, dtype=float)
+    for name, values in (
+        ("wall_cost_incl_gst_nzd", cost),
+        ("fees_incl_gst_nzd", fees),
+        ("crossing_cost_incl_gst_nzd", crossing),
+    ):
+        if not np.all(np.isfinite(values)) or np.any(values < 0):
+            msg = f"{name} must be finite and not negative"
+            raise ValueError(msg)
+    floor = MOB_DEMOB_MIN_EXCL_GST_NZD * (1.0 + policy.gst_rate)
+    mob = np.where(cost > 0, np.maximum(MOB_DEMOB_SHARE * (cost + fees), floor), 0.0)
+    pm = PROJECT_MANAGEMENT_SHARE * (cost + fees + mob + crossing)
+    return OnCosts(mob_demob=mob, project_management=pm)
+
+
+def contingency_incl_gst_nzd(
+    repair_cost_incl_gst_nzd: np.ndarray | float,
+) -> np.ndarray:
+    """Return the contingency on a claim's repair, including GST.
+
+    :data:`CONTINGENCY_SHARE` of everything else the repair costs -- walls,
+    spoil, fees, on-costs, liquefaction and crossings -- applied last.
+
+    Args:
+        repair_cost_incl_gst_nzd: The claim's repair cost before contingency,
+            including GST.
+
+    Returns:
+        The contingency in GST-inclusive dollars.
+
+    Raises:
+        ValueError: If any repair cost is negative or not finite.
+    """
+    repair = np.asarray(repair_cost_incl_gst_nzd, dtype=float)
+    if not np.all(np.isfinite(repair)) or np.any(repair < 0):
+        msg = "repair_cost_incl_gst_nzd must be finite and not negative"
+        raise ValueError(msg)
+    return CONTINGENCY_SHARE * repair
 
 
 def inundation_removal_cost_incl_gst_nzd(
@@ -516,6 +668,65 @@ def inundation_removal_cost_incl_gst_nzd(
         msg = "volume_m3 must be finite and not negative"
         raise ValueError(msg)
     return volumes * rate_excl_gst_nzd_per_m3 * (1.0 + policy.gst_rate)
+
+
+def crossing_replacement_cost_incl_gst_nzd(
+    span_m: np.ndarray | float | None = None,
+    *,
+    policy: PolicySettings,
+    rate_excl_gst_nzd_per_m: float = CROSSING_RATE_EXCL_GST_NZD_PER_M,
+    default_span_m: float = CROSSING_DEFAULT_SPAN_M,
+) -> np.ndarray:
+    """Return what it costs to replace a culvert or a bridge, including GST.
+
+    A rate per lineal metre of span, the same for a culvert as for a bridge
+    (John Leeves, 2026-10-13). Nothing supplies a span yet, so every crossing
+    takes :data:`CROSSING_DEFAULT_SPAN_M`; a span, where one arrives, is used
+    in its place.
+
+    The same figure is the crossing's undepreciated value: it is what the
+    structure costs to build new, with nothing for the site, so it serves both
+    sides of the Act's comparison, as a wall's square metre rate does.
+
+    Args:
+        span_m: Each crossing's span, or ``None`` for the default throughout.
+            A missing span within an array also takes the default.
+        policy: The settings this scenario runs under, which carry the GST rate.
+        rate_excl_gst_nzd_per_m: What a metre of span costs, excluding GST.
+        default_span_m: The span taken where none is known.
+
+    Returns:
+        The cost in GST-inclusive dollars.
+
+    Raises:
+        ValueError: If any span is negative.
+    """
+    span = np.asarray(default_span_m if span_m is None else span_m, dtype=float)
+    span = np.where(np.isnan(span), default_span_m, span)
+    if np.any(span < 0):
+        msg = "span_m must not be negative"
+        raise ValueError(msg)
+    return span * rate_excl_gst_nzd_per_m * (1.0 + policy.gst_rate)
+
+
+def crossing_clearing_cost_incl_gst_nzd(
+    *,
+    policy: PolicySettings,
+    clearing_excl_gst_nzd: float = CROSSING_CLEARING_EXCL_GST_NZD,
+) -> float:
+    """Return what it costs to clear mud out of a culvert or bridge, with GST.
+
+    A fixed sum per crossing (John Leeves, 2026-10-13), for a structure a
+    landslide buried but did not break.
+
+    Args:
+        policy: The settings this scenario runs under, which carry the GST rate.
+        clearing_excl_gst_nzd: The sum, excluding GST.
+
+    Returns:
+        The cost in GST-inclusive dollars.
+    """
+    return clearing_excl_gst_nzd * (1.0 + policy.gst_rate)
 
 
 def classify_inundation_earthworks(volume_m3: np.ndarray | float) -> np.ndarray:
@@ -785,53 +996,6 @@ def timber_pole_rate_excl_gst_nzd_per_m2(height_m: np.ndarray | float) -> np.nda
     return wall_rate_excl_gst_nzd_per_m2(timber_pole_wall_type(height_m))
 
 
-def beta_wall_rate_excl_gst_nzd_per_m2(
-    rw_id: np.ndarray | str, height_m: np.ndarray | float
-) -> np.ndarray:
-    """Return the rate each wall is priced at, concrete or timber pole.
-
-    :data:`BETA_CONCRETE_SHARE` of walls are priced as
-    :data:`BETA_CONCRETE_WALL_TYPE`. The rest are timber pole walls whose pile
-    size is **set by the wall's height**, through
-    :func:`timber_pole_rate_excl_gst_nzd_per_m2`.
-
-    **Which walls are concrete is decided by their own id, not by a random
-    draw.** The id is hashed to a fraction, and a wall is concrete where that
-    fraction falls below the share. So the same wall is the same construction
-    every run, on any machine, whatever order the walls arrive in and however
-    many there are -- none of which is true of a seeded generator. Nothing about
-    the wall other than its id bears on it, which is the honest position:
-    nothing in the data says what a wall is made of.
-
-    Args:
-        rw_id: The wall identifier, scalar or array.
-        height_m: Retained height of each wall, shaped like ``rw_id``.
-
-    Returns:
-        The rate for each wall, excluding GST.
-
-    Raises:
-        ValueError: If any height is negative or not finite.
-    """
-    ids = np.atleast_1d(np.asarray(rw_id, dtype=object))
-    heights = np.broadcast_to(
-        np.atleast_1d(np.asarray(height_m, dtype=float)), ids.shape
-    )
-    draws = np.array(
-        [
-            int.from_bytes(
-                hashlib.blake2b(str(value).encode(), digest_size=8).digest(), "big"
-            )
-            / 2**64
-            for value in ids
-        ]
-    )
-    concrete = WALL_RATE_EXCL_GST_NZD_PER_M2[BETA_CONCRETE_WALL_TYPE]
-    timber = timber_pole_rate_excl_gst_nzd_per_m2(heights)
-    rates = np.where(draws < BETA_CONCRETE_SHARE, concrete, timber)
-    return rates if np.ndim(rw_id) else rates[0]
-
-
 def wall_rate_excl_gst_nzd_per_m2(wall_type: np.ndarray | str) -> np.ndarray:
     """Return the square metre rate for a wall type, excluding GST.
 
@@ -857,6 +1021,112 @@ def wall_rate_excl_gst_nzd_per_m2(wall_type: np.ndarray | str) -> np.ndarray:
         [WALL_RATE_EXCL_GST_NZD_PER_M2[value] for value in flat], dtype=float
     )
     return rates.reshape(types.shape)
+
+
+@cache
+def _rate_items() -> dict[str, str]:
+    """Return the costing tool row each wall type is priced at."""
+    table = load_wall_types()
+    return dict(zip(table["wall_type"], table["nhc_rate_item"], strict=True))
+
+
+def construction_type(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the costing tool row a wall of this type and height is priced at.
+
+    The row ``retaining-wall-types.csv`` names for the type, except that the two
+    timber pole types take the pile their height calls for
+    (:func:`timber_pole_wall_type`).
+
+    Args:
+        wall_type: The wall type exposure drew, one of
+            :data:`~landloss.hazard.landslide.urban.wall_type_fragility.WALL_TYPES`.
+        height_m: Retained height of the wall, shaped like ``wall_type``.
+
+    Returns:
+        The construction type, named as :data:`WALL_RATE_EXCL_GST_NZD_PER_M2`
+        keys it, shaped like ``wall_type``.
+
+    Raises:
+        ValueError: If a wall type is not one of the eight, or a height is
+            negative or not finite.
+    """
+    types = np.asarray(wall_type, dtype=object)
+    heights = np.broadcast_to(np.asarray(height_m, dtype=float), types.shape)
+    items = _rate_items()
+    unknown = sorted({str(value) for value in types.ravel()} - set(items))
+    if unknown:
+        msg = f"unknown wall type(s): {', '.join(repr(value) for value in unknown)}"
+        raise ValueError(msg)
+    rows = np.vectorize(items.__getitem__, otypes=[object])(types)
+    by_height = rows == TIMBER_POLE_BY_HEIGHT
+    return np.where(by_height, timber_pole_wall_type(heights), rows).astype(str)
+
+
+def wall_type_rate_excl_gst_nzd_per_m2(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the square metre rate for a wall of this type and height, excl GST.
+
+    Args:
+        wall_type: The wall type exposure drew.
+        height_m: Retained height of the wall, shaped like ``wall_type``.
+
+    Returns:
+        The rate in GST-exclusive dollars per square metre of wall face.
+
+    Raises:
+        ValueError: As :func:`construction_type`.
+    """
+    return wall_rate_excl_gst_nzd_per_m2(construction_type(wall_type, height_m))
+
+
+def replacement_construction_type(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the costing tool row a failed wall is rebuilt as.
+
+    A wall of a type in :data:`REPLACED_IN_KIND` is rebuilt as itself
+    (:func:`construction_type`); any other is rebuilt as the timber pole wall
+    its height calls for (:func:`timber_pole_wall_type`).
+
+    Args:
+        wall_type: The type that failed.
+        height_m: Retained height of the replacement, shaped like ``wall_type``.
+
+    Returns:
+        The construction type, named as :data:`WALL_RATE_EXCL_GST_NZD_PER_M2`
+        keys it, shaped like ``wall_type``.
+
+    Raises:
+        ValueError: As :func:`construction_type`.
+    """
+    types = np.asarray(wall_type, dtype=object)
+    heights = np.broadcast_to(np.asarray(height_m, dtype=float), types.shape)
+    own = construction_type(types, heights)
+    in_kind = np.isin(types.astype(str), list(REPLACED_IN_KIND))
+    return np.where(in_kind, own, timber_pole_wall_type(heights)).astype(str)
+
+
+def replacement_rate_excl_gst_nzd_per_m2(
+    wall_type: np.ndarray | str, height_m: np.ndarray | float
+) -> np.ndarray:
+    """Return the square metre rate a failed wall is rebuilt at, excluding GST.
+
+    Args:
+        wall_type: The type that failed.
+        height_m: Retained height of the replacement, shaped like ``wall_type``.
+
+    Returns:
+        The rate in GST-exclusive dollars per square metre of wall face.
+
+    Raises:
+        ValueError: As :func:`construction_type`.
+    """
+    return wall_rate_excl_gst_nzd_per_m2(
+        replacement_construction_type(wall_type, height_m)
+    )
 
 
 def beta_wall_height_m(rw_size: np.ndarray | str) -> np.ndarray:
@@ -1032,10 +1302,12 @@ def wall_udv_incl_gst_nzd(
     earthworks and constructability are what it costs to work on this
     particular site, not part of what the wall cost to build.
 
-    Two consequences worth holding on to. Repair cost can never come out below
-    UDV, because the multiplier is never negative -- the direction the two are
-    known to run, here by construction rather than by evidence. And **no age or
-    condition enters**: undepreciated means no deduction for age, so a
+    Two consequences worth holding on to. For a wall rebuilt in kind, repair
+    cost can never come out below UDV, because the multiplier is never
+    negative. A wall rebuilt as timber pole (T-122,
+    :func:`replacement_rate_excl_gst_nzd_per_m2`) can: a brick or concrete wall
+    is valued at its own dearer rate and repaired at the timber one. And **no
+    age or condition enters**: undepreciated means no deduction for age, so a
     twenty-year-old wall and a new one of the same construction and size have
     the same value.
 
@@ -1079,16 +1351,10 @@ def beta_wall_repair_cost_incl_gst_nzd(
 ) -> np.ndarray:
     """Return what it costs to replace a wall of unknown type, including GST.
 
-    The rate is passed in because nothing yet says which of the tool's 29
-    construction types a modelled wall is. An existing wall takes
-    :func:`beta_wall_rate_excl_gst_nzd_per_m2`, which mixes a concrete share
-    in; a wall invented for a landslide takes
+    The rate is passed in rather than a construction type. A failed wall takes
+    :func:`replacement_rate_excl_gst_nzd_per_m2` on its type and replacement
+    height; a wall invented for a landslide has no type of its own and takes
     :func:`timber_pole_rate_excl_gst_nzd_per_m2` on its height.
-
-    The ``beta`` prefix is the same one
-    :mod:`landloss.exposure.rw.beta_population` carries and means the same
-    thing: this is deleted once the study settles the mapping, and no result
-    from it is evidence about Wellington.
 
     Args:
         face_area_m2: Area of wall face, from :func:`wall_face_area_m2`.
@@ -1122,13 +1388,12 @@ def beta_wall_udv_incl_gst_nzd(
     """Return the undepreciated value of a wall of unknown type, including GST.
 
     :func:`wall_udv_incl_gst_nzd` on a rate passed in, for the same reason
-    :func:`beta_wall_repair_cost_incl_gst_nzd` exists: nothing yet says which
-    of the tool's 29 construction types a modelled wall is.
+    :func:`beta_wall_repair_cost_incl_gst_nzd` takes one.
 
     Args:
         face_area_m2: Area of wall face, from :func:`beta_wall_face_area_m2`.
         rate_excl_gst_nzd_per_m2: The square metre rate, excluding GST. Pass
-            :func:`beta_wall_rate_excl_gst_nzd_per_m2` so a wall is valued at
+            :func:`wall_type_rate_excl_gst_nzd_per_m2` so a wall is valued at
             the rate its repair is priced at.
         policy: The settings this scenario runs under.
 

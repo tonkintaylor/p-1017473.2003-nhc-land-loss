@@ -18,6 +18,9 @@ from landloss.hazard.landslide.slope_polygons import (
     WALL_WEDGE,
     build_slope_polygons,
 )
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
+    element_polygons,
+)
 
 SHAPE = (30, 80)
 C_TOP = 20
@@ -155,6 +158,24 @@ def test_a_wall_under_a_building_outline_is_no_pif_siz_or_element():
     assert result.found.elements.empty
     assert result.pips.mask.sum() == SHAPE[0]
     assert zones.gen_siz_table(result, TRANSFORM, crs=2193).empty
+
+
+@pytest.mark.parametrize("has_elements", [False, True])
+def test_element_polygons_preserves_geometry_and_attributes_for_empty_tiles(
+    has_elements,
+):
+    dem = _wall(1.0) if has_elements else np.zeros(SHAPE)
+    found = _zones(dem, "soil_like").found
+
+    frame = element_polygons(found, TRANSFORM)
+
+    assert frame.empty == (not has_elements)
+    assert frame.geometry.name == "geometry"
+    assert frame.crs.to_epsg() == 2193
+    assert frame.index.name == "label"
+    assert set(found.elements.columns).issubset(frame.columns)
+    if has_elements:
+        assert set(frame.index) == set(np.unique(found.labels)) - {0}
 
 
 def test_beyond_reach_measures_centre_to_centre_in_metres():

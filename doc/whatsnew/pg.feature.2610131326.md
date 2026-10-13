@@ -1,0 +1,1 @@
+The loss viewer counts the damaged land structures under the Act as it stands -- existing retaining walls, and bridges and culverts, not the walls built to reinstate landslide ground -- with their repair cost and what they count toward the land cover cap. The viewer CSV carries the counts as `damaged_wall_count` and `damaged_crossing_count`, so it needs regenerating.

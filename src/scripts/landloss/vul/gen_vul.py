@@ -72,7 +72,6 @@ def main(*, extent, world_ids, realisation_ids):
                     evacuated_overlap_share=liq_config.EVACUATED_OVERLAP_SHARE,
                     repair_rates=liq_config.REPAIR_RATES,
                     no_sva=liq_config.NO_SVA,
-                    no_sva_inundated_multiplier=liq_config.NO_SVA_INUNDATED_MULTIPLIER,
                 ),
             ),
             (

@@ -32,7 +32,6 @@ so a claim's areas can be summed without double counting.
 | --- | --- |
 | `land_id` | The polygon |
 | `claim_id` | The claim it belongs to |
-| `$/m2 market value` | The market rate the damaged area is valued at |
 | `Liq_LD_state` | The liquefaction land damage state |
 | `Liq_LD_damaged_area` | Insured area damaged by liquefaction: evacuated plus inundated less their overlap, no more than the polygon. Added 2026-10-02 (**T-56**), beyond the contract as confirmed |
 | `total_insured_land_area` | The whole insured area of the polygon |
@@ -40,10 +39,20 @@ so a claim's areas can be summed without double counting.
 | `inundated_insured_area` | Insured area buried by material coming to rest |
 | `inundated_mean_depth` | How deep that material lies |
 | `evacuated_area` | Area the material came from |
+| `footprint_area` | The claim's building footprint. Added 2026-10-11 |
+| `property_area` | The whole claim property. Added 2026-10-11 |
+| `land_slide_footprint_area` | Landslide ground under the footprint. Added 2026-10-11 |
+| `suburb` | The suburb the claim's addresses mostly stand in. Added 2026-10-11 |
+
+No land value: since 2026-10-11 `loss` values damaged land itself, from each
+property's QV land value in three tiers (`landloss.loss.qv_land_value`,
+`src/scripts/landloss/loss/qv_land_value_method.md`). It replaces the
+contract's `$/m2 market value`.
 
 **Retaining walls** — one row per insured wall: `rw_id`, `claim_id`, `rw_size`
-(small, medium or large), `rw_length`, and three damage flags,
-`is_damaged_by_shaking`, `is_evacuated`, `is_inundated`.
+(small, medium or large), `rw_type` (one of the eight wall types) and
+`rw_height` (retained height in metres, both added 2026-10-12), `rw_length`, and
+three damage flags, `is_damaged_by_shaking`, `is_evacuated`, `is_inundated`.
 
 **Culverts** — `culvert_id`, `claim_id`, `is_inundated`, `is_damaged`.
 
@@ -80,7 +89,9 @@ Four things the contract does not carry, each of which `loss` needs:
 - **No wall height.** The rates are charged per square metre of wall face, which
   is retained height by length; `rw_length` arrives and `rw_size` is a band, so
   `loss` turns a size class into a height. Settled for now as **set values** of
-  0.75 m, 1.75 m and 2.75 m — see section 1.1.
+  0.75 m, 1.75 m and 2.75 m — see section 1.1. *Resolved 2026-10-12: the table
+  now carries `rw_type` and `rw_height`, and an existing wall is priced at its
+  own; the set values remain for a wall invented for a landslide.*
 - **No `cost_year` or `rate_basis`.** The earlier contract carried both. Their
   absence reads as every rate being stated at one cost year, which is worth
   confirming before a rate from a different year is mixed in.

@@ -58,8 +58,13 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
-    MARKET_VALUE_COLUMN,
 )
+from landloss.loss.policy import PolicySettings
+from landloss.loss.pricing import (
+    crossing_clearing_cost_incl_gst_nzd,
+    crossing_replacement_cost_incl_gst_nzd,
+)
+from landloss.loss.qv_land_value import DAMAGED_LAND_RATE_COLUMN
 
 # The claim key, and the count written against it by the dwellings-per-property
 # step. These must match what `landloss.exposure.land.extent` writes; see the
@@ -160,8 +165,8 @@ def dwelling_counts(
 
 
 # What `land_by_claim` writes. The rate carries `_incl_gst_` because that is the
-# basis the Act compares on and the basis `settle` expects; `vul` sends it as
-# `$/m2 market value`, which says nothing about GST.
+# basis the Act compares on and the basis `settle` expects. It is averaged from
+# the per-row rate `landloss.loss.qv_land_value.damaged_land_rates` adds.
 DAMAGED_AREA_COLUMN = "damaged_area_m2"
 LAND_RATE_COLUMN = "land_rate_incl_gst_nzd_per_m2"
 
@@ -225,7 +230,9 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
     own rate.
 
     Args:
-        land: The contract's land table, one row per insured land polygon.
+        land: The contract's land table, one row per insured land polygon,
+            with the rate its damaged land is valued at added by
+            :func:`~landloss.loss.qv_land_value.damaged_land_rates`.
 
     Returns:
         A frame indexed by ``claim_id``, carrying
@@ -236,7 +243,7 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
         ValueError: If a column the calculation needs is missing, or if a
             claim's polygons disagree about the dwelling count.
     """
-    for column in (CLAIM_ID_COLUMN, MARKET_VALUE_COLUMN, DWELLING_COUNT_COLUMN):
+    for column in (CLAIM_ID_COLUMN, DAMAGED_LAND_RATE_COLUMN, DWELLING_COUNT_COLUMN):
         if column not in land.columns:
             msg = f"the land table carries no {column!r} column"
             raise ValueError(msg)
@@ -245,7 +252,9 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
         {
             CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
             DAMAGED_AREA_COLUMN: damaged_area_m2(land),
-            MARKET_VALUE_COLUMN: land[MARKET_VALUE_COLUMN].to_numpy(dtype=float),
+            DAMAGED_LAND_RATE_COLUMN: land[DAMAGED_LAND_RATE_COLUMN].to_numpy(
+                dtype=float
+            ),
             DWELLING_COUNT_COLUMN: land[DWELLING_COUNT_COLUMN].to_numpy(),
         }
     )
@@ -258,14 +267,14 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
         )
         raise ValueError(msg)
 
-    rows["_valued"] = rows[DAMAGED_AREA_COLUMN] * rows[MARKET_VALUE_COLUMN]
+    rows["_valued"] = rows[DAMAGED_AREA_COLUMN] * rows[DAMAGED_LAND_RATE_COLUMN]
     grouped = rows.groupby(CLAIM_ID_COLUMN)
     claims = grouped.agg(
         **{
             DAMAGED_AREA_COLUMN: (DAMAGED_AREA_COLUMN, "sum"),
             DWELLING_COUNT_COLUMN: (DWELLING_COUNT_COLUMN, "first"),
             "_valued": ("_valued", "sum"),
-            "_mean_rate": (MARKET_VALUE_COLUMN, "mean"),
+            "_mean_rate": (DAMAGED_LAND_RATE_COLUMN, "mean"),
         }
     )
     area = claims[DAMAGED_AREA_COLUMN]
@@ -336,3 +345,87 @@ def damaged_crossings(crossings: pd.DataFrame) -> pd.DataFrame:
     for flag in flags:
         damaged |= crossings[flag].to_numpy(dtype=bool)
     return crossings.loc[damaged]
+
+
+# The flags that mean a crossing is broken and must be replaced: liquefaction
+# under it, carried as the culvert's `is_damaged` and the bridge's
+# `is_damaged_by_shaking`, or a landslide taking the ground it stands on. A
+# crossing only inundated is buried but whole, and is cleared instead.
+CROSSING_REPLACEMENT_FLAGS = (
+    IS_DAMAGED_COLUMN,
+    IS_DAMAGED_BY_SHAKING_COLUMN,
+    IS_EVACUATED_COLUMN,
+)
+
+# What `crossing_costs_by_claim` writes.
+CROSSING_REPAIR_COLUMN = "crossing_repair_cost_incl_gst_nzd"
+CROSSING_UDV_COLUMN = "bridge_culvert_udv_incl_gst_nzd"
+CROSSINGS_REPLACED_COLUMN = "crossings_replaced"
+CROSSINGS_CLEARED_COLUMN = "crossings_cleared"
+
+
+def crossing_costs_by_claim(
+    culverts: pd.DataFrame, bridges: pd.DataFrame, *, policy: PolicySettings
+) -> pd.DataFrame:
+    """Return what each claim's damaged culverts and bridges cost and are worth.
+
+    Each crossing is priced on its own and the claim's are summed:
+
+    - **replaced** where any of :data:`CROSSING_REPLACEMENT_FLAGS` is set, at
+      :func:`~landloss.loss.pricing.crossing_replacement_cost_incl_gst_nzd`.
+      A replacement takes the place of a clearing, so a crossing broken and
+      buried is charged the replacement alone;
+    - **cleared** where it is only inundated, at
+      :func:`~landloss.loss.pricing.crossing_clearing_cost_incl_gst_nzd`.
+
+    Culverts and bridges are priced alike. A damaged crossing's undepreciated
+    value is its replacement cost whichever remedy it needs: the structure is
+    worth what it costs to build, whether or not it was broken. The sub-cap
+    then limits what that adds to the cap, in
+    :func:`~landloss.loss.settlement.land_cover_cap_nzd`.
+
+    Args:
+        culverts: The contract's culvert table.
+        bridges: The contract's bridge table.
+        policy: The settings this scenario runs under, which carry the GST rate.
+
+    Returns:
+        Indexed by claim, for claims with a damaged crossing:
+        :data:`CROSSING_REPAIR_COLUMN`, :data:`CROSSING_UDV_COLUMN`,
+        :data:`CROSSINGS_REPLACED_COLUMN` and :data:`CROSSINGS_CLEARED_COLUMN`.
+    """
+    frames = []
+    for table in (culverts, bridges):
+        damaged = damaged_crossings(table)
+        if damaged.empty:
+            continue
+        replaced = np.zeros(len(damaged), dtype=bool)
+        for flag in CROSSING_REPLACEMENT_FLAGS:
+            if flag in damaged.columns:
+                replaced |= damaged[flag].to_numpy(dtype=bool)
+        frames.append(
+            pd.DataFrame(
+                {
+                    CLAIM_ID_COLUMN: damaged[CLAIM_ID_COLUMN].to_numpy(),
+                    "replaced": replaced,
+                }
+            )
+        )
+    columns = [
+        CROSSING_REPAIR_COLUMN,
+        CROSSING_UDV_COLUMN,
+        CROSSINGS_REPLACED_COLUMN,
+        CROSSINGS_CLEARED_COLUMN,
+    ]
+    if not frames:
+        return pd.DataFrame(columns=columns, index=pd.Index([], name=CLAIM_ID_COLUMN))
+    crossings = pd.concat(frames, ignore_index=True)
+    replacement = float(crossing_replacement_cost_incl_gst_nzd(policy=policy))
+    clearing = crossing_clearing_cost_incl_gst_nzd(policy=policy)
+    crossings[CROSSING_REPAIR_COLUMN] = np.where(
+        crossings["replaced"], replacement, clearing
+    )
+    crossings[CROSSING_UDV_COLUMN] = replacement
+    crossings[CROSSINGS_REPLACED_COLUMN] = crossings["replaced"].astype(int)
+    crossings[CROSSINGS_CLEARED_COLUMN] = (~crossings["replaced"]).astype(int)
+    return crossings.groupby(CLAIM_ID_COLUMN)[columns].sum()

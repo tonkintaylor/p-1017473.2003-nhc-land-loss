@@ -63,9 +63,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    and `n_properties` for this; today each wall is one row on its primary
    property with `length_m` its whole simplified line. The loss module is
    not changed yet.
-3. Pass the loss module which landslide polygons are retaining wall
+3. ~~Pass the loss module which landslide polygons are retaining wall
    failures, and which polygons on one property are separate failures
-   needing separate walls (**T-124**, 2026-10-07).
+   needing separate walls (**T-124**, 2026-10-07).~~ Done 2026-10-13: land
+   step 3 lists each failure on a polygon with the wall it failed with, and
+   loss step 1 holds each slip with its own wall.
 
 A failed wall is replaced over its whole length, up to 50 m a segment, with
 no partly failed state. This was accepted on 2026-10-07 as an assumption

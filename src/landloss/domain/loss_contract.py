@@ -22,7 +22,16 @@ CULVERT_ID_COLUMN = "culvert_id"
 BRIDGE_ID_COLUMN = "bridge_id"
 
 # Land table columns, asset-pricing-approach.md section 1.
-MARKET_VALUE_COLUMN = "$/m2 market value"
+#
+# No land value: the loss module values land itself, from the QV rating roll
+# (landloss.loss.qv_land_value). What it needs from vul is where the land lies:
+# the claim property's footprint, insured and whole areas, how much of the
+# landslide ground fell on the footprint, and the suburb, which a property not
+# on the roll is valued at the median of. The areas are m2.
+LAND_FOOTPRINT_AREA_COLUMN = "footprint_area"
+LAND_PROPERTY_AREA_COLUMN = "property_area"
+LANDSLIDE_FOOTPRINT_AREA_COLUMN = "land_slide_footprint_area"
+LAND_SUBURB_COLUMN = "suburb"
 LIQ_LD_STATE_COLUMN = "Liq_LD_state"
 # The Canterbury settled cost the state indexes, carried so that `loss` has a
 # land repair cost to compare a cap against. **2010/2011 dollars excluding
@@ -38,9 +47,35 @@ LANDSLIDE_AREA_COLUMN = "land_slide_total_insured_land_area"
 INUNDATED_AREA_COLUMN = "inundated_insured_area"
 INUNDATED_MEAN_DEPTH_COLUMN = "inundated_mean_depth"
 EVACUATED_AREA_COLUMN = "evacuated_area"
+# Each landslide that reached the polygon, one entry per failure and in the same
+# order in every list (T-124, 2026-10-13), so loss can hold each failure with its
+# own wall: the failure's id; the retaining wall it failed with, as the hazard
+# realisation names it -- the whole wall, before it is split across properties
+# -- or missing; the ground it took on the polygon, evacuated and inundated
+# counted once; and its inundated area and depth. Not in LAND_COLUMNS: a land
+# table from before they were written has none, and loss then takes a claim's
+# ground as one failure of unknown origin.
+LANDSLIDE_IDS_COLUMN = "landslide_ids"
+LANDSLIDE_RW_IDS_COLUMN = "landslide_rw_ids"
+LANDSLIDE_AREAS_COLUMN = "landslide_areas"
+LANDSLIDE_INUNDATED_AREAS_COLUMN = "landslide_inundated_areas"
+LANDSLIDE_INUNDATED_DEPTHS_COLUMN = "landslide_inundated_depths"
+LANDSLIDE_FAILURE_COLUMNS = (
+    LANDSLIDE_IDS_COLUMN,
+    LANDSLIDE_RW_IDS_COLUMN,
+    LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_INUNDATED_AREAS_COLUMN,
+    LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
+)
 
 # Retaining wall, culvert and bridge columns, asset-pricing-approach.md section 1.
 RW_SIZE_COLUMN = "rw_size"
+# The wall's type, one of the eight of
+# landloss.hazard.landslide.urban.wall_type_fragility.WALL_TYPES, and its
+# retained height in metres, as exposure drew them. Loss prices the wall from
+# both (landloss.loss.pricing.wall_type_rate_excl_gst_nzd_per_m2).
+RW_TYPE_COLUMN = "rw_type"
+RW_HEIGHT_COLUMN = "rw_height"
 RW_LENGTH_COLUMN = "rw_length"
 IS_DAMAGED_BY_SHAKING_COLUMN = "is_damaged_by_shaking"
 IS_EVACUATED_COLUMN = "is_evacuated"
@@ -53,7 +88,6 @@ IS_DAMAGED_COLUMN = "is_damaged"
 LAND_COLUMNS = (
     LAND_ID_COLUMN,
     CLAIM_ID_COLUMN,
-    MARKET_VALUE_COLUMN,
     LIQ_LD_STATE_COLUMN,
     LIQ_LD_COST_COLUMN,
     LIQ_LD_AREA_COLUMN,
@@ -62,11 +96,17 @@ LAND_COLUMNS = (
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
     EVACUATED_AREA_COLUMN,
+    LAND_FOOTPRINT_AREA_COLUMN,
+    LAND_PROPERTY_AREA_COLUMN,
+    LANDSLIDE_FOOTPRINT_AREA_COLUMN,
+    LAND_SUBURB_COLUMN,
 )
 RW_COLUMNS = (
     RW_ID_COLUMN,
     CLAIM_ID_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
     IS_DAMAGED_BY_SHAKING_COLUMN,
     IS_EVACUATED_COLUMN,

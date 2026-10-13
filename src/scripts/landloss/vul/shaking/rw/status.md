@@ -83,9 +83,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    length (the lead, 2026-10-06). Exposure rw step 6's drawn walls and wall
    population carry `property_lengths_m` (each property's id and length,
    from exposure rw step 6's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
-   and `n_properties` for this; today each wall is one row on its primary
-   property with `length_m` its whole simplified line. The loss module is
-   not changed yet.
+   and `n_properties` for this. **Done 2026-10-12** in vul step 10
+   (`landloss.vul.loss_input.split_walls_by_property`): a wall crossing
+   boundaries is one row per insured property, `<rw_id>-P<n>`, at the length
+   on it; the primary keeps the slivers under 1 m, a piece on a property that
+   is not a claim is dropped, and every piece carries the wall's type, height
+   and damage. The loss module needed no change: it sums walls per claim.
 5. Read each wall's curve from its type, height class and fill or cut
    position (`wall_type_failure_probability`), once exposure draws the type
    (wall types plan, phase 3).

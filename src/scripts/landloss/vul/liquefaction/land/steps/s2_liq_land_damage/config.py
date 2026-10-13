@@ -32,12 +32,13 @@ COST_PERCENTILE = 50
 # need feedback from Virginie Lacrosse and/or John Leeves (T-64, Q-16). The
 # only firm expectation is that Severe and Very severe damage is always claimed.
 #
-# NOT APPLIED YET. The packaged Canterbury costs average over every damaged
-# property, non-claimants at $0, so they already carry the drop-out (Q-17);
-# drawing it again would count it twice. The step leaves the draw off while
-# landloss.vul.liquefaction.costs.COSTS_INCLUDE_NON_CLAIMANTS is True, and it
-# comes on when claimant-only rates replace them (T-65). Virginie Lacrosse's
-# counts of damaged properties and claimants per band will validate these.
+# APPLIED since 2026-10-08, when REPAIR_RATES were refitted to the Canterbury
+# claimant-only means (T-65), so the drop-out is no longer inside the costs:
+# COSTS_INCLUDE_NON_CLAIMANTS in landloss.vul.liquefaction.costs says so. The
+# source of those means gave a rough likelihood of settlement per pair of
+# states -- 10% for None and Minor, 60% for Moderate and Major, 100% for Severe
+# and Very severe -- which these roughly agree with; it was described as a stab,
+# so the placeholders are kept rather than set from it.
 DROP_OUT_RATES = {
     1: 0.95,  # None
     2: 0.75,  # Minor
@@ -85,28 +86,38 @@ EVACUATED_OVERLAP_SHARE = 0.3
 
 # What liquefied land costs to repair from the ground it lost (T-57): a rate per
 # m² of inundated land, a rate per m² of evacuated land, and a fixed cost per
-# claim. 2010/2011 dollars excluding GST, like the Canterbury table.
+# claim, drawn per claim around its mean with a lognormal spread of
+# per_claim_sigma. 2010/2011 dollars excluding GST, before the excess, per
+# claim. The loss module settles on these (vul step 10 hands it area_cost_nzd).
 #
-# PROVISIONAL, NOT A RESULT. Fitted by step 3 (s3_repair_rate_calibration) on
-# 2026-10-02 to the Canterbury mean cost per state, Minor to Very severe, over
-# the pilot's claims, against costs diluted with non-claimants' $0s, so the
-# "per claim" cost is really per damaged property. They only re-express the
-# Canterbury means per m² and are not validated; nothing settles on them. Re-run step 3 after changing the area ranges, the
-# overlap or the cost table, and copy its values here; it says when these are
-# out of date. The current table includes non-claimants at $0, so these rates
-# are only consistent with the drop-out off, and are to be refitted against
-# claimant-only costs (T-65).
+# Back-calculated by step 3 (s3_repair_rate_calibration) on 2026-10-12 (Perrie
+# Gilbert): a 500 m² section losing the middle of each state's ranges below is
+# priced at the Canterbury claimant-only median (costs_liq_ld_claimant_costs_
+# 2011.csv, T-65, a calibration target only), Minor to Very severe weighted by
+# claim count; then the spread fitted to the quartiles holding the median. The
+# None state is not fitted and costs nothing. per_claim_nzd is the mean of the
+# per-claim draw; its median is $794.
+#
+# The Student Volunteer Army cleared the first of every site's ejecta for
+# nothing (L-40): step 3's VOLUNTEER_CLEARED_M2, 250 m², judgement -- about
+# what a Moderate site is given, so Canterbury's Moderate claims cost no more
+# than Minor ones, as its medians show. The inundated rate is what claims paid
+# per m² beyond it; NO_SVA pays it on all the ejecta. Against Lower Hutt's
+# claims priced from their own ground, both x1.42 to today, the modelled median
+# over Canterbury's is in step 3's comparison output. Re-run step 3 after
+# changing the area ranges, the section, the allowance or the cost table, and
+# copy its values here; it says when these are stale.
 REPAIR_RATES = {
-    "inundated_nzd_per_m2": 10.39,
-    "evacuated_nzd_per_m2": 19.66,
-    "per_claim_nzd": 995.0,
+    "inundated_nzd_per_m2": 3.39,
+    "evacuated_nzd_per_m2": 18.57,
+    "per_claim_nzd": 1207.0,
+    "per_claim_sigma": 0.92,
+    "volunteer_cleared_m2": 250.0,
 }
 
 # Whether ejecta is cleared without the Student Volunteer Army's unpaid labour,
 # which the Canterbury costs -- and so the inundated rate fitted to them --
-# carry (L-40). True multiplies the inundated rate by NO_SVA_INUNDATED_MULTIPLIER.
+# carry (L-40). With volunteers, the first volunteer_cleared_m2 of each site's
+# ejecta (REPAIR_RATES) is cleared for nothing, as in Canterbury; True pays for
+# all of it. The loss viewer's switch does the same without a rerun.
 NO_SVA = False
-# PLACEHOLDER, TO BE SET. How much more clearing ejecta costs without
-# volunteers. A first guess by Perrie Gilbert, awaiting feedback from Virginie
-# Lacrosse and/or John Leeves (T-57).
-NO_SVA_INUNDATED_MULTIPLIER = 1.5

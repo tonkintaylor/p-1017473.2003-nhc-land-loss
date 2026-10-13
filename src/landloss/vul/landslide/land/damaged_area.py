@@ -39,7 +39,15 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from landloss.domain.loss_contract import CLAIM_ID_COLUMN
+from landloss.domain.loss_contract import (
+    CLAIM_ID_COLUMN,
+    LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_IDS_COLUMN,
+    LANDSLIDE_INUNDATED_AREAS_COLUMN,
+    LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
+    LANDSLIDE_RW_IDS_COLUMN,
+    RW_ID_COLUMN,
+)
 from landloss.hazard.landslide.land_class import (
     EVACUATED,
     IMMINENT,
@@ -48,6 +56,10 @@ from landloss.hazard.landslide.land_class import (
 )
 
 DEPTH_COLUMN = "depth_m"
+# Which failure a polygon belongs to: its evacuated and inundated polygons share
+# it. The hazard realisation's name; urban failures also carry the wall they
+# failed with as ``rw_id``.
+LANDSLIDE_ID_COLUMN = "landslide_id"
 
 # The land classes this module measures nothing for. Imminent ground is left out
 # of AREA_COLUMNS below, so every filter on it drops those rows, until T-45
@@ -68,6 +80,9 @@ DEPTH_COLUMNS = {
 # is both evacuated and inundated counts once. This is what the contract's
 # land_slide_total_insured_land_area is.
 UNION_AREA_COLUMN = "landslide_area_m2"
+# The part of that ground under the claim's buildings, which the loss module
+# values at the full rate of its land value tiers (landloss.loss.qv_land_value).
+FOOTPRINT_AREA_COLUMN = "landslide_footprint_area_m2"
 
 
 def _overlay(
@@ -212,6 +227,150 @@ def damaged_area_per_property(
     union = _union_area(insured, landslides, id_column)
     damaged[UNION_AREA_COLUMN] = damaged[id_column].map(union).fillna(0.0)
     return damaged[order].sort_values(id_column, kind="stable").reset_index(drop=True)
+
+
+def damaged_area_per_failure(
+    insured: gpd.GeoDataFrame,
+    landslides: gpd.GeoDataFrame,
+    *,
+    id_column: str = CLAIM_ID_COLUMN,
+) -> pd.DataFrame:
+    """Return, per property, each landslide that reached it and what it took.
+
+    The per-property areas pool every landslide; this keeps them apart, so a
+    property two separate slips reached can be repaired with a wall for each
+    (T-124). A failure's ground is its evacuated and inundated pieces on the
+    property, unioned, so its own deposit over its own scar counts once; two
+    failures that buried the same ground each count it, because each wall holds
+    its own slip. The per-property union is unaffected.
+
+    Args:
+        insured: The insured land polygons, carrying ``id_column``.
+        landslides: The hazard module's polygons, carrying
+            :data:`LANDSLIDE_ID_COLUMN`, :data:`LAND_CLASS_COLUMN` and
+            :data:`DEPTH_COLUMN`, and :data:`RW_ID_COLUMN` where the failure
+            took a retaining wall with it.
+        id_column: The property identifier.
+
+    Returns:
+        One row per property and landslide: ``id_column``,
+        :data:`LANDSLIDE_ID_COLUMN`, the wall's :data:`RW_ID_COLUMN` or
+        missing, ``area_m2``, ``inundated_area_m2`` and ``inundated_depth_m``
+        (missing with no inundated ground). Ordered by property and landslide.
+
+    Raises:
+        ValueError: If the landslides carry no landslide id.
+    """
+    columns = [
+        id_column,
+        LANDSLIDE_ID_COLUMN,
+        RW_ID_COLUMN,
+        "area_m2",
+        "inundated_area_m2",
+        "inundated_depth_m",
+    ]
+    if LANDSLIDE_ID_COLUMN not in landslides.columns:
+        msg = f"landslides carry no {LANDSLIDE_ID_COLUMN!r} column"
+        raise ValueError(msg)
+    slides = landslides[landslides[LAND_CLASS_COLUMN].isin(AREA_COLUMNS)]
+    if slides.empty:
+        return pd.DataFrame({column: [] for column in columns})
+    if RW_ID_COLUMN not in slides.columns:
+        slides = slides.assign(**{RW_ID_COLUMN: None})
+    keep = [
+        LANDSLIDE_ID_COLUMN,
+        RW_ID_COLUMN,
+        LAND_CLASS_COLUMN,
+        DEPTH_COLUMN,
+        slides.geometry.name,
+    ]
+    pieces = _overlay(insured, slides[keep], id_column)
+    if pieces.empty:
+        return pd.DataFrame({column: [] for column in columns})
+
+    rows = []
+    for (address, failure), group in pieces.groupby(
+        [id_column, LANDSLIDE_ID_COLUMN], sort=True
+    ):
+        inundated = group[group[LAND_CLASS_COLUMN] == INUNDATED]
+        depths = inundated[DEPTH_COLUMN].to_numpy(dtype=float)
+        depths = depths[np.isfinite(depths)]
+        walls = group[RW_ID_COLUMN].dropna()
+        rows.append(
+            {
+                id_column: address,
+                LANDSLIDE_ID_COLUMN: failure,
+                RW_ID_COLUMN: walls.iloc[0] if len(walls) else None,
+                "area_m2": group.geometry.union_all().area,
+                "inundated_area_m2": (
+                    inundated.geometry.union_all().area if len(inundated) else 0.0
+                ),
+                "inundated_depth_m": float(depths[0]) if len(depths) else np.nan,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def failures_per_property(
+    per_failure: pd.DataFrame, *, id_column: str = CLAIM_ID_COLUMN
+) -> pd.DataFrame:
+    """Return :func:`damaged_area_per_failure` as one row per property, in lists.
+
+    Args:
+        per_failure: From :func:`damaged_area_per_failure`.
+        id_column: The property identifier.
+
+    Returns:
+        Indexed by ``id_column``: the five
+        :data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`, each a
+        list with one entry per failure, in the same order.
+    """
+    sources = {
+        LANDSLIDE_IDS_COLUMN: LANDSLIDE_ID_COLUMN,
+        LANDSLIDE_RW_IDS_COLUMN: RW_ID_COLUMN,
+        LANDSLIDE_AREAS_COLUMN: "area_m2",
+        LANDSLIDE_INUNDATED_AREAS_COLUMN: "inundated_area_m2",
+        LANDSLIDE_INUNDATED_DEPTHS_COLUMN: "inundated_depth_m",
+    }
+    grouped = per_failure.groupby(id_column, sort=True)
+    return pd.DataFrame(
+        {
+            name: grouped[source].agg(lambda values: [_plain(v) for v in values])
+            for name, source in sources.items()
+        }
+    )
+
+
+def _plain(value: object) -> object:
+    """Return a value as a plain Python one, missing as None."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def footprint_damaged_area(
+    footprints: gpd.GeoDataFrame,
+    landslides: gpd.GeoDataFrame,
+    *,
+    id_column: str = CLAIM_ID_COLUMN,
+) -> pd.Series:
+    """Return the ground either kind of landslide takes under each footprint.
+
+    Measured on the union, as :data:`UNION_AREA_COLUMN` is, so a footprint two
+    landslides both reached counts once and the result never exceeds it.
+
+    Args:
+        footprints: The buildings on each property, merged per property and
+            carrying ``id_column``.
+        landslides: The hazard module's polygons, carrying
+            :data:`LAND_CLASS_COLUMN`.
+        id_column: The property identifier.
+
+    Returns:
+        The area in m2, indexed by ``id_column``, for every footprint a
+        landslide reached; a footprint no landslide reached is absent.
+    """
+    return _union_area(footprints, landslides, id_column).rename(FOOTPRINT_AREA_COLUMN)
 
 
 def check_within_insured_area(

@@ -5,8 +5,9 @@ hand loss four tables per exposure world and earthquake, each row carrying its
 own asset id, the ``claim_id`` of the LINZ property it belongs to and its
 coordinates:
 
-- **land**, one row per insured land polygon, with its market value rate, its
-  liquefaction land damage state and its landslide damaged areas;
+- **land**, one row per insured land polygon, with its liquefaction land
+  damage state, its landslide damaged areas and what loss values the land
+  from: the footprint, property area and suburb;
 - **rw**, one row per insured retaining wall, with its size, length, shaking
   damage and landslide flags;
 - **culverts** and **bridges**, split from the detected crossings by structure
@@ -63,6 +64,7 @@ from landloss.exposure.land.extent import DWELLING_COUNT_COLUMN
 from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.loss_input import (
     LOSS_TABLES,
+    PARENT_RW_ID_COLUMN,
     WORLD_ID_COLUMN,
     build_crossing_tables,
     build_land_table,
@@ -86,6 +88,7 @@ from scripts.landloss.vul.landslide.rw.steps.s11_wall_landslide_damage.gen_wall_
     wall_landslide_damage_path,
 )
 from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage.gen_liq_land_damage import (
+    AREA_COST_COLUMN,
     liq_land_damage_path,
 )
 from scripts.landloss.vul.shaking.culverts_bridges.steps.s9_structure_damage_state.gen_structure_damage_state import (
@@ -192,11 +195,18 @@ def describe_walls(rw, states):
     """Print how the wall table splits between the two shaking routes."""
     if rw.empty:
         return
-    with_state = rw[RW_ID_COLUMN].isin(states[RW_ID_COLUMN])
+    walls = rw.drop_duplicates(PARENT_RW_ID_COLUMN)
+    with_state = walls[PARENT_RW_ID_COLUMN].isin(states[RW_ID_COLUMN])
     print(
         f"  {int(with_state.sum()):,} walls carry a shaking damage state (flat "
         f"land); {int((~with_state).sum()):,} take their shaking flag from the "
         "urban slope outcome"
+    )
+    pieces = rw.groupby(PARENT_RW_ID_COLUMN).size()
+    split = pieces[pieces > 1]
+    print(
+        f"  {len(split):,} of {len(walls):,} walls cross property boundaries and "
+        f"are split into {int(split.sum()):,} rows, one per insured property"
     )
 
 
@@ -245,17 +255,24 @@ def main(*, extent, world_ids, realisation_ids):
                 pd.read_parquet(
                     landslide_land_damage_path(world_id, realisation_id, extent=extent)
                 ),
+                # The liquefaction cost settled is the one priced from the ground
+                # each claim lost, at rates fitted to the Canterbury claimant-only
+                # means (T-57, T-65), not the per-state percentile lookup.
+                ld_cost_column=AREA_COST_COLUMN,
             )
             states = pd.read_parquet(
                 wall_damage_state_path(world_id, realisation_id, extent=extent),
                 columns=[RW_ID_COLUMN, DAMAGE_STATE_COLUMN],
             )
+            # A wall crossing property boundaries is split onto each insured
+            # property it stands on, so each settles its own share.
             rw = build_rw_table(
                 walls,
                 states,
                 pd.read_parquet(
                     wall_landslide_damage_path(world_id, realisation_id, extent=extent)
                 ),
+                claims=set(insured[CLAIM_ID_COLUMN]),
             )
             culverts, bridges = build_crossing_tables(
                 gpd.read_parquet(

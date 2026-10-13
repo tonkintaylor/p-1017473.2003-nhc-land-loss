@@ -376,8 +376,8 @@ What this module owes the retaining wall table `loss` reads
   wall's line is its unit's simplified line (at most 3 bends, no section
   under 3 m) and `length_m` is that line's length; a unit can cross property
   boundaries and is drawn once on its primary property, carrying
-  `property_lengths_m` and `n_properties` for the loss side to count it on
-  each property it enters by 1 m (vul rw status files, Next). Pilot world 0:
+  `property_lengths_m` and `n_properties`, which vul step 10 splits it on, so
+  each property it enters by 1 m carries its own length (2026-10-12). Pilot world 0:
   1,940 walls drawn, 1,141 insured.
 - **Wall line placement, research (2026-10-12).** A pif unit's line is its
   pif's spine, on the crest or mid-face. Redraws from the downslope edge of

@@ -233,6 +233,10 @@ stitched tables:
   per tile under `urban-slope-found{suffix}-tiles/`, and
   `urban-slope-found{suffix}.pkl` holds a `tiled.TiledFound` index instead of
   the elements.
+- A tile with land but no grown elements produces an empty polygon table with
+  an explicit geometry column, CRS and element attributes
+  (`grid.element_polygons`), so it can still be stitched with the populated
+  tiles.
 - A tile's window is cut down to the bounds of its building outlines grown by
   `BUILDING_REACH_M` and `TILE_CROP_PAD_M` (`tiled.crop_tile`), starting on the
   whole grid's 3 m blocks; its core, and so what it owns, is unchanged. The

@@ -7,9 +7,10 @@ none, so nothing has run against real rows.
 
 ## Approach
 
-- Treat a crossing the same way as a retaining wall: a **fragility curve giving
-  the probability of failure at a given ground motion**, with a damage state
-  drawn against it.
+- A **probability of full replacement** with a damage state drawn against it,
+  as for a retaining wall -- but set by the property's liquefaction land damage
+  state rather than the ground motion (T-36), because a buried crossing is
+  broken by the ground moving around it, not by the shaking.
 - Carry **two damage states only, no damage and replace**. A failed crossing is
   rebuilt rather than patched.
 - Keep the **kind of structure** on every row. Culverts and bridges share the
@@ -28,8 +29,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [x] Carry `culvert_id` and `bridge_id` through from the exposure module.
   Carried as `crossing_id` and split into the two by `asset` at vul step 10.
 - [x] Write culverts and bridges as two tables, at vul step 10.
-- [~] Supply `is_damaged` for culverts and `is_damaged_by_shaking` for bridges,
-  from `damage_state`. Drawn on a flat 70%; the pilot has no rows.
+- [x] Supply `is_damaged` for culverts and `is_damaged_by_shaking` for bridges,
+  from `damage_state`: replaced for liquefaction, drawn on the property's land
+  damage state (T-36, 2026-10-13). The bridge column keeps its name, liquefaction
+  being the shaking's effect on the ground.
 - [x] Carry coordinates, as each structure's geometry in EPSG 2193.
 - [x] Supply `is_inundated` for both and `is_evacuated` for bridges, from
   `vul/landslide/culverts_bridges` step 11.
@@ -42,9 +45,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   realisation's PGA field, draws a state per structure and writes it with the
   `crossing_id`, `claim_id`, structure kind, geometry and PGA sampled at the
   structure's representative point.
-- The fragility is a flat `BETA_FAILURE_PROBABILITY = 0.7`, which now serves
-  culverts and bridges only, because retaining walls moved to the published
-  wall curve on PGV; it does not yet distinguish a culvert from a bridge.
+- The chance of replacement is the one for the property's liquefaction land
+  damage state (T-36), 0 to 40%, culverts and bridges alike; nought off the
+  liquefaction grid. It replaced the flat 70% on 2026-10-13.
 - **The Wellington pilot produces no rows.** The crossing population follows
   named watercourses, and the nearest is some kilometres from the pilot box. The
   step reports that in words rather than as an empty table, but it means the
@@ -56,7 +59,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    crossings.
 2. Widen the population beyond named watercourses — most private crossings are
    over unnamed drains and gullies.
-3. Define separate fragility curves for culverts and bridges.
+3. A span per crossing, which the loss module's $15,000 a metre would use in
+   place of its 5 m default.
 
 ## Validation
 

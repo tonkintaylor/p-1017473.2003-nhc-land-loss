@@ -97,6 +97,37 @@ def classify_property_category(category: pd.Series) -> pd.Series:
     return use.where(code != "")
 
 
+def claim_ids_by_valuation_reference(boundaries: pd.DataFrame) -> pd.DataFrame:
+    """Return each valuation reference with the claim property it belongs to.
+
+    The same link as :func:`~landloss.exposure.land.residential_use.property_use`:
+    a boundary joins its stack's representative, whose ``source_id`` is the
+    claim id ``build_claim_properties`` mints.
+
+    Args:
+        boundaries: The LINZ property boundaries, on a unique index.
+
+    Returns:
+        One row per distinct (valuation reference, claim id) pair.
+    """
+    claimable = boundaries[~boundaries[SOURCE_COLUMN].isin(NON_CLAIM_SOURCES)]
+    claimable = claimable.reset_index(drop=True)
+    stack = stack_representatives(claimable)
+    linked = pd.DataFrame(
+        {
+            VALUATION_REFERENCE_COLUMN: claimable[
+                VALUATION_REFERENCE_COLUMN
+            ].to_numpy(),
+            CLAIM_ID_COLUMN: claimable.loc[
+                stack.to_numpy(), SOURCE_ID_COLUMN
+            ].to_numpy(),
+        }
+    )
+    # pandas joins a missing key to every other missing key.
+    linked = linked[linked[VALUATION_REFERENCE_COLUMN].notna()]
+    return linked.drop_duplicates()
+
+
 def property_use(
     boundaries: gpd.GeoDataFrame,
     units: pd.DataFrame,

@@ -47,28 +47,32 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LIQ_LD_AREA_COLUMN,
     LIQ_LD_STATE_COLUMN,
-    RW_ID_COLUMN,
+    RW_HEIGHT_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
+    RW_TYPE_COLUMN,
     TOTAL_INSURED_LAND_AREA_COLUMN,
 )
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     BETA_SIZE_CLASS_HEIGHT_M,
-    beta_wall_height_m,
-    beta_wall_rate_excl_gst_nzd_per_m2,
+    wall_type_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s1_settlement import config
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
+    CONTINGENCY_COLUMN,
     CROSSING_REPAIR_COLUMN,
     FEES_COLUMN,
     LAND_REPAIR_COLUMN,
     LANDSLIDE_REPAIR_AREA_COLUMN,
     LIQ_REPAIR_COLUMN,
+    MOB_DEMOB_COLUMN,
+    NEW_WALL_COUNT_COLUMN,
     NEW_WALL_HEIGHT_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
     NEW_WALL_SIZE_COLUMN,
+    PROJECT_MANAGEMENT_COLUMN,
     REPLACEMENT_WALL_LENGTH_COLUMN,
     REPLACEMENT_WALL_RATE_COLUMN,
     REPLACEMENT_WALL_SIZE_COLUMN,
@@ -622,8 +626,11 @@ def write_overview(sheet, claims: pd.DataFrame, policy: PolicySettings) -> None:
         {
             "Walls replaced": claims[WALL_REPAIR_COLUMN].sum(),
             "New walls": claims[LAND_REPAIR_COLUMN].sum(),
-            "Spoil cleared": claims[SPOIL_REPAIR_COLUMN].sum(),
+            "Spoil removal": claims[SPOIL_REPAIR_COLUMN].sum(),
             "Fees": claims[FEES_COLUMN].sum(),
+            "Mob/demob": claims[MOB_DEMOB_COLUMN].sum(),
+            "Project management": claims[PROJECT_MANAGEMENT_COLUMN].sum(),
+            "Contingency": claims[CONTINGENCY_COLUMN].sum(),
             "Liquefaction": claims[LIQ_REPAIR_COLUMN].sum(),
             "Crossings": claims[CROSSING_REPAIR_COLUMN].sum(),
         }
@@ -871,10 +878,23 @@ BLOCKS = [
                 MONEY,
                 13,
             ),
-            ("nw_size", "New RTW size", NEW_WALL_SIZE_COLUMN, None, 11),
-            ("nw_height", "New RTW height (m)", NEW_WALL_HEIGHT_COLUMN, "0.00", 12),
-            ("nw_length", "New RTW length (m)", NEW_WALL_LENGTH_COLUMN, AREA, 12),
-            ("nw_cost", "New RTW to hold it ($)", LAND_REPAIR_COLUMN, MONEY, 14),
+            ("nw_count", "New RTWs, one per slip", NEW_WALL_COUNT_COLUMN, "0", 11),
+            ("nw_size", "New RTW size (largest)", NEW_WALL_SIZE_COLUMN, None, 11),
+            (
+                "nw_height",
+                "New RTW height (m, tallest)",
+                NEW_WALL_HEIGHT_COLUMN,
+                "0.00",
+                12,
+            ),
+            (
+                "nw_length",
+                "New RTW length (m, all walls)",
+                NEW_WALL_LENGTH_COLUMN,
+                AREA,
+                12,
+            ),
+            ("nw_cost", "New RTWs to hold it ($)", LAND_REPAIR_COLUMN, MONEY, 14),
             ("spoil_m3", "Spoil to clear (m3)", SPOIL_VOLUME_COLUMN, AREA, 12),
             ("spoil_cost", "Spoil removal ($)", SPOIL_REPAIR_COLUMN, MONEY, 13),
             (
@@ -891,6 +911,7 @@ BLOCKS = [
         [
             ("rw_cause", "What damaged it", WALL_CAUSE_COLUMN, None, 18),
             ("rw_size", "RTW size", "wall_size", None, 11),
+            ("rw_type", "RTW type", "wall_type", None, 18),
             ("rw_height", "RTW height (m)", "wall_height_m", "0.00", 12),
             ("rw_length", "RTW length (m)", "wall_length_m", AREA, 12),
             ("rw_rate", "RTW rate ($/m2)", "wall_rate_excl_gst", RATE, 12),
@@ -962,9 +983,33 @@ BLOCKS = [
             ("dwellings", "Dwellings", "dwelling_count", COUNT, 10),
             ("fees", "Professional fees ($)", None, MONEY, 13),
             (
+                "mob",
+                "Mob/demob (15% of walls and fees, min $5,000) ($)",
+                None,
+                MONEY,
+                16,
+            ),
+            (
+                "pm",
+                "Project management (10% of walls, fees, mob/demob and crossings) ($)",
+                None,
+                MONEY,
+                16,
+            ),
+            (
+                "contingency",
+                "Contingency (20% of the whole repair) ($)",
+                None,
+                MONEY,
+                14,
+            ),
+            (
                 "repair_excl",
                 "Total repair, excl GST ($)",
-                Formula("={ls_repair}{r}+{rw_repair}{r}+{liq_repair}{r}+{fees}{r}"),
+                Formula(
+                    "={ls_repair}{r}+{rw_repair}{r}+{liq_repair}{r}+{fees}{r}"
+                    "+{mob}{r}+{pm}{r}+{contingency}{r}"
+                ),
                 MONEY,
                 15,
             ),
@@ -1058,6 +1103,9 @@ DIVIDE_BY_GST = {
     "rw_repair": WALL_REPAIR_COLUMN,
     "liq_repair": LIQ_REPAIR_COLUMN,
     "fees": FEES_COLUMN,
+    "mob": MOB_DEMOB_COLUMN,
+    "pm": PROJECT_MANAGEMENT_COLUMN,
+    "contingency": CONTINGENCY_COLUMN,
     "nw_cost": LAND_REPAIR_COLUMN,
     "spoil_cost": SPOIL_REPAIR_COLUMN,
 }
@@ -1215,7 +1263,9 @@ REPAIR_NOTES = [
     ),
     (
         "C1. Canterbury settled costs per property, $200 to $4,000 by damage "
-        "state, in 2010/2011 dollars and NOT yet inflated. They exclude ILV "
+        "state in 2010/2011 dollars, multiplied by 1.42 to today's, a "
+        "placeholder from the construction Labour Cost Index since March 2011 "
+        "(L-23, L-74). They exclude ILV "
         "and IFV, so they are the minor-damage tier only. The cap the state "
         "is compared against is the land rate over the liquefied land: "
         "evacuated plus inundated, less the share of the evacuated assumed "
@@ -1226,7 +1276,11 @@ REPAIR_NOTES = [
         "excluding GST, charged once on a claim that involves a wall and added "
         "before the site multiplier, so a difficult site costs more to design "
         "as well as to build. Mileage is excluded, and they never reach the "
-        "undepreciated value."
+        "undepreciated value. A claim that carries the fees also carries the "
+        "wall works' on-costs: mob/demob at the higher of $5,000 or 15% of the "
+        "walls and fees, and project management at 10% of the walls, fees, "
+        "mob/demob and any culvert or bridge. Every claim then carries a 20% contingency on its whole "
+        "repair, liquefaction and culverts and bridges included, applied last."
     ),
     (
         "D2. The retaining wall's contribution is the LESSER of its "
@@ -1487,20 +1541,34 @@ def wall_shape(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFra
     order = pd.Categorical(
         damaged[RW_SIZE_COLUMN], categories=list(BETA_SIZE_CLASS_HEIGHT_M), ordered=True
     )
+    height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)
+    face = height * damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float)
+    rate = wall_type_rate_excl_gst_nzd_per_m2(
+        damaged[RW_TYPE_COLUMN].to_numpy(), height
+    )
     damaged = damaged.assign(
         _order=order,
-        _rate=beta_wall_rate_excl_gst_nzd_per_m2(
-            damaged[RW_ID_COLUMN].to_numpy(),
-            beta_wall_height_m(damaged[RW_SIZE_COLUMN].to_numpy()),
-        ),
+        _face=face,
+        _bare=face * rate,
         _cause=wall_damage_cause(damaged),
     )
     grouped = damaged.groupby(CLAIM_ID_COLUMN)
+    length = grouped[RW_LENGTH_COLUMN].sum()
+    face_total = grouped["_face"].sum()
+    # A claim's walls on one row: the height is length-weighted and the rate
+    # face-weighted, so height x length x rate is still the claim's bare wall
+    # value however many walls of however many types it has.
     out = pd.DataFrame(
         {
             "wall_size": grouped["_order"].max().astype(str),
-            "wall_length_m": grouped[RW_LENGTH_COLUMN].sum(),
-            "wall_rate_excl_gst": grouped["_rate"].max(),
+            "wall_type": grouped[RW_TYPE_COLUMN].agg(
+                lambda types: ", ".join(sorted(set(types)))
+            ),
+            "wall_height_m": (face_total / length).where(length > 0, 0.0),
+            "wall_length_m": length,
+            "wall_rate_excl_gst": (grouped["_bare"].sum() / face_total).where(
+                face_total > 0, 0.0
+            ),
             WALL_CAUSE_COLUMN: grouped["_cause"].agg(
                 lambda causes: ", ".join(sorted(set(causes)))
             ),
@@ -1523,13 +1591,12 @@ def main(*, extent, world_ids, realisation_ids):
 
     walls = wall_shape(world_id, realisation_id, extent=extent).reindex(claims.index)
     claims["wall_size"] = walls["wall_size"].fillna("none")
+    claims["wall_type"] = walls["wall_type"].fillna("none")
+    claims["wall_height_m"] = walls["wall_height_m"].fillna(0.0)
     claims["wall_length_m"] = walls["wall_length_m"].fillna(0.0)
     claims["wall_rate_excl_gst"] = walls["wall_rate_excl_gst"].fillna(0.0)
     claims[WALL_CAUSE_COLUMN] = walls[WALL_CAUSE_COLUMN].fillna(
         "no wall on the property"
-    )
-    claims["wall_height_m"] = (
-        claims["wall_size"].map(BETA_SIZE_CLASS_HEIGHT_M).fillna(0.0)
     )
     areas = land_areas_by_claim(world_id, realisation_id, extent=extent).reindex(
         claims.index

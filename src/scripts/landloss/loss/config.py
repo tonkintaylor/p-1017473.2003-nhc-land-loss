@@ -15,7 +15,7 @@ than a loop. A step runs the Act as it stands unless it is handed otherwise.
 # name from landloss.io.area_of_interest.EXTENTS ("wlg-pilot" for the small
 # Wellington pilot box). Must match the run of vul step 10, whose four tables
 # this module reads.
-EXTENT = "wlg-pilot"
+EXTENT = "lower-hutt"
 
 # Which exposure worlds to run, each a draw of the wall population. Each must
 # already have been run through the exposure, hazard and vulnerability modules.

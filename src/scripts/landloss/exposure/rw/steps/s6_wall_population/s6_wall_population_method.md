@@ -297,8 +297,8 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   primary property (`property_id`, the non-road property holding most of
   its line), and the wall also carries `property_lengths_m` (each non-road
   property it enters by at least 1 m and its length there) and
-  `n_properties` (`population.OPTIONAL_COLUMNS`), for the loss side to count
-  it on each property later (vul rw status files, Next).
+  `n_properties` (`population.OPTIONAL_COLUMNS`), which vul step 10 splits
+  the wall on, one row per insured property at its length there (2026-10-12).
 - After the draw, so the random stream is the same whatever is kept: lines
   with no `claim_id` are dropped, because council and road-reserve walls are
   out of scope (**I-05**); then

@@ -470,3 +470,33 @@ def test_a_unit_titled_block_carries_one_rating_unit_per_stacked_title():
 
     assert areas.loc["flat", PROPERTY_RATING_UNIT_COUNT_COLUMN] == 3
     assert areas.loc["house", PROPERTY_RATING_UNIT_COUNT_COLUMN] == 1
+
+
+def test_a_share_in_a_common_lot_is_left_out_of_each_property_area():
+    # Three house lots, each titled with the same 100 x 100 m common lot.
+    common = box(0, 100, 100, 200)
+    lots = [box(x, 0, x + 30, 30) for x in (0, 35, 70)]
+    properties = build_claim_properties(
+        make_boundaries([lot.union(common) for lot in lots])
+    )
+    assert properties["property_area_m2"].tolist() == pytest.approx([900.0] * 3)
+    assert properties["shared_area_m2"].tolist() == pytest.approx([10_000.0] * 3)
+    # The shape is kept, so insured land can still reach the common lot.
+    assert properties.geometry.area.tolist() == pytest.approx([10_900.0] * 3)
+
+
+def test_near_identical_titles_keep_their_whole_area():
+    # Two titles on one footprint, a few square metres apart: neither keeps
+    # enough of its own to be a share in a common lot.
+    properties = build_claim_properties(
+        make_boundaries([box(0, 0, 40, 40), box(0, 0, 40, 40.5)])
+    )
+    assert properties["shared_area_m2"].tolist() == pytest.approx([0.0, 0.0])
+    assert properties["property_area_m2"].tolist() == pytest.approx([1_600.0, 1_620.0])
+
+
+def test_neighbours_whose_boundaries_barely_overlap_keep_their_area():
+    properties = build_claim_properties(
+        make_boundaries([box(0, 0, 40, 40), box(39.5, 0, 80, 40)])
+    )
+    assert properties["shared_area_m2"].tolist() == pytest.approx([0.0, 0.0])

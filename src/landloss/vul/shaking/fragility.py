@@ -24,10 +24,11 @@ Two fragilities live here.
   2026-10-12, as the urban slope model is). Walls on sloping land
   are not drawn here: they belong to the urban failure polygon on whose edge
   they stand, and landslide step 6 decides their fate.
-- **Culverts and bridges** still take :data:`BETA_FAILURE_PROBABILITY`, one
-  flat probability for every structure whatever its size, condition or the
-  ground motion it saw -- a fragility curve flattened to a constant, not a
-  different kind of thing.
+- **Culverts and bridges** take the chance for their property's liquefaction
+  land damage state, :func:`crossing_failure_probability` (T-36): nought on
+  land that did not liquefy and off the liquefaction grid, rising to 40% at the
+  worst states. Shaking alone does not break a buried crossing; the ground
+  moving around it does. Landslides break them separately, in vul step 11.
 
 :func:`draw_damage_states` takes probabilities rather than computing them, so
 either fragility drops in without it changing.
@@ -45,12 +46,27 @@ DAMAGE_STATES = (NO_DAMAGE, REPLACE)
 
 DAMAGE_STATE_COLUMN = "damage_state"
 
-# The beta's stand-in for a fragility curve, now for culverts and bridges only:
-# every structure fails with this probability, regardless of what it is, what
-# condition it is in or how hard the ground shook. Replaced by published curves,
-# at which point the probability becomes a function of the structure and its
-# shaking rather than a constant.
+# The beta's stand-in for a fragility curve: every structure fails with this
+# probability, regardless of what it is, what condition it is in or how hard
+# the ground shook. Culverts and bridges took it until T-36 replaced it with
+# CROSSING_REPLACEMENT_BY_LD_STATE; it is kept as the plainest probability to
+# test draw_damage_states against.
 BETA_FAILURE_PROBABILITY = 0.7
+
+# The chance a culvert or bridge on flat land is fully replaced, by its
+# property's liquefaction land damage state (T-36, John Leeves and Virginie
+# Lacrosse, 2026-10-13). A buried crossing is broken by the ground moving
+# around it -- lateral spreading towards the channel it crosses, settlement,
+# flotation -- rather than by the shaking itself, so the land damage state is
+# what its chance follows. State 1, no land damage, cannot break it.
+CROSSING_REPLACEMENT_BY_LD_STATE = {
+    1: 0.0,
+    2: 0.01,
+    3: 0.05,
+    4: 0.20,
+    5: 0.40,
+    6: 0.40,
+}
 
 # A flat-land wall stands on no slope, so no topographic amplification divides
 # its median, and the urban rate setting (which scales the urban failure
@@ -105,6 +121,36 @@ def beta_failure_probability(count: int) -> np.ndarray:
         msg = f"count must not be negative, got {count}"
         raise ValueError(msg)
     return np.full(count, BETA_FAILURE_PROBABILITY)
+
+
+def crossing_failure_probability(ld_state: np.ndarray | pd.Series) -> np.ndarray:
+    """Return each culvert or bridge's chance of replacement, from its land.
+
+    The chance for its property's liquefaction land damage state, from
+    :data:`CROSSING_REPLACEMENT_BY_LD_STATE`. A crossing with no state stands
+    on land off the liquefaction grid -- hill land -- and liquefaction cannot
+    break it, so its chance is nought; a landslide can still, which vul step 11
+    flags on its own.
+
+    Args:
+        ld_state: The land damage state, 1 to 6, missing off the grid.
+
+    Returns:
+        The probability per crossing.
+
+    Raises:
+        ValueError: If a state is outside 1 to 6.
+    """
+    states = pd.Series(ld_state, dtype="Float64")
+    known = states.notna()
+    unknown = sorted(
+        set(states[known].astype(int)) - set(CROSSING_REPLACEMENT_BY_LD_STATE)
+    )
+    if unknown:
+        msg = f"land damage states must be 1 to 6, got {unknown}"
+        raise ValueError(msg)
+    probability = states.map(CROSSING_REPLACEMENT_BY_LD_STATE, na_action="ignore")
+    return probability.fillna(0.0).to_numpy(dtype=float)
 
 
 def wall_failure_probability(

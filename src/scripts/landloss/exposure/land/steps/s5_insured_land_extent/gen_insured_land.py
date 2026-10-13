@@ -51,7 +51,6 @@ import geopandas as gpd
 import pandas as pd
 
 from landloss.domain import constants
-from landloss.domain.gst import add_gst
 from landloss.domain.loss_contract import LAND_ID_COLUMN
 from landloss.exposure.asset_ids import LAND_ID_SUFFIX, mint_asset_ids
 from landloss.exposure.land.driveways import (
@@ -59,17 +58,16 @@ from landloss.exposure.land.driveways import (
     generate_driveways,
 )
 from landloss.exposure.land.extent import (
-    ADDRESS_ID_COLUMN,
     AREA_COLUMN,
     BOUNDARY_ROW_COLUMN,
     BUILDING_COUNT_COLUMN,
     BUILDING_USE_COLUMN,
     CLAIM_ID_COLUMN,
     DWELLING_COUNT_COLUMN,
-    LAND_RATE_EXCL_GST_COLUMN,
-    LAND_RATE_INCL_GST_COLUMN,
+    FOOTPRINT_AREA_COLUMN,
     OUTLINE_ID_COLUMN,
     PROPERTY_AREA_COLUMN,
+    SUBURB_COLUMN,
     TITLE_TYPE_COLUMN,
     UNNAMED_BUILDING_USE,
     assign_buildings_to_properties,
@@ -82,9 +80,11 @@ from landloss.exposure.land.residential_use import (
     DWELLING_USES,
     PROPERTY_CATEGORY_COLUMN,
     VALUATION_REFERENCE_COLUMN,
+    claim_ids_by_valuation_reference,
     drop_buildings_by_property_use,
     property_use,
 )
+from landloss.exposure.rw.age import claim_suburbs
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.qv_rating_roll import get_qv_rating_roll, linz_valuation_reference
 from landloss.io.readers import (
@@ -116,9 +116,7 @@ QV_RULE = "qv"
 FOOTPRINT_RULE = "footprint"
 RESIDENTIAL_RULES = (QV_RULE, FOOTPRINT_RULE)
 
-# Step 2's rate per address, which the extent carries forward, and the lot size assumption it is there
-# to be checked against.
-RATE_COLUMN = "land_rate_nzd_per_m2"
+# Step 2's lot size assumption, which the measured extent is checked against.
 ASSUMED_LOT_SIZE_COLUMN = "assumed_lot_size_m2"
 
 # The quantiles the area distributions are described at.
@@ -174,6 +172,37 @@ def insured_land_path(*, extent):
         The output path, under ``temp/exposure/``.
     """
     return WORK_DIR / f"{OUT_STEM}{extent_suffix(extent)}.geoparquet"
+
+
+def footprints_path(*, extent):
+    """Return the file a run writes each claim's building footprint to.
+
+    The buildings the insured land is buffered off, merged per claim, which the
+    landslide step intersects its damaged ground with: ground under the house
+    is valued at the full rate in the loss module.
+
+    Args:
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        The output path, under ``temp/exposure/``.
+    """
+    return WORK_DIR / f"claim-footprints{extent_suffix(extent)}.geoparquet"
+
+
+def valuation_links_path(*, extent):
+    """Return the file a run writes the valuation references per claim to.
+
+    Args:
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        The output path, under ``temp/exposure/``: one row per valuation
+        reference and the claim it belongs to.
+    """
+    return WORK_DIR / f"claim-valuation-links{extent_suffix(extent)}.parquet"
 
 
 def fetch_extent(addresses, margin_m=config.FETCH_MARGIN_M):
@@ -547,26 +576,29 @@ def main(
     print(describe_driveways(driveways, parts[CLAIM_ID_COLUMN].nunique()).to_string())
     describe_extent(land_extent, occupied, addresses, dwellings)
 
-    # The rate rides along with the polygon so that the vulnerability step reads
-    # one layer rather than joining two. It is the same rate step 2 modelled;
-    # nothing here revalues anything. A property takes the mean of the rates of
-    # the addresses standing on it, which for a block of flats is the rate its
-    # units were each modelled at.
-    rates = (
-        dwellings.merge(
-            addresses[[ADDRESS_ID_COLUMN, RATE_COLUMN]], on=ADDRESS_ID_COLUMN
-        )
-        .groupby(CLAIM_ID_COLUMN)[RATE_COLUMN]
-        .mean()
+    # No land value rides along: the loss module values the land itself, from
+    # the QV roll in tiers stepping down from the footprint (landloss.loss.
+    # qv_land_value). What it needs from here is where the land lies -- the
+    # footprint, written as a layer so vul can measure the landslide ground on
+    # it, and its area -- the suburb, which a property not on the roll is valued
+    # at the median of, and the link from the roll's units to the claims.
+    footprints = (
+        parts[[CLAIM_ID_COLUMN, parts.geometry.name]]
+        .dissolve(by=CLAIM_ID_COLUMN)
+        .reset_index()
     )
-    # Step 2's rate is taken as excluding GST, and is grossed up here by the one
-    # named function so both sides are written and the loss module is handed
-    # only the inclusive one.
-    rate_excl_gst = land_extent[CLAIM_ID_COLUMN].map(rates)
+    suburbs = claim_suburbs(
+        dwellings, addresses, CLAIM_ID_COLUMN, columns=(SUBURB_COLUMN,)
+    )[SUBURB_COLUMN]
+    claims = land_extent[CLAIM_ID_COLUMN]
     insured = land_extent.assign(
         **{
-            LAND_RATE_EXCL_GST_COLUMN: rate_excl_gst,
-            LAND_RATE_INCL_GST_COLUMN: add_gst(rate_excl_gst),
+            FOOTPRINT_AREA_COLUMN: claims.map(
+                footprints.set_index(CLAIM_ID_COLUMN).geometry.area
+            )
+            .fillna(0.0)
+            .round(2),
+            SUBURB_COLUMN: claims.map(suburbs),
         }
     )
     # One polygon per claim today, so every land_id is <claim_id>-L01. The id is
@@ -577,15 +609,15 @@ def main(
         [
             LAND_ID_COLUMN,
             CLAIM_ID_COLUMN,
-            LAND_RATE_EXCL_GST_COLUMN,
-            LAND_RATE_INCL_GST_COLUMN,
             AREA_COLUMN,
             PROPERTY_AREA_COLUMN,
+            FOOTPRINT_AREA_COLUMN,
             BUILDING_COUNT_COLUMN,
             # The dwellings the claim covers. NHC's sub-caps and excess are per
             # dwelling, so a block of flats settling as one claim still settles
             # on several.
             DWELLING_COUNT_COLUMN,
+            SUBURB_COLUMN,
             insured.geometry.name,
         ]
     ]
@@ -594,6 +626,18 @@ def main(
     insured.to_parquet(out_path)
     print(RULE)
     print(f"Wrote {len(insured):,} insured land polygons to {out_path}")
+
+    footprint_out = footprints_path(extent=extent)
+    footprints.to_parquet(footprint_out)
+    print(f"Wrote {len(footprints):,} claim footprints to {footprint_out}")
+
+    # Only references and claim ids, nothing of the roll, so it is not
+    # sensitive; the loss module joins the roll's land values on it.
+    links_out = valuation_links_path(extent=extent)
+    links = claim_ids_by_valuation_reference(boundaries)
+    links = links[links[CLAIM_ID_COLUMN].isin(set(claims))]
+    links.to_parquet(links_out, index=False)
+    print(f"Wrote {len(links):,} valuation references to {links_out}")
 
     driveway_out = driveway_path(extent=extent)
     driveways.to_parquet(driveway_out)

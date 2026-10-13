@@ -2,9 +2,14 @@ import numpy as np
 import pytest
 
 from landloss.vul.liquefaction.costs import (
+    CLAIMS_COLUMN,
     COST_YEAR,
+    COSTS_INCLUDE_NON_CLAIMANTS,
+    MEAN_COST_COLUMN,
     PERCENTILE_COLUMNS,
+    QUARTILE_COLUMNS,
     ld_cost_nzd,
+    load_claimant_costs,
     load_ld_costs,
 )
 
@@ -79,3 +84,38 @@ def test_the_none_state_keeps_its_name():
     costs = load_ld_costs()
     assert costs.loc[1, "state_name"] == "None"
     assert costs["state_name"].notna().all()
+
+
+def test_the_claimant_costs_carry_all_six_states_with_positive_counts():
+    means = load_claimant_costs()
+    assert list(means.index) == [1, 2, 3, 4, 5, 6]
+    assert (means[CLAIMS_COLUMN] > 0).all()
+    assert (means[MEAN_COST_COLUMN] > 0).all()
+
+
+def test_the_claimant_means_rise_from_none_to_very_severe():
+    means = load_claimant_costs()[MEAN_COST_COLUMN]
+    assert means.is_monotonic_increasing
+
+
+def test_the_claimant_quartiles_are_in_order_and_skewed_right():
+    # The median sits below the mean in every state: a tail of large claims
+    # carries the mean, which is why the quartiles are fitted as well.
+    costs = load_claimant_costs()
+    quartiles = costs[list(QUARTILE_COLUMNS.values())].to_numpy()
+    assert (np.diff(quartiles, axis=1) > 0).all()
+    assert (costs[QUARTILE_COLUMNS[50]] < costs[MEAN_COST_COLUMN]).all()
+
+
+def test_claimant_quartiles_out_of_order_are_refused(tmp_path):
+    costs = load_claimant_costs().reset_index()
+    costs.loc[0, QUARTILE_COLUMNS[25]] = costs.loc[0, QUARTILE_COLUMNS[75]] + 1
+    path = tmp_path / "costs.csv"
+    costs.to_csv(path, index=False)
+    with pytest.raises(ValueError, match="out of order"):
+        load_claimant_costs(path)
+
+
+def test_the_settled_cost_is_on_a_claimant_only_basis():
+    """It is what switches the liquefaction drop-out draw on."""
+    assert COSTS_INCLUDE_NON_CLAIMANTS is False

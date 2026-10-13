@@ -1,0 +1,1 @@
+The loss viewer shows the version it was built from at the bottom of its settings panel: the first six characters of the git commit and the build date, flagged when there were uncommitted changes. Each viewer CSV records the version that built it in a `built_with` column, and the page says when a loaded CSV comes from a different version.

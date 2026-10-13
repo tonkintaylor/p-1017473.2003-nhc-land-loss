@@ -170,9 +170,12 @@ on feedback rather than derived.
   per m² evacuated, and per claim. **Provisional**, fitted by step 3 to the
   diluted Canterbury means and not validated (**L-45**); refit whenever the ranges, the overlap or the cost table
   change, and against claimant-only costs once they arrive (**T-65**).
-- **No-SVA multiplier on the inundated rate**, `NO_SVA_INUNDATED_MULTIPLIER`,
-  applied when `NO_SVA` is set. 1.5 is a placeholder by Perrie Gilbert,
-  awaiting feedback from Virginie Lacrosse and/or John Leeves (**Q-18**).
+- **The Student Volunteer Army as an allowance** (2026-10-12): with
+  volunteers, as in Canterbury, the first 250 m² of each site's ejecta
+  (`volunteer_cleared_m2`, judgement) is cleared for nothing and the rest paid
+  at the inundated rate; `NO_SVA` pays for all of it. It replaced a multiplier
+  on the inundated rate (**Q-18**). The loss viewer switches it without a
+  rerun.
 
 ## Open decisions
 

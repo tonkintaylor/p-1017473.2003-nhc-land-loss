@@ -116,6 +116,9 @@ then the code. The landslide chain that reads it is in
 
 ## Validation
 
+- Empty and populated element polygon tables, and stitching with an empty tile
+  (`tests/landloss/hazard/landslide/test_instability_zones.py`,
+  `tests/landloss/hazard/landslide/test_tiled_faces.py`).
 - Faces against the GNS mapped walls and the SLIDE breaks in slope
   (`steps/s4_slope_faces/table_slope_face_checks.py`): 63% of mapped wall
   length near a siz and 67% near any pif within 2 m.
