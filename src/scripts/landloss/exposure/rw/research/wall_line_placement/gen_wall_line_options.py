@@ -23,14 +23,24 @@ moved onto it instead, or ``no-toe`` where the pif has no toe point and keeps
 its spine. GNS-only units have no pips and keep their line. Options 2 to 8,
 compared earlier the same day, are recorded in ``wall_line_placement.md``.
 
+Option 10, the lead's method of 2026-10-13 (``toe_outline.py``), draws the
+line along the downhill stretch of the pif's cell outline, regularised to 0
+to 3 bends, and splits off the pips the line does not hold (a pip's fall,
+widened 45° either side, misses it) as pifs with no wall, p_wall 0. Its
+units are drawn in ``config.N_WORKERS`` processes. ``method`` is
+``outline``, ``outline-wide`` (the toe run needed a normal over 60° from the
+fall) or ``fallback-opt9`` (no downhill run on the outline: option 9's line).
+
 It writes, under ``temp/qgis/wall-line-placement<suffix>/``, the current
-lines and option 9's, each carrying what the wall points read off the line
+lines, option 9's and option 10's, each carrying what the wall points read off the line
 (the boundary and road frontage shares, the primary property, the length)
 and how far it moved, the toe points before and after the move, an outline
 (concave hull) round each pif's points, the context layers for a QGIS
 project (hillshade, pips, 1 m points, ground step 3 elements, the world 0
 evacuated zones, property boundaries) and ``summary.csv``, with the time the
-lines took.
+lines took. For option 10 also the wall's pif and the no-wall pifs
+(``pifs-opt10.gpkg``) and every pip with its piece and how it got there
+(``pips-opt10.gpkg``).
 """
 
 import math
@@ -53,7 +63,10 @@ from landloss.hazard.landslide.wall_units import (
 )
 from landloss.io.area_of_interest import extent_suffix
 from landloss.io.readers import get_nz_property_boundaries
-from scripts.landloss.exposure.rw.research.wall_line_placement import config
+from scripts.landloss.exposure.rw.research.wall_line_placement import (
+    config,
+    toe_outline,
+)
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
     read_sizs,
     wall_draws_path,
@@ -76,6 +89,7 @@ from scripts.landloss.paths import TEMP_DIR
 STEP_XY = np.array([(dc, -dr) for dr, dc in DIRECTIONS], dtype=float)
 CURRENT = "current"
 TOE_FIT = "opt9"
+OUTLINE = "opt10"
 HALF_CELL_M = 0.5
 SEARCH_MARGIN_M = 1e-6
 # Two ends closer than this are the same toe point. An absolute distance:
@@ -140,6 +154,23 @@ def main(*, extent, use_cached_layers):
     write_toe_points(directory / f"toe-points-{TOE_FIT}", members)
     print(f"{TOE_FIT}: {len(lines):,} lines in {seconds:.1f} s")
 
+    outline, pifs, pips, seconds = draw_outline_lines(units, sizs, measured.geometry)
+    measured = measure(outline, units, properties, units.geometry)
+    measured.to_file(directory / f"lines-{OUTLINE}.gpkg", driver="GPKG")
+    pifs.to_file(directory / f"pifs-{OUTLINE}.gpkg", driver="GPKG")
+    pips.to_file(directory / f"pips-{OUTLINE}.gpkg", driver="GPKG")
+    row = summarise(OUTLINE, measured, seconds, baseline)
+    no_wall = pifs[pifs["role"] == "no wall"]
+    row["units_with_no_wall_pif"] = no_wall["wall_unit_id"].nunique()
+    row["no_wall_pifs"] = len(no_wall)
+    row["no_wall_pip_share"] = no_wall["n_pips"].sum() / pifs["n_pips"].sum()
+    rows.append(row)
+    print(
+        f"{OUTLINE}: {len(outline):,} lines in {seconds:.1f} s "
+        f"({config.N_WORKERS} processes); {len(no_wall):,} no-wall pifs on "
+        f"{row['units_with_no_wall_pif']:,} units"
+    )
+
     summary = pd.DataFrame(rows)
     summary.to_csv(directory / "summary.csv", index=False)
     with pd.option_context("display.width", 250, "display.max_columns", 30):
@@ -187,6 +218,78 @@ def draw_lines(units, members, ground):
         geometry=gpd.GeoSeries(lines, crs=units.crs),
     )
     return frame, seconds
+
+
+def draw_outline_lines(units, sizs, opt9):
+    """Option 10's line for every pif unit, its pifs and pips, and the time it took.
+
+    Each unit's pif is its first member pif, as for option 9; ``opt9`` is
+    option 9's lines, kept where the outline has no downhill run. Returns
+    ``(lines, pifs, pips, seconds)``: the lines with ``method`` and ``notes``;
+    the wall's pif (``role`` "wall", the unit's p_wall) and each no-wall pif
+    (``role`` "no wall", p_wall 0) as cell outlines, ``piece_id``
+    ``<unit>-w`` or ``<unit>-n1``, ``-n2``, ...; and every pip with its piece
+    and ``how`` (``cone``, ``merged back``, ``cut off`` or ``left over``).
+    """
+    tasks = []
+    for unit_id, ids in units.loc[units["unit_source"] == "pif", "member_pif_ids"].items():
+        row = sizs.loc[int(ids[0])]
+        tasks.append(
+            (
+                unit_id,
+                shapely.get_coordinates(row.geometry),
+                np.asarray(row["pip_direction"], dtype=int),
+                shapely.to_wkb(opt9.get(unit_id, shapely.LineString())),
+            )
+        )
+    xy_of = {t[0]: t[1] for t in tasks}
+    started = time.perf_counter()
+    results = toe_outline.draw_units(tasks, config.N_WORKERS)
+    seconds = time.perf_counter() - started
+    lines, methods, notes, pifs, pips = {}, {}, {}, [], []
+    for unit_id, wkb, method, note, label, code, _, _ in results:
+        xy = xy_of[unit_id]
+        lines[unit_id], methods[unit_id], notes[unit_id] = shapely.from_wkb(wkb), method, note
+        p_wall = float(units.at[unit_id, "p_wall"])
+        for m in range(label.max() + 1):
+            own = label == m
+            if not own.any():
+                continue
+            piece_id = f"{unit_id}-{'w' if m == 0 else f'n{m}'}"
+            role = "wall" if m == 0 else "no wall"
+            pifs.append(
+                {
+                    "piece_id": piece_id,
+                    "wall_unit_id": unit_id,
+                    "role": role,
+                    "p_wall": p_wall if m == 0 else 0.0,
+                    "n_pips": int(own.sum()),
+                    "geometry": toe_outline.cell_outline(xy[own]),
+                }
+            )
+            pips.append(
+                pd.DataFrame(
+                    {
+                        "piece_id": piece_id,
+                        "wall_unit_id": unit_id,
+                        "role": role,
+                        "how": toe_outline.HOW[code[own]],
+                        "x": xy[own, 0],
+                        "y": xy[own, 1],
+                    }
+                )
+            )
+    frame = gpd.GeoDataFrame(
+        {"method": pd.Series(methods), "notes": pd.Series(notes)},
+        geometry=gpd.GeoSeries(lines, crs=units.crs),
+    )
+    pips = pd.concat(pips, ignore_index=True)
+    pips = gpd.GeoDataFrame(
+        pips.drop(columns=["x", "y"]),
+        geometry=gpd.points_from_xy(pips["x"], pips["y"]),
+        crs=units.crs,
+    )
+    return frame, gpd.GeoDataFrame(pifs, crs=units.crs), pips, seconds
 
 
 def toe_points(pips, fall):

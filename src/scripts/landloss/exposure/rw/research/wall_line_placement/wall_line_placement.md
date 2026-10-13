@@ -1,10 +1,11 @@
 # Where a pif wall's line is drawn
 
 Run 2026-10-12 over `wlg-pilot` by `gen_wall_line_options.py`, settings in
-`config.py`. The script now draws option 9 alone: option 7, which the lead
-was happy with (2026-10-12), with the toe points moved 0.5 m, its ends the
-lowest toe points off the spine's ends, and no bend turning back more than
-100°. The code for options 2 to 6 was removed at the lead's word, and their
+`config.py`, and again on 2026-10-13 with option 10 added. The script now
+draws option 9 (option 7, which the lead was happy with on 2026-10-12, with
+the toe points moved 0.5 m, its ends the lowest toe points off the spine's
+ends, and no bend turning back more than 100°) and option 10, the lead's
+choice of 2026-10-13 (`toe_outline.py`). The code for options 2 to 6 was removed at the lead's word, and their
 results below, and options 7's and 8's, are from that day's earlier runs. Outputs (gitignored) in `temp/qgis/wall-line-placement-pilot/`:
 one GeoPackage of lines per variant, `summary.csv`, the context layers and
 `wall_line_placement.qgs`, built from them with the `making-qgis-projects`
@@ -80,6 +81,29 @@ Each of the pilot's 4,740 pif units (4,642 siz, 98 low-height) is redrawn; the
   fit penalises a bend past 100° (1 m of residual per degree over), and a
   bend still past it after the fit is dropped and the line refitted
   (`bend-dropped`).
+- **Option 10** (the lead, 2026-10-13; option A of the 120 case comparison
+  in `temp/wall-line-brief/options/findings.md`, where options B, element
+  toe cells, and C, a bench plane below the face, were also tried):
+  - *The line* (`toe_outline.draw_line`) is taken from the pif's cell outline
+    (its pips and 1 m points as 1 m squares), walked every 0.5 m. The longest
+    run of the outline whose outward normal is within 45° of the local fall
+    (widened to 60°, 75° or 90° only when no run is 4 m long) is the toe;
+    gaps in it of 6, 3, 1.5, 9 and 12 m are bridged in turn. Each run is
+    regularised by an exact dynamic programming fit (`fit_polyline`): 0 to 3
+    bends, each paying a penalty that grows with length, sections of 3 m or
+    more, no bend over 100°, at most 185° of turning, then a robust least
+    squares polish of the vertices. Short end hooks are cut. The candidate
+    with the fewest pips more than 0.75 m beyond it downhill, plus penalties
+    for a poor fit, a chord across a notch and S jogs, is kept. A pif with
+    no downhill run keeps option 9's line (`fallback-opt9`).
+  - *The pips it holds* (`toe_outline.assign`): a pip is on the wall when
+    its fall, widened 45° either side and 200 m long, meets the line. The
+    rest, grouped across one-cell gaps, are a pif with no wall (p_wall 0)
+    when more than 5 pips; fewer go back to the wall's pif, as does a group
+    with over half its edge on it. The wall's pif must touch (8-connected):
+    a group of wall pips within 3 m of the line stays, any other joins the
+    no-wall pif it touches, or is one of its own when over 5 pips.
+  - Units are drawn in 16 processes (`toe_outline.draw_units`).
 - **The points** the downslope edge is read from: the pips (`pips`), or the
   pips and the cell each falls to 1 m below (`points`). A pif's points that
   are not pips are the cells each pip falls to at 1, 3 and 5 m, which only the
@@ -117,6 +141,7 @@ and toe points; on the pilot the toe test went from 4.5 s to 3.1 s.
 | opt7 | 10.0 | 577 breaks, 3 no toe | 1.06 | 3.33 | −0.88 m (−0.63 H) | 92% | 17.8% | 12.0% | 40.4% |
 | opt8 | 8.3 | 727 breaks, 35 translated, 3 no toe | 1.79 | 3.80 | −1.41 m (−0.99 H) | 99% | 26.2% | 11.7% | 39.2% |
 | opt9 | 9.5 | 785 breaks, 237 translated, 62 bend dropped, 3 no toe | 1.97 | 4.40 | −1.52 m (−1.06 H) | 100% | 27.7% | 11.3% | 38.2% |
+| opt10 | 8.6 (16 processes; 27 in one) | 46 outline-wide, 2 option 9 | 1.90 | 4.13 | – | – | 29.5% | 11.5% | 39.0% |
 
 The median share of each line inside its ground step 3 element (the face
 cells, with the rounded crest and toe cells) is 0.97 for the spine, 0.98 to
@@ -244,6 +269,21 @@ then option 5:
     face): the ends turn the line back on itself, and with the bend gone the
     line is a chord across the face.
 
+12. Option 10, scored on the pilot by the brief's proxies with option 9
+    beside it (`temp/wall-line-brief/options/run_a_cone_pilot.py`): 73% of
+    its lines lie within 1 m of the slope toe (69%), the median toe gap is
+    −0.5 m for both, 81 of the 4,661 trimmed evacuated polygons lose over a
+    quarter of their pif's pips (146), 22 counting only the pips of the
+    wall's own pif, and 154 lines break the rules (785), all of them under
+    3 m on pifs of a median 6 pips. Its lines are regular: 3,225 straight,
+    1,174 with one bend, 318 with two, 23 with three. 929 units (20%) get a
+    pif with no wall, 1,291 in all, holding 13% of the pips. On the 120
+    cases it reproduced the lines the lead reviewed; four good cases lose
+    part of their pif to a no-wall pif where the line stops short of the
+    face (WU0000753, WU0002463, WU0003983, WU0003507). The no-wall pifs are
+    written as pieces here (`pifs-opt10.gpkg`); ground step 3 does not yet
+    split them, so their units and the base probability are unchanged.
+
 ## Caveats
 
 - The fall is the nearest of the eight directions the pip test reads, so on a
@@ -261,4 +301,6 @@ then option 5:
 A chosen variant would be computed in ground step 3 beside `spine` (as a
 `wall_line` column, the spine still used to cut the pifs and join their ends),
 read by exposure rw step 6 as the unit's line, and the base probability
-solved again.
+solved again. Option 10 also splits the no-wall pifs off as pif pieces of
+their own, with no wall unit, before the elements are grown, so their
+evacuated polygons are bare.

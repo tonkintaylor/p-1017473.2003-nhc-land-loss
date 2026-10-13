@@ -1,0 +1,1 @@
+The wall line placement research script (`gen_wall_line_options.py`) now also draws option 10, the line along the downhill stretch of each pif's outline with 0 to 3 bends, and splits off the pips the line does not hold as pifs with no wall. Units are drawn in parallel; the method lives in `toe_outline.py` beside the script.
