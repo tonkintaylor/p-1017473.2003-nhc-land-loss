@@ -41,6 +41,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from landloss.domain.gst import GST_RATE
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN
 from landloss.hazard.landslide.urban.realisation import FAILED_WITH_POLYGON
 from landloss.hazard.liquefaction.land_damage import LD_STATES
@@ -49,6 +50,7 @@ from landloss.io.area_of_interest import (
     get_area_of_interest,
     get_study_areas,
 )
+from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
@@ -65,6 +67,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     ACCESS_COLUMN,
     CONSTRUCTABILITY_COLUMN,
     CROSSING_REPAIR_COLUMN,
+    CROSSING_UDV_COLUMN,
     EARTHWORKS_COLUMN,
     LAND_REPAIR_COLUMN,
     LIQ_REPAIR_COLUMN,
@@ -417,6 +420,46 @@ def wall_value_excl_gst(rw: pd.DataFrame, policy: PolicySettings) -> pd.Series:
     return wall_udv_by_claim(rw, policy=policy) / (1.0 + policy.gst_rate)
 
 
+def damaged_structure_counts(
+    world_id: int, realisation_id: int, *, extent: str
+) -> pd.DataFrame:
+    """Return how many existing land structures each claim has damaged.
+
+    Existing structures only: the retaining walls, culverts and bridges in the
+    contract's tables with a damage flag set, as step 0 reads them. A wall the
+    module invents to reinstate landslide ground is a remedy, not a damaged
+    structure, and is not counted. A claim can carry several of each, but the
+    settlement prices its walls together and its crossings at one sub-cap, so
+    the page needs the counts only to report them.
+
+    Returns:
+        Indexed by claim: ``damaged_wall_count`` and ``damaged_crossing_count``.
+        A claim with neither does not appear.
+    """
+    rw = gpd.read_parquet(
+        world_loss_input_path("rw", world_id, realisation_id, extent=extent)
+    )
+    walls = loss_claims.damaged_walls(rw).groupby(CLAIM_ID_COLUMN).size()
+    crossings = [
+        loss_claims.damaged_crossings(
+            gpd.read_parquet(
+                world_loss_input_path(table, world_id, realisation_id, extent=extent)
+            )
+        )
+        for table in ("culverts", "bridges")
+    ]
+    crossing_ids = pd.concat(
+        [c[CLAIM_ID_COLUMN] for c in crossings if not c.empty]
+        or [pd.Series(dtype=object)]
+    )
+    return pd.DataFrame(
+        {
+            "damaged_wall_count": walls,
+            "damaged_crossing_count": crossing_ids.value_counts(),
+        }
+    )
+
+
 def viewer_rows(
     claims: pd.DataFrame, wall_value: pd.Series, liq_state: pd.Series
 ) -> pd.DataFrame:
@@ -481,9 +524,17 @@ def viewer_rows(
             "has_liquefaction": (
                 liq_state.reindex(claims.index).fillna(0) > NO_DAMAGE_LIQ_STATE
             ).astype(int),
-            # A damaged culvert or bridge is priced at its sub-cap, on both the
-            # cap and the repair, so the page needs only whether there is one.
+            # The claim's damaged culverts and bridges, replaced or cleared and
+            # summed, and what they are worth, both before GST: the page builds
+            # the repair from the one and the cap from the other, through the
+            # sub-cap.
             "has_crossing": (claims[CROSSING_REPAIR_COLUMN] > 0).astype(int),
+            "crossing_repair_excl_gst": (
+                claims[CROSSING_REPAIR_COLUMN] / (1.0 + GST_RATE)
+            ).round(6),
+            "crossing_value_excl_gst": (
+                claims[CROSSING_UDV_COLUMN] / (1.0 + GST_RATE)
+            ).round(6),
             "access": claims[ACCESS_COLUMN],
             "earthworks": claims[EARTHWORKS_COLUMN],
             "constructability": claims[CONSTRUCTABILITY_COLUMN],
@@ -533,25 +584,23 @@ def settled_in_python(
         ),
         0.0,
     )
-    crossing_limit = (
-        rows["has_crossing"]
-        * policy.bridge_culvert_limit_nzd(rows["dwellings"])
-        * gst
-        / (1.0 + policy.gst_rate)
-    )
 
     land_rate = rows["land_rate_incl_gst"] / (1.0 + policy.gst_rate) * gst
     land_value = np.minimum(rows["damaged_area_m2"], policy.area_cap_m2) * land_rate
     # The sub-caps are stated before GST; the policy's limits carry it.
     to_page = gst / (1.0 + policy.gst_rate)
+    crossing_repair = rows["crossing_repair_excl_gst"] * gst
+    crossing_value = rows["crossing_value_excl_gst"] * gst
     cap = (
         land_value
         + np.minimum(udv, policy.retaining_wall_limit_nzd(rows["dwellings"]) * to_page)
-        + crossing_limit
+        + np.minimum(
+            crossing_value, policy.bridge_culvert_limit_nzd(rows["dwellings"]) * to_page
+        )
     )
     liq = rows["liq_cost_excl_gst"] * LIQ_COST_ESCALATION * gst
     repair = wall + new_wall + spoil + fees + liq
-    repair = repair + crossing_limit
+    repair = repair + crossing_repair
     payable = np.minimum(repair, cap)
     excess = np.minimum(
         rows["dwellings"].clip(lower=1) * policy.excess_per_dwelling_nzd,
@@ -614,6 +663,10 @@ def main(*, extent, world_ids, realisation_ids):
         rows[column] = rows[column].fillna(0.0).round(6)
     rows["liq_sva"] = rows["liq_sva"].fillna(int(not liq_config.NO_SVA)).astype(int)
     rows["has_landslide"] = rows["has_landslide"].fillna(0).astype(int)
+    counts = damaged_structure_counts(world_id, realisation_id, extent=extent)
+    rows = rows.join(counts)
+    for column in counts.columns:
+        rows[column] = rows[column].fillna(0).astype(int)
     method = liquefaction_method(claims, realisation_id, extent=extent)
     print(f"  Liquefaction costs: {method}")
     rows["liq_method"] = method

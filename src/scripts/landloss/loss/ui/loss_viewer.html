@@ -200,7 +200,11 @@
       <div class="row">
         <select id="histOf" style="width: auto">
           <option value="repair">Repair cost</option>
-          <option value="settlement">Settlement under NHC Act 2023</option>
+          <option value="settlement">Settlement under NHI Act 2023</option>
+        </select>
+        <select id="histClaims" style="width: auto" aria-label="Claims shown in the chart">
+          <option value="all">All claims</option>
+          <option value="structures">Land structure claims only</option>
         </select>
         <button id="editCaps">Update cap settings</button>
       </div>
@@ -394,13 +398,29 @@ function settle(r, s) {
     : nz(s.sva ? r.liq_inundated_cost_sva_excl_gst : r.liq_inundated_cost_no_sva_excl_gst);
   const liq = (nz(r.liq_cost_excl_gst) - nz(r.liq_inundated_cost_excl_gst) + ejectaNow)
     * s.liqEsc * gst;
-  const crossing = nz(r.has_crossing) > 0 ? s.bcSub * gst * dwellings : 0;
+  const bcLimit = s.bcSub * gst * dwellings;
+  // The claim's damaged culverts and bridges: what replacing or clearing them
+  // costs, and what they are worth, which reaches the cap through the sub-cap.
+  // A CSV from before crossings were priced carries only whether there is one,
+  // which was then priced at the sub-cap on both sides.
+  const pricedCrossings = r.crossing_repair_excl_gst != null;
+  const crossing = pricedCrossings ? nz(r.crossing_repair_excl_gst) * gst
+    : (nz(r.has_crossing) > 0 ? bcLimit : 0);
+  const crossingValue = pricedCrossings ? nz(r.crossing_value_excl_gst) * gst : crossing;
+  const crossingCounted = Math.min(crossingValue, bcLimit);
 
   const landValue = Math.min(nz(r.damaged_area_m2), s.areaCap) * landRate * s.landScale;
   const rwLimit = s.rwSub * gst * dwellings;
-  const cap = landValue + Math.min(udv, rwLimit) + crossing;
+  // What the damaged walls add to the cap: their undepreciated value, up to
+  // the sub-cap.
+  const wallCounted = Math.min(udv, rwLimit);
+  const cap = landValue + wallCounted + crossingCounted;
 
   const repair = wall + newWall + spoil + fees + liq + crossing;
+  // The existing walls' share of the professional fees, pro rata to what the
+  // walls cost to build, so the land structures can be costed apart from the
+  // walls invented to reinstate landslide ground.
+  const wallFees = wall + newWall > 0 ? fees * wall / (wall + newWall) : 0;
   // An uninsured property is still damaged, and still shown, but NHC pays it
   // nothing and it is not a claim.
   const insured = insuredDraw(r.claim_id) < s.penetration;
@@ -438,11 +458,16 @@ function settle(r, s) {
     : slide ? TYPE.slide : crossed ? TYPE.crossing : TYPE.none;
   const basis = settlement <= 0 ? "Excess took it all"
     : repair <= cap ? "Paid the repair cost" : "Capped";
-  return {...r, udv, wall, newWall, spoil, fees, liq, crossing, landValue, cap,
+  return {...r, udv, rwLimit, wallCounted, bcLimit, crossingValue, crossingCounted, wall,
+          newWall, spoil, fees, wallFees, liq, crossing, landValue, cap,
           repair, payable, excessIf, excess, settlement, insured, damaged, claimed,
           has_area_cap_limit,
           type, basis};
 }
+
+// A claim whose settlement under a cap moves by less than this against the Act
+// is counted as unchanged: the difference is rounding, not a gain or a loss.
+const UNCHANGED_NZD = 1;
 
 // One claim's settlement under a land cap of `k`. "replace" is the scheme NHC
 // is weighing: the cap stands in for the Act's land cover cap, so the land is
@@ -465,10 +490,16 @@ function capScenarios(rows, mode, value) {
     // What properties miss out on (T-132): the repair cost the settlement does
     // not cover, the excess included, and how many claims are left short.
     const gaps = claims.map((r, i) => Math.max(0, r.repair - paid[i]));
+    // Who the cap leaves better or worse off than the Act, claim by claim. A
+    // difference under a dollar is rounding, so it counts as unchanged.
+    const moved = claims.map((r, i) => paid[i] - r.settlement);
+    const better = moved.filter(d => d > UNCHANGED_NZD).length;
+    const worse = moved.filter(d => d < -UNCHANGED_NZD).length;
     return {
       k, total, above, share: above / Math.max(1, claims.length), delta: total - act,
       deltaShare: act > 0 ? (total - act) / act : 0,
       shortfall: d3.sum(gaps), short: gaps.filter(g => g > 0).length,
+      claims: claims.length, better, worse, unchanged: claims.length - better - worse,
     };
   });
 }
@@ -607,6 +638,22 @@ function actSummary(rows) {
   const total = d3.sum(rows, r => r.settlement);
   const byBasis = BASES.map(b => [b, claims.filter(r => r.basis === b).length]);
   const most = d3.max(byBasis, d => d[1]) || 1;
+  // The existing land structures the claims damaged: retaining walls, and
+  // bridges and culverts. Not the walls the module invents to reinstate
+  // landslide ground. A CSV from before the counts were carried counts one of
+  // each per claim that has any.
+  const counted = (r, column, flag) => r[column] != null ? nz(r[column]) : (nz(r[flag]) > 0 ? 1 : 0);
+  const walls = {
+    n: d3.sum(claims, r => counted(r, "damaged_wall_count", "has_damaged_wall")),
+    repair: d3.sum(claims, r => r.wall + r.wallFees), cap: d3.sum(claims, r => r.wallCounted),
+  };
+  const crossings = {
+    n: d3.sum(claims, r => counted(r, "damaged_crossing_count", "has_crossing")),
+    repair: d3.sum(claims, r => r.crossing), cap: d3.sum(claims, r => r.crossingCounted),
+  };
+  const structures = [["Retaining walls", walls], ["Bridges and culverts", crossings],
+    ["<b>Land structures</b>", {n: walls.n + crossings.n, repair: walls.repair + crossings.repair,
+                                cap: walls.cap + crossings.cap}]];
   d3.select("#actSummary").attr("class", null).html(
     `<div class="big">${thousands(total)}</div>
      <div class="note" style="margin-top:0">total settlement, excluding GST</div>
@@ -622,6 +669,20 @@ function actSummary(rows) {
        <tr><td>Repair cost not covered</td><td class="n">${thousands(d3.sum(claims, r => Math.max(0, r.repair - r.settlement)))}</td></tr>
        <tr><td>Average settlement per claim</td><td class="n">${thousands(total / Math.max(1, claims.length))}</td></tr>
      </table>
+     <h2 style="margin-top:14px">Damaged land structures</h2>
+     <table>
+       <tr><th></th><th class="n">Damaged</th><th class="n">Repair cost</th>
+           <th class="n">Counted toward the cap (lesser of the undepreciated value and the sub-cap)</th></tr>
+       ${structures.map(([name, x]) => `
+       <tr><td>${name}</td><td class="n">${count(x.n)}</td>
+           <td class="n">${thousands(x.repair)}</td><td class="n">${thousands(x.cap)}</td></tr>`).join("")}
+     </table>
+     <div class="note">Existing structures on the claims, counted one by one; the new
+       walls built to reinstate landslide ground are not counted. A wall's repair cost
+       is its replacement and its share of the professional fees. A damaged bridge or
+       culvert is replaced at $15,000 a metre of span over a 5 m default ($75,000),
+       or cleared for $1,000 where a landslide only buried it; it is worth its
+       replacement, which counts toward the cap up to the sub-cap.</div>
      <h2 style="margin-top:14px">How the claims settle</h2>
      <table>${byBasis.map(([b, n]) => `
        <tr><td>${b}<div class="basisbar" style="width:${100 * n / most}%"></div></td>
@@ -658,7 +719,24 @@ function capSummary(scenarios, mode, histOf) {
        ${mode === "replace"
          ? "The land cap <b>replaces</b> the Act's land value cover cap: land is no longer valued and each claim is paid its repair cost up to the land cap, less the excess."
          : "The cap <b>limits</b> the Act's land cover cap, as PolicySettings.total_cap_nzd does in the loss module, so it can only lower a settlement."}
-     </div>`);
+     </div>
+     <table style="margin-top:10px">
+       <tr><th>Cap</th><th class="n">Better off</th><th class="n">Worse off</th>
+           <th class="n">Unchanged</th></tr>
+       ${scenarios.map(s => {
+         const of = n => `<span title="${count(n)} of ${count(s.claims)} claims">${pct(n / Math.max(1, s.claims))}</span>`;
+         return `
+       <tr><td>${money(s.k)}${CAP_NAMES[s.k]
+             ? `<div class="note" style="margin:0">${CAP_NAMES[s.k]}</div>` : ""}</td>
+           <td class="n">${of(s.better)}</td>
+           <td class="n">${of(s.worse)}</td>
+           <td class="n">${of(s.unchanged)}</td></tr>`;
+       }).join("")}
+     </table>
+     <div class="note">Each claim's settlement under the cap against its settlement
+       under the Act: better off where the cap pays more, worse off where it pays
+       less, unchanged where the two are within a dollar. Shares of claims; hover
+       for the counts.</div>`);
 }
 
 function claimDetail(r, mode) {
@@ -678,8 +756,15 @@ function claimDetail(r, mode) {
      `${r.access ?? "-"}, ${r.earthworks ?? "-"}, ${r.constructability ?? "-"} &rarr; &times;${d3.format(".2f")(1 + nz(r.site_multiplier))}`],
     ["<b>Land cover cap</b>", ""],
     ["Value of damaged land", money(r.landValue)],
-    ["Damaged walls' value", money(r.udv)],
-    ["Bridges and culverts", money(r.crossing)],
+    // Each kind of land structure adds the lesser of its undepreciated value and
+    // its sub-cap: the sub-cap is the most it can add, per dwelling.
+    ["Undepreciated value of land structures: retaining walls", money(r.udv)],
+    ["&nbsp;&nbsp;Land structures sub-cap for the property", money(r.rwLimit)],
+    ["&nbsp;&nbsp;Counted toward the cap (the lesser of the two)", money(r.wallCounted)],
+    ["Undepreciated value of land structures: bridges and culverts",
+     money(r.crossingValue)],
+    ["&nbsp;&nbsp;Land structures sub-cap for the property", money(r.bcLimit)],
+    ["&nbsp;&nbsp;Counted toward the cap (the lesser of the two)", money(r.crossingCounted)],
     ["Cap", `<b>${money(r.cap)}</b>`],
     ["<b>Repair cost</b>", ""],
     ["Walls replaced", money(r.wall)],
@@ -689,7 +774,7 @@ function claimDetail(r, mode) {
     ["Spoil removal", money(r.spoil)], ["Professional fees including consents", money(r.fees)],
     ["Liquefaction", money(r.liq)], ["Crossings", money(r.crossing)],
     ["Repair cost", `<b>${money(r.repair)}</b>`],
-    ["<b>Settlement under NHC Act 2023</b>", ""],
+    ["<b>Settlement under NHI Act 2023</b>", ""],
     ["Lesser of repair and cap", money(r.payable)], ["Excess", money(r.excess)],
     ["Settlement", `<b>${money(r.settlement)}</b>`], ["How it settled", r.basis],
   ];
@@ -708,6 +793,9 @@ function claimDetail(r, mode) {
 // Every basemap here is key-free. CARTO's tiles now want an API key, and a key
 // embedded in a file handed to a client is a problem of its own.
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+// How far the map zooms in, whatever the basemap: close enough to tell one
+// property's dot from its neighbour's (21 is a few centimetres a pixel).
+const MAP_MAX_ZOOM = 21;
 const BASEMAPS = {
   grey: {
     url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
@@ -763,7 +851,7 @@ function visible(r, which) {
 
 function drawMap(rows) {
   const lon = d3.extent(rows, r => +r.lon), lat = d3.extent(rows, r => +r.lat);
-  if (!MAP) MAP = L.map("map", {preferCanvas: true, zoomSnap: 0.25});
+  if (!MAP) MAP = L.map("map", {preferCanvas: true, zoomSnap: 0.25, maxZoom: MAP_MAX_ZOOM});
   if (REFIT && rows.length) {
     MAP.fitBounds([[lat[0], lon[0]], [lat[1], lon[1]]], {padding: [18, 18]});
     REFIT = false;
@@ -777,8 +865,12 @@ function drawMap(rows) {
   if (want !== TILE_KEY) {
     if (TILES) { MAP.removeLayer(TILES); TILES = null; }
     if (BASEMAPS[want]) {
+      // Past a basemap's own last zoom its tiles are stretched rather than the
+      // map stopping there, so the dots can be zoomed in on far enough to pick
+      // one out of a street.
       TILES = L.tileLayer(BASEMAPS[want].url, {
-        attribution: BASEMAPS[want].attribution, maxZoom: BASEMAPS[want].max,
+        attribution: BASEMAPS[want].attribution,
+        maxNativeZoom: BASEMAPS[want].max, maxZoom: MAP_MAX_ZOOM,
       }).addTo(MAP);
     }
     TILE_KEY = want;
@@ -838,6 +930,11 @@ function show(e, html) {
 }
 const hide = () => tip.style("opacity", 0);
 
+// Whether a claim damaged an existing land structure: a retaining wall, or a
+// bridge or culvert. A wall built to reinstate landslide ground is a remedy,
+// not a damaged structure.
+const hasLandStructure = r => nz(r.has_damaged_wall) > 0 || nz(r.has_crossing) > 0;
+
 // ---- render -------------------------------------------------------------
 function render({resettle = true} = {}) {
   if (!RAW.length) return;
@@ -853,8 +950,17 @@ function render({resettle = true} = {}) {
   const value = histOf === "repair" ? r => r.repair : r => r.settlement;
   const scenarios = capScenarios(rows, mode, value);
 
-  d3.select("#histTitle").text(histOf === "repair" ? "repair cost" : "settlement under NHC Act 2023");
-  mainHistogram("#hMain", rows, value, scenarios);
+  // The chart can show only the claims with a damaged land structure -- an
+  // existing retaining wall, bridge or culvert, not a wall built to reinstate
+  // landslide ground. The filter is the chart's alone: its cap lines are
+  // labelled over the claims it shows, and every total stays on all claims.
+  const structuresOnly = val("histClaims") === "structures";
+  const histRows = structuresOnly ? rows.filter(hasLandStructure) : rows;
+  d3.select("#histTitle").text(
+    (histOf === "repair" ? "repair cost" : "settlement under NHI Act 2023")
+    + (structuresOnly ? " (land structure claims only)" : ""));
+  mainHistogram("#hMain", histRows, value,
+    structuresOnly ? capScenarios(histRows, mode, value) : scenarios);
   d3.select("#legend").html(STACK.map(t =>
     `<span><i style="background:${TYPE_FILL[t]}"></i>${t}</span>`).join("") +
     // Drawn as the dashed line it stands for, in the histogram's own style.
@@ -967,7 +1073,7 @@ d3.select("#exBasis").on("input.show", () => {
   document.getElementById("exDwelling").hidden = fixed;
   document.getElementById("exFixedBox").hidden = !fixed;
 });
-d3.selectAll("#colourBy, #basemap, #showDots, #dotSize, #histOf, #capMode")
+d3.selectAll("#colourBy, #basemap, #showDots, #dotSize, #histOf, #histClaims, #capMode")
   .on("input", () => render({resettle: false}));
 window.addEventListener("resize", debounce(() => RAW.length && render({resettle: false}), 200));
 </script>
