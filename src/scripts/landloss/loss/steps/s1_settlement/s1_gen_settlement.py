@@ -40,7 +40,8 @@ assumption named here:
 - **The same claims carry the wall works' on-costs** (2026-10-13), each built
   on the one before: mobilisation and demobilisation at 15% of the walls and
   fees, never less than $5,000; then project management at 10% of the walls,
-  fees and mobilisation.
+  fees, mobilisation and culverts and bridges, which a claim whose only works
+  are a crossing carries too.
 - **Every claim carries a 20% contingency on its whole repair** (2026-10-13):
   walls, spoil, fees, on-costs, liquefaction and crossings, applied last.
 - **Landslide spoil is cleared at a rate per cubic metre**, on top of whatever
@@ -112,11 +113,11 @@ from landloss.loss.pricing import (
     inundation_removal_cost_incl_gst_nzd,
     inundation_volume_m3,
     landslide_wall_length_m,
+    on_costs_incl_gst_nzd,
     professional_fees_incl_gst_nzd,
     replacement_rate_excl_gst_nzd_per_m2,
     timber_pole_rate_excl_gst_nzd_per_m2,
     wall_face_area_m2,
-    wall_on_costs_incl_gst_nzd,
 )
 from landloss.loss.settlement import DamagedClaim, settle
 from landloss.vul.loss_input import PARENT_RW_ID_COLUMN, WORLD_ID_COLUMN
@@ -826,7 +827,7 @@ def describe_repair(claims):
         (MOB_DEMOB_COLUMN, "mob/demob (15% of walls and fees, min $5,000)"),
         (
             PROJECT_MANAGEMENT_COLUMN,
-            "project management (10% of walls, fees and mob/demob)",
+            "project management (10% of walls, fees, mob/demob and crossings)",
         ),
         (
             LIQ_REPAIR_COLUMN,
@@ -1046,15 +1047,16 @@ def main(*, extent, world_ids, realisation_ids):
                 professional_fees_incl_gst_nzd(wall_cost.to_numpy(), policy=policy),
                 0.0,
             )
-            # The wall works' on-costs fall on the same claims as the fees.
-            on_costs = wall_on_costs_incl_gst_nzd(
-                wall_cost.to_numpy(), claims[FEES_COLUMN].to_numpy(), policy=policy
+            # Mobilisation falls on the claims with wall works, as the fees do;
+            # project management on those and on any claim with a crossing.
+            on_costs = on_costs_incl_gst_nzd(
+                wall_cost.to_numpy(),
+                claims[FEES_COLUMN].to_numpy(),
+                claims[CROSSING_REPAIR_COLUMN].to_numpy(),
+                policy=policy,
             )
-            for column, cost in (
-                (MOB_DEMOB_COLUMN, on_costs.mob_demob),
-                (PROJECT_MANAGEMENT_COLUMN, on_costs.project_management),
-            ):
-                claims[column] = np.where(works, cost, 0.0)
+            claims[MOB_DEMOB_COLUMN] = on_costs.mob_demob
+            claims[PROJECT_MANAGEMENT_COLUMN] = on_costs.project_management
 
             # The contingency goes on the whole repair, last, on every claim.
             before_contingency = (

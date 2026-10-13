@@ -47,13 +47,13 @@ from landloss.loss.pricing import (
     contingency_incl_gst_nzd,
     inundation_volume_m3,
     landslide_wall_length_m,
+    on_costs_incl_gst_nzd,
     professional_fees_incl_gst_nzd,
     replacement_construction_type,
     replacement_rate_excl_gst_nzd_per_m2,
     timber_pole_rate_excl_gst_nzd_per_m2,
     timber_pole_wall_type,
     wall_face_area_m2,
-    wall_on_costs_incl_gst_nzd,
     wall_rate_excl_gst_nzd_per_m2,
     wall_repair_cost_incl_gst_nzd,
     wall_type_rate_excl_gst_nzd_per_m2,
@@ -847,12 +847,18 @@ def test_a_negative_wall_cost_is_refused():
 
 
 def test_on_costs_build_on_each_other_above_the_floor():
-    # Walls $100,000 and fees $20,000: mob 15% of $120,000 is $18,000, and
-    # project management 10% of $138,000 is $13,800.
-    on_costs = wall_on_costs_incl_gst_nzd(100_000.0, 20_000.0, policy=ACT)
+    # Walls $100,000, fees $20,000 and a $75,000 crossing: mob 15% of $120,000
+    # is $18,000, and project management 10% of $213,000 is $21,300.
+    on_costs = on_costs_incl_gst_nzd(100_000.0, 20_000.0, 75_000.0, policy=ACT)
     assert on_costs.mob_demob == pytest.approx(18_000.0)
-    assert on_costs.project_management == pytest.approx(13_800.0)
-    assert on_costs.total == pytest.approx(31_800.0)
+    assert on_costs.project_management == pytest.approx(21_300.0)
+    assert on_costs.total == pytest.approx(39_300.0)
+
+
+def test_a_crossing_alone_carries_project_management_and_no_mob():
+    on_costs = on_costs_incl_gst_nzd(0.0, 0.0, 75_000.0, policy=ACT)
+    assert on_costs.mob_demob == pytest.approx(0.0)
+    assert on_costs.project_management == pytest.approx(7_500.0)
 
 
 def test_contingency_is_a_fifth_of_the_whole_repair():
@@ -865,12 +871,12 @@ def test_a_negative_repair_is_refused_by_the_contingency():
 
 
 def test_mob_demob_never_falls_below_five_thousand_before_gst():
-    on_costs = wall_on_costs_incl_gst_nzd(
-        np.array([0.0, 10_000.0]), np.array([0.0, 2_000.0]), policy=ACT
+    on_costs = on_costs_incl_gst_nzd(
+        np.array([1.0, 10_000.0]), np.array([0.0, 2_000.0]), 0.0, policy=ACT
     )
     assert on_costs.mob_demob == pytest.approx([5_000.0 * 1.15] * 2)
 
 
 def test_a_negative_fee_is_refused_by_the_on_costs():
     with pytest.raises(ValueError, match="fees_incl_gst_nzd"):
-        wall_on_costs_incl_gst_nzd(1.0, -1.0, policy=ACT)
+        on_costs_incl_gst_nzd(1.0, -1.0, 0.0, policy=ACT)

@@ -984,14 +984,14 @@ BLOCKS = [
             ("fees", "Professional fees ($)", None, MONEY, 13),
             (
                 "mob",
-                "Mob/demob (higher of $5,000 or 15% of walls and fees) ($)",
+                "Mob/demob (15% of walls and fees, min $5,000) ($)",
                 None,
                 MONEY,
                 16,
             ),
             (
                 "pm",
-                "Project management (10% of walls, fees and mob/demob) ($)",
+                "Project management (10% of walls, fees, mob/demob and crossings) ($)",
                 None,
                 MONEY,
                 16,
@@ -1278,8 +1278,8 @@ REPAIR_NOTES = [
         "as well as to build. Mileage is excluded, and they never reach the "
         "undepreciated value. A claim that carries the fees also carries the "
         "wall works' on-costs: mob/demob at the higher of $5,000 or 15% of the "
-        "walls and fees, and project management at 10% of the walls, fees and "
-        "mob/demob. Every claim then carries a 20% contingency on its whole "
+        "walls and fees, and project management at 10% of the walls, fees, "
+        "mob/demob and any culvert or bridge. Every claim then carries a 20% contingency on its whole "
         "repair, liquefaction and culverts and bridges included, applied last."
     ),
     (

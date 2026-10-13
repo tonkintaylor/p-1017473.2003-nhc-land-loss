@@ -59,7 +59,7 @@ from landloss.loss.pricing import (
     PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
     contingency_incl_gst_nzd,
-    wall_on_costs_incl_gst_nzd,
+    on_costs_incl_gst_nzd,
 )
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     wall_udv_by_claim,
@@ -586,11 +586,6 @@ def settled_in_python(
         ),
         0.0,
     )
-    # The page applies the module's GST-free floor at its own GST rate.
-    on_costs = wall_on_costs_incl_gst_nzd(
-        wall + new_wall, fees, policy=PolicySettings(gst_rate=gst - 1.0)
-    )
-    on_costs_total = np.where(walled, on_costs.total, 0.0)
 
     land_rate = rows["land_rate_incl_gst"] / (1.0 + policy.gst_rate) * gst
     land_value = np.minimum(rows["damaged_area_m2"], policy.area_cap_m2) * land_rate
@@ -598,6 +593,13 @@ def settled_in_python(
     to_page = gst / (1.0 + policy.gst_rate)
     crossing_repair = rows["crossing_repair_excl_gst"] * gst
     crossing_value = rows["crossing_value_excl_gst"] * gst
+    # The page applies the module's GST-free floor at its own GST rate.
+    on_costs = on_costs_incl_gst_nzd(
+        np.where(walled, wall + new_wall, 0.0),
+        fees,
+        crossing_repair,
+        policy=PolicySettings(gst_rate=gst - 1.0),
+    )
     cap = (
         land_value
         + np.minimum(udv, policy.retaining_wall_limit_nzd(rows["dwellings"]) * to_page)
@@ -606,7 +608,7 @@ def settled_in_python(
         )
     )
     liq = rows["liq_cost_excl_gst"] * LIQ_COST_ESCALATION * gst
-    repair = wall + new_wall + spoil + fees + on_costs_total + liq
+    repair = wall + new_wall + spoil + fees + on_costs.total + liq
     repair = repair + crossing_repair
     repair = repair + contingency_incl_gst_nzd(repair)
     payable = np.minimum(repair, cap)

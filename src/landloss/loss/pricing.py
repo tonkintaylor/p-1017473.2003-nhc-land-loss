@@ -357,15 +357,16 @@ PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD = sum(PROFESSIONAL_FEES_EXCL_GST_NZD.values
 # and supervision than the flat fee allows; a small one still needs a consent.
 PROFESSIONAL_FEES_SHARE = 0.20
 
-# The on-costs a claim's wall works carry beyond the walls and their fees, and
-# the contingency on the whole repair (Perrie Gilbert, 2026-10-13), each
-# excluding GST and each built on the one before, in this order:
+# The on-costs a claim's works carry beyond the walls and their fees, and the
+# contingency on the whole repair (Perrie Gilbert, 2026-10-13), each excluding
+# GST and each built on the one before, in this order:
 #
-# - **Mobilisation and demobilisation**: 15% of the walls as built -- site
-#   multiplier, specification uplift and rate scaling all in -- plus the
-#   professional fees, never less than $5,000.
-# - **Project management**: 10% of the walls, the professional fees and the
-#   mobilisation.
+# - **Mobilisation and demobilisation**, on a claim with wall works: 15% of the
+#   walls as built -- site multiplier, specification uplift and rate scaling
+#   all in -- plus the professional fees, never less than $5,000.
+# - **Project management**: 10% of the walls, the professional fees, the
+#   mobilisation and the culverts and bridges, so a claim whose only works are
+#   a crossing carries it too.
 # - **Contingency**: 20% of the whole repair cost -- the wall works above, and
 #   spoil removal, liquefaction and culverts and bridges as well -- applied
 #   last, on every claim, with wall works or without.
@@ -537,8 +538,8 @@ def professional_fees_incl_gst_nzd(
 
 
 @dataclass(frozen=True)
-class WallOnCosts:
-    """The on-costs a claim's wall works carry, including GST, one per claim.
+class OnCosts:
+    """The on-costs a claim's works carry, including GST, one per claim.
 
     Attributes:
         mob_demob: Mobilisation and demobilisation.
@@ -554,46 +555,52 @@ class WallOnCosts:
         return self.mob_demob + self.project_management
 
 
-def wall_on_costs_incl_gst_nzd(
+def on_costs_incl_gst_nzd(
     wall_cost_incl_gst_nzd: np.ndarray | float,
     fees_incl_gst_nzd: np.ndarray | float,
+    crossing_cost_incl_gst_nzd: np.ndarray | float,
     *,
     policy: PolicySettings,
-) -> WallOnCosts:
-    """Return the on-costs of a claim's wall works, including GST.
+) -> OnCosts:
+    """Return the on-costs of a claim's works, including GST.
 
     Each is built on the one before (:data:`MOB_DEMOB_SHARE` and below):
-    mobilisation on the walls and fees, with a floor, then project management on
-    the walls, fees and mobilisation. Like the fees, they are per claim, and the
-    caller decides which claims carry them. The contingency is not among them:
-    it goes on the whole repair (:func:`contingency_incl_gst_nzd`).
+    mobilisation on the walls and fees, with a floor, on a claim with wall
+    works only; then project management on the walls, fees, mobilisation and
+    crossings, so a claim whose only works are a crossing carries project
+    management and no mobilisation. The contingency is not among them: it goes
+    on the whole repair (:func:`contingency_incl_gst_nzd`).
 
     Args:
         wall_cost_incl_gst_nzd: What the claim's walls cost to build, failed and
-            invented together, as built, including GST.
+            invented together, as built, including GST. Zero where it has none.
         fees_incl_gst_nzd: The claim's professional fees, from
             :func:`professional_fees_incl_gst_nzd`.
+        crossing_cost_incl_gst_nzd: What replacing or clearing the claim's
+            culverts and bridges costs, including GST.
         policy: The settings this scenario runs under, which carry the GST rate.
 
     Returns:
         The two on-costs in GST-inclusive dollars.
 
     Raises:
-        ValueError: If any wall cost or fee is negative or not finite.
+        ValueError: If any cost or fee is negative or not finite.
     """
     cost = np.asarray(wall_cost_incl_gst_nzd, dtype=float)
     fees = np.asarray(fees_incl_gst_nzd, dtype=float)
+    crossing = np.asarray(crossing_cost_incl_gst_nzd, dtype=float)
     for name, values in (
         ("wall_cost_incl_gst_nzd", cost),
         ("fees_incl_gst_nzd", fees),
+        ("crossing_cost_incl_gst_nzd", crossing),
     ):
         if not np.all(np.isfinite(values)) or np.any(values < 0):
             msg = f"{name} must be finite and not negative"
             raise ValueError(msg)
     floor = MOB_DEMOB_MIN_EXCL_GST_NZD * (1.0 + policy.gst_rate)
-    mob = np.maximum(MOB_DEMOB_SHARE * (cost + fees), floor)
-    pm = PROJECT_MANAGEMENT_SHARE * (cost + fees + mob)
-    return WallOnCosts(mob_demob=mob, project_management=pm)
+    mob = np.where(cost > 0, np.maximum(MOB_DEMOB_SHARE * (cost + fees), floor), 0.0)
+    pm = PROJECT_MANAGEMENT_SHARE * (cost + fees + mob + crossing)
+    return OnCosts(mob_demob=mob, project_management=pm)
 
 
 def contingency_incl_gst_nzd(
