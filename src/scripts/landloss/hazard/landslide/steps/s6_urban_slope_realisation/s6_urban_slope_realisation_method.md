@@ -8,7 +8,7 @@
 - **The inputs are read in `read_inputs()`**: the model file landslide step 5 wrote for
   the world (`gen_urban_slope_fragility.urban_slope_model_path`), the wall
   population for the world (`gen_wall_population.wall_population_path`), the
-  PGV field shaking step 5 wrote for the earthquake (`gen_pgv_realisations.pgv_path`) and the
+  site PGA field shaking step 4 wrote for the earthquake (`gen_pga_realisations.pga_path`) and the
   large-model realisation landslide step 3 wrote for it
   (`s1_simulate_landslides.realisation_path`).
 - **The polygons are landslide step 4's zones of the world's wall draw**
@@ -27,18 +27,20 @@
   from the model file's `rate_setting` and `rate_factor` columns
   (`describe_rate_setting()`), so a run log shows which setting produced the
   failures; a model file carrying more than one setting is refused.
-- **PGV is sampled at each polygon's representative point** by
-  `landloss.hazard.landslide.urban.realisation.sample_pgv`, the `rep_point`
-  column of the model file against the PGV raster; a point off the grid reads
-  NaN.
+- **Site PGA is sampled at each polygon's representative point** by
+  `landloss.hazard.landslide.urban.realisation.sample_pga`, the `rep_point`
+  column of the model file against the PGA raster; a point off the grid reads
+  NaN. Every curve in the model file is on site PGA in g (the project lead,
+  2026-10-12; PGV from shaking step 5 until then, with the same outcomes on
+  the Porirua pilot, as shaking steps 4 and 5 scale by one factor).
 - **Each row's fragility is evaluated and drawn against** in
   `realisation.draw_failures`: the lognormal of contract section 6 on the
-  row's own `theta` and `beta` at the sampled PGV, evaluated by
+  row's own `theta` and `beta` at the sampled PGA, evaluated by
   `landloss.hazard.landslide.urban.fragility.lognormal_failure_probability`,
   gives `p_fail`, and one
   uniform per row is drawn in the model file's order on
   `realisation_seed(BASE_SEED, realisation_id, "urban", world_id=world_id)`.
-  A row fails where its uniform is below `p_fail`. A row with no PGV, or
+  A row fails where its uniform is below `p_fail`. A row with no PGA, or
   with no fragility median (`theta` NaN, as on a polygon the fragility step
   could not attach a curve to), has `p_fail` NaN and does not fail; the run
   counts the two causes separately.
@@ -102,7 +104,7 @@
   `imminent land` with no depth. `landslide_id` is the `slope_id`,
   `population` is `urban`, `volume_m3` is the evacuated depth times the
   evacuated area and `source_area_m2` the evacuated area; each row carries
-  the PGV, `p_fail` and the uniform it was drawn with.
+  the site PGA (`pga_g`), `p_fail` and the uniform it was drawn with.
 - **The combined realisation** is built by `realisation.combine_with_large`:
   the urban rows beside every landslide step 3 row in one schema, the contract columns
   first and landslide step 3's simulation columns after them (null on urban rows),
@@ -129,7 +131,7 @@
   `urban_wall_outcome_path()`.
 - The run prints the world and earthquake ids, the rate setting, the polygons by wall state, the
   polygons not drawn split into those with no fragility median and those off
-  the PGV grid (`describe_draw()`), the failed, absorbed, superseded and
+  the PGA grid (`describe_draw()`), the failed, absorbed, superseded and
   surviving counts, the summed and dissolved areas by population and land
   class, and the wall outcome counts.
 - The draw of one pair is mapped by outcome in the figure produced by

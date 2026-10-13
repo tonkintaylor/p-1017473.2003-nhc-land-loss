@@ -29,7 +29,6 @@ geology, takes :data:`BETA_OFF_MAP_GROUND`.
 
 import geopandas as gpd
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 
 from landloss.common.utils.ids import mint_ids, sort_by_point
@@ -63,6 +62,9 @@ ELEMENT_COLUMNS = ("siz_id", "majority_ground_row", "overall_angle_deg")
 
 # The columns of exposure rw step 6's wall units it reads, indexed by ``wall_unit_id``.
 UNIT_COLUMNS = ("member_pif_ids", "is_fill")
+
+# The ground map's flag for a piece on NLM flatland.
+FLATLAND_COLUMN = "is_flatland"
 
 # The ground map's groundwater column: the drainage class, not a depth.
 GROUNDWATER_COLUMN = "gw_depth_class"
@@ -390,29 +392,54 @@ def _score(polygons: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return polygons
 
 
-def with_amplification(
-    polygons: gpd.GeoDataFrame, topographic_position_m: npt.ArrayLike
-) -> gpd.GeoDataFrame:
-    """Add the topographic position and the amplification factor.
+def on_flatland(points: gpd.GeoSeries, ground_map: gpd.GeoDataFrame) -> np.ndarray:
+    """Return whether each point lies in a ground map piece on NLM flatland.
 
-    The placeholder factor of
-    :func:`landloss.hazard.landslide.urban.geometry.amplification_factor`, on
-    the 100 m topographic position at each polygon's representative point
-    and the element's slope.
+    Args:
+        points: The points, in the ground map's CRS or reprojected to it.
+        ground_map: The ground step 2 ground map, carrying ``is_flatland``.
+
+    Returns:
+        A boolean per point, in the points' order; false where a point
+        is missing or lies in no flatland piece.
+    """
+    _require(ground_map, (FLATLAND_COLUMN,), "The ground map", REBUILD_GROUND_HINT)
+    out = np.zeros(len(points), dtype=bool)
+    flat = ground_map.loc[ground_map[FLATLAND_COLUMN].fillna(value=False).astype(bool)]
+    present = points.notna().to_numpy() & ~points.is_empty.to_numpy()
+    if flat.empty or not present.any():
+        return out
+    located = gpd.GeoDataFrame(
+        geometry=points[present].to_numpy(), crs=points.crs
+    ).to_crs(ground_map.crs)
+    hits = gpd.sjoin(
+        located, flat[["geometry"]], predicate="within", how="inner"
+    ).index.unique()
+    out[np.flatnonzero(present)[hits]] = True
+    return out
+
+
+def with_amplification(
+    polygons: gpd.GeoDataFrame, ground_map: gpd.GeoDataFrame
+) -> gpd.GeoDataFrame:
+    """Add whether each polygon is on NLM flatland, and the amplification factor.
+
+    :func:`landloss.hazard.landslide.urban.geometry.amplification_factor`:
+    one factor off flatland, 1.0 on it, read at each polygon's
+    representative point (the project lead, 2026-10-12).
 
     Args:
         polygons: From :func:`face_polygons`.
-        topographic_position_m: The 100 m topographic position at each
-            ``rep_point``, in row order; NaN reads no amplification from it.
+        ground_map: The ground step 2 ground map, carrying ``is_flatland``.
 
     Returns:
-        A copy with ``topographic_position_100m`` and ``amp_factor``.
+        A copy with ``on_flatland`` and ``amp_factor``.
     """
     out = polygons.copy()
-    out["topographic_position_100m"] = np.asarray(topographic_position_m, dtype=float)
+    points = gpd.GeoSeries(out[geometry.REP_POINT_COLUMN], crs=out.crs)
+    out["on_flatland"] = on_flatland(points, ground_map)
     out["amp_factor"] = geometry.amplification_factor(
-        out["topographic_position_100m"].to_numpy(dtype=float),
-        out[geometry.SLOPE_COLUMN].to_numpy(dtype=float),
+        out["on_flatland"].to_numpy(dtype=bool)
     )
     return out
 

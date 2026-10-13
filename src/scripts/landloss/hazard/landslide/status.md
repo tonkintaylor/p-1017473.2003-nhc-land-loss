@@ -96,8 +96,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   landslide, through its wall, or by localised failure; a polygon with a wall
   fails with the wall, and if any polygon on a wall fails the wall has failed.
   Walls are drawn per exposure world, failures per world and earthquake, each
-  polygon on a lognormal fragility on PGV with a low, medium or high rate
-  setting.
+  polygon on a lognormal fragility on site PGA (PGV until 2026-10-12) with
+  a low, medium or high rate setting.
 - [x] Build the terrain derivatives at 1 to 100 m (ground step 1), the ground map
   (ground step 2) and the slope units (landslide step 1).
 - [x] Delineate polygons from banded slope and aspect patches (the old steps 6 and 7);
@@ -147,10 +147,13 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   and none-walled runs stay as bounds; `gen_exposure.main` runs the wall units and draws, and
   `gen_hazard.main` the zones of each world's walls (landslide step 4).
 - [~] Attach a fragility per polygon (landslide step 5), on landslide step 4's zones of each
-  world's wall draw (2026-10-06); built, with placeholder medians,
-  dispersion and rate factors until the anchoring
-  (`.agents/plans/anchoring-and-calibrating-the-urban-fragilities.md`, a
-  skeleton for the reviewer to develop).
+  world's wall draw (2026-10-06). The no-wall curve was set by the lead on
+  site PGA on 2026-10-12 (p50 2.0 g at zone 3 and 0.6 g at zone 5, flatter
+  at low susceptibility), and the wall type curves on 2026-10-13: one per
+  type, flattening as they strengthen from garden timber on the zone 5 curve
+  to reinforced concrete from July 1992 (p50 5.12 g), with walls 2 m and over
+  at 0.85 times. Neither is rerun on the pilot yet; the rate factors are
+  still placeholders.
 - [x] Draw the urban failures per world and earthquake (landslide step 6).
 - [~] Run per territorial authority, tiled, with the static layers built once
   (`.agents/plans/running-per-territorial-authority.md`). Landslide step 4's
@@ -279,7 +282,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     held to where that line meets level ground;
   - **amplification by face height and ridge or terrace setting**, 1.0 for
     most house-lot faces, in place of the placeholder that gives every 60°
-    wall 1.5 [brabhaharan_2018];
+    wall 1.5 [brabhaharan_2018]; superseded on 2026-10-12 by the lead's
+    single factor of 1.3 off NLM flatland;
   - **the anchoring**: anchors as shares of face area; A16, A19 and A21 read
     their sources too strongly; the 2013 Cook Strait earthquakes, 0.21 to
     0.26 g in Wellington with two small failures on modified ground
@@ -633,9 +637,9 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
    style per face, the repose angle and the amplification rule. Then build
    the face-based polygons, rerun the pilot and record the counts and
    timings.
-4. Develop and run the anchoring on the face polygons, after the lead decides
-   the reviewer's answers in the anchoring skeleton and the anchor table is
-   edited to match.
+4. Rerun landslide steps 5 and 6 on the pilot with the no-wall curve the lead
+   set on 2026-10-12, and compare the failed polygons by zone with the last
+   run.
 5. Run per territorial authority (per-TA plan).
 6. Ask the supplier what an ESNZ cell's probability is a probability of, and
    what shaking it is conditioned on, and in particular whether it keeps the
@@ -666,14 +670,10 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 13. Add walls on the flat land, where no wall unit is today. (A wall on a
     property boundary is one unit counted on each property it enters,
     2026-10-06; the loss side's use of it is a vul rw Next item.)
-14. **Evaluate the wall curves in PGA in landslide step 6** (a potential future step,
-    the lead, 2026-10-06; landslide step 6 plan, "Potential future improvements"): the
-    wall curves are published in PGA [koutsoupaki_2023] and landslide step 5 converts
-    their medians to PGV with the TS1170.5 PGV/PGA ratio. That is exact
-    while shaking steps 4 and 5 scale PGA and PGV by one draw, but landslide step 6
-    could sample the realised PGA field at the walled polygons and evaluate
-    the curves in PGA directly, removing the ratio and the site class from
-    the wall median.
+14. **Done 2026-10-12: the urban model is on site PGA.** Every curve, wall and
+    no wall, is evaluated on site PGA as published; landslide step 6 samples
+    shaking step 4's PGA field, and the PGV/PGA conversion is gone. On the
+    Porirua pilot the failures and wall outcomes matched the PGV run exactly.
 15. **Stop urban runout at building outlines** (the lead, 2026-10-07, not
     yet built): pass the LINZ building outlines ground step 3 already rasterises
     (`building_mask()`) as the `barriers` grid of `build_slope_polygons`, so
@@ -751,7 +751,8 @@ otherwise.
   points (the cells 1, 3 and 5 cells below each pip) that give a vertical wall a
   height; and that every soil pif is a siz, because a pip already stands
   steeper than the soil angle.
-- **Converting the PGA wall curves to PGV** at each site's ratio, as built.
+- **Converting the PGA wall curves to PGV** at each site's ratio, as built
+  until 2026-10-12; the model is now on site PGA.
 - **SLIDE's mixed fill classes.** "Mixed fill/rock", "Mixed fill/colluvium"
   and "Mixed fill/colluvium/rock", 65% of the SLIDE area over the pilot, are
   mapped to uncontrolled fill (`landloss.hazard.landslide.ground_map`), which

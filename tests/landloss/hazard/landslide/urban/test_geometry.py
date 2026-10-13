@@ -30,14 +30,11 @@ SOUTH = 180.0
 # --- Scoring -----------------------------------------------------------------
 
 
-def test_the_amplification_factor_reaches_the_maximum_on_a_crest_or_a_steep_face():
-    tpi = np.array([0.0, 10.0, 5.0, np.nan, 0.0])
-    slope = np.array([20.0, 20.0, 20.0, 60.0, 45.0])
+def test_the_amplification_factor_is_one_value_off_flatland_and_one_on_it():
+    factor = geometry.amplification_factor(np.array([False, True, False]))
 
-    factor = geometry.amplification_factor(tpi, slope)
-
-    expected = [1.0, 1.5, 1.25, 1.5, 1.25]
-    np.testing.assert_allclose(factor, expected)
+    np.testing.assert_allclose(factor, [1.3, 1.0, 1.3])
+    assert geometry.amplification_factor(np.array([False]), factor=1.1)[0] == 1.1
 
 
 def test_the_kingsbury_factors_follow_the_polygon_attributes():

@@ -1,6 +1,6 @@
 """One realisation of the urban slope failure model.
 
-What belongs here: sampling PGV at each polygon's representative point, the
+What belongs here: sampling site PGA at each polygon's representative point, the
 failure draw against each polygon's fragility, resolving overlaps among the
 failed polygons (absorption), supersession by the large model's evacuated
 polygons, the rows the surviving failures write beside the large model's, and
@@ -121,7 +121,7 @@ DEPTH_INUNDATED_COLUMN = "depth_inundated_m"
 IS_FLATLAND_COLUMN = "is_flatland"
 
 # The draw columns, on the model's index.
-PGV_COLUMN = "pgv_m_s"
+PGA_COLUMN = "pga_g"
 P_FAIL_COLUMN = "p_fail"
 UNIFORM_COLUMN = "uniform"
 FAILED_COLUMN = "failed"
@@ -148,7 +148,7 @@ COMBINED_COLUMNS = (
     SOURCE_AREA_COLUMN,
     WALL_STATE_COLUMN,
     RW_ID_COLUMN,
-    PGV_COLUMN,
+    PGA_COLUMN,
     P_FAIL_COLUMN,
     UNIFORM_COLUMN,
     "geometry",
@@ -190,18 +190,18 @@ def _shared_area(
     return shapely.area(shapely.intersection(geometry, others))
 
 
-def sample_pgv(points: gpd.GeoSeries, pgv_path: Path) -> pd.Series:
-    """Read the earthquake's PGV at each polygon's representative point.
+def sample_pga(points: gpd.GeoSeries, pga_path: Path) -> pd.Series:
+    """Read the earthquake's site PGA at each polygon's representative point.
 
     Args:
         points: The representative points, one per polygon of the model file.
-        pgv_path: The PGV raster shaking step 5 wrote for the earthquake, in
-            m/s.
+        pga_path: The site class PGA raster shaking step 4 wrote for the
+            earthquake, in g.
 
     Returns:
-        PGV in m/s on ``points.index``, NaN off the grid.
+        PGA in g on ``points.index``, NaN off the grid.
     """
-    return sample_at_points(pgv_path, points).rename(PGV_COLUMN)
+    return sample_at_points(pga_path, points).rename(PGA_COLUMN)
 
 
 def _row_lines(model: gpd.GeoDataFrame, *, walled_only: bool) -> list[tuple[str, ...]]:
@@ -304,14 +304,14 @@ def _fail_with_the_wall(
 
 
 def draw_failures(
-    model: gpd.GeoDataFrame, pgv_m_s: pd.Series, rng: np.random.Generator
+    model: gpd.GeoDataFrame, pga_g: pd.Series, rng: np.random.Generator
 ) -> pd.DataFrame:
     """Draw which polygons fail, one uniform per wall line or wall-less row.
 
     Each row's fragility is the lognormal of contract section 6 on its own
     ``theta`` and ``beta``, evaluated by
     :func:`landloss.hazard.landslide.urban.fragility.lognormal_failure_probability`
-    (a PGV at or below zero gives 0, a NaN PGV off the grid gives NaN so the
+    (a PGA at or below zero gives 0, a NaN PGA off the grid gives NaN so the
     row is visibly undrawn rather than silently standing); a fragility is a
     probability of failure at a level of shaking, and the uniform drawn
     against it is what decides whether the polygon fails. One uniform is drawn
@@ -340,16 +340,16 @@ def draw_failures(
     Args:
         model: The world's model file (contract section 3.8), carrying
             ``wall_state``, ``wall_line_id`` and ``wall_line_ids``.
-        pgv_m_s: PGV at each row's representative point, on ``model.index``.
+        pga_g: Site PGA at each row's representative point, on ``model.index``.
         rng: The urban stream of the earthquake and world.
 
     Returns:
-        A frame on ``model.index`` with ``pgv_m_s``, ``p_fail``, ``uniform``
+        A frame on ``model.index`` with ``pga_g``, ``p_fail``, ``uniform``
         and ``failed``. ``failed`` is false where ``p_fail`` is NaN.
     """
-    pgv = pgv_m_s.reindex(model.index).to_numpy(dtype=float)
+    pga = pga_g.reindex(model.index).to_numpy(dtype=float)
     p_fail = lognormal_failure_probability(
-        pgv,
+        pga,
         model[THETA_COLUMN].to_numpy(dtype=float),
         model[BETA_COLUMN].to_numpy(dtype=float),
     )
@@ -360,7 +360,7 @@ def draw_failures(
     failed = _fail_with_the_wall(groups, failed)
     return pd.DataFrame(
         {
-            PGV_COLUMN: pgv,
+            PGA_COLUMN: pga,
             P_FAIL_COLUMN: p_fail,
             UNIFORM_COLUMN: uniform,
             FAILED_COLUMN: failed,
@@ -640,7 +640,7 @@ def to_landslide_rows(
                 SOURCE_AREA_COLUMN: evacuated_area,
                 WALL_STATE_COLUMN: kept[WALL_STATE_COLUMN].to_numpy(dtype=object),
                 RW_ID_COLUMN: kept[RW_ID_COLUMN].to_numpy(dtype=object),
-                PGV_COLUMN: kept_draws[PGV_COLUMN].to_numpy(dtype=float),
+                PGA_COLUMN: kept_draws[PGA_COLUMN].to_numpy(dtype=float),
                 P_FAIL_COLUMN: kept_draws[P_FAIL_COLUMN].to_numpy(dtype=float),
                 UNIFORM_COLUMN: kept_draws[UNIFORM_COLUMN].to_numpy(dtype=float),
             },

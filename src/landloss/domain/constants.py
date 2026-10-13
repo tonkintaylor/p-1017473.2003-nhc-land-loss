@@ -411,9 +411,12 @@ BETA_GNS_ONLY_WALL_PROBABILITY = 0.70
 # section 6). A low failure rate is a higher median, so low > 1.
 URBAN_RATE_FACTORS = {"low": 1.5, "medium": 1.0, "high": 1.0 / 1.5}
 
-# The largest factor a crest, spur or face over 60 degrees divides a fragility
-# median by.
-TOPOGRAPHIC_AMPLIFICATION_MAX = 1.5
+# The topographic amplification of the urban slope model (the project lead,
+# 2026-10-12): every polygon off NLM flatland has its fragility median
+# divided by this, one factor for all sloping ground; a polygon on flatland
+# takes 1.0. It replaced a placeholder of up to 1.5 on the 100 m
+# topographic position and the face's own slope.
+TOPOGRAPHIC_AMPLIFICATION = 1.3
 
 # Dispersion of the localised (no wall) fragility until the anchoring sets it.
 LOCALISED_FRAGILITY_BETA = 0.6

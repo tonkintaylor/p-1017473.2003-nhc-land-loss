@@ -38,10 +38,15 @@ number alone from overruling the record.
 The area fit (to A10–A12 on the whole non-flat pilot) and the footprint fit
 are kept in the table and figure as rejected alternatives.
 
-**Status: code and tests only.** The adopted fit has not yet been run on the
-pilot, because the pilot outputs were being rebuilt. Its constants, the A12
-check and the wall comparison go here after that run, and only then into
-`fragility.py` and `LOCALISED_FRAGILITY_BETA`.
+**Status: superseded on 2026-10-12.** The adopted fit was run on the pilot
+on 2026-10-07 (`urban-area-calibration-fit.csv`): 2.46 m/s at rating 0 to
+0.49 m/s at 150, beta 0.72. It was never copied into `fragility.py`. On
+2026-10-12 the project lead instead set the localised curve by judgement on
+site PGA (`urban-localised-fragility.csv`: p50 2.0 g at zone 3 and 0.6 g at
+zone 5, p15 0.7 and 0.3 g, beta 1.38 at zone 1 falling to 0.67 at zone 5),
+checked against the
+same anchors; see the landslide step 5 method. The fits below stay as the
+record and are not read by the model.
 
 ## First run (2026-10-07): the agreed area fit, rejected
 

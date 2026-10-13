@@ -4,13 +4,11 @@
 
 Run ground step 4 (the faces), exposure retaining wall step 6 (the wall units
 and the walls each world drew), landslide step 4 (each world's zones of that
-draw), ground step 1 (the 100 m topographic position)
-and shaking steps 2 and 3 (the site class grid and the PGV grid) first, over
-the same extent.
+draw), ground step 2 (the ground map, with its NLM flatland) and shaking
+step 2 (the site class grid) first, over the same extent.
 
-The run settings -- the extent, which worlds, the
-rate setting and the return period of the demand -- come from ``config.py``
-beside this script rather than from the command line.
+The run settings -- the extent, which worlds and the rate setting -- come from
+``config.py`` beside this script rather than from the command line.
 
 The polygons are landslide step 4's zones of each world's wall draw
 (``urban-slope-zones-wNNN``), not the polygons of a whole-scenario bound:
@@ -44,20 +42,21 @@ section 4; the build contract, sections 3.8, 6 and 7.7):
    wall's type and height class, under 2 m or 2 m and over
    (``retaining-wall-type-fragility.csv``,
    [koutsoupaki_2023]), its PGA median scaled by the wall's own fill or cut
-   position, converted from PGA to PGV by the study's own PGV/PGA ratio at
-   the polygon's representative point: shaking step 3's PGV grid over
-   the unscaled TS1170.5 PGA grid on the same cells. A polygon without a wall
-   takes the localised median from its continuous Kingsbury rating, scored
-   from its element and the ground map
-   (``landloss.hazard.landslide.urban.fragility.localised_theta_base_m_s``).
+   position. A polygon without a wall takes the localised curve on site PGA
+   at its continuous Kingsbury rating, scored from its element and the ground
+   map: a p15 and a p50 on straight lines in log PGA through the two points of
+   ``urban-localised-fragility.csv``
+   (``landloss.hazard.landslide.urban.fragility.localised_curve_pga_g``).
+   Both are on site PGA in g, the measure landslide step 6 samples.
 3. **The adjustments.** The median is divided by the topographic amplification
-   factor (the placeholder on ground step 1's 100 m topographic position at the
-   representative point and the element's slope) and multiplied by the rate
+   factor (``TOPOGRAPHIC_AMPLIFICATION``, 1.3, for a polygon whose
+   representative point is off NLM flatland and 1.0 on it; the project lead,
+   2026-10-12) and multiplied by the rate
    factor of the run's setting (``URBAN_RATE_FACTORS``), both recorded on the
    row.
 
 A fragility is a probability of failure at a level of shaking: landslide step 6 samples
-the earthquake's PGV at the representative point and draws against the row's
+the earthquake's site PGA at the representative point and draws against the row's
 lognormal. Nothing is drawn here.
 
 Writes one GeoParquet per world, sorted by ``slope_id`` with a fresh index,
@@ -82,17 +81,12 @@ from landloss.hazard.landslide.urban import (
     geometry,
     wall_type_fragility,
 )
-from landloss.hazard.shaking.site_class import demand_on_site_class_grid
 from landloss.io.area_of_interest import extent_suffix, get_area_of_interest
-from landloss.io.ts1170 import get_ts1170_pga
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     drawn_walls_path,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import (
     wall_units_path,
-)
-from scripts.landloss.ground.steps.s1_terrain.gen_terrain_derivatives import (
-    terrain_path,
 )
 from scripts.landloss.ground.steps.s2_ground_map.gen_ground_map import (
     ground_map_path,
@@ -104,10 +98,8 @@ from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import
 )
 from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility import config
 from scripts.landloss.hazard.shaking.steps.s2_site_class.gen_site_class import (
-    read_site_class,
     site_class_path,
 )
-from scripts.landloss.hazard.shaking.steps.s3_pgv.gen_pgv import output_path
 from scripts.landloss.paths import TEMP_DIR
 
 # Wellington place names are macronised, which the default cp1252 Windows
@@ -175,19 +167,8 @@ def add_world_id(model, world_id):
     return model[list(MODEL_COLUMNS)]
 
 
-def describe_demand(ratio, site_class):
-    """Print the PGV/PGA ratio and the site classes the polygons read."""
-    finite = ratio.to_numpy(dtype=float)
-    finite = finite[np.isfinite(finite)]
-    print(
-        f"PGV/PGA ratio at the representative points: {len(finite):,} of "
-        f"{len(ratio):,} on the grid"
-    )
-    if finite.size:
-        print(
-            f"  m/s per g: min {finite.min():.3f}   median {np.median(finite):.3f}   "
-            f"max {finite.max():.3f}"
-        )
+def describe_site_class(site_class):
+    """Print the site classes the polygons read."""
     classes = site_class.dropna().round().astype(int)
     print("Site class at the representative points:")
     for cls, count in classes.value_counts().sort_index().items():
@@ -208,20 +189,19 @@ def describe_model(model, *, rate_setting):
         .rename("polygons")
     )
     print(counts.to_string())
-    print("Median theta (m/s) by Kingsbury zone and wall state:")
+    print("Median theta (site PGA, g) by Kingsbury zone and wall state:")
     medians = model.groupby(["kingsbury_zone", fragility.STATE_COLUMN], dropna=False)[
         "theta"
     ].median()
     for (zone, state), value in medians.items():
         label = susceptibility.ZONE_LABELS.get(zone, "no rating")
         print(f"  zone {zone!s:>4} {label:<10} {state:<9}: {value:.3f}")
-    for column, unit in (("amp_factor", ""), ("pgv_pga_ratio_m_s_per_g", "m/s per g")):
-        values = model[column].to_numpy(dtype=float)
-        values = values[np.isfinite(values)]
-        if values.size == 0:
-            print(f"{column}: nothing finite")
-            continue
-        print(f"{column}: {values.min():.3f} to {values.max():.3f} {unit}".rstrip())
+    values = model["amp_factor"].to_numpy(dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        print("amp_factor: nothing finite")
+    else:
+        print(f"amp_factor: {values.min():.3f} to {values.max():.3f}")
 
 
 def describe_flatland_walls(polygons, walls):
@@ -269,8 +249,8 @@ def read_polygons(world_id, *, extent, elements, units, ground_map):
     Reads ``urban-slope-zones-wNNN`` (``gen_wall_zones.py``),
     turns it into one row per polygon
     (:func:`landloss.hazard.landslide.urban.face_polygons.face_polygons`) and
-    adds the amplification on ground step 1's 100 m topographic position at each
-    representative point.
+    adds the amplification, 1.3 where the representative point is off NLM
+    flatland and 1.0 on it.
 
     Raises:
         FileNotFoundError: If landslide step 4 has not written the world's zones.
@@ -295,11 +275,7 @@ def read_polygons(world_id, *, extent, elements, units, ground_map):
         f"  {n_zone_polygons - len(polygons):,} polygons outside the extent left "
         "out (landslide step 4's DEM margin, where the shaking grids give no demand)"
     )
-    tpi = sample_at_points(
-        terrain_path("topographic-position-100m", extent=extent),
-        representative_points(polygons),
-    )
-    polygons = face_polygons.with_amplification(polygons, tpi.to_numpy(dtype=float))
+    polygons = face_polygons.with_amplification(polygons, ground_map)
     walled = polygons[face_polygons.IS_WALLED_COLUMN]
     print(
         f"  {len(polygons):,} polygons, {int(walled.sum()):,} walled, "
@@ -308,7 +284,7 @@ def read_polygons(world_id, *, extent, elements, units, ground_map):
     return polygons
 
 
-def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
+def build_model(polygons, walls, *, wall_table, rate_setting, extent):
     """Assemble one world's model from the polygons and that world's walls.
 
     Args:
@@ -316,8 +292,6 @@ def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
         walls: Every wall the world drew, ``rw_id`` null where uninsured.
         wall_table: The packaged wall fragility table.
         rate_setting: ``low``, ``medium`` or ``high``.
-        pgv: Shaking step 3's PGV grid.
-        pga: The unscaled TS1170.5 PGA on the same grid.
         extent: The extent to run over, a name from
             ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
 
@@ -332,19 +306,17 @@ def build_model(polygons, walls, *, wall_table, rate_setting, pgv, pga, extent):
     describe_flatland_walls(polygons, walls)
     points = representative_points(polygons)
     site_class = sample_site_class(points, extent=extent)
-    ratio = fragility.pgv_pga_ratio_m_s_per_g(pgv, pga, points)
-    describe_demand(ratio, site_class)
+    describe_site_class(site_class)
     return fragility.assign_fragility(
         polygons,
         walls,
         wall_table,
         rate_setting=rate_setting,
         site_class=site_class,
-        pgv_pga_ratio=ratio,
     )
 
 
-def main(*, extent, world_ids, urban_rate, return_period_yr):
+def main(*, extent, world_ids, urban_rate):
     """Write a fragility per polygon for each exposure world.
 
     Args:
@@ -352,8 +324,6 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
             ``landloss.io.area_of_interest.EXTENTS`` or ``"full"``.
         world_ids: Which exposure worlds to build a model file for.
         urban_rate: The rate setting, one of ``URBAN_RATE_FACTORS``' keys.
-        return_period_yr: The return period of the TS1170.5 demand the
-            PGV/PGA ratio is read at.
     """
     factor = fragility.rate_factor(urban_rate)
     print(RULE)
@@ -363,17 +333,6 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
     elements, units, ground_map = read_step12_inputs(extent=extent)
     print(f"  {len(elements):,} elements, {len(units):,} wall units")
     wall_table = wall_type_fragility.load_wall_type_fragility()
-
-    # The ratio is realisation-free: shaking step 3's PGV over the unscaled PGA, both
-    # on the site class grid, so it is built once for every world.
-    site_class = read_site_class(extent=extent)
-    print(f"Reading the TS1170.5 PGA grids at {return_period_yr} years ...")
-    pga = demand_on_site_class_grid(
-        get_ts1170_pga, site_class, return_period_yr=return_period_yr
-    )
-    pgv = read_grid(
-        output_path("pgv", return_period_yr=return_period_yr, extent=extent)
-    )
 
     for world_id in world_ids:
         print(RULE)
@@ -395,8 +354,6 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
             walls,
             wall_table=wall_table,
             rate_setting=urban_rate,
-            pgv=pgv,
-            pga=pga,
             extent=extent,
         )
         model = add_world_id(model, world_id)
@@ -409,10 +366,10 @@ def main(*, extent, world_ids, urban_rate, return_period_yr):
 
     print(RULE)
     print(
-        "The localised medians and the rate factors are placeholders until the "
-        "anchoring sets them (hazard/landslide/validations/urban/); the wall "
-        "curves are read out of Koutsoupaki et al. (2023) at the project lead's "
-        "review."
+        "The localised curve is set by the project lead on site PGA "
+        "(urban-localised-fragility.csv) and the rate factors are placeholders; "
+        "the wall curves are read out of Koutsoupaki et al. (2023) at the "
+        "project lead's review."
     )
 
 
@@ -421,5 +378,4 @@ if __name__ == "__main__":
         extent=config.EXTENT,
         world_ids=config.WORLD_IDS,
         urban_rate=config.URBAN_RATE,
-        return_period_yr=config.RETURN_PERIOD_YR,
     )

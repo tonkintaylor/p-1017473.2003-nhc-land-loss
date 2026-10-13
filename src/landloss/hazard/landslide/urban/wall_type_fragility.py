@@ -4,20 +4,16 @@ Confirmed by the project lead (2026-10-06). The model reads this table for
 every drawn wall: :func:`wall_type_curves` gives the curve that
 :func:`landloss.hazard.landslide.urban.fragility.assign_fragility` (walls on
 sloping land) and :func:`landloss.vul.shaking.fragility.wall_failure_probability`
-(walls on flat land) convert to PGV. It replaced the one curve per size class
+(walls on flat land) evaluate on site PGA as published (2026-10-12; they
+converted it to PGV until then). It replaced the one curve per size class
 and condition (``.agents/plans/assigning-retaining-wall-types.md``).
 
-Each wall type has one curve per height class, not per size class (the lead,
-2026-10-07): a wall under 2 m high is ``under_2_m`` and one 2 m or higher is
-``2_m_and_over`` (:func:`height_class`; a wall whose height is not known is
-``under_2_m``). Which published wall height each class takes depends on the
-type. For brick or rock masonry, reinforced concrete before July 1992, timber
-pole before July 1992, concrete block and garden timber the published height effect is
-switched: taller walls of these types are the worse, so ``under_2_m`` takes
-the 6 m wall and ``2_m_and_over`` the 3 m wall. Crib or gabion, and timber
-pole and reinforced concrete from July 1992, have no height effect and take
-the 3 m wall for both. ``size_class`` stays on every wall for pricing; only this
-lookup uses the height class.
+Each wall type has one curve, for a wall under 2 m high (or of unknown
+height). A wall 2 m or higher (:func:`height_class`) takes both percentiles
+times :data:`TALL_HEIGHT_FACTOR`, taller walls being the weaker for every type
+(the lead, 2026-10-13); like the position factor, this moves the median and
+keeps the dispersion. ``size_class`` stays on every wall for pricing; only this
+lookup uses the height.
 
 Replacement is read at the **moderate** damage state, not the most severe,
 because moderate damage usually leads to a full replacement in a claim (the
@@ -36,21 +32,16 @@ wall retaining a cut is stronger, so both percentiles are scaled by
 2026-10-06). Scaling both by one factor moves the median and keeps the
 dispersion. A wall whose position is not known keeps the stored curve.
 
-The packaged rows are read out of [koutsoupaki_2023], DS2 (5% of H), each
-type on one initial-condition rung and some then scaled by ``type_factor``
-(1.3 for timber pole from July 1992, 1.5 for reinforced concrete from July
-1992); the README beside the CSV says how, and
-``src/scripts/landloss/vul/research/fig_rw_type_fragility.md``
-sets them beside the other published curves and the Canterbury failure shares.
-
-On 2026-10-08 the lead moved four medians after reviewing the curves on PGV
-(``fig_urban_fragility_curves.py`` in landslide step 5): reinforced
-concrete before July 1992, timber pole before July 1992, concrete block and
-reinforced concrete from July 1992, under 2 m, to 1.5, 0.9, 0.7 and 2.5 m/s,
-read as PGA at the pilot walled polygons' median PGV/PGA ratio of 0.848 m/s
-per g. Both percentiles moved by one factor, so the dispersion is kept, and
-the 2 m and over curve moved by
-the same factor; ``type_factor`` is the whole scaling of the rung.
+The packaged curves are the lead's judgement (2026-10-13), set so that they
+flatten as they strengthen: garden timber takes the no-wall urban slope curve
+at Kingsbury zone 5's mid rating (``urban-localised-fragility.csv``),
+reinforced concrete from July 1992 is set by the lead, and the six types
+between are spaced evenly between those two in log PGA, in both p15 and p50.
+The README beside the CSV gives the order and the history: until 2026-10-13
+they were read out of [koutsoupaki_2023], DS2 (5% of H), and
+``src/scripts/landloss/vul/research/fig_rw_type_fragility.md`` sets those
+earlier curves beside the other published curves and the Canterbury failure
+shares.
 """
 
 from pathlib import Path
@@ -86,11 +77,14 @@ WALL_TYPES = (
     "reinforced_concrete_post_1992",
 )
 
-# The two height classes a wall's curve is chosen by (the lead, 2026-10-07),
-# shorter first: below HEIGHT_CLASS_SPLIT_M, or of unknown height, and at or
-# above it.
+# The two height classes (the lead, 2026-10-07), shorter first: below
+# HEIGHT_CLASS_SPLIT_M, or of unknown height, and at or above it. The table
+# holds the shorter class's curve; the taller class takes both percentiles
+# times TALL_HEIGHT_FACTOR, for every wall type (the lead, 2026-10-13).
 HEIGHT_CLASSES = ("under_2_m", "2_m_and_over")
 HEIGHT_CLASS_SPLIT_M = 2.0
+TALL_HEIGHT_FACTOR = 0.85
+HEIGHT_FACTORS = dict(zip(HEIGHT_CLASSES, (1.0, TALL_HEIGHT_FACTOR), strict=True))
 
 # The two stored percentiles: the probabilities of replacement they are the
 # PGA for.
@@ -109,23 +103,17 @@ POSITION_FACTORS = {FILL: FILL_CAPACITY_FACTOR, CUT: CUT_CAPACITY_FACTOR}
 
 TABLE_COLUMNS = (
     "wall_type",
-    "height_class",
     "im",
     "p15",
     "p50",
-    "published_height_m",
-    "published_fs",
-    "type_factor",
-    "height_effect",
     "damage_state",
     "source",
     "basis",
 )
-TABLE_KEY = ("wall_type", "height_class")
 
 
 def height_class(height_m: pd.Series) -> pd.Series:
-    """Return each wall's height class, the key its curve is looked up by.
+    """Return each wall's height class, which sets its height factor.
 
     Args:
         height_m: Each wall's height in metres; null where it is not known.
@@ -142,6 +130,19 @@ def height_class(height_m: pd.Series) -> pd.Series:
         index=height_m.index,
         name="height_class",
     )
+
+
+def height_factor(height_m: pd.Series) -> np.ndarray:
+    """Return the factor each wall's height scales its percentiles by.
+
+    Args:
+        height_m: Each wall's height in metres; null where it is not known.
+
+    Returns:
+        :data:`TALL_HEIGHT_FACTOR` at or above :data:`HEIGHT_CLASS_SPLIT_M`, 1
+        below it or where the height is not known.
+    """
+    return height_class(height_m).map(HEIGHT_FACTORS).to_numpy(dtype=float)
 
 
 def percentiles_to_lognormal(
@@ -214,33 +215,25 @@ def load_wall_type_fragility(path: Path = WALL_TYPE_FRAGILITY_PATH) -> pd.DataFr
         path: The CSV to read; the packaged table by default.
 
     Returns:
-        One row per ``(wall_type, height_class)``, carrying the stored columns
-        and ``theta`` and ``beta`` from :func:`percentiles_to_lognormal`.
+        One row per wall type, the curve of a wall under 2 m, carrying the
+        stored columns and ``theta`` and ``beta`` from
+        :func:`percentiles_to_lognormal`.
 
     Raises:
-        ValueError: If a column is missing, a pair repeats or is missing, a
-            wall type or height class is unknown, an ``im`` is not PGA, or the
-            percentiles are not ordered.
+        ValueError: If a column is missing, a wall type repeats, is missing or
+            is unknown, an ``im`` is not PGA, or the percentiles are not
+            ordered.
     """
     table = pd.read_csv(path)
     missing = [column for column in TABLE_COLUMNS if column not in table.columns]
     if missing:
         msg = f"The wall type fragility table is missing the columns {missing}."
         raise ValueError(msg)
-    unknown_types = sorted(set(table["wall_type"]) - set(WALL_TYPES))
-    unknown_heights = sorted(set(table["height_class"]) - set(HEIGHT_CLASSES))
-    if unknown_types or unknown_heights:
+    held = table["wall_type"]
+    if held.duplicated().any() or sorted(held) != sorted(WALL_TYPES):
         msg = (
-            f"Unknown wall types {unknown_types} or height classes "
-            f"{unknown_heights} in the wall type fragility table."
-        )
-        raise ValueError(msg)
-    expected = pd.MultiIndex.from_product([WALL_TYPES, HEIGHT_CLASSES])
-    held = pd.MultiIndex.from_frame(table[list(TABLE_KEY)])
-    if held.has_duplicates or not expected.isin(held).all():
-        msg = (
-            "The wall type fragility table must hold each "
-            "(wall_type, height_class) pair exactly once."
+            f"The wall type fragility table holds {held.tolist()}, not each of "
+            f"{list(WALL_TYPES)} exactly once."
         )
         raise ValueError(msg)
     if not (table["im"] == PGA_IM).all():
@@ -256,24 +249,24 @@ def wall_type_curves(
     wall_position: pd.Series,
     table: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Return each wall's lognormal curve on PGA, shifted by its position.
+    """Return each wall's lognormal curve on PGA, shifted by height and position.
 
     Args:
         wall_type: Each wall's type, one of :data:`WALL_TYPES`.
-        height_m: Each wall's height in metres, on the same index; put in its
-            height class by :func:`height_class` (null is ``under_2_m``).
+        height_m: Each wall's height in metres, on the same index, scaling the
+            median (:func:`height_factor`; null is under 2 m).
         wall_position: ``fill``, ``cut`` or null, scaling the median
             (:func:`position_factor`), on the same index.
         table: The table :func:`load_wall_type_fragility` returns.
 
     Returns:
         One row per wall on the index of ``wall_type``: ``theta_pga_g``, the
-        table's median times the position factor, ``beta`` and ``source``.
+        table's median times the height and position factors, ``beta`` and
+        ``source``.
 
     Raises:
         ValueError: If ``height_m`` or ``wall_position`` is not on the index
-            of ``wall_type``, or a wall's ``(wall_type, height_class)`` is not
-            in the table.
+            of ``wall_type``, or a wall's type is not in the table.
     """
     # The three are paired by position below, so a different index (or a
     # length-1 series that would broadcast) would put a curve on the wrong wall.
@@ -286,16 +279,18 @@ def wall_type_curves(
             "paired wall by wall."
         )
         raise ValueError(msg)
-    curves = table.set_index(list(TABLE_KEY))
-    keys = pd.MultiIndex.from_arrays(
-        [wall_type.to_numpy(), height_class(height_m).to_numpy()]
-    )
+    curves = table.set_index("wall_type")
+    keys = pd.Index(wall_type.to_numpy())
     absent = ~keys.isin(curves.index)
     if absent.any():
         msg = f"No wall type curve for {sorted(set(keys[absent]))}."
         raise ValueError(msg)
     picked = curves.loc[keys]
-    theta = picked["theta"].to_numpy(dtype=float) * position_factor(wall_position)
+    theta = (
+        picked["theta"].to_numpy(dtype=float)
+        * height_factor(height_m)
+        * position_factor(wall_position)
+    )
     return pd.DataFrame(
         {
             "theta_pga_g": theta,
@@ -318,8 +313,8 @@ def wall_type_failure_probability(
     Args:
         pga_g: The free-field PGA at each wall, in g.
         wall_type: Each wall's type, one of :data:`WALL_TYPES`.
-        height_m: Each wall's height in metres, put in its height class by
-            :func:`height_class`.
+        height_m: Each wall's height in metres, scaling the curve
+            (:func:`height_factor`).
         wall_position: ``fill``, ``cut`` or null, scaling the curve
             (:func:`position_factor`).
         table: The table :func:`load_wall_type_fragility` returns.
@@ -329,7 +324,7 @@ def wall_type_failure_probability(
 
     Raises:
         ValueError: If the three series do not share one index, or a wall's
-            ``(wall_type, height_class)`` is not in the table.
+            type is not in the table.
     """
     curves = wall_type_curves(wall_type, height_m, wall_position, table)
     return lognormal_failure_probability(

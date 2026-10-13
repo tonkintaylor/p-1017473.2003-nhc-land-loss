@@ -1,8 +1,8 @@
 """Tests for the urban slope realisation, on hand-built inputs.
 
 Model rows are square faces in NZTM with their fixed geometry set by hand, so
-every nesting and supersession can be worked out on paper; the PGV grid is a
-few 100 m cells written where shaking step 5 would write it; the large-model
+every nesting and supersession can be worked out on paper; the PGA grid is a
+few 100 m cells written where shaking step 4 would write it; the large-model
 realisation is one circle. Fragilities are pushed to the ends -- a tiny median
 fails under any shaking, a huge one never does -- where an outcome has to be
 exact, and left in the middle where the draw itself is under test.
@@ -40,8 +40,8 @@ from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
 from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation import (
     gen_urban_slope_realisation as step,
 )
-from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation import (
-    gen_pgv_realisations,
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation import (
+    gen_pga_realisations,
 )
 
 # rioxarray recomputes the transform through affine's ``*`` operator, which
@@ -50,15 +50,15 @@ ignore_affine_matmul = pytest.mark.filterwarnings(
     "ignore:Use `@` matmul:PendingDeprecationWarning"
 )
 
-# An arbitrary but realistic corner in NZTM; the PGV grid's top left.
+# An arbitrary but realistic corner in NZTM; the PGA grid's top left.
 X0 = 1_748_000.0
 Y0 = 5_425_000.0
 CELL_M = 100.0
 
 # Medians that make the draw certain either way, and one in the middle.
-ALWAYS_FAILS_M_S = 1e-6
-NEVER_FAILS_M_S = 1e6
-MIDDLE_M_S = 1.0
+ALWAYS_FAILS_G = 1e-6
+NEVER_FAILS_G = 1e6
+MIDDLE_G = 1.0
 BETA = 0.6
 
 WORLD = 0
@@ -202,35 +202,35 @@ def no_large():
     return large_rows([])
 
 
-def draws_for(model, *, pgv=1.0, world_id=WORLD, realisation_id=EARTHQUAKE):
+def draws_for(model, *, pga=1.0, world_id=WORLD, realisation_id=EARTHQUAKE):
     rng = realisation_seed(
         constants.BASE_SEED, realisation_id, urban.URBAN_STREAM, world_id=world_id
     )
-    pgv_series = pd.Series(pgv, index=model.index, dtype=float)
-    return urban.draw_failures(model, pgv_series, rng)
+    pga_series = pd.Series(pga, index=model.index, dtype=float)
+    return urban.draw_failures(model, pga_series, rng)
 
 
 # --- The draw ---------------------------------------------------------------
 
 
-def test_the_fragility_is_the_lognormal_at_the_sampled_pgv():
-    model = model_rows([square(0, 0, 10)], theta=MIDDLE_M_S)
-    draws = draws_for(model, pgv=MIDDLE_M_S)
-    # At PGV equal to the median the probability of failure is one half.
+def test_the_fragility_is_the_lognormal_at_the_sampled_pga():
+    model = model_rows([square(0, 0, 10)], theta=MIDDLE_G)
+    draws = draws_for(model, pga=MIDDLE_G)
+    # At PGA equal to the median the probability of failure is one half.
     assert draws["p_fail"].iloc[0] == pytest.approx(0.5)
-    assert draws["pgv_m_s"].iloc[0] == MIDDLE_M_S
+    assert draws["pga_g"].iloc[0] == MIDDLE_G
     assert draws["failed"].iloc[0] == (draws["uniform"].iloc[0] < 0.5)
 
 
-def test_a_polygon_off_the_pgv_grid_is_not_drawn():
-    model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_M_S)
-    draws = draws_for(model, pgv=np.nan)
+def test_a_polygon_off_the_pga_grid_is_not_drawn():
+    model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_G)
+    draws = draws_for(model, pga=np.nan)
     assert np.isnan(draws["p_fail"].iloc[0])
     assert not draws["failed"].iloc[0]
 
 
 def test_the_same_world_and_earthquake_reproduce_and_another_world_differs():
-    model = model_rows([square(0, 0, 10)] * 6, theta=MIDDLE_M_S)
+    model = model_rows([square(0, 0, 10)] * 6, theta=MIDDLE_G)
     again = draws_for(model)
     assert np.array_equal(draws_for(model)["uniform"], again["uniform"])
     other_world = draws_for(model, world_id=WORLD + 1)
@@ -240,7 +240,7 @@ def test_the_same_world_and_earthquake_reproduce_and_another_world_differs():
 
 
 def test_the_draw_is_in_model_order_so_a_uniform_is_tied_to_its_row():
-    model = model_rows([square(0, 0, 10)] * 4, theta=MIDDLE_M_S)
+    model = model_rows([square(0, 0, 10)] * 4, theta=MIDDLE_G)
     expected = realisation_seed(
         constants.BASE_SEED, EARTHQUAKE, urban.URBAN_STREAM, world_id=WORLD
     ).random(4)
@@ -253,7 +253,7 @@ def test_rows_on_one_wall_line_read_one_uniform_and_fail_or_stand_together():
     # the first line read the first row's uniform; the others keep their own.
     model = model_rows(
         [square(0, 0, 10), square(20, 0, 10), square(2, 2, 3), square(40, 0, 10)],
-        theta=MIDDLE_M_S,
+        theta=MIDDLE_G,
         rw_ids=["A-RW01", None, "A-RW01", "B-RW01"],
         wall_states=["cut_wall", "no_wall", "cut_wall", "fill_wall"],
         wall_line_ids=["WL0000001", None, "WL0000001", "WL0000002"],
@@ -263,7 +263,7 @@ def test_rows_on_one_wall_line_read_one_uniform_and_fail_or_stand_together():
         own = realisation_seed(
             constants.BASE_SEED, earthquake, urban.URBAN_STREAM, world_id=WORLD
         ).random(len(model))
-        draws = draws_for(model, pgv=MIDDLE_M_S, realisation_id=earthquake)
+        draws = draws_for(model, pga=MIDDLE_G, realisation_id=earthquake)
         uniform = draws["uniform"].to_numpy()
         assert uniform.tolist() == [own[0], own[1], own[0], own[3]]
         failed = draws["failed"].to_numpy()
@@ -279,7 +279,7 @@ def test_rows_sharing_any_wall_line_read_one_uniform_transitively():
     # one wall and read row 1's uniform; row 3 keeps its own.
     model = model_rows(
         [square(0, 0, 10), square(2, 2, 3), square(40, 0, 10)],
-        theta=MIDDLE_M_S,
+        theta=MIDDLE_G,
         rw_ids=["A-RW01", "B-RW01", "C-RW01"],
         wall_states=["fill_wall", "fill_wall", "cut_wall"],
         wall_line_ids=["WL0000001", "WL0000002", "WL0000003"],
@@ -295,7 +295,7 @@ def test_if_any_polygon_on_a_wall_fails_every_polygon_on_it_fails():
     """The wall fails once and takes all the ground it holds up (the lead's rule)."""
     model = model_rows(
         [square(0, 0, 20), square(5, 5, 5), square(60, 0, 10), square(90, 0, 10)],
-        theta=[NEVER_FAILS_M_S, ALWAYS_FAILS_M_S, NEVER_FAILS_M_S, ALWAYS_FAILS_M_S],
+        theta=[NEVER_FAILS_G, ALWAYS_FAILS_G, NEVER_FAILS_G, ALWAYS_FAILS_G],
         rw_ids=["A-RW01", "A-RW01", None, None],
         wall_states=["fill_wall", "fill_wall", "no_wall", "no_wall"],
         wall_line_ids=["WL0000001", "WL0000001", None, None],
@@ -311,7 +311,7 @@ def test_a_wall_none_of_whose_polygons_fail_stands_for_all_of_them():
     """No polygon on a wall failing leaves every one of them standing."""
     model = model_rows(
         [square(0, 0, 20), square(5, 5, 5)],
-        theta=NEVER_FAILS_M_S,
+        theta=NEVER_FAILS_G,
         rw_ids=["A-RW01", "A-RW01"],
         wall_states=["fill_wall", "fill_wall"],
         wall_line_ids=["WL0000001", "WL0000001"],
@@ -322,7 +322,7 @@ def test_a_wall_none_of_whose_polygons_fail_stands_for_all_of_them():
 def test_a_walled_row_with_no_wall_line_keeps_its_own_uniform():
     model = model_rows(
         [square(0, 0, 10), square(2, 2, 3)],
-        theta=MIDDLE_M_S,
+        theta=MIDDLE_G,
         rw_ids=["A-RW01", "A-RW01"],
         wall_states=["cut_wall", "cut_wall"],
         wall_line_ids=[None, None],
@@ -453,11 +453,11 @@ def test_the_outcome_values_are_exact():
     model = model_rows(
         faces,
         theta=[
-            NEVER_FAILS_M_S,
-            ALWAYS_FAILS_M_S,
-            ALWAYS_FAILS_M_S,
-            ALWAYS_FAILS_M_S,
-            ALWAYS_FAILS_M_S,
+            NEVER_FAILS_G,
+            ALWAYS_FAILS_G,
+            ALWAYS_FAILS_G,
+            ALWAYS_FAILS_G,
+            ALWAYS_FAILS_G,
         ],
         rw_ids=rw_ids,
         wall_states=["cut_wall"] * 5,
@@ -501,7 +501,7 @@ def test_only_a_failed_polygon_under_a_large_landslide_is_superseded():
     # the other stands, its wall left to vul step 11's line intersection.
     model = model_rows(
         [square(0, 0, 4), square(6, 0, 4)],
-        theta=[ALWAYS_FAILS_M_S, NEVER_FAILS_M_S],
+        theta=[ALWAYS_FAILS_G, NEVER_FAILS_G],
         rw_ids=["A-RW01", "B-RW01"],
         wall_states=["cut_wall", "cut_wall"],
     )
@@ -523,7 +523,7 @@ def test_only_a_failed_polygon_under_a_large_landslide_is_superseded():
 def test_a_superseder_set_on_a_polygon_that_did_not_fail_is_ignored():
     # Handed a position on a row that did not fail, the outcome table still
     # reads it standing: only a failed polygon is superseded or absorbed.
-    model = model_rows([square(0, 0, 4)], theta=NEVER_FAILS_M_S, rw_ids=["A-RW01"])
+    model = model_rows([square(0, 0, 4)], theta=NEVER_FAILS_G, rw_ids=["A-RW01"])
     walls = wall_population(["A-RW01"])
     outcomes = urban.wall_outcomes(
         model,
@@ -540,9 +540,7 @@ def test_a_superseder_set_on_a_polygon_that_did_not_fail_is_ignored():
 def test_supersession_outranks_absorption_and_failure():
     small = square(2, 2, 3)
     big = square(0, 0, 10)
-    model = model_rows(
-        [small, big], theta=ALWAYS_FAILS_M_S, rw_ids=["A-RW01", "B-RW01"]
-    )
+    model = model_rows([small, big], theta=ALWAYS_FAILS_G, rw_ids=["A-RW01", "B-RW01"])
     walls = wall_population(["A-RW01", "B-RW01"])
     large = large_rows([Point(X0 + 3, Y0 - 3).buffer(2)])
 
@@ -561,7 +559,7 @@ def test_a_superseded_failure_absorbs_nothing_so_its_neighbour_survives():
     bigger = square(0, 0, 30)
     smaller = square(25, 5, 20)
     model = model_rows(
-        [bigger, smaller], theta=ALWAYS_FAILS_M_S, rw_ids=["A-RW01", "B-RW01"]
+        [bigger, smaller], theta=ALWAYS_FAILS_G, rw_ids=["A-RW01", "B-RW01"]
     )
     walls = wall_population(["A-RW01", "B-RW01"])
     large = large_rows([Point(X0 - 5, Y0 - 15).buffer(12)])
@@ -589,7 +587,7 @@ def test_every_absorber_is_written_to_the_combined_realisation():
     # landslide: the larger absorbs the smaller and is itself written.
     model = model_rows(
         [square(2, 2, 3), square(0, 0, 10)],
-        theta=ALWAYS_FAILS_M_S,
+        theta=ALWAYS_FAILS_G,
         rw_ids=["A-RW01", "B-RW01"],
     )
     walls = wall_population(["A-RW01", "B-RW01"])
@@ -612,7 +610,7 @@ def test_every_line_of_a_wall_split_at_a_property_boundary_takes_the_polygon():
     # slope_id.
     model = model_rows(
         [square(0, 0, 20)],
-        theta=ALWAYS_FAILS_M_S,
+        theta=ALWAYS_FAILS_G,
         rw_ids=["A-RW01"],
         wall_states=["cut_wall"],
         wall_line_ids=["WL0000001"],
@@ -632,7 +630,7 @@ def test_a_wall_on_polygons_at_two_scales_takes_the_strongest_outcome():
     # coarse face that absorbed it: the wall failed with the coarse polygon.
     model = model_rows(
         [square(2, 2, 3), square(0, 0, 10)],
-        theta=ALWAYS_FAILS_M_S,
+        theta=ALWAYS_FAILS_G,
         rw_ids=["A-RW01", "A-RW01"],
     )
     walls = wall_population(["A-RW01"])
@@ -645,7 +643,7 @@ def test_a_wall_on_polygons_at_two_scales_takes_the_strongest_outcome():
 
 
 def test_a_survivor_writes_three_rows_with_the_contract_columns():
-    model = model_rows([square(0, 0, 10), square(50, 0, 10)], theta=ALWAYS_FAILS_M_S)
+    model = model_rows([square(0, 0, 10), square(50, 0, 10)], theta=ALWAYS_FAILS_G)
     draws = draws_for(model)
     rows = urban.to_landslide_rows(model, draws, np.array([True, False]))
 
@@ -660,14 +658,14 @@ def test_a_survivor_writes_three_rows_with_the_contract_columns():
     assert np.isnan(by_class.loc[IMMINENT, "depth_m"])
     assert (rows["source_area_m2"] == 100.0).all()
     assert (rows["volume_m3"] == 100.0).all()
-    assert (rows["pgv_m_s"] == 1.0).all()
+    assert (rows["pga_g"] == 1.0).all()
     assert (rows["p_fail"] == draws["p_fail"].iloc[0]).all()
     assert (rows["uniform"] == draws["uniform"].iloc[0]).all()
     assert rows.crs == model.crs
 
 
 def test_the_combined_realisation_puts_both_populations_in_one_schema():
-    model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_M_S)
+    model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_G)
     urban_rows = urban.to_landslide_rows(model, draws_for(model), np.array([True]))
     urban_rows["realisation_id"] = EARTHQUAKE
     large = large_rows([Point(X0 + 500, Y0 - 500).buffer(10)])
@@ -686,7 +684,7 @@ def test_the_combined_realisation_puts_both_populations_in_one_schema():
         "SP0000001",
     ]
     large_part = combined[combined["population"] == urban.LARGE]
-    assert large_part["pgv_m_s"].isna().all()
+    assert large_part["pga_g"].isna().all()
     assert large_part["slope_id"].isna().all()
     urban_part = combined[combined["population"] == urban.URBAN]
     assert urban_part["unit_id"].isna().all()
@@ -695,7 +693,7 @@ def test_the_combined_realisation_puts_both_populations_in_one_schema():
 
 
 def test_large_rows_without_the_contract_columns_are_refused():
-    model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_M_S)
+    model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_G)
     urban_rows = urban.to_landslide_rows(model, draws_for(model), np.array([True]))
     old_style = large_rows([Point(X0, Y0).buffer(5)]).drop(columns=["population"])
     with pytest.raises(ValueError, match="population"):
@@ -711,14 +709,14 @@ def work_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(step, "WORK_DIR", tmp_path / "landslide")
     monkeypatch.setattr(gen_urban_slope_fragility, "WORK_DIR", tmp_path / "landslide")
     monkeypatch.setattr(s1_simulate_landslides, "WORK_DIR", tmp_path / "landslide")
-    monkeypatch.setattr(gen_pgv_realisations, "WORK_DIR", tmp_path / "shaking")
+    monkeypatch.setattr(gen_pga_realisations, "WORK_DIR", tmp_path / "shaking")
     monkeypatch.setattr(gen_wall_population, "WORK_DIR", tmp_path / "exposure")
     for path in (tmp_path / "landslide", tmp_path / "shaking", tmp_path / "exposure"):
         path.mkdir()
     return tmp_path
 
 
-def write_inputs(model, walls, large, pgv):
+def write_inputs(model, walls, large, pga):
     model.to_parquet(step.urban_slope_model_path(WORLD, extent="wlg-pilot"))
     walls.to_parquet(
         gen_wall_population.wall_population_path(WORLD, extent="wlg-pilot")
@@ -729,8 +727,8 @@ def write_inputs(model, walls, large, pgv):
         )
     )
     write_raster(
-        make_grid(pgv).rename("pgv_m_s").astype("float32"),
-        gen_pgv_realisations.pgv_path(EARTHQUAKE, extent="wlg-pilot"),
+        make_grid(pga).rename("pga_g").astype("float32"),
+        gen_pga_realisations.pga_path(EARTHQUAKE, extent="wlg-pilot"),
     )
 
 
@@ -749,13 +747,13 @@ def test_the_paths_carry_both_ids_world_first():
 
 @ignore_affine_matmul
 def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
-    # Two faces in the first PGV cell, which carries shaking; one in the third
+    # Two faces in the first PGA cell, which carries shaking; one in the third
     # cell, off the grid's finite values, which is not drawn.
     faces = [square(10, 10, 10), square(60, 10, 10), square(210, 10, 10)]
     rw_ids = ["A-RW01", None, "C-RW01"]
     model = model_rows(
         faces,
-        theta=[ALWAYS_FAILS_M_S, NEVER_FAILS_M_S, ALWAYS_FAILS_M_S],
+        theta=[ALWAYS_FAILS_G, NEVER_FAILS_G, ALWAYS_FAILS_G],
         rw_ids=rw_ids,
         wall_states=["fill_wall", "no_wall", "cut_wall"],
     )
@@ -779,8 +777,8 @@ def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
     assert sorted(urban_part[LAND_CLASS_COLUMN]) == sorted(
         [EVACUATED, INUNDATED, IMMINENT]
     )
-    # float32 on disk, so the sampled PGV reproduces the cell to that precision.
-    assert np.allclose(urban_part["pgv_m_s"], 1.2, rtol=1e-6)
+    # float32 on disk, so the sampled PGA reproduces the cell to that precision.
+    assert np.allclose(urban_part["pga_g"], 1.2, rtol=1e-6)
     assert (urban_part["wall_state"] == "fill_wall").all()
     assert (urban_part["rw_id"] == "A-RW01").all()
     assert len(combined[combined["population"] == urban.LARGE]) == 2
@@ -800,7 +798,7 @@ def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
     ]
     by_wall = outcomes.set_index("rw_id")
     assert by_wall.loc["A-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
-    # Off the PGV grid, not drawn, so standing with its polygon.
+    # Off the PGA grid, not drawn, so standing with its polygon.
     assert by_wall.loc["C-RW01", "outcome"] == urban.STANDING
     assert by_wall.loc["C-RW01", "slope_id"] == "SP0000003"
     assert "D-RW01" not in by_wall.index
@@ -810,7 +808,7 @@ def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
 
 @ignore_affine_matmul
 def test_the_run_prints_the_rate_setting_of_the_model_file(work_dirs, capsys):
-    model = model_rows([square(10, 10, 10)], theta=NEVER_FAILS_M_S, rate_setting="low")
+    model = model_rows([square(10, 10, 10)], theta=NEVER_FAILS_G, rate_setting="low")
     write_inputs(model, wall_population([]), no_large(), [[1.0, 1.0], [1.0, 1.0]])
 
     step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])
@@ -822,8 +820,8 @@ def test_the_run_prints_the_rate_setting_of_the_model_file(work_dirs, capsys):
 def test_a_model_file_with_two_rate_settings_is_refused():
     model = pd.concat(
         [
-            model_rows([square(0, 0, 10)], theta=MIDDLE_M_S, rate_setting="low"),
-            model_rows([square(20, 0, 10)], theta=MIDDLE_M_S, rate_setting="high"),
+            model_rows([square(0, 0, 10)], theta=MIDDLE_G, rate_setting="low"),
+            model_rows([square(20, 0, 10)], theta=MIDDLE_G, rate_setting="high"),
         ],
         ignore_index=True,
     )
@@ -833,7 +831,7 @@ def test_a_model_file_with_two_rate_settings_is_refused():
 
 @ignore_affine_matmul
 def test_nothing_failing_still_writes_both_files(work_dirs):
-    model = model_rows([square(10, 10, 10)], theta=NEVER_FAILS_M_S, rw_ids=["A-RW01"])
+    model = model_rows([square(10, 10, 10)], theta=NEVER_FAILS_G, rw_ids=["A-RW01"])
     walls = wall_population(["A-RW01"])
     write_inputs(model, walls, no_large(), [[1.0, 1.0], [1.0, 1.0]])
 
@@ -865,7 +863,7 @@ def test_the_figure_reads_what_the_run_wrote(work_dirs):
     rw_ids = ["A-RW01", "B-RW01", "C-RW01", "D-RW01"]
     model = model_rows(
         faces,
-        theta=[ALWAYS_FAILS_M_S, ALWAYS_FAILS_M_S, ALWAYS_FAILS_M_S, NEVER_FAILS_M_S],
+        theta=[ALWAYS_FAILS_G, ALWAYS_FAILS_G, ALWAYS_FAILS_G, NEVER_FAILS_G],
         rw_ids=rw_ids,
         wall_states=["cut_wall"] * 4,
     )
@@ -888,7 +886,7 @@ def test_the_figure_reads_what_the_run_wrote(work_dirs):
 
 @ignore_affine_matmul
 def test_the_figure_refuses_a_model_file_rewritten_after_the_run(work_dirs):
-    model = model_rows([square(10, 10, 10)], theta=ALWAYS_FAILS_M_S, rw_ids=["A-RW01"])
+    model = model_rows([square(10, 10, 10)], theta=ALWAYS_FAILS_G, rw_ids=["A-RW01"])
     walls = wall_population(["A-RW01"])
     write_inputs(model, walls, no_large(), [[1.0, 1.0], [1.0, 1.0]])
     step.main(extent="wlg-pilot", world_ids=[WORLD], realisation_ids=[EARTHQUAKE])

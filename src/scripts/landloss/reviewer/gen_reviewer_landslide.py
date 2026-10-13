@@ -12,8 +12,8 @@ retaining wall page (``gen_reviewer_rw.py``) and is written to
 
 **The page shows what the steps wrote; it recomputes nothing.** Maps are
 cut-outs of current outputs, rasters are coloured as saved, and the charts count
-or sum rows and cells. The only curves drawn are lognormals from the fitted
-medians and dispersions the calibration table already holds.
+or sum rows and cells. The only curves drawn are lognormals from the packaged
+unwalled curve (``urban-localised-fragility.csv``), on site PGA.
 
 **Two scales of site.** The urban steps read at house-lot scale, so most sites
 are squares of ``2 x SITE_HALF_WIDTH_M``. The large failures read at slope-unit
@@ -119,10 +119,13 @@ from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urba
 from scripts.landloss.hazard.landslide.steps.s8_kritikos_2015.gen_kritikos_2015_hazard import (
     coverage_path as kritikos_coverage_path,
 )
+from scripts.landloss.hazard.shaking.steps.s4_pga_realisation.gen_pga_realisations import (
+    pga_path,
+)
 from scripts.landloss.hazard.shaking.steps.s5_pgv_realisation.gen_pgv_realisations import (
     pgv_path,
 )
-from scripts.landloss.paths import REPO_ROOT, REPORT_DIR
+from scripts.landloss.paths import REPORT_DIR
 from scripts.landloss.reviewer import config
 from scripts.landloss.reviewer import gen_reviewer_rw as rw
 from scripts.landloss.vul.landslide.land.steps.s3_landslide_land_damage.gen_landslide_land_damage import (
@@ -132,8 +135,6 @@ from scripts.landloss.vul.landslide.land.steps.s3_landslide_land_damage.gen_land
 HERE = rw.HERE
 CONTENT_DIR = HERE / "landslide"
 OUT_DIR = REPORT_DIR / "reviewer" / "landslide"
-
-FIT_TABLE = "report/hazard/landslide/urban-fragility/tab/urban-area-calibration-fit.csv"
 
 # Where a `{NAME}` in the content files is looked up, in this order. The
 # landslide constants are spread over the library and landslide step 3's own modules, so
@@ -167,7 +168,7 @@ STALENESS_PAIRS = [
     ("drawn_walls", "urban_model"),
     ("urban_model", "realisation"),
     ("large_realisation", "realisation"),
-    ("pgv_realisation", "realisation"),
+    ("pga_realisation", "realisation"),
     ("realisation", "land_damage"),
 ]
 
@@ -264,7 +265,7 @@ FAILURE_COLUMNS = [
     "land_class",
     "slope_id",
     "wall_state",
-    "pgv_m_s",
+    "pga_g",
     "p_fail",
     "uniform",
     "depth_m",
@@ -305,6 +306,7 @@ def layer_files(*, extent, world_id, realisation_id):
         "ground_map": ground_map_path(extent=extent),
         "slope_units": slope_units_path(extent=extent),
         "pgv_realisation": pgv_path(r, extent=extent),
+        "pga_realisation": pga_path(r, extent=extent),
         "hancox_coverage": hancox_coverage_path(r, extent=extent),
         "kritikos_coverage": kritikos_coverage_path(r, extent=extent),
         "large_realisation": large_realisation_path(extent=extent, realisation_id=r),
@@ -539,48 +541,35 @@ def failed_share(model, failed_ids, by):
 
 
 def localised_curves():
-    """The unwalled curve as in code and as fitted, at three ratings.
+    """The unwalled curve landslide step 5 uses, at three ratings, on site PGA.
 
-    Read from the calibration table, which holds each candidate's medians at
-    rating 0 and 150 and its dispersion; the median at rating R is the
-    log-linear interpolation landslide step 5 uses. Before amplification and rate.
+    Read from the packaged ``urban-localised-fragility.csv`` through
+    ``fragility.localised_curve_pga_g``: p15 and p50 on straight lines in log
+    PGA against the rating, through the lead's points at zone 3 and zone 5.
+    Before amplification and rate.
     """
-    path = REPO_ROOT / FIT_TABLE
-    if not path.exists():
-        return None
-    fits = pd.read_csv(path).set_index("curve")
-    labels = {
-        "committed": "in code (placeholder)",
-        "adopted": "adopted fit (not ported)",
-    }
-    curves = []
-    for name, band in labels.items():
-        if name not in fits.index:
-            continue
-        row = fits.loc[name]
-        theta0, theta150 = (
-            row["theta_at_zero_rating_m_s"],
-            row["theta_at_max_rating_m_s"],
-        )
-        for rating in (0, 75, 150):
-            theta = theta0 * (theta150 / theta0) ** (rating / 150)
-            curves.append(
-                {
-                    "label": f"rating {rating}, {band}",
-                    "wall_type": f"rating {rating}",
-                    "band": band,
-                    "theta": float(theta),
-                    "beta": float(row["beta"]),
-                }
-            )
+    ratings = np.array([0.0, 75.0, 150.0])
+    theta, beta = fragility.localised_curve_pga_g(
+        ratings, fragility.load_localised_fragility()
+    )
+    curves = [
+        {
+            "label": f"rating {rating:.0f}",
+            "wall_type": f"rating {rating:.0f}",
+            "band": "in code",
+            "theta": float(median),
+            "beta": float(dispersion),
+        }
+        for rating, median, dispersion in zip(ratings, theta, beta, strict=True)
+    ]
     return {
         "kind": "curves",
-        "title": "Unwalled polygon fragility, P(fail | PGV)",
+        "title": "Unwalled polygon fragility, P(fail | site PGA)",
         "note": "Kingsbury rating 0, 75 and 150, before amplification and the rate "
-        "factor. Solid: what landslide step 5 uses; dashed: the adopted fit (LS-A32).",
-        "x_max": 4.0,
-        "x_label": "PGV (m/s)",
-        "unit": "m/s",
+        "factor; the lower the rating, the flatter the curve (LS-A32).",
+        "x_max": 10.0,
+        "x_label": "site PGA (g)",
+        "unit": "g",
         "curves": curves,
     }
 

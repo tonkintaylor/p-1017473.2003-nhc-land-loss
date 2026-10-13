@@ -11,7 +11,7 @@ derived for QGIS to draw them:
 - every urban slope polygon's potential evacuated ground, coloured by its
   probability of triggering in this earthquake. Landslide step 6 keeps
   ``p_fail`` only for the polygons it draws as failed, so it is evaluated here
-  for all of them with that step's own functions (``sample_pgv`` at the
+  for all of them with that step's own functions (``sample_pga`` at the
   representative point and ``lognormal_failure_probability`` on the landslide
   step 5 ``theta`` and ``beta``);
 - the landslide step 5 polygons with one geometry column (QGIS takes the first
@@ -260,20 +260,20 @@ def gen_claim_costs(settlement, insured_land):
     return land.join(costs.set_index("claim_id"), how="inner").reset_index()
 
 
-def gen_trigger_probability(model, pgv_file):
+def gen_trigger_probability(model, pga_file):
     """Each landslide step 5 polygon's evacuated ground with its trigger probability.
 
-    The same evaluation landslide step 6 makes before it draws: PGV at the
-    polygon's representative point, through the polygon's lognormal curve.
+    The same evaluation landslide step 6 makes before it draws: site PGA at
+    the polygon's representative point, through the polygon's lognormal curve.
     """
-    pgv = urban.sample_pgv(gpd.GeoSeries(model[urban.REP_POINT_COLUMN]), pgv_file)
+    pga = urban.sample_pga(gpd.GeoSeries(model[urban.REP_POINT_COLUMN]), pga_file)
     p_fail = lognormal_failure_probability(
-        pgv.reindex(model.index).to_numpy(dtype=float),
+        pga.reindex(model.index).to_numpy(dtype=float),
         model["theta"].to_numpy(dtype=float),
         model["beta"].to_numpy(dtype=float),
     )
     frame = model[["slope_id", "wall_state", "wall_type", "theta", "beta"]].assign(
-        pgv_m_s=pgv.reindex(model.index).to_numpy(dtype=float), p_fail=p_fail
+        pga_g=pga.reindex(model.index).to_numpy(dtype=float), p_fail=p_fail
     )
     return gpd.GeoDataFrame(
         frame, geometry=gpd.GeoSeries(model["evacuated"]).values, crs=model.crs
@@ -443,10 +443,10 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix, layout):
             }
         )
     model_file = layout.find(urban_slope_model_path(w, extent=extent))
-    if present(model_file) and present(layout.find(pgv_path(r, extent=extent))):
+    if present(model_file) and present(layout.find(pga_path(r, extent=extent))):
         model = gpd.read_parquet(model_file)
         trigger = layout.write(
-            gen_trigger_probability(model, layout.find(pgv_path(r, extent=extent))),
+            gen_trigger_probability(model, layout.find(pga_path(r, extent=extent))),
             f"urban-trigger-probability-w{w:03d}-r{r:03d}{suffix}.geoparquet",
         )
         polygons = gpd.GeoDataFrame(
@@ -469,7 +469,7 @@ def hazard_layers(*, extent, world_id, realisation_id, suffix, layout):
             },
             {
                 "path": str(model_copy),
-                "name": "Hazard · urban slope fragility median θ (PGV m/s; red fails at less shaking)",
+                "name": "Hazard · urban slope fragility median θ (site PGA g; red fails at less shaking)",
                 "field": "theta",
                 "cmap": "RdYlGn",
                 "bins": 8,

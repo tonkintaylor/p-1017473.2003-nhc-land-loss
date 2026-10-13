@@ -57,6 +57,13 @@ Contract sections 3.11 and 7.12 of `.agents/plans/urban-slope-build-contract.md`
       exposure status file.
 - [ ] Rerun the pilot once exposure rw step 6 writes the world-keyed population
       carrying `is_flatland`, and shaking step 5 the PGV realisations.
+- [x] Move the intensity measure back to site PGA (the project lead,
+      2026-10-12, with the urban slope model): read shaking step 4's
+      `pga_path(r)` and evaluate the wall type curves as published, with no
+      ratio and no `RETURN_PERIOD_YR`. The output carries `pga_g` and
+      `theta_base` in place of `pgv_m_s`, `theta_base_pga_g` and
+      `pgv_pga_ratio_m_s_per_g`. Ran on the Porirua pilot without error; no
+      wall population on disk has a flat-land wall yet, so it wrote no rows.
 
 ## Literature review (2026-10-02)
 

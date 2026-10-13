@@ -9,8 +9,6 @@ The fragility is **not** here. It belongs to the wall type curve table
 and is a property of the wall and the shaking rather than a setting of the run.
 """
 
-from scripts.landloss.hazard.shaking.steps.s3_pgv import config as pgv_config
-
 # The extent to run over: "wlg-pilot" (the small Wellington pilot box),
 # "wlg-earthworks-pilot" (Johnsonville and Newlands) or "full" (the four
 # territorial authorities). Must match the runs of the shaking hazard and the
@@ -25,10 +23,3 @@ WORLD_IDS = [0]
 # Which modelled earthquakes to draw damage states for. The same id in the
 # shaking, liquefaction and landslide layers is the same earthquake.
 REALISATION_IDS = [0]
-
-# The return period of the TS1170.5 demand, in years, that the PGV/PGA ratio
-# converting a published PGA-based wall curve to PGV is taken at: step 3's PGV
-# grid over the unscaled TS1170.5 PGA grid, both at this return period. Change
-# it in shaking step 3's config.py; this step follows, as shaking step 5 and
-# landslide step 5 do.
-RETURN_PERIOD_YR = pgv_config.RETURN_PERIOD_YR

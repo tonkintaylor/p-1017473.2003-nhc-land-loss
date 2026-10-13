@@ -24,7 +24,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from landloss.domain.constants import (
-    TOPOGRAPHIC_AMPLIFICATION_MAX,
+    TOPOGRAPHIC_AMPLIFICATION,
 )
 from landloss.hazard.landslide import susceptibility
 
@@ -96,35 +96,27 @@ def edge_line_ids(value: Iterable[object] | str | float | None) -> tuple[str, ..
 
 
 def amplification_factor(
-    topographic_position_m: npt.NDArray[np.floating],
-    slope_degrees: npt.NDArray[np.floating],
+    on_flatland: npt.NDArray[np.bool_],
     *,
-    max_factor: float = TOPOGRAPHIC_AMPLIFICATION_MAX,
+    factor: float = TOPOGRAPHIC_AMPLIFICATION,
 ) -> npt.NDArray[np.floating]:
     """Return the topographic amplification factor a fragility median is divided by.
 
-    Contract section 7.6, a placeholder until it is replaced by a factor
-    bracketed against sr2019-051-F35. Until then it is
-    ``1 + (max_factor - 1) * max(clip(tpi / 10, 0, 1),
-    clip((slope - 30) / 30, 0, 1))``, so a crest 10 m or more above its 100 m
-    neighbourhood, or a face at 60 degrees, reaches the maximum. A NaN input
-    contributes nothing, so a polygon with no position reads no
-    amplification from it.
+    One factor for all sloping ground (the project lead, 2026-10-12):
+    ``factor`` off NLM flatland and 1.0 on it. It replaced a placeholder
+    of up to 1.5 on the 100 m topographic position and the face's own
+    slope, which amplified almost every polygon on the strength of its
+    own cut or fill.
 
     Args:
-        topographic_position_m: The 100 m topographic position, metres above
-            the neighbourhood mean.
-        slope_degrees: The polygon's slope.
-        max_factor: The factor at a crest or a face over 60 degrees.
+        on_flatland: Whether each polygon lies on NLM flatland.
+        factor: The factor off flatland.
 
     Returns:
-        The factor, 1.0 to ``max_factor``, the shape of the inputs.
+        The factor, 1.0 or ``factor``, the shape of the input.
     """
-    tpi = np.nan_to_num(np.asarray(topographic_position_m, dtype=float), nan=0.0)
-    slope = np.nan_to_num(np.asarray(slope_degrees, dtype=float), nan=0.0)
-    crest = np.clip(tpi / 10.0, 0.0, 1.0)
-    steep = np.clip((slope - 30.0) / 30.0, 0.0, 1.0)
-    return 1.0 + (max_factor - 1.0) * np.maximum(crest, steep)
+    flat = np.asarray(on_flatland, dtype=bool)
+    return np.where(flat, 1.0, factor)
 
 
 def kingsbury_factors(polygons: pd.DataFrame) -> dict[str, npt.NDArray[np.floating]]:

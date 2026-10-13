@@ -64,12 +64,12 @@ def test_a_wall_position_scales_both_percentiles(position, factor) -> None:
     np.testing.assert_allclose(probability, [0.15, 0.5], atol=1e-3)
 
 
-def test_the_packaged_table_holds_every_type_and_height_class() -> None:
+def test_the_packaged_table_holds_every_type_once() -> None:
     # Act
     table = wtf.load_wall_type_fragility()
 
     # Assert
-    assert len(table) == len(wtf.WALL_TYPES) * len(wtf.HEIGHT_CLASSES)
+    assert sorted(table["wall_type"]) == sorted(wtf.WALL_TYPES)
     assert (table["p15"] < table["p50"]).all()
 
 
@@ -182,71 +182,55 @@ def test_height_class_splits_at_two_metres(height_m, expected) -> None:
     assert classes.iloc[0] == expected
 
 
-def _medians(table: pd.DataFrame, wall_type: str) -> tuple[float, float]:
-    """Return the median of a wall type under 2 m and at 2 m and over."""
+@pytest.mark.parametrize("wall_type", wtf.WALL_TYPES)
+def test_a_tall_wall_takes_the_height_factor_and_keeps_the_dispersion(
+    wall_type,
+) -> None:
+    # Arrange
+    table = wtf.load_wall_type_fragility()
+
+    # Act
     curves = wtf.wall_type_curves(
-        pd.Series([wall_type] * 2),
-        pd.Series([1.0, 3.0]),
-        pd.Series([None, None]),
+        pd.Series([wall_type] * 3),
+        pd.Series([1.0, np.nan, 3.0]),
+        pd.Series([None] * 3),
         table,
     )
-    short, tall = curves["theta_pga_g"].to_numpy(dtype=float)
-    return short, tall
+
+    # Assert
+    short, unknown, tall = curves["theta_pga_g"].to_numpy(dtype=float)
+    assert unknown == pytest.approx(short)
+    assert tall == pytest.approx(wtf.TALL_HEIGHT_FACTOR * short)
+    assert curves["beta"].nunique() == 1
 
 
-@pytest.mark.parametrize(
-    "wall_type",
-    ["brick_rock", "timber_pole_pre_1992", "concrete_block", "garden_timber"],
-)
-def test_a_switched_type_is_weaker_when_tall(wall_type) -> None:
+def test_the_packaged_curves_flatten_as_they_strengthen() -> None:
     # Arrange
     table = wtf.load_wall_type_fragility()
 
     # Act
-    short, tall = _medians(table, wall_type)
+    by_strength = table.sort_values("p50")
 
     # Assert
-    assert tall < short
+    assert by_strength["beta"].is_monotonic_increasing
 
 
-@pytest.mark.parametrize(
-    "wall_type",
-    ["crib_gabion", "timber_pole_post_1992", "reinforced_concrete_post_1992"],
-)
-def test_a_type_with_no_height_effect_has_one_curve(wall_type) -> None:
-    # Arrange
-    table = wtf.load_wall_type_fragility()
-
-    # Act
-    short, tall = _medians(table, wall_type)
-
-    # Assert
-    assert tall == pytest.approx(short)
-
-
-def test_the_packaged_height_effect_names_the_curve_each_class_takes() -> None:
-    # Arrange
-    table = wtf.load_wall_type_fragility().set_index(list(wtf.TABLE_KEY))
-    height = table["published_height_m"]
-
-    # Act
-    effect = table["height_effect"].groupby(level="wall_type").first()
-
-    # Assert
-    for wall_type, one in effect.items():
-        short, tall = (
-            height[(wall_type, "under_2_m")],
-            height[(wall_type, "2_m_and_over")],
-        )
-        expected = {"switched": (6, 3), "none": (3, 3)}[one]
-        assert (short, tall) == expected
-
-
-def test_a_table_missing_a_height_class_is_refused(tmp_path) -> None:
+def test_a_table_holding_a_type_twice_is_refused(tmp_path) -> None:
     # Arrange
     table = pd.read_csv(wtf.WALL_TYPE_FRAGILITY_PATH)
     path = tmp_path / "walls.csv"
-    table[table["height_class"] == "under_2_m"].to_csv(path, index=False)
+    pd.concat([table, table.iloc[[0]]]).to_csv(path, index=False)
+
+    # Act and Assert
+    with pytest.raises(ValueError, match="exactly once"):
+        wtf.load_wall_type_fragility(path)
+
+
+def test_a_table_missing_a_type_is_refused(tmp_path) -> None:
+    # Arrange
+    table = pd.read_csv(wtf.WALL_TYPE_FRAGILITY_PATH)
+    path = tmp_path / "walls.csv"
+    table.iloc[1:].to_csv(path, index=False)
 
     # Act and Assert
     with pytest.raises(ValueError, match="exactly once"):

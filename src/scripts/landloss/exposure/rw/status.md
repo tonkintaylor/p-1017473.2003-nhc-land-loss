@@ -12,7 +12,7 @@ judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-12
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -379,6 +379,21 @@ What this module owes the retaining wall table `loss` reads
   `property_lengths_m` and `n_properties` for the loss side to count it on
   each property it enters by 1 m (vul rw status files, Next). Pilot world 0:
   1,940 walls drawn, 1,141 insured.
+- **Wall line placement, research (2026-10-12).** A pif unit's line is its
+  pif's spine, on the crest or mid-face. Redraws from the downslope edge of
+  the pif's points plus 0.4 m (vertex shift and refit, with and without a
+  boundary snap), and the lead's toe fit (a line through the pif's toe
+  points plus 0.4 m, from the toe points nearest the spine's ends, with its
+  bends +/- 1, option 5; at 60° with the spine's bends, option 6; with an
+  8 m downhill look, option 7; with its ends projected down the fall and
+  the toe points moved 0.5 m, option 8; with its ends the lowest toe points
+  within 45° of the spine's perpendicular and bends of at most 100°,
+  option 9), were compared on the pilot. The
+  lead was happy with option 7 (2026-10-12), asked for option 8's and 9's changes,
+  and the other options' code was removed; it is not yet in the wall unit
+  build. A scratch trim of the evacuated polygons at the wall line
+  (`temp/qgis/evac-cut-pilot/`) is being looked at
+  (`research/wall_line_placement/wall_line_placement.md`).
 
 ## Next
 

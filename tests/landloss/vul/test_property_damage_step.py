@@ -136,7 +136,7 @@ def wall_damage_states(world_id=0, realisation_id=0):
     walls = wall_population(world_id)
     flat = walls[walls["is_flatland"]].copy()
     flat.insert(0, "realisation_id", realisation_id)
-    flat["pgv_m_s"] = 0.6
+    flat["pga_g"] = 0.6
     flat["failure_probability"] = [0.9, 0.1]
     flat["damage_state"] = ["replace", "no damage"]
     return flat

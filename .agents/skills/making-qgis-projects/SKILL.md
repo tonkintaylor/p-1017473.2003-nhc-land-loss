@@ -338,7 +338,7 @@ A few of these need explaining to the person reading the map:
   Over most urban ground it sits under 0.5%.
 - **The trigger probability is evaluated, not stored.** Landslide step 6 keeps `p_fail` only for
   the polygons it draws as failed. The generator evaluates it for every landslide step 5 polygon
-  with landslide step 6's own functions (`sample_pgv` and `lognormal_failure_probability`), and
+  with landslide step 6's own functions (`sample_pga` and `lognormal_failure_probability`), and
   draws it on the polygon's `evacuated` geometry.
 
 Add a layer the user asks for to the generator, in its group. Do not hand-build a

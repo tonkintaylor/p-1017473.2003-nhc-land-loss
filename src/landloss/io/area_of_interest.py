@@ -126,6 +126,20 @@ PORIRUA_PILOT = AreaOfInterest(
     north=-41.115,
 )
 
+# A small box about 1.2 km south of the Porirua pilot, for the exec report's
+# four-panel map of the whole chain (``post_processing/exec_report``). The map
+# shows a 600 by 450 m window in its middle; the box is that window with about
+# 500 m all round, so no landslide or wall is cut at the window's edge. It was
+# picked as the Porirua window holding culverts, landslides, insured walls and
+# liquefied ground together; the pilot box itself holds no culvert or bridge.
+PORIRUA_EXEC_MAP = AreaOfInterest(
+    name="Porirua exec map",
+    west=174.8243,
+    south=-41.1609,
+    east=174.8430,
+    north=-41.1476,
+)
+
 # The bounding box of Porirua City, from the Territorial Authority 2025
 # boundary in get_study_areas(), widened by about 500 m so it still holds the
 # whole boundary once it is reprojected to NZTM. A box rather than the TA
@@ -187,6 +201,7 @@ EXTENTS = {
     "wlg-earthworks-pilot": WLG_EARTHWORKS_PILOT,
     "wellington-city": WELLINGTON_CITY,
     "porirua-pilot": PORIRUA_PILOT,
+    "porirua-exec-map": PORIRUA_EXEC_MAP,
     "porirua": PORIRUA,
     "upper-hutt": UPPER_HUTT,
 }

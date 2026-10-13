@@ -1,40 +1,44 @@
-"""Fragility of an urban failure polygon on peak ground velocity.
+"""Fragility of an urban failure polygon on site peak ground acceleration.
 
-What belongs here: the reader of the anchor table
-(``urban-fragility-anchors.csv`` in :mod:`landloss.io.assets`), the
-conversion of a PGA-based median by the PGV/PGA ratio, the localised (no
-wall) median from the susceptibility rating, the rate factor, the row assembly
-:func:`assign_fragility` that landslide step 5 writes out, and the fit of the
-localised median to the anchor table that the urban validation draws. The
-lognormal failure probability lives in
-:mod:`landloss.hazard.landslide.urban.lognormal` and is re-exported here; the
-wall curves are read from
+What belongs here: the readers of the localised curve
+(``urban-localised-fragility.csv``) and of the anchor table
+(``urban-fragility-anchors.csv``, both in :mod:`landloss.io.assets`), the
+localised (no wall) curve from the susceptibility rating, the rate factor, the
+row assembly :func:`assign_fragility` that landslide step 5 writes out, and
+the fit of the earlier PGV median to the anchor table that the urban
+validation draws, with the PGV/PGA ratio it reads. The lognormal failure
+probability lives in :mod:`landloss.hazard.landslide.urban.lognormal` and is
+re-exported here; the wall curves are read from
 :mod:`landloss.hazard.landslide.urban.wall_type_fragility`. Used by landslide
 step 5 (``s5_urban_slope_fragility``), the urban validations and
 ``landloss.vul.shaking.fragility`` for flat-land walls.
 
-Every fragility is a lognormal cumulative distribution on PGV in m/s,
-``P(fail | PGV) = Phi(ln(PGV / theta) / beta)`` (contract section 6 of
-``.agents/plans/urban-slope-build-contract.md``). A fragility returns a
-probability because that is what a fragility is: the realisation draws
-against it.
+Every fragility is a lognormal cumulative distribution on site PGA in g,
+``P(fail | PGA) = Phi(ln(PGA / theta) / beta)`` (contract section 6 of
+``.agents/plans/urban-slope-build-contract.md``, moved from PGV to PGA by the
+project lead on 2026-10-12). A fragility returns a probability because that is
+what a fragility is: the realisation draws against it, at the earthquake's
+site PGA from shaking step 4.
 
 A polygon with a wall on its edge takes the wall type curve for the wall's
-type and height class [koutsoupaki_2023], its PGA median scaled by the wall's own
-fill or cut position, then converted from PGA to PGV by the study's own ratio
-at the polygon's representative point. The wall is any the
-world drew on the line, insured or not (decision 36 of the build contract):
-an uninsured wall holds the slope all the same, and only its ``rw_id`` is
-null. A polygon without a
-wall takes a localised median that falls with its continuous Kingsbury rating
-[kingsbury_1995]. Both are divided by the topographic amplification factor
+type, its PGA median scaled by the wall's height (0.85 at 2 m and over) and
+its own fill or cut position. The wall is any the world drew on the line, insured
+or not (decision 36 of the build contract): an uninsured wall holds the slope
+all the same, and only its ``rw_id`` is null. A polygon without a wall takes
+the localised curve for its continuous Kingsbury rating [kingsbury_1995]
+(:func:`localised_curve_pga_g`), set by the project lead (2026-10-12) as a
+p15 and a p50 at zone 3 and at zone 5 that run in straight lines in log PGA
+against the rating. Both are divided by the topographic amplification factor
 and multiplied by the rate factor of the run's setting (plan sections 4.3 and
 4.4).
 
-The two localised constants are placeholders (contract section 7.7) until
-the anchoring of plan section 6 sets them: :func:`fit_localised_fragility`
-is the fit, run by ``hazard/landslide/validations/urban/``, and the numbers it
-prints replace the constants here.
+:func:`localised_theta_base_m_s` and its two constants are the earlier PGV
+form (contract section 7.7), superseded on 2026-10-12, and
+:func:`pga_to_pgv_theta` and :func:`pgv_pga_ratio_m_s_per_g` converted to it.
+Only the urban calibration validations
+(``hazard/landslide/validations/urban/``) and
+``vul/research/fig_rw_type_fragility.py`` still read them, with
+:func:`fit_localised_fragility`.
 """
 
 from pathlib import Path
@@ -58,9 +62,9 @@ from landloss.hazard.landslide.urban.lognormal import (  # noqa: F401 -- re-expo
 )
 from landloss.io import ASSETS_DIR
 
-# The intensity measure every urban fragility is on; the wall curves are
-# published on PGA_IM and converted.
-IM = "pgv_m_s"
+# The intensity measure every urban fragility is on: site PGA in g, the
+# measure the wall curves are published on (the lead, 2026-10-12).
+IM = PGA_IM
 
 # What a row's median came from (contract section 6).
 FRAGILITY_BASES = ("wall", "localised")
@@ -68,14 +72,15 @@ WALL_BASIS, LOCALISED_BASIS = FRAGILITY_BASES
 
 URBAN_FRAGILITY_ANCHORS_PATH = ASSETS_DIR / "urban-fragility-anchors.csv"
 
-# The localised (no wall) median, m/s, at a rating of 0 and at MAX_RATING: a
-# log-linear fall between them (contract section 7.7). Placeholders, set by the
-# anchoring. The area calibration agreed with the project lead on 2026-10-07
-# (hazard/landslide/validations/urban/table_urban_area_calibration.py) fits
-# 0.334 and 0.0668 with a dispersion of 1.01, but every check rejects that fit
-# (urban_area_calibration_findings.md beside the script), so it is not adopted
-# here until the lead decides. The names are the contract's, so they carry no
-# beta_ prefix although they are placeholders.
+# The localised (no wall) curve: two points on the rating, each a p15 and a
+# p50 on site PGA (the lead, 2026-10-12).
+LOCALISED_FRAGILITY_PATH = ASSETS_DIR / "urban-localised-fragility.csv"
+LOCALISED_COLUMNS = ("point", "rating", "im", "p15", "p50", "set_by", "basis")
+
+# The earlier localised median, m/s, at a rating of 0 and at MAX_RATING, with
+# constants.LOCALISED_FRAGILITY_BETA (contract section 7.7). Superseded by
+# LOCALISED_FRAGILITY_PATH on 2026-10-12; kept only for the urban calibration
+# validations and fig_rw_type_fragility.py, which compare against it.
 LOCALISED_THETA_AT_ZERO_RATING_M_S = 3.0
 LOCALISED_THETA_AT_MAX_RATING_M_S = 0.6
 
@@ -123,8 +128,8 @@ ROCK_DEMAND, SITE_DEMAND = ANCHOR_DEMAND_AT
 STATE_COLUMN = "wall_state"
 WALL_TYPE_COLUMN = "wall_type"
 SIZE_CLASS_COLUMN = "size_class"
-# The drawn wall's height, which picks its height class in the wall type
-# table (the lead, 2026-10-07); read off the drawn walls, not carried onto the
+# The drawn wall's height, which sets its height factor on the wall type
+# curve (the lead, 2026-10-13); read off the drawn walls, not carried onto the
 # model file.
 WALL_HEIGHT_COLUMN = "height_m"
 MODEL_COLUMNS = (
@@ -137,9 +142,7 @@ MODEL_COLUMNS = (
     SIZE_CLASS_COLUMN,
     "im",
     "theta_base",
-    "theta_base_pga_g",
     "site_class",
-    "pgv_pga_ratio_m_s_per_g",
     "amp_factor",
     "rate_setting",
     "rate_factor",
@@ -179,8 +182,8 @@ _CARRIED_POLYGON_COLUMNS = (
 # The drawn wall columns the join reads (contract section 3.7). ``rw_id`` is
 # carried onto the model and is null on a wall that is not insured (decision
 # 36); whether a polygon has a wall is read from the wall lines on its edge
-# alone. The wall's ``height_m`` picks its height class in the wall type
-# table. The wall's own ``wall_position`` shifts its curve; it is merged as
+# alone. The wall's ``height_m`` sets its height factor on the wall type
+# curve. The wall's own ``wall_position`` shifts its curve; it is merged as
 # _WALL_OWN_POSITION_COLUMN so it is never read for the polygon's position,
 # which sets the wall state and can come from another edge line.
 _WALL_COLUMNS = (
@@ -342,19 +345,99 @@ def continuous_rating(
     )
 
 
+def load_localised_fragility(path: Path = LOCALISED_FRAGILITY_PATH) -> pd.DataFrame:
+    """Read the two points that set the localised (no wall) curve.
+
+    Each row is a continuous Kingsbury rating with the site PGA at which 15%
+    and 50% of polygons fail there (``p15`` and ``p50``), and who set them and
+    why. :func:`localised_curve_pga_g` runs both in straight lines in log PGA
+    through the two points.
+
+    Args:
+        path: The CSV to read; the packaged table by default.
+
+    Returns:
+        The two rows, lower rating first.
+
+    Raises:
+        ValueError: If a column is missing, there are not exactly two rows at
+            two ratings within the scale, an ``im`` is not PGA, or the lines
+            do not keep each p15 positive and below its p50 over the whole
+            rating scale.
+    """
+    table = pd.read_csv(path)
+    _require_columns(table, LOCALISED_COLUMNS, "The localised fragility table")
+    rating = table["rating"].to_numpy(dtype=float)
+    if (
+        len(table) != 2
+        or rating[0] == rating[1]
+        or not np.all((rating >= 0) & (rating <= susceptibility.MAX_RATING))
+    ):
+        msg = (
+            "The localised fragility table must hold two points at two ratings "
+            f"within 0 to {susceptibility.MAX_RATING}."
+        )
+        raise ValueError(msg)
+    if not (table["im"] == PGA_IM).all():
+        msg = f"Every point in the localised fragility table must be on {PGA_IM}."
+        raise ValueError(msg)
+    table = table.sort_values("rating").reset_index(drop=True)
+    ends = np.array([0.0, susceptibility.MAX_RATING])
+    wall_type_fragility.percentiles_to_lognormal(
+        _localised_line(ends, table, "p15"), _localised_line(ends, table, "p50")
+    )
+    return table
+
+
+def _localised_line(
+    rating: npt.NDArray[np.floating], table: pd.DataFrame, column: str
+) -> npt.NDArray[np.floating]:
+    """Read one percentile off its straight line in log PGA against the rating."""
+    (r_low, r_high) = table["rating"].to_numpy(dtype=float)
+    low, high = np.log(table[column].to_numpy(dtype=float))
+    frac = (np.asarray(rating, dtype=float) - r_low) / (r_high - r_low)
+    return np.exp(low + frac * (high - low))
+
+
+def localised_curve_pga_g(
+    rating: npt.NDArray[np.floating], table: pd.DataFrame
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the localised (no wall) median and dispersion at each rating.
+
+    ``ln p15`` and ``ln p50`` each run in a straight line against the
+    continuous rating through the table's two points, extended over the whole
+    scale, so gentle ground takes a very high median rather than being dropped
+    (plan section 4.2). The lines are not parallel, so the dispersion
+    ``ln(p50 / p15) / 1.0364`` changes linearly with the rating too: the
+    lower the rating, the flatter the curve.
+
+    Args:
+        rating: The continuous Kingsbury rating, 0 to ``MAX_RATING``.
+        table: The table :func:`load_localised_fragility` returns.
+
+    Returns:
+        ``(theta, beta)``: the median site PGA in g and the dispersion, NaN
+        where the rating is NaN.
+    """
+    p15 = _localised_line(rating, table, "p15")
+    p50 = _localised_line(rating, table, "p50")
+    return p50, np.log(p15 / p50) / wall_type_fragility.LOWER_Z
+
+
 def localised_theta_base_m_s(
     rating: npt.NDArray[np.floating],
     *,
     theta_at_zero_rating_m_s: float = LOCALISED_THETA_AT_ZERO_RATING_M_S,
     theta_at_max_rating_m_s: float = LOCALISED_THETA_AT_MAX_RATING_M_S,
 ) -> npt.NDArray[np.floating]:
-    """Return the localised (no wall) median from the continuous rating.
+    """Return the earlier localised (no wall) PGV median from the rating.
+
+    Superseded on 2026-10-12 by :func:`localised_curve_pga_g`; kept for the
+    urban calibration validations, which fit and compare against it.
 
     ``theta_0 * (theta_max / theta_0) ** (rating / MAX_RATING)``: a log-linear
     fall from the median at rating 0 to the median at the top of the scale
-    (contract section 7.7), so gentle ground takes a very high median rather
-    than being dropped (plan section 4.2). The two constants are placeholders
-    until the anchoring sets them; :func:`fit_localised_fragility` is the fit.
+    (contract section 7.7).
 
     Args:
         rating: The continuous Kingsbury rating, 0 to ``MAX_RATING``.
@@ -395,6 +478,10 @@ def pga_to_pgv_theta(
 ) -> npt.NDArray[np.floating]:
     """Convert a PGA-based median to PGV by the study's own ratio.
 
+    The model no longer converts (2026-10-12); kept for the urban calibration
+    validations and the wall type research figure, which compare against the
+    earlier PGV form.
+
     Args:
         theta_pga_g: The published median, g.
         ratio_m_s_per_g: PGV (m/s) over PGA (g) at the point, from
@@ -419,12 +506,12 @@ def polygon_theta(
     a steep face lowers the median, a *low* rate setting raises it.
 
     Args:
-        theta_base: The median before adjustment, m/s.
+        theta_base: The median before adjustment, site PGA in g.
         amp_factor: The topographic amplification factor, 1.0 and up.
         rate_factor: The factor of the run's setting, from :func:`rate_factor`.
 
     Returns:
-        The median the realisation draws against, m/s.
+        The median the realisation draws against, site PGA in g.
     """
     return (
         np.asarray(theta_base, dtype=float)
@@ -458,7 +545,9 @@ def pgv_pga_ratio_m_s_per_g(
 ) -> pd.Series:
     """Sample PGV over PGA, cell by cell, at a set of points.
 
-    Both grids are the step 2 site class grid: step 3's PGV at the return
+    The model no longer reads it (2026-10-12); kept for the urban calibration
+    validations, which place the earlier PGV form against the anchors. Both
+    grids are the step 2 site class grid: step 3's PGV at the return
     period and the unscaled TS1170.5 PGA on the same cells (contract section
     6). The ratio is realisation-free, because shaking steps 4 and 5 scale PGA
     and PGV by one factor. Each point reads the cell it falls in.
@@ -574,8 +663,8 @@ def _wall_rows(
 ) -> pd.DataFrame:
     """Look up the type curve of every polygon with a wall, on the polygons' index.
 
-    The curve is the wall's type and height class; its PGA median is shifted
-    by the wall's own position, not the polygon's.
+    The curve is the wall's type; its PGA median is shifted by the wall's
+    height and its own position, not the polygon's.
     """
     out = pd.DataFrame(
         {
@@ -701,7 +790,7 @@ def assign_fragility(
     *,
     rate_setting: str,
     site_class: pd.Series,
-    pgv_pga_ratio: pd.Series,
+    localised_table: pd.DataFrame | None = None,
 ) -> gpd.GeoDataFrame:
     """Give every polygon its fragility row for one exposure world.
 
@@ -723,10 +812,10 @@ def assign_fragility(
     geometry and depths off the polygon file, and computes the row columns of
     contract section 6: the wall type curve, its PGA median scaled by the
     wall's own ``wall_position`` (fill or cut, which can differ from the
-    polygon's when the chosen line is not the longest-edge one) and converted
-    to PGV, where the polygon has a wall; the localised median from the
-    continuous rating where it has none; both divided by the amplification
-    factor and multiplied by the rate factor.
+    polygon's when the chosen line is not the longest-edge one), where the
+    polygon has a wall; the localised curve at the continuous rating
+    (:func:`localised_curve_pga_g`) where it has none; both on site PGA,
+    divided by the amplification factor and multiplied by the rate factor.
 
     Args:
         polygons: The polygons, carrying ``wall_line_ids`` beside
@@ -742,8 +831,8 @@ def assign_fragility(
         walls: Every wall exposure step 6 drew in this world, before the
             claim and coverage filters (``drawn_walls_path``, contract section
             3.7), carrying ``rw_id`` (null on a wall that is not insured),
-            ``wall_line_id``, ``size_class``, ``height_m`` (which picks the
-            wall's height class in ``wall_table``), ``wall_type``,
+            ``wall_line_id``, ``size_class``, ``height_m`` (which sets the
+            wall's height factor on its ``wall_table`` curve), ``wall_type``,
             ``wall_position`` and ``is_flatland``. Flat-land walls are left
             out of the join (:func:`sloping_walls`).
         wall_table: The table
@@ -752,8 +841,8 @@ def assign_fragility(
         rate_setting: ``low``, ``medium`` or ``high``.
         site_class: The TS1170.5 site class at each ``rep_point``, on
             ``polygons.index``; NaN off the grid.
-        pgv_pga_ratio: :func:`pgv_pga_ratio_m_s_per_g` at each ``rep_point``,
-            on ``polygons.index``.
+        localised_table: The table :func:`load_localised_fragility` returns;
+            the packaged one when not given.
 
     Returns:
         The model file of contract section 3.8 less ``world_id``, with the
@@ -788,21 +877,16 @@ def assign_fragility(
     state = wall_state(polygons[geometry.WALL_POSITION_COLUMN].to_numpy(), has_wall)
     curves = _wall_rows(joined, wall_table, has_wall)
 
-    ratio = pgv_pga_ratio.reindex(polygons.index).to_numpy(dtype=float)
+    if localised_table is None:
+        localised_table = load_localised_fragility()
     rating = polygons["continuous_rating"].to_numpy(dtype=float)
-    # Every wall curve is on PGA: theta_pga_g is NaN where there is no wall.
-    theta_base_pga_g = curves["theta_pga_g"].to_numpy(dtype=float)
+    # Every curve is on site PGA: the wall type curve where there is a wall,
+    # the localised curve at the rating where there is none.
+    localised_theta, localised_beta = localised_curve_pga_g(rating, localised_table)
     theta_base = np.where(
-        has_wall,
-        pga_to_pgv_theta(theta_base_pga_g, ratio),
-        localised_theta_base_m_s(rating),
+        has_wall, curves["theta_pga_g"].to_numpy(dtype=float), localised_theta
     )
-    ratio_used = np.where(has_wall, ratio, np.nan)
-    beta = np.where(
-        has_wall,
-        curves["beta"].to_numpy(dtype=float),
-        constants.LOCALISED_FRAGILITY_BETA,
-    )
+    beta = np.where(has_wall, curves["beta"].to_numpy(dtype=float), localised_beta)
     amp = polygons["amp_factor"].to_numpy(dtype=float)
     theta = polygon_theta(theta_base, amp, factor)
 
@@ -826,9 +910,7 @@ def assign_fragility(
             SIZE_CLASS_COLUMN: joined[SIZE_CLASS_COLUMN].to_numpy(),
             "im": IM,
             "theta_base": theta_base,
-            "theta_base_pga_g": theta_base_pga_g,
             "site_class": site_class.reindex(polygons.index).to_numpy(dtype=float),
-            "pgv_pga_ratio_m_s_per_g": ratio_used,
             "amp_factor": amp,
             "rate_setting": rate_setting,
             "rate_factor": factor,

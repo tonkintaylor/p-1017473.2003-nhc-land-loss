@@ -146,6 +146,12 @@ lead, follows from the face polygons (faces plan, phase 3):
 
 ## Potential future improvements
 
+- [x] **Done 2026-10-12: every curve is on site PGA.** The project lead
+  moved the whole urban slope model and the flat-land walls to site PGA:
+  landslide step 5 carries every median in g, and this step samples shaking
+  step 4's PGA field (`realisation.sample_pga`). On the Porirua pilot the
+  failures and wall outcomes matched the PGV run exactly. The note below is
+  kept as the record of why.
 - **Evaluate the wall curves in PGA (the lead, 2026-10-06).** The wall
   fragility curves are published in PGA [koutsoupaki_2023], and landslide
   step 5 converts their medians to PGV with the TS1170.5 PGV/PGA ratio at each

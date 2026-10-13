@@ -63,7 +63,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from landloss.common.utils.terrain import sample_at_points
 from landloss.domain import constants
 from landloss.hazard.landslide import susceptibility
 from landloss.hazard.landslide.urban import (
@@ -78,9 +77,6 @@ from landloss.hazard.shaking.site_class import (
 )
 from landloss.io.area_of_interest import get_area_of_interest
 from landloss.io.ts1170 import get_ts1170_pga
-from scripts.landloss.ground.steps.s1_terrain.gen_terrain_derivatives import (
-    terrain_path,
-)
 from scripts.landloss.hazard.landslide.steps.s4_wall_zones.gen_wall_zones import (
     zones_path,
 )
@@ -197,8 +193,8 @@ def read_bare_polygons(*, extent):
     """Step 12's bare zones as one row per polygon, scored and amplified.
 
     The same path landslide step 5 takes for a world's zones (``face_polygons`` with
-    the extent's box, then the amplification on ground step 1's 100 m topographic
-    position), on the bare scenario.
+    the extent's box, then the amplification off NLM flatland), on the bare
+    scenario.
 
     Returns:
         ``(polygons, ground_map)``.
@@ -210,11 +206,7 @@ def read_bare_polygons(*, extent):
     polygons = face_polygons.face_polygons(
         zones, elements, units, ground_map, bbox=bbox
     )
-    tpi = sample_at_points(
-        terrain_path("topographic-position-100m", extent=extent),
-        representative_points(polygons),
-    )
-    polygons = face_polygons.with_amplification(polygons, tpi.to_numpy(dtype=float))
+    polygons = face_polygons.with_amplification(polygons, ground_map)
     print(
         f"{len(polygons):,} bare polygons inside the extent "
         f"(of {zones['polygon'].nunique():,} in the zones file)"

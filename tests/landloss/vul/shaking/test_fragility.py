@@ -6,7 +6,7 @@ from scipy.stats import norm
 from landloss.hazard.landslide.urban.wall_type_fragility import (
     CUT_CAPACITY_FACTOR,
     FILL_CAPACITY_FACTOR,
-    HEIGHT_CLASSES,
+    TALL_HEIGHT_FACTOR,
     WALL_TYPES,
 )
 from landloss.hazard.realisation import realisation_seed
@@ -35,26 +35,22 @@ OLD = "brick_rock"
 
 
 def wall_table():
-    """Every wall type and height class, as ``load_wall_type_fragility`` returns.
+    """Every wall type, as ``load_wall_type_fragility`` returns.
 
-    The medians are on PGA: 0.5 g under 2 m and 1.0 g at 2 m and over, times
-    0.7 for :data:`OLD`.
+    The medians are on PGA: 0.5 g, times 0.7 for :data:`OLD`; a wall 2 m and
+    over takes them times the height factor.
     """
-    rows = []
-    for height_class, theta in zip(HEIGHT_CLASSES, (0.5, 1.0), strict=True):
-        for wall_type in WALL_TYPES:
-            shift = 0.7 if wall_type == OLD else 1.0
-            rows.append(
-                {
-                    "wall_type": wall_type,
-                    "height_class": height_class,
-                    "im": PGA_IM,
-                    "theta": theta * shift,
-                    "beta": 0.5,
-                    "source": f"test_{height_class}_{wall_type}",
-                }
-            )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        {
+            "wall_type": list(WALL_TYPES),
+            "im": PGA_IM,
+            "theta": [
+                0.5 * (0.7 if wall_type == OLD else 1.0) for wall_type in WALL_TYPES
+            ],
+            "beta": 0.5,
+            "source": [f"test_{wall_type}" for wall_type in WALL_TYPES],
+        }
+    )
 
 
 def walls(index=None, positions=None):
@@ -142,7 +138,7 @@ def test_a_negative_count_is_refused():
         beta_failure_probability(-1)
 
 
-# --- the wall curve on PGV -----------------------------------------------------
+# --- the wall curve on site PGA ------------------------------------------------
 
 
 def test_the_flat_land_factors_are_both_one():
@@ -150,40 +146,36 @@ def test_the_flat_land_factors_are_both_one():
     assert WALL_RATE_FACTOR == 1.0
 
 
-def test_a_pga_curve_is_converted_at_the_walls_ratio():
+def test_the_curve_is_evaluated_at_the_site_pga_as_published():
     frame = walls()
-    pgv = np.array([0.6, 0.56, 0.42, 1.0])
-    ratio = pd.Series([1.2, 1.2, 1.2, 1.2], index=frame.index)
+    pga = np.array([0.5, 0.56, 0.35, 1.0])
 
-    result = wall_failure_probability(frame, pgv, wall_table(), pgv_pga_ratio=ratio)
+    result = wall_failure_probability(frame, pga, wall_table())
 
     assert list(result.columns) == list(WALL_FRAGILITY_COLUMNS)
     assert result.index.equals(frame.index)
-    # Small, modern, 0.5 g, at 1.2 m/s per g: 0.6 m/s, and PGV == theta is
-    # the median of the lognormal.
-    assert result.loc[0, "theta_base_pga_g"] == 0.5
-    assert result.loc[0, "pgv_pga_ratio_m_s_per_g"] == 1.2
-    assert result.loc[0, "theta"] == pytest.approx(0.6)
+    # Small, modern, 0.5 g: PGA == theta is the median of the lognormal.
+    assert result.loc[0, "theta_base"] == 0.5
+    assert result.loc[0, "theta"] == pytest.approx(0.5)
     assert result.loc[0, "failure_probability"] == pytest.approx(0.5)
-    assert result.loc[0, "fragility_source"] == f"test_under_2_m_{MODERN}"
-    # Small, old: 0.35 g -> 0.42 m/s.
-    assert result.loc[2, "theta"] == pytest.approx(0.42)
+    assert result.loc[0, "fragility_source"] == f"test_{MODERN}"
+    # Small, old: 0.35 g.
+    assert result.loc[2, "theta"] == pytest.approx(0.35)
     assert result.loc[2, "failure_probability"] == pytest.approx(0.5)
 
 
-def test_every_wall_records_its_pga_median_and_ratio():
+def test_every_wall_records_its_median():
     frame = walls()
-    pgv = np.array([0.6, 0.4, 0.42, 1.2])
-    ratio = pd.Series([1.2, 1.2, 1.2, 1.2], index=frame.index)
+    pga = np.array([0.5, 0.4, 0.35, 0.5 * TALL_HEIGHT_FACTOR])
 
-    result = wall_failure_probability(frame, pgv, wall_table(), pgv_pga_ratio=ratio)
+    result = wall_failure_probability(frame, pga, wall_table())
 
-    # Medium, old, 2.2 m: 1.0 * 0.7 = 0.7 g -> 0.84 m/s.
-    assert result.loc[1, "theta_base_pga_g"] == pytest.approx(0.7)
-    assert result.loc[1, "pgv_pga_ratio_m_s_per_g"] == 1.2
-    assert result.loc[1, "theta"] == pytest.approx(0.84)
+    # Medium, old, 2.2 m: 0.5 * 0.7 g times the height factor.
+    tall_old = 0.5 * 0.7 * TALL_HEIGHT_FACTOR
+    assert result.loc[1, "theta_base"] == pytest.approx(tall_old)
+    assert result.loc[1, "theta"] == pytest.approx(tall_old)
     assert result.loc[1, "beta"] == 0.5
-    expected = norm.cdf(np.log(0.4 / 0.84) / 0.5)
+    expected = norm.cdf(np.log(0.4 / tall_old) / 0.5)
     assert result.loc[1, "failure_probability"] == pytest.approx(expected)
     # Large, modern at its median.
     assert result.loc[3, "failure_probability"] == pytest.approx(0.5)
@@ -193,83 +185,62 @@ def test_every_wall_records_its_pga_median_and_ratio():
     ("position", "factor"),
     [("fill", FILL_CAPACITY_FACTOR), ("cut", CUT_CAPACITY_FACTOR), (None, 1.0)],
 )
-def test_the_walls_position_scales_its_pgv_median(position, factor):
+def test_the_walls_position_scales_its_pga_median(position, factor):
     frame = walls(positions=[position] * 4)
-    pgv = np.array([0.6, 0.4, 0.42, 1.2])
-    ratio = pd.Series(1.2, index=frame.index)
+    pga = np.array([0.5, 0.4, 0.35, 1.0])
 
-    result = wall_failure_probability(frame, pgv, wall_table(), pgv_pga_ratio=ratio)
+    result = wall_failure_probability(frame, pga, wall_table())
 
-    # Small, modern, 0.5 g: fill 0.85 and cut 1.15 times, then 1.2 m/s per g.
-    assert result.loc[0, "theta_base_pga_g"] == pytest.approx(0.5 * factor)
-    assert result.loc[0, "theta"] == pytest.approx(0.6 * factor)
+    # Small, modern, 0.5 g: fill 0.85 and cut 1.15 times.
+    assert result.loc[0, "theta_base"] == pytest.approx(0.5 * factor)
+    assert result.loc[0, "theta"] == pytest.approx(0.5 * factor)
     assert result.loc[0, "beta"] == 0.5
-    expected = norm.cdf(np.log(0.6 / (0.6 * factor)) / 0.5)
+    expected = norm.cdf(np.log(0.5 / (0.5 * factor)) / 0.5)
     assert result.loc[0, "failure_probability"] == pytest.approx(expected)
 
 
 def test_an_unknown_wall_position_is_refused():
     frame = walls(positions=["fill", "uphill", None, "cut"])
-    ratio = pd.Series(1.0, index=frame.index)
     with pytest.raises(ValueError, match="uphill"):
-        wall_failure_probability(frame, np.ones(4), wall_table(), pgv_pga_ratio=ratio)
+        wall_failure_probability(frame, np.ones(4), wall_table())
 
 
 def test_a_wall_off_the_grid_carries_no_probability():
     frame = walls()
-    pgv = np.array([np.nan, 0.4, 0.42, 1.0])
-    ratio = pd.Series([1.2, 1.2, np.nan, 1.2], index=frame.index)
+    pga = np.array([np.nan, 0.4, 0.35, 1.0])
 
-    result = wall_failure_probability(frame, pgv, wall_table(), pgv_pga_ratio=ratio)
+    result = wall_failure_probability(frame, pga, wall_table())
 
-    # No PGV: the curve is there but nothing to evaluate it at.
-    assert result.loc[0, "theta"] == pytest.approx(0.6)
+    # No PGA: the curve is there but nothing to evaluate it at.
+    assert result.loc[0, "theta"] == pytest.approx(0.5)
     assert np.isnan(result.loc[0, "failure_probability"])
-    # A curve with no ratio cannot be converted.
-    assert np.isnan(result.loc[2, "theta"])
-    assert np.isnan(result.loc[2, "failure_probability"])
-    assert np.isfinite(result.loc[[1, 3], "failure_probability"]).all()
+    assert np.isfinite(result.loc[[1, 2, 3], "failure_probability"]).all()
 
 
 def test_the_result_keeps_the_walls_own_index():
     frame = walls(index=pd.Index([10, 20, 30, 40]))
-    ratio = pd.Series(1.0, index=frame.index)
 
-    result = wall_failure_probability(
-        frame, np.ones(4), wall_table(), pgv_pga_ratio=ratio
-    )
+    result = wall_failure_probability(frame, np.ones(4), wall_table())
 
     assert result.index.equals(frame.index)
-    assert result.loc[10, "fragility_source"] == f"test_under_2_m_{MODERN}"
+    assert result.loc[10, "fragility_source"] == f"test_{MODERN}"
 
 
-def test_a_ratio_on_another_index_is_refused():
+def test_a_pga_of_the_wrong_length_is_refused():
     frame = walls()
-    ratio = pd.Series([1.0, 1.0, 1.0, 1.0], index=[1, 2, 3, 4])
-    with pytest.raises(ValueError, match="indexed as walls"):
-        wall_failure_probability(frame, np.ones(4), wall_table(), pgv_pga_ratio=ratio)
-
-
-def test_a_pgv_of_the_wrong_length_is_refused():
-    frame = walls()
-    ratio = pd.Series(1.0, index=frame.index)
     with pytest.raises(ValueError, match="one value per wall"):
-        wall_failure_probability(frame, np.ones(3), wall_table(), pgv_pga_ratio=ratio)
+        wall_failure_probability(frame, np.ones(3), wall_table())
 
 
 def test_a_wall_with_no_curve_is_refused():
     frame = walls()
     frame.loc[0, "wall_type"] = "huge"
-    ratio = pd.Series(1.0, index=frame.index)
     with pytest.raises(ValueError, match="huge"):
-        wall_failure_probability(frame, np.ones(4), wall_table(), pgv_pga_ratio=ratio)
+        wall_failure_probability(frame, np.ones(4), wall_table())
 
 
 def test_no_walls_gives_an_empty_frame_with_the_columns():
     frame = walls().iloc[:0]
-    ratio = pd.Series(dtype=float, index=frame.index)
-    result = wall_failure_probability(
-        frame, np.array([]), wall_table(), pgv_pga_ratio=ratio
-    )
+    result = wall_failure_probability(frame, np.array([]), wall_table())
     assert result.empty
     assert list(result.columns) == list(WALL_FRAGILITY_COLUMNS)

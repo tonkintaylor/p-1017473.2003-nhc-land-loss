@@ -1,7 +1,9 @@
 # Landslide step 5 — Urban slope fragility: method
 
 - The step gives every urban failure polygon its fragility for one exposure
-  world: a lognormal on PGV in m/s, `P(fail | PGV) = Phi(ln(PGV / theta) / beta)`,
+  world: a lognormal on site PGA in g, `P(fail | PGA) = Phi(ln(PGA / theta) / beta)`
+  (on PGV in m/s until 2026-10-12, when the project lead moved the urban model
+  and the flat-land walls to PGA, the measure the wall curves are published on),
   one row per `slope_id`. It is run by `gen_urban_slope_fragility.py`; the
   medians are tabulated by `table_urban_slope_model.py`, written to
   `report/hazard/landslide/urban-slope-model/tab/`, and mapped by
@@ -9,16 +11,18 @@
   `report/hazard/landslide/urban-slope-model/fig/`. The curves themselves
   are drawn for review by `fig_urban_fragility_curves.py`: the localised
   curve at each Kingsbury zone's mid rating, each wall type's curve per height
-  class converted to PGV at the median ratio of the run's walled polygons, and
-  each curve's failure probability across the study's 2,500-year PGV range.
+  class, and each curve's failure probability across the study's 2,500-year
+  site PGA range (0.93 to 2.02 g, the TS1170.5 PGA on the site class grid
+  over the four territorial authorities), from the packaged tables alone
+  (`urban-fragility-curves`).
 - What a run does is set by `config.py` in the step folder — `EXTENT`,
-  `WORLD_IDS`, `URBAN_RATE` and `RETURN_PERIOD_YR` — read in each script's
+  `WORLD_IDS` and `URBAN_RATE` — read in each script's
   `if __name__ == "__main__":` block and passed into `main()` as keyword
   arguments. No script takes command line arguments and no `main()` carries a
   default. `WORLD_IDS` is imported from exposure rw step 6's `config.py`,
-  as landslide step 4 imports it, and `RETURN_PERIOD_YR` from shaking step
-  3's, rather than repeated, so the step always reads the worlds landslide
-  step 4 zoned and the PGV grid shaking step 3 wrote. The figure and the table draw each
+  as landslide step 4 imports it, rather than repeated, so the step always
+  reads the worlds landslide step 4 zoned. The step reads no shaking demand:
+  landslide step 6 samples each earthquake's site PGA. The figure and the table draw each
   world's model, the pipeline's drawn walls; the two whole-scenario bounds,
   every candidate walled and none, are drawn by landslide step 4's
   `fig_wall_zones.py` (its `FIG_ZONE_SCENARIOS`).
@@ -52,15 +56,28 @@
     (`get_area_of_interest(extent)`) is left out before the ids are minted:
     landslide step 4 grows its elements on a DEM read about 200 m wider than the
     extent, so a face at the edge grows whole, but the site class, PGA and
-    PGV grids stop at the extent, so a polygon in that margin has no demand
+    PGA grids stop at the extent, so a polygon in that margin has no demand
     (1,406 of world 0's 9,258 pilot polygons on 6 October 2026, which had
     left 1,212 polygons with no failure probability). The full extent keeps
     every polygon, as its DEM stops at the study area;
   - `scale_m` is 1, the grid cell, for every polygon, and the `slope_id` is
     minted per world by location, as each world's zones are built anew;
-  - `with_amplification()` reads ground step 1's 100 m topographic position
-    (`terrain_path("topographic-position-100m")`) at the representative
-    point into the placeholder amplification.
+  - `with_amplification()` marks each polygon whose representative point
+    lies in a ground map piece on NLM flatland (`on_flatland()`, the ground
+    map's `is_flatland`) and sets `amp_factor` by
+    `geometry.amplification_factor()`: `TOPOGRAPHIC_AMPLIFICATION`, 1.3,
+    off flatland and 1.0 on it, one factor for all sloping ground (the
+    project lead, 2026-10-12). It replaced a placeholder of up to 1.5 on
+    the 100 m topographic position and the face's own slope, which
+    amplified 99.5% of the Porirua pilot's polygons (median 1.24). A
+    researched alternative was proposed and not built: the NZ Transport
+    Agency crest factors of Brabhaharan, Mason and Gkeli (2018), *Seismic
+    design and performance of high cut slopes*, NZTA research report 613
+    [brabhaharan_2018], 1.0 to 1.4 by face height and ridge or terrace
+    setting for faces under 30 m and 1.0 for a terrace face under 13 m,
+    applied near the crest; Monteith's 1.2 to 1.4 at slope tops
+    (`sr2019-051-F35` in the GNS review) falls inside that range. The single 1.3 sits within it; see
+    the implementation plan for the proposal.
 - Before the join, `face_polygons.check_zones_match_walls()` checks that the
   zones and the drawn walls are one draw: a polygon is walled in the zones
   (its element a `free_face`) exactly where its unit is among the world's
@@ -78,11 +95,11 @@
   the uninsured ones; the run prints how many are insured), the wall curves from
   the packaged `retaining-wall-type-fragility.csv` through
   `landloss.hazard.landslide.urban.wall_type_fragility.load_wall_type_fragility()`,
-  the site class grid from shaking step 2's `read_site_class()`, shaking step 3's PGV
-  grid from `gen_pgv.output_path("pgv", ...)` at `RETURN_PERIOD_YR`, and the
-  unscaled TS1170.5 PGA on the same grid built as shaking step 4 builds it
-  (`demand_on_site_class_grid(get_ts1170_pga, ...)`). The anchor table is not
-  read: the localised median's constants live in the library.
+  the site class at each representative point from shaking step 2's grid
+  (`sample_site_class()`, recorded on the row, not used by the curves), and
+  the localised curve
+  from the packaged `urban-localised-fragility.csv` (inside
+  `assign_fragility()`). The anchor table is not read.
 - The fragility rules live in `landloss.hazard.landslide.urban.fragility`, one
   named function per rule, assembled per world by `assign_fragility()`.
 - The wall state of a polygon is set by `wall_state()`: a polygon whose
@@ -115,42 +132,76 @@
   two depths are the polygon's own, already the world's
   (`fragility._pick_state()` takes a single column where the polygons carry
   one, and the state's column of the old step 7's polygons otherwise).
-- A polygon with a wall takes the curve of the wall's `wall_type` and height
-  class (`wall_type_fragility.wall_type_curves()`, given the drawn wall's
-  `height_m`): `under_2_m` below 2.0 m or where the height is unknown,
-  `2_m_and_over` at 2.0 m and above (the lead, 2026-10-07; until then the
-  curve was keyed on `size_class`, which the model file still carries for
-  pricing). The median and dispersion run through the stored 15% and 50% PGA
-  of `retaining-wall-type-fragility.csv`, read from [koutsoupaki_2023] as the
-  asset README records them: `brick_rock`, `reinforced_concrete_pre_1992`,
-  `timber_pole_pre_1992`, `concrete_block` and `garden_timber` take the published height effect switched
-  (6 m curve under 2 m, 3 m curve at 2 m and over), and `crib_gabion`,
-  `timber_pole_post_1992` and `reinforced_concrete_post_1992` the 3 m curve for both (types renamed
-  2026-10-08, `retaining-wall-types.csv`). The PGA median is scaled by the wall's own
+- A polygon with a wall takes the curve of the wall's `wall_type`
+  (`wall_type_fragility.wall_type_curves()`, given the drawn wall's
+  `height_m`). `retaining-wall-type-fragility.csv` holds one curve per type,
+  for a wall under 2.0 m or of unknown height, as its 15% and 50% PGA; a wall
+  2.0 m and over takes both times `TALL_HEIGHT_FACTOR`, 0.85, for every type
+  (the lead, 2026-10-13; until then each type held a curve per height class
+  read from [koutsoupaki_2023], and until 2026-10-07 the curve was keyed on
+  `size_class`, which the model file still carries for pricing). The curves
+  are the lead's judgement, flattening as they strengthen: garden timber on
+  the no-wall zone 5 curve, reinforced concrete from July 1992 the strongest,
+  and the six between spaced evenly in log PGA (the asset README gives the
+  order). The PGA median is scaled by the wall's own
   `wall_position`, 0.85 for a wall retaining fill and 1.15 for a cut
   (`FILL_CAPACITY_FACTOR`, `CUT_CAPACITY_FACTOR`); the wall's position is
   read from the drawn wall, not the polygon's, which sets the wall state and
-  can come from another edge line. The scaled median is converted to PGV by
-  `pga_to_pgv_theta()` with the PGV/PGA ratio at the polygon's representative
-  point, and the scaled PGA median and the ratio are written to
-  `theta_base_pga_g` and `pgv_pga_ratio_m_s_per_g`. A drawn wall whose type
-  is not in `WALL_TYPES`, or whose type and size have no curve, stops the
-  run.
-- The ratio is `pgv_pga_ratio_m_s_per_g()`: shaking step 3's PGV grid over the
-  unscaled TS1170.5 PGA grid, cell by cell on the site class grid, read at the
-  cell each representative point falls in; NaN off the grid. It is
-  realisation-free because shaking steps 4 and 5 scale PGA and PGV by one
-  factor. The site class at the point is read by `sample_site_class()`
-  through `landloss.common.utils.terrain.sample_at_points` and written as a
-  nullable integer.
-- A polygon without a wall takes the localised median
-  `localised_theta_base_m_s()` from its `continuous_rating`: a log-linear fall
-  from `LOCALISED_THETA_AT_ZERO_RATING_M_S` at a rating of 0 to
-  `LOCALISED_THETA_AT_MAX_RATING_M_S` at the top of the scale, so gentle
-  ground takes a very high median rather than being dropped. The two constants
-  are placeholders until the anchoring sets them. Its dispersion is
-  `landloss.domain.constants.LOCALISED_FRAGILITY_BETA`, and its
-  `fragility_source` is `localised:<continuous_rating>`.
+  can come from another edge line. The scaled median is written to
+  `theta_base` as it is, in g of site PGA. A drawn wall whose type
+  is not in `WALL_TYPES`, or whose type has no curve, stops the run.
+- The site class at the representative point is read by
+  `sample_site_class()` through `landloss.common.utils.terrain.sample_at_points`
+  and written as a nullable integer. Until 2026-10-12 every median was
+  converted to PGV at the polygon's PGV/PGA ratio (`pga_to_pgv_theta()`,
+  `pgv_pga_ratio_m_s_per_g()`, kept in the library for the urban calibration
+  validations); on the Porirua pilot the switch to site PGA left every median,
+  failure and wall outcome unchanged, because shaking steps 4 and 5 scale PGA
+  and PGV by one factor.
+- A polygon without a wall takes the localised curve at its
+  `continuous_rating`, set on **site PGA** by the project lead on 2026-10-12
+  as two points in the packaged `urban-localised-fragility.csv`, each a p15
+  and a p50 (the site PGA at which 15% and 50% of polygons fail), read by
+  `load_localised_fragility()`:
+
+  | Point | Rating | p15 (g) | p50 (g) | Dispersion |
+  | --- | --- | --- | --- | --- |
+  | Zone 3 (moderate) mid rating | 80 | 0.7 | 2.0 | 1.01 |
+  | Zone 5 (very high) mid rating | 145 | 0.3 | 0.6 | 0.67 |
+
+  `localised_curve_pga_g()` runs `ln p50` and `ln p15` each in a straight
+  line against the rating through the two points, extended over the whole
+  scale of 0 to 150, so gentle ground takes a very high median rather than
+  being dropped. The lines are not parallel: the dispersion,
+  `ln(p50 / p15) / 1.0364`, falls linearly from 1.38 at zone 1 (rating 10,
+  p15 1.74 g, p50 7.3 g) to 0.67 at zone 5, so the lower the susceptibility
+  the flatter the curve. The zone mid ratings give p15 1.74, 1.18, 0.70,
+  0.42 and 0.30 g and p50 7.3, 4.2, 2.0, 0.95 and 0.6 g for zones 1 to 5.
+  The median is written to `theta_base`, in g of site PGA as a wall curve's
+  is, and the dispersion to `beta` and the `fragility_source` is
+  `localised:<continuous_rating>`.
+- The curve was set by judgement against the calibration points of
+  `urban-fragility-anchors.csv` (`load_urban_fragility_anchors()`), not
+  fitted to them: Kingsbury's damaged shares of each zone's area at three
+  scenarios (A01 to A15, on rock PGA of 0.02 to 0.8 g), the 2016 Kaikōura
+  record of almost no failures in central Wellington at 0.15 g (A16), and the
+  readings of failing cuts and fills at high demand (A17 to A21). The urban
+  calibration in `hazard/landslide/validations/urban/` fitted the earlier PGV
+  form to them (`urban_area_calibration_findings.md`), and no fit met both
+  Kingsbury's low-demand shares and the Kaikōura record. Against them, at the
+  zone mid ratings: zone 3 fails 13.4% at 0.65 g, against Kingsbury's 8% of
+  its area at 0.5 to 0.8 g (A09) and 30% of steep cuts (A18); zones 1 and 2
+  stay at 4.0% and 6.4% there, near Kingsbury's flat 0.5% to 2% of their area
+  (A01 to A06), as the lead asked for flatter low-susceptibility curves. No
+  anchor lies above 0.8 g, so across the study's 2,500-year demand (about 1.1
+  to 2.5 g) every curve is judgement. The comparison was drawn with the
+  earlier curve and the lead's 2026-10-07 calibration fit in a temporary
+  script; the step's own `fig_urban_fragility_curves.py` draws the adopted
+  curve.
+- The earlier PGV form (`localised_theta_base_m_s()`, 3.0 to 0.6 m/s over the
+  rating with `LOCALISED_FRAGILITY_BETA` 0.6) is no longer read by the step.
+  It stays in the library only for the urban calibration validations and
+  `vul/research/fig_rw_type_fragility.py`.
 - Every median is adjusted by `polygon_theta()`: divided by the polygon's
   `amp_factor` (`with_amplification()`) and multiplied by the rate factor of the run's
   `URBAN_RATE` (`rate_factor()`, from
@@ -163,7 +214,7 @@
   `world_id` inserted after `slope_id` (`add_world_id()`), sorted by `slope_id` with a fresh index, which landslide
   step 6 relies on. Every run prints the rate setting and factor, the counts by wall
   state and basis, the median `theta` by zone and state, and the ranges of
-  the amplification factor and the ratio (`describe_model()`).
+  the amplification factor (`describe_model()`).
 - `table_urban_slope_model.py` groups the model by Kingsbury zone, wall state
   and basis and writes the polygon count, the median base and adjusted
   medians, the median amplification factor, the rate factor and the median
@@ -175,7 +226,6 @@
   on synthetic landslide step 4 zones, elements and exposure rw step 6 wall units, drawn walls and grids
   in a temporary directory with the basemap tiles faked, and by
   `test_chain_end_to_end.py`, which runs the chain from landslide step 4's files to
-  the loss input tables. The TS1170.5 reader in
-  `main()` is faked there too.
+  the loss input tables.
 
 Potential future improvements: see `s5_urban_slope_fragility_implementation_plan.md`.

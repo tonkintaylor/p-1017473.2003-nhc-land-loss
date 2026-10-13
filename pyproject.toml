@@ -186,6 +186,7 @@ flake8-tidy-imports.banned-api."pins.board_folder".msg = """\
 # imports of it.
 flake8-tidy-imports.banned-api."scripts.landloss.hazard.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
 flake8-tidy-imports.banned-api."scripts.landloss.hazard.landslide.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
+flake8-tidy-imports.banned-api."scripts.landloss.exposure.rw.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
 flake8-tidy-imports.banned-api."scripts.landloss.vul.research".msg = "Research code is not maintained; nothing outside research/ may import from it."
 flake8-import-conventions.banned-from = ["ruru"]
 

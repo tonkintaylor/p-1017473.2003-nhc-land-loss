@@ -2,6 +2,15 @@
 
     uv run --frozen python src/scripts/landloss/vul/research/fig_rw_type_fragility.py
 
+**Frozen (2026-10-13).** This script reads the wall type table in its
+earlier form, one row per wall type and height class with the Koutsoupaki
+rung each was read from (``published_height_m``, ``published_fs``,
+``type_factor``, ``height_effect``). On 2026-10-13 the lead replaced those
+curves with judgement curves, one per type with a height factor, so the
+script no longer runs against the packaged table. It is kept as the record of
+the evidence the earlier curves were set against; to run it, check out commit
+8c09101, the last one with the earlier table.
+
 A proposal for the project lead, not the model's curves. Each wall type's curve
 is read from ``retaining-wall-type-fragility.csv`` through
 :mod:`landloss.hazard.landslide.urban.wall_type_fragility`, which stores it as
@@ -606,6 +615,12 @@ def plot_variants(table: pd.DataFrame) -> plt.Figure:
 
 def main() -> None:
     """Draw the figures and write them to the report figure directory."""
+    if "height_effect" not in pd.read_csv(wtf.WALL_TYPE_FRAGILITY_PATH).columns:
+        msg = (
+            "fig_rw_type_fragility.py is frozen: it reads the wall type table "
+            "as it stood before 2026-10-13. Check out commit 8c09101 to run it."
+        )
+        raise SystemExit(msg)
     table = wtf.load_wall_type_fragility()
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     for name, fig in (

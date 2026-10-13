@@ -41,9 +41,6 @@ from scripts.landloss.vul.shaking.culverts_bridges.steps.s9_structure_damage_sta
     gen_structure_damage_state,
 )
 from scripts.landloss.vul.shaking.rw.steps.s9_wall_damage_state import (
-    config as wall_state_config,
-)
-from scripts.landloss.vul.shaking.rw.steps.s9_wall_damage_state import (
     gen_wall_damage_state,
 )
 from scripts.landloss.vul.steps.s10_property_damage import gen_property_damage
@@ -84,9 +81,7 @@ def main(*, extent, world_ids, realisation_ids):
             ),
             (
                 "shaking rw s9, wall damage state",
-                lambda: gen_wall_damage_state.main(
-                    **worlds, return_period_yr=wall_state_config.RETURN_PERIOD_YR
-                ),
+                lambda: gen_wall_damage_state.main(**worlds),
             ),
             (
                 "shaking culverts and bridges s9, structure damage state",

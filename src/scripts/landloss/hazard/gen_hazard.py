@@ -185,7 +185,6 @@ def main(*, extent, realisation_ids, world_ids):
                     extent=extent,
                     world_ids=world_ids,
                     urban_rate=fragility_config.URBAN_RATE,
-                    return_period_yr=fragility_config.RETURN_PERIOD_YR,
                 ),
             ),
             (
