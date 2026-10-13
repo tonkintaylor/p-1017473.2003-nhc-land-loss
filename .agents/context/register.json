@@ -1103,6 +1103,14 @@
       "Phase": "Future",
       "Source": "Maxim Millen 2026-10-13, exec report map review (vul/landslide/rw status)",
       "Status": "Open"
+    },
+    {
+      "ID": "T-159",
+      "Task": "Remove the thin slivers that hazard landslide step 4's wall trim and fill leaves where a polygon's old outline meets the end of its wall line (for example SP0024301 in Upper Hutt world 0).",
+      "Owner": "Unassigned",
+      "Phase": "Future",
+      "Source": "Maxim Millen 2026-10-14, Upper Hutt e2e QGIS review (vul/landslide/rw status)",
+      "Status": "Open"
     }
   ],
   "Limitations": [

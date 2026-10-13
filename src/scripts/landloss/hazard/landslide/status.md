@@ -491,8 +491,8 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     12,117 of Lower Hutt's 13,684 low, diagonal polygons kept no ground behind
     their crest (wall WU0048768's drew as a string of discs). Fixed in the
     evacuated band; the imminent band and the 1 m runout miss the diagonal
-    cell the same way and are not yet fixed. Lower Hutt needs landslide steps 4
-    to 6 rerun.
+    cell the same way and are not yet fixed (Next, item 16). Lower Hutt needs
+    landslide steps 4 to 6 rerun.
   - **Buildings, wall lines and boundaries (the lead, 2026-10-06).** Pifs
     with most of their pips in a LINZ building outline are dropped (334 on
     the pilot); each wall unit is one line of at most 3 bends and no
@@ -717,6 +717,15 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
     a large landslide destroys the building, so its runout is not stopped.
     Roads are not barriers (a road is level ground, where the reach line
     already ends the runout).
+16. **Future opportunity: the diagonal cell in the imminent band and the
+    runout** (2026-10-13). The evacuated band keeps each ray's first cell
+    past the crest; the imminent band (`_paint`, from the end of the
+    evacuated band) and the 1 m runout past the toe do not, and across the
+    grid's diagonal the next cell is √2 m on. A low diagonal face then gets a
+    thin imminent band and its inundated land in pieces: wall WU0048768
+    (Lower Hutt) has a 1.0 m² imminent sliver and 2.5 m² of inundated land
+    in 6 polygons, against 10.4 m² evacuated. The same first-cell rule would
+    fix both.
 
 ## Validation
 

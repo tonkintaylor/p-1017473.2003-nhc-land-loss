@@ -110,11 +110,27 @@ Not yet defined.
      wall's 2 m margin at each end and 5 m minimum. Loss is not ours to
      change, so that part is the loss owner's.
 
+  **Planned, 2026-10-14:** section 6 of
+  `.agents/plans/tweaks-to-property-damage.md`. A wall failed in shaking is
+  damaged over its whole length. One damaged by landslide ground is damaged
+  only over the measured stretch inside it, and each claim takes the part on
+  its own insured stretch. The loss side is now ours to change.
+
   Storing the lengths in the existing flag columns does not work: loss reads
   those columns as true or false, so any length above zero would still count
   as a whole-wall replacement and nothing would fail. Same-scale polygons
   that overlap make most of these clips, so making them tile removes the
   cause; the lengths only make what is left proportionate.
+- Trimming and filling a walled polygon at its wall line leaves thin slivers
+  (**T-159**). Hazard landslide step 4 (`wall_trim.py`, `zone_alignment.py`)
+  leaves narrow spikes where the polygon's old outline meets the end of the
+  wall line. In the Upper Hutt run of 2026-10-13 (world 0), 2,516 of the 16,872
+  trimmed evacuated polygons hold more than 0.1 m² of ground narrower than
+  0.5 m (36 hold more than 0.5 m²), against none of the 59,916 untrimmed ones.
+  Example: SP0024301 on wall unit WU0017745, with a spike at about
+  (1768590, 5441186). The fix belongs in the trim: clear anything narrower than
+  about 0.5 m after the cut and fill, for example by a small negative then
+  positive buffer, before the imminent zone is rebuilt.
 
 Step-level detail lives in each step's implementation plan and method file under
 `steps/`.

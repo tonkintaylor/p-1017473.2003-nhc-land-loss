@@ -11,10 +11,10 @@ to right and top to bottom:
    damage state drawn on 100 m cells, the landslide realisation's imminent,
    evacuated and inundated ground, and the site PGA with the topographic
    amplification the slope fragility applies off flatland.
-3. **Damage**: the state of the insured assets. Each wall and crossing damaged or not, the
+3. **Fragility**: the state of the insured assets. Each wall and crossing damaged or not, the
    landslide ground that falls on insured land, and each property's
    liquefaction land damage state.
-4. **Cost**: what it costs to put right, on one colour scale for every item.
+4. **Financial**: what it costs to put right, on one colour scale for every item.
 
 The loss module settles per claim, not per item, so panel 4 hands each claim's
 cost to the items it belongs to: the wall repair cost to the claim's damaged
@@ -881,8 +881,8 @@ def plot_chain_map(layers):
     panels = [
         ("1  Exposure", "What is insured", grid[0, 0], grid[1, 0]),
         ("2  Hazard", "What the earthquake does to the ground", grid[0, 1], grid[1, 1]),
-        ("3  Damage", "State of insured assets", grid[2, 0], grid[3, 0]),
-        ("4  Cost", "What it costs to repair", grid[2, 1], grid[3, 1]),
+        ("3  Fragility", "State of insured assets", grid[2, 0], grid[3, 0]),
+        ("4  Financial", "What it costs to repair", grid[2, 1], grid[3, 1]),
     ]
     axes = [
         (fig.add_subplot(map_cell), fig.add_subplot(key_cell))
