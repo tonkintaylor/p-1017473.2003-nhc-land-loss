@@ -59,6 +59,11 @@ from landloss.domain.loss_contract import (
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
 )
+from landloss.loss.policy import PolicySettings
+from landloss.loss.pricing import (
+    crossing_clearing_cost_incl_gst_nzd,
+    crossing_replacement_cost_incl_gst_nzd,
+)
 from landloss.loss.qv_land_value import DAMAGED_LAND_RATE_COLUMN
 
 # The claim key, and the count written against it by the dwellings-per-property
@@ -340,3 +345,87 @@ def damaged_crossings(crossings: pd.DataFrame) -> pd.DataFrame:
     for flag in flags:
         damaged |= crossings[flag].to_numpy(dtype=bool)
     return crossings.loc[damaged]
+
+
+# The flags that mean a crossing is broken and must be replaced: liquefaction
+# under it, carried as the culvert's `is_damaged` and the bridge's
+# `is_damaged_by_shaking`, or a landslide taking the ground it stands on. A
+# crossing only inundated is buried but whole, and is cleared instead.
+CROSSING_REPLACEMENT_FLAGS = (
+    IS_DAMAGED_COLUMN,
+    IS_DAMAGED_BY_SHAKING_COLUMN,
+    IS_EVACUATED_COLUMN,
+)
+
+# What `crossing_costs_by_claim` writes.
+CROSSING_REPAIR_COLUMN = "crossing_repair_cost_incl_gst_nzd"
+CROSSING_UDV_COLUMN = "bridge_culvert_udv_incl_gst_nzd"
+CROSSINGS_REPLACED_COLUMN = "crossings_replaced"
+CROSSINGS_CLEARED_COLUMN = "crossings_cleared"
+
+
+def crossing_costs_by_claim(
+    culverts: pd.DataFrame, bridges: pd.DataFrame, *, policy: PolicySettings
+) -> pd.DataFrame:
+    """Return what each claim's damaged culverts and bridges cost and are worth.
+
+    Each crossing is priced on its own and the claim's are summed:
+
+    - **replaced** where any of :data:`CROSSING_REPLACEMENT_FLAGS` is set, at
+      :func:`~landloss.loss.pricing.crossing_replacement_cost_incl_gst_nzd`.
+      A replacement takes the place of a clearing, so a crossing broken and
+      buried is charged the replacement alone;
+    - **cleared** where it is only inundated, at
+      :func:`~landloss.loss.pricing.crossing_clearing_cost_incl_gst_nzd`.
+
+    Culverts and bridges are priced alike. A damaged crossing's undepreciated
+    value is its replacement cost whichever remedy it needs: the structure is
+    worth what it costs to build, whether or not it was broken. The sub-cap
+    then limits what that adds to the cap, in
+    :func:`~landloss.loss.settlement.land_cover_cap_nzd`.
+
+    Args:
+        culverts: The contract's culvert table.
+        bridges: The contract's bridge table.
+        policy: The settings this scenario runs under, which carry the GST rate.
+
+    Returns:
+        Indexed by claim, for claims with a damaged crossing:
+        :data:`CROSSING_REPAIR_COLUMN`, :data:`CROSSING_UDV_COLUMN`,
+        :data:`CROSSINGS_REPLACED_COLUMN` and :data:`CROSSINGS_CLEARED_COLUMN`.
+    """
+    frames = []
+    for table in (culverts, bridges):
+        damaged = damaged_crossings(table)
+        if damaged.empty:
+            continue
+        replaced = np.zeros(len(damaged), dtype=bool)
+        for flag in CROSSING_REPLACEMENT_FLAGS:
+            if flag in damaged.columns:
+                replaced |= damaged[flag].to_numpy(dtype=bool)
+        frames.append(
+            pd.DataFrame(
+                {
+                    CLAIM_ID_COLUMN: damaged[CLAIM_ID_COLUMN].to_numpy(),
+                    "replaced": replaced,
+                }
+            )
+        )
+    columns = [
+        CROSSING_REPAIR_COLUMN,
+        CROSSING_UDV_COLUMN,
+        CROSSINGS_REPLACED_COLUMN,
+        CROSSINGS_CLEARED_COLUMN,
+    ]
+    if not frames:
+        return pd.DataFrame(columns=columns, index=pd.Index([], name=CLAIM_ID_COLUMN))
+    crossings = pd.concat(frames, ignore_index=True)
+    replacement = float(crossing_replacement_cost_incl_gst_nzd(policy=policy))
+    clearing = crossing_clearing_cost_incl_gst_nzd(policy=policy)
+    crossings[CROSSING_REPAIR_COLUMN] = np.where(
+        crossings["replaced"], replacement, clearing
+    )
+    crossings[CROSSING_UDV_COLUMN] = replacement
+    crossings[CROSSINGS_REPLACED_COLUMN] = crossings["replaced"].astype(int)
+    crossings[CROSSINGS_CLEARED_COLUMN] = (~crossings["replaced"]).astype(int)
+    return crossings.groupby(CLAIM_ID_COLUMN)[columns].sum()

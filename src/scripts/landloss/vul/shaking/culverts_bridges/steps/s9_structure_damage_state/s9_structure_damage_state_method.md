@@ -1,7 +1,7 @@
 # Step 9 — Culvert and bridge damage state: method
 
-- The step decides **which culverts and bridges the shaking wrote off**, one
-  damage state per structure per realisation. It is run by
+- The step decides **which culverts and bridges the earthquake's liquefaction
+  wrote off**, one damage state per structure per realisation. It is run by
   `gen_structure_damage_state.py`, and the fragility is in
   `landloss.vul.shaking.fragility` — the same one the retaining walls use.
 - Structures come from
@@ -13,10 +13,25 @@
   threshold on ground motion. The fragility returns that probability because
   that is what a fragility curve is, and it stays a probability however well the
   shaking field is resolved.
-- **The beta's fragility is one flat number**, `BETA_FAILURE_PROBABILITY = 0.7`,
-  and it does not yet distinguish a culvert from a bridge. The kind of structure
-  is carried on every row as the asset, because the two are priced differently
-  in the loss module even though they share the $25,000 sub-cap.
+- **The chance follows the land, not the shaking (T-36).** A buried crossing is
+  broken by the ground moving around it -- lateral spreading towards the channel
+  it crosses, settlement, flotation -- so its chance of full replacement is the
+  one for its property's liquefaction land damage state
+  (`CROSSING_REPLACEMENT_BY_LD_STATE`), culverts and bridges alike:
+
+  | Land damage state | 1 | 2 | 3 | 4 | 5 | 6 |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | Chance of full replacement | 0 | 1% | 5% | 20% | 40% | 40% |
+
+- The state is `hazard_ld_state` from liquefaction step 2, what the ground did,
+  not `ld_state`, which is null where the owner's land claim drops out: the
+  crossing breaks whether or not anyone claims for the land. A crossing on a
+  property off the liquefaction grid -- hill land -- has no state and a nought
+  chance; a landslide can still break it, which vul step 11 flags. Liquefaction
+  step 2 must run first, as `gen_vul.py` orders it.
+- It replaced, on 2026-10-13, the beta's flat `BETA_FAILURE_PROBABILITY = 0.7`
+  for every structure whatever the ground did. The kind of structure is still
+  carried on every row as the asset.
 - PGA is sampled from the realisation's field at each structure's
   `geometry.representative_point()`, a point guaranteed to lie on the
   structure, and carried onto the output so the input is in place when the
@@ -33,13 +48,13 @@
   the pilot box, so the population itself is empty. The run says so in words
   rather than printing an empty table, because an empty output here is a
   coverage fact and not a failure.
-- **No cost is attached.** The loss module prices a written-off structure from
-  its undepreciated value, so what this step writes is the state.
+- **No cost is attached.** The loss module prices a written-off structure, so
+  what this step writes is the state.
 - The draw is seeded by `realisation_seed(BASE_SEED, realisation_id,
   "vulnerability")`, the same stream the walls draw from.
 - Output is `temp/vul/structure-damage-state-r<nnn>[-pilot].geoparquet`, with
   columns `realisation_id`, `crossing_id`, `claim_id`, `asset`, `pga_g`,
-  `failure_probability`, `damage_state` and `geometry` (`OUT_COLUMNS` in
+  `ld_state`, `failure_probability`, `damage_state` and `geometry` (`OUT_COLUMNS` in
   `gen_structure_damage_state.py`). An empty population writes an empty
   GeoDataFrame with the same columns and the population's CRS.
 - Outputs written before `crossing_id` and the geometry were carried are stale;

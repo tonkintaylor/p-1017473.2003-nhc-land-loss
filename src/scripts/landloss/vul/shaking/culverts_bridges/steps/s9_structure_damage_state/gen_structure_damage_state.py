@@ -1,25 +1,32 @@
-"""Decide which culverts and bridges the shaking wrote off.
+"""Decide which culverts and bridges the earthquake's liquefaction wrote off.
 
-Reads the crossing population and the realisation's PGA field, and draws a
-damage state per structure against its probability of failure.
+Reads the crossing population, the land damage state liquefaction step 2 drew
+on each property, and the realisation's PGA field, and draws a damage state per
+structure against its probability of failure.
 
     uv run --frozen python src/scripts/landloss/vul/shaking/culverts_bridges/steps/s9_structure_damage_state/gen_structure_damage_state.py
 
 Two damage states only, **no damage** and **replace**, the same pair the
 retaining walls use and for the same reason: a failed crossing is rebuilt rather
-than patched. The fragility returns a **probability of failure at the ground
-motion the structure saw**, and the state is a draw against it. The beta draws both kinds of structure against one flat
-probability, so nothing here yet distinguishes a culvert from a bridge except
-the label it carries into the loss module -- where they matter, because they
-share a sub-cap but not a cost.
+than patched. **The probability follows the land, not the shaking** (T-36):
+a buried crossing is broken by the ground moving around it, so its chance of
+replacement is the one for its property's liquefaction land damage state,
+:data:`~landloss.vul.shaking.fragility.CROSSING_REPLACEMENT_BY_LD_STATE` --
+nought where the land did not liquefy and off the liquefaction grid, up to 40%.
+The state is the one the hazard put on the ground (``hazard_ld_state``), not
+the one left after an owner's land claim drops out: the culvert breaks whether
+or not anyone claims for the lawn. Culverts and bridges take the same chances.
+Landslides break crossings too, which vul step 11 flags on its own. PGA is
+still sampled and carried, for the record and a fragility curve should one
+arrive.
 
 **Expect nothing over the Wellington pilot.** The crossing population is built
 from named watercourses, the nearest of which is some kilometres away, so this
 step legitimately writes zero rows there. That is the population's coverage, not
 a failure of this step, and the run says so rather than printing an empty table.
 
-**No cost is attached.** The loss module prices a written-off structure from its
-undepreciated value, so what this writes is the state, not the money.
+**No cost is attached.** The loss module prices a written-off structure, so
+what this writes is the state, not the money.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -39,10 +46,9 @@ from landloss.domain.loss_contract import (
 from landloss.hazard.realisation import realisation_seed
 from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.shaking.fragility import (
-    BETA_FAILURE_PROBABILITY,
     DAMAGE_STATE_COLUMN,
     REPLACE,
-    beta_failure_probability,
+    crossing_failure_probability,
     draw_damage_states,
 )
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population.gen_crossing_population import (
@@ -52,6 +58,10 @@ from scripts.landloss.hazard.shaking.steps.s4_pga_realisation.gen_pga_realisatio
     pga_path,
 )
 from scripts.landloss.paths import TEMP_DIR
+from scripts.landloss.vul.liquefaction.land.steps.s2_liq_land_damage.gen_liq_land_damage import (
+    HAZARD_STATE_COLUMN,
+    liq_land_damage_path,
+)
 from scripts.landloss.vul.shaking.culverts_bridges.steps.s9_structure_damage_state import (
     config,
 )
@@ -69,6 +79,7 @@ RNG_STREAM = "vulnerability"
 ASSET_COLUMN = "asset"
 STRUCTURE_COLUMN = "structure"
 PGA_COLUMN = "pga_g"
+LD_STATE_COLUMN = "ld_state"
 FAILURE_PROBABILITY_COLUMN = "failure_probability"
 
 OUT_COLUMNS = [
@@ -77,6 +88,7 @@ OUT_COLUMNS = [
     CLAIM_ID_COLUMN,
     ASSET_COLUMN,
     PGA_COLUMN,
+    LD_STATE_COLUMN,
     FAILURE_PROBABILITY_COLUMN,
     DAMAGE_STATE_COLUMN,
     "geometry",
@@ -104,10 +116,14 @@ def describe_states(states):
 
     split = pd.crosstab(states[ASSET_COLUMN], states[DAMAGE_STATE_COLUMN])
     print(split.to_string())
-    print(
-        f"  drawn against a flat {BETA_FAILURE_PROBABILITY:.0%} chance of failure, "
-        "which is the beta's stand-in for a fragility curve"
-    )
+    by_state = states.groupby(states[LD_STATE_COLUMN].astype("Float64").fillna(0))
+    print("  replaced, by the property's land damage state (0 is off the grid):")
+    for state, group in by_state:
+        replaced = int((group[DAMAGE_STATE_COLUMN] == REPLACE).sum())
+        print(
+            f"    state {int(state)}: {replaced:,} of {len(group):,}, drawn at "
+            f"{group[FAILURE_PROBABILITY_COLUMN].iloc[0]:.0%}"
+        )
 
     pga = states[PGA_COLUMN]
     outside = int(pga.isna().sum())
@@ -133,7 +149,14 @@ def main(*, extent, realisation_ids):
         print(f"Reading the PGA field from {raster} ...", flush=True)
 
         rng = realisation_seed(constants.BASE_SEED, realisation_id, RNG_STREAM)
-        probability = beta_failure_probability(len(crossings))
+        # The state the hazard put on each crossing's property; a property off
+        # the liquefaction grid has none.
+        land = pd.read_parquet(
+            liq_land_damage_path(realisation_id, extent=extent),
+            columns=[CLAIM_ID_COLUMN, HAZARD_STATE_COLUMN],
+        ).set_index(CLAIM_ID_COLUMN)[HAZARD_STATE_COLUMN]
+        ld_state = crossings[CLAIM_ID_COLUMN].map(land).astype("Int64")
+        probability = crossing_failure_probability(ld_state)
 
         # PGA is read at a point guaranteed to lie on the structure. A crossing
         # kept by the coverage filter can be a polygon or a collection, on
@@ -152,6 +175,7 @@ def main(*, extent, realisation_ids):
                 # bridge are priced differently even though they share a sub-cap.
                 ASSET_COLUMN: crossings[STRUCTURE_COLUMN].to_numpy(),
                 PGA_COLUMN: pga.to_numpy(),
+                LD_STATE_COLUMN: ld_state.to_numpy(),
                 FAILURE_PROBABILITY_COLUMN: probability,
                 DAMAGE_STATE_COLUMN: draw_damage_states(probability, rng),
             },
@@ -166,10 +190,7 @@ def main(*, extent, realisation_ids):
         print(f"Wrote {len(states):,} rows to {out_path}")
 
     print(RULE)
-    print(
-        "States only. A written-off structure is priced from its undepreciated "
-        "value in the loss module, which is not built yet."
-    )
+    print("States only. A written-off structure is priced in the loss module.")
 
 
 if __name__ == "__main__":

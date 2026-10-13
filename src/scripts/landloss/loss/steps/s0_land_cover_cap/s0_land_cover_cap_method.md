@@ -57,9 +57,10 @@
 
 ## What the cap currently cannot count
 
-- **Culverts and bridges contribute nothing.** Nothing prices a crossing yet, so
-  a claim whose only damaged structure is a culvert caps on its land alone. The
-  run prints how many there were so the gap is visible in the output.
+- **A crossing's value is a flat figure.** Its undepreciated value is its
+  replacement cost, $15,000 a metre of span over a 5 m default, because nothing
+  supplies a span; the sub-cap then limits what it adds. The run prints the
+  value and how much of it the sub-cap lets in.
 - **Every wall is priced at its own type and height**, `rw_type` and
   `rw_height` as exposure drew them: the type at the costing tool row
   `retaining-wall-types.csv` names for it, the two timber pole types on the pile

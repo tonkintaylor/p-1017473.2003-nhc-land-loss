@@ -53,10 +53,17 @@ Every line rests on an assumption, and each is named here rather than buried.
   `vul` now sends through the contract as `Liq_LD_cost_excl_gst_nzd`. It is
   grossed up for GST here and added on top, being a different mechanism from
   the ground a landslide took.
-- **A damaged culvert or bridge** adds its sub-cap limit to **both** the repair
-  cost and the cap, so it settles at the limit whatever its true cost and value
-  are. That is the agreed simplification: both are taken to exceed the limit in
-  every case, and every crossing `vul` sends is wholly inside insured land.
+- **A damaged culvert or bridge** is priced on its own, and a claim's are summed
+  (John Leeves, 2026-10-13; `landloss.loss.claims.crossing_costs_by_claim`):
+  - **replaced** at $15,000 a lineal metre of span, over a 5 m default since no
+    span is supplied ($75,000 excluding GST), where liquefaction broke it (vul
+    step 9, T-36) or a landslide took the ground it stands on;
+  - **cleared** for $1,000 excluding GST where a landslide only buried it. A
+    crossing both broken and buried is replaced, which includes the clearing.
+  - Culverts and bridges are priced alike. Its undepreciated value is its
+    replacement cost, which goes to the cap through the $25,000 sub-cap, so a
+    cleared crossing's $1,000 is always within its cover. Every crossing `vul`
+    sends is wholly inside insured land.
 
 ## The invented wall is a cost, never an asset
 

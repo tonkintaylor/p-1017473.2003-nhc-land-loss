@@ -46,10 +46,10 @@ assumption named here:
 - **Liquefaction land damage** carries its own settled cost from the Canterbury
   database, which `vul` now sends through the contract. It is added on top,
   because it is a different mechanism from the ground a landslide took.
-- **A damaged culvert or bridge** contributes its sub-cap limit to both sides,
-  on the agreed reading that its real cost and value both exceed it. Adding the
-  same figure to the repair cost and the cap settles it at the limit, whatever
-  the true numbers are.
+- **A damaged culvert or bridge** is replaced, at $15,000 a metre of span over
+  a 5 m default, or cleared for $1,000 where a landslide only buried it (John
+  Leeves, 2026-10-13); a claim's crossings are summed. Its value, the
+  replacement cost, goes to the cap through the sub-cap.
 
 The three site ratings are **proxies off exposure layers**, not measurements:
 driveway length for construction access, ground slope for constructability, and
@@ -114,7 +114,6 @@ from landloss.loss.settlement import DamagedClaim, settle
 from landloss.vul.loss_input import PARENT_RW_ID_COLUMN, WORLD_ID_COLUMN
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     CAP_COLUMN,
-    HAS_CROSSING_COLUMN,
     RW_UDV_COLUMN,
     land_cover_cap_path,
     load_qv_land_values,
@@ -155,7 +154,10 @@ CONSTRUCTABILITY_COLUMN = "constructability_reinstatement"
 WALL_REPAIR_COLUMN = "wall_repair_cost_incl_gst_nzd"
 LAND_REPAIR_COLUMN = "land_repair_cost_incl_gst_nzd"
 LIQ_REPAIR_COLUMN = "liquefaction_repair_cost_incl_gst_nzd"
-CROSSING_REPAIR_COLUMN = "crossing_repair_cost_incl_gst_nzd"
+CROSSING_REPAIR_COLUMN = loss_claims.CROSSING_REPAIR_COLUMN
+# What the claim's damaged crossings are worth, which builds the cap through the
+# sub-cap; written so the viewer can build the same cap.
+CROSSING_UDV_COLUMN = loss_claims.CROSSING_UDV_COLUMN
 SPOIL_REPAIR_COLUMN = "spoil_removal_cost_incl_gst_nzd"
 SPOIL_VOLUME_COLUMN = "inundated_volume_m3"
 FEES_COLUMN = "professional_fees_incl_gst_nzd"
@@ -814,7 +816,7 @@ def describe_repair(claims):
             LIQ_REPAIR_COLUMN,
             f"Canterbury liquefaction land costs, x{LIQ_COST_ESCALATION} to today",
         ),
-        (CROSSING_REPAIR_COLUMN, "culverts and bridges at their sub-cap"),
+        (CROSSING_REPAIR_COLUMN, "replacing or clearing culverts and bridges"),
     ):
         total = claims[column].sum()
         reached = int((claims[column] > 0).sum())
@@ -994,20 +996,22 @@ def main(*, extent, world_ids, realisation_ids):
                 claims.index.to_numpy(), claims.reset_index()
             )
 
-            # A damaged crossing is settled at its sub-cap limit by adding that
-            # figure to both sides: it contributes the limit to the cap, and the
-            # same amount to the repair cost so the comparison does not reduce it.
+            # Each damaged crossing is replaced, or cleared where a landslide
+            # only buried it, and the claim's are summed. Its value, the
+            # replacement cost, is what it brings to the cap, which step 0 built.
             caps = pd.read_parquet(
                 land_cover_cap_path(world_id, realisation_id, extent=extent)
             )
-            has_crossing = (
-                caps.set_index(CLAIM_ID_COLUMN)[HAS_CROSSING_COLUMN]
-                .reindex(claims.index)
-                .fillna(value=False)
-                .to_numpy()
+            crossings = loss_claims.crossing_costs_by_claim(
+                tables["culverts"], tables["bridges"], policy=policy
+            ).reindex(claims.index)
+            claims[CROSSING_REPAIR_COLUMN] = (
+                crossings[loss_claims.CROSSING_REPAIR_COLUMN].fillna(0.0).astype(float)
             )
-            crossing_limit = policy.bridge_culvert_limit_nzd(n_dwellings)
-            claims[CROSSING_REPAIR_COLUMN] = np.where(has_crossing, crossing_limit, 0.0)
+            crossing_udv = (
+                crossings[loss_claims.CROSSING_UDV_COLUMN].fillna(0.0).to_numpy(float)
+            )
+            claims[CROSSING_UDV_COLUMN] = crossing_udv
 
             # Professional fees are charged once on a claim that **involves a
             # wall**, whether one that failed or one invented to reinstate ground.
@@ -1055,9 +1059,7 @@ def main(*, extent, world_ids, realisation_ids):
                     repair_cost_incl_gst_nzd=claims[REPAIR_COST_COLUMN].to_numpy(),
                     n_dwellings=n_dwellings,
                     retaining_wall_udv_incl_gst_nzd=rw_udv,
-                    bridge_culvert_udv_incl_gst_nzd=np.where(
-                        has_crossing, crossing_limit, 0.0
-                    ),
+                    bridge_culvert_udv_incl_gst_nzd=crossing_udv,
                 ),
                 policy=policy,
             )

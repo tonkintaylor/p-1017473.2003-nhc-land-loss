@@ -324,6 +324,15 @@ MIN_LANDSLIDE_WALL_LENGTH_M = 5.0
 INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3 = 150.0
 INUNDATION_REMOVAL_LINE_ITEM = "Clear site: Load, cart and tip material"
 
+# What a damaged culvert or bridge costs (John Leeves, 2026-10-13), both
+# excluding GST and the same for either kind. A replacement is a rate per lineal
+# metre of span; nothing supplies a span, so every crossing takes the default,
+# $75,000 in all. A crossing a landslide buried but did not break is cleared
+# for a fixed sum instead.
+CROSSING_RATE_EXCL_GST_NZD_PER_M = 15_000.0
+CROSSING_DEFAULT_SPAN_M = 5.0
+CROSSING_CLEARING_EXCL_GST_NZD = 1_000.0
+
 # The professional fees a claim carries beyond the physical work, **from the
 # costing tool's own `lists` sheet**, its "Fee type" table. Mileage is the one
 # fee left out, on instruction; the tool carries it at zero in any case, so
@@ -550,6 +559,65 @@ def inundation_removal_cost_incl_gst_nzd(
         msg = "volume_m3 must be finite and not negative"
         raise ValueError(msg)
     return volumes * rate_excl_gst_nzd_per_m3 * (1.0 + policy.gst_rate)
+
+
+def crossing_replacement_cost_incl_gst_nzd(
+    span_m: np.ndarray | float | None = None,
+    *,
+    policy: PolicySettings,
+    rate_excl_gst_nzd_per_m: float = CROSSING_RATE_EXCL_GST_NZD_PER_M,
+    default_span_m: float = CROSSING_DEFAULT_SPAN_M,
+) -> np.ndarray:
+    """Return what it costs to replace a culvert or a bridge, including GST.
+
+    A rate per lineal metre of span, the same for a culvert as for a bridge
+    (John Leeves, 2026-10-13). Nothing supplies a span yet, so every crossing
+    takes :data:`CROSSING_DEFAULT_SPAN_M`; a span, where one arrives, is used
+    in its place.
+
+    The same figure is the crossing's undepreciated value: it is what the
+    structure costs to build new, with nothing for the site, so it serves both
+    sides of the Act's comparison, as a wall's square metre rate does.
+
+    Args:
+        span_m: Each crossing's span, or ``None`` for the default throughout.
+            A missing span within an array also takes the default.
+        policy: The settings this scenario runs under, which carry the GST rate.
+        rate_excl_gst_nzd_per_m: What a metre of span costs, excluding GST.
+        default_span_m: The span taken where none is known.
+
+    Returns:
+        The cost in GST-inclusive dollars.
+
+    Raises:
+        ValueError: If any span is negative.
+    """
+    span = np.asarray(default_span_m if span_m is None else span_m, dtype=float)
+    span = np.where(np.isnan(span), default_span_m, span)
+    if np.any(span < 0):
+        msg = "span_m must not be negative"
+        raise ValueError(msg)
+    return span * rate_excl_gst_nzd_per_m * (1.0 + policy.gst_rate)
+
+
+def crossing_clearing_cost_incl_gst_nzd(
+    *,
+    policy: PolicySettings,
+    clearing_excl_gst_nzd: float = CROSSING_CLEARING_EXCL_GST_NZD,
+) -> float:
+    """Return what it costs to clear mud out of a culvert or bridge, with GST.
+
+    A fixed sum per crossing (John Leeves, 2026-10-13), for a structure a
+    landslide buried but did not break.
+
+    Args:
+        policy: The settings this scenario runs under, which carry the GST rate.
+        clearing_excl_gst_nzd: The sum, excluding GST.
+
+    Returns:
+        The cost in GST-inclusive dollars.
+    """
+    return clearing_excl_gst_nzd * (1.0 + policy.gst_rate)
 
 
 def classify_inundation_earthworks(volume_m3: np.ndarray | float) -> np.ndarray:
