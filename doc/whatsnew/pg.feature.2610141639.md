@@ -1,0 +1,1 @@
+The loss viewer opens on the module's liquefaction cost escalation, which gen_viewer_data.py now writes into the page when it builds it, rather than on a figure typed into the page or read off the CSV; the unstamped source copy still takes a CSV's own. Rebuild the viewer to issue the page.

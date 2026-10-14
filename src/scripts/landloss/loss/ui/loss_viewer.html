@@ -354,10 +354,10 @@
   <label class="check" title="On: as in Canterbury, the Student Volunteer Army clears the first 250 m² of each site's ejecta for nothing, so only the ejecta beyond it is paid for -- which is why a Moderate claim in Canterbury cost about the same as a Minor one. Off: all of each site's ejecta is paid for, at the same rate per m². Only the liquefaction cost of inundated land changes.">
     <input type="checkbox" id="sva" checked>
     <span>Student Volunteer Army clears ejecta <span class="i">&#9432;</span></span></label>
-  <label title="Brings the Canterbury liquefaction repair costs, which are in 2010/2011 dollars, to today's. See the note below for where 1.42 comes from.">Liquefaction costs, 2011 to today &times; <span class="i">&#9432;</span>
-    <input class="sens" type="number" id="liqEsc" value="1.42" step="0.01" min="0"></label>
+  <label title="Brings the Canterbury liquefaction repair costs, which are in 2010/2011 dollars, to today's. See the note below for where the default comes from.">Liquefaction costs, 2011 to today &times; <span class="i">&#9432;</span>
+    <input class="sens" type="number" id="liqEsc" step="0.01" min="0"></label>
   <div class="note" style="margin-top:2px">The Canterbury liquefaction costs are in
-    2010/2011 dollars. 1.42 is a placeholder: the growth in construction labour costs
+    2010/2011 dollars. The default, <span id="liqEscDefault">the CSV's</span>, is a placeholder: the growth in construction labour costs
     from the March 2011 quarter (1,030) to the December 2025 quarter (1,465) in the
     <a href="https://www.stats.govt.nz/information-releases/labour-market-statistics-december-2025-quarter/"
     target="_blank" rel="noopener">Stats NZ Labour Cost Index</a> (salary and ordinary time
@@ -492,6 +492,12 @@ const TYPE_FILL = {[TYPE.liq]: HUE.liq, [TYPE.wall]: HUE.wall, [TYPE.slide]: HUE
                    [TYPE.combo]: HUE.combo, [TYPE.crossing]: HUE.crossing,
                    [TYPE.none]: HUE.none};
 const STACK = [TYPE.liq, TYPE.wall, TYPE.slide, TYPE.crossing, TYPE.combo];
+// What a claim type takes in that its name does not say, shown on hover
+// wherever the type is named.
+const TYPE_TIP = {[TYPE.wall]: "Ground that came down with the claim's own damaged "
+  + "retaining wall counts as wall damage, not landslide, so a claim whose only "
+  + "landslide ground came with its own wall is retaining wall only."};
+const typeLabel = t => TYPE_TIP[t] ? `<span title="${TYPE_TIP[t]}">${t}</span>` : t;
 const BASES = ["Paid the repair cost", "Capped", "Excess took it all"];
 // The page works wholly excluding GST (2026-10-12): every rate, value, cap,
 // cost and setting is before GST, including the excess and the land cap
@@ -579,6 +585,11 @@ const MOB_SHARE = 0.15;
 const MOB_EXCL_GST = 5000;
 const PM_SHARE = 0.10;
 const CONTINGENCY_SHARE = 0.20;
+// How a damaged wall is sized, in words (landloss.loss.pricing.margin_rule_length_m,
+// 2026-10-14). The CSV carries the face area already sized, so the page only says it.
+const WALL_SIZING = "A damaged wall is rebuilt at its own height and type, over its damaged "
+  + "length plus 1 m at each end and at least 3 m, the margin counted once per wall; the "
+  + "cap values the same length, never more than the wall itself.";
 
 function settings() {
   return {
@@ -1137,7 +1148,7 @@ function actSummary(rows, scRows) {
      <div class="note">Repair cost is the same under both. Liquefaction in the repair
        cost: ${!document.getElementById("liqOn").checked
          ? "<b>excluded</b> &mdash; liquefaction damage, claims and costs are all left out"
-         : rows[0]?.liq_method ?? "how it was priced is not recorded in this CSV"}.
+         : liqMethod(rows[0]?.liq_method)}.
        "Not covered" is the repair cost the cap and sub-caps leave unpaid, the
        excess not included.</div>
      <h2 style="margin-top:14px">The scenario against the baseline</h2>
@@ -1161,8 +1172,9 @@ function actSummary(rows, scRows) {
            <td class="n scen"${SCEN.subOn ? ` title="${money(x.scen)}"` : ""}>${SCEN.subOn ? short(x.scen) : "&ndash;"}</td></tr>`).join("")}
      </table>
      <div class="note">Existing structures on the claims; the new walls built to reinstate
-       landslide ground are not counted. A wall's repair cost is its replacement with its
-       share of the professional fees, mob/demob, project management and contingency. A
+       landslide ground are not counted. ${WALL_SIZING} A wall's repair cost is its
+       replacement with its share of the professional fees, mob/demob, project management
+       and contingency. A
        damaged bridge or culvert is replaced at $15,000 a metre of span over a 5 m default
        ($75,000), or cleared for $1,000 where a landslide only buried it, with project
        management and contingency on either; it is worth its replacement. Hover over a
@@ -1239,13 +1251,25 @@ function claimDetail(b, s) {
     `${money(paid)}<div class="note">of ${money(repair)}, limit ${money(limit)}</div>`;
   const lines = [
     ["Claim", `<code>${b.claim_id ?? ""}</code>`],
-    ["Type", b.type], ["Insured", b.insured ? "Yes" : "No, so paid nothing"],
+    ["Type", typeLabel(b.type)], ["Insured", b.insured ? "Yes" : "No, so paid nothing"],
     ["Dwellings", count(dwellings)],
     ["Damaged land", `${d3.format(",.1f")(nz(b.damaged_area_m2))} m²`],
     ["&nbsp;&nbsp;Evacuated", `${d3.format(",.1f")(nz(b.evacuated_m2))} m²`],
     ["&nbsp;&nbsp;Inundated", `${d3.format(",.1f")(nz(b.inundated_m2))} m²`],
-    [`<span class="note">&nbsp;&nbsp;Evacuated and inundated land overlap, so they do not
-      sum to the damaged land.</span>`, "&nbsp;"],
+    // Ground that came down with the claim's own wall, which the claim type
+    // counts as wall damage. A CSV from before it was carried leaves it out.
+    ...(b.wall_landslide_m2 == null ? [] : [[
+      `<span title="${TYPE_TIP[TYPE.wall]}">&nbsp;&nbsp;Came down with the claim's own wall</span>`,
+      `${d3.format(",.1f")(nz(b.wall_landslide_m2))} m²`]]),
+    [`<span class="note">&nbsp;&nbsp;Evacuated and inundated land overlap, and the ground
+      that came down with the claim's own wall is part of them, so they do not sum to the
+      damaged land.</span>`, "&nbsp;"],
+    // How much of the claim's retaining walls was damaged: the length of wall
+    // supporting its insured land, not the whole wall. A wall a neighbour's slip
+    // only clipped is replaced over the clip, with the margins (WALL_SIZING).
+    ...(nz(b.damaged_wall_length_m) > 0 ? [[
+      `<span title="The length of the claim's damaged walls that supports its insured land, before the 1 m margins. ${WALL_SIZING}">Damaged retaining wall length</span>`,
+      `${d3.format(",.2f")(nz(b.damaged_wall_length_m))} m`]] : []),
     ["Cause", b.cause || "-"],
     ["Land rate (excl GST)", `${money(nz(b.land_rate_incl_gst) / (1 + GST_RATE))}/m²`],
     ["Site ratings (access, earthworks, constructability)",
@@ -1269,9 +1293,10 @@ function claimDetail(b, s) {
     ["Total cap value", `<b>${money(b.cap)}</b>`,
      `<b>${money(s.cap)}</b><div class="note">the most it could pay</div>`],
     ["<b>Repair cost</b>", ""],
-    ["Walls replaced", money(b.wall)],
-    // A new wall for each separate slip no damaged wall holds (T-124).
-    [nz(b.new_wall_count) > 1 ? `New walls built (${count(nz(b.new_wall_count))}, one per slip)`
+    [`<span title="${WALL_SIZING}">Walls replaced</span>`, money(b.wall)],
+    // A new wall for each separate slip that scarred the claim and that no
+    // damaged wall holds (T-124); a slip that only buried it is cleared, not walled.
+    [nz(b.new_wall_count) > 1 ? `New walls built (${count(nz(b.new_wall_count))}, one per slip that scarred the claim)`
        : "New wall built", money(b.newWall)],
     ["Professional fees incl. consents (20% of walls, min $5,100)", money(b.fees)],
     ["Mob/demob (15% of walls and fees, min $5,000)", money(b.mob)],
@@ -1447,7 +1472,7 @@ function drawMap(rows) {
   // and only "All properties" shows them.
   const keyed = which === "all" ? legend.concat([["Uninsured", HUE.uninsured]]) : legend;
   d3.select("#mapLegend").html(keyed.map(([label, colour]) =>
-    `<span><i style="background:${colour}"></i>${label}</span>`).join(""));
+    `<span><i style="background:${colour}"></i>${typeLabel(label)}</span>`).join(""));
 }
 
 function onDot(e) {
@@ -1530,7 +1555,7 @@ function render({resettle = true, reread = false} = {}) {
   mainHistogram("#hMain", only(histView), value,
     structuresOnly ? capScenarios(only(rows), only(scRows), value, only(histView)) : scenarios);
   d3.select("#legend").html(STACK.map(t =>
-    `<span><i style="background:${TYPE_FILL[t]}"></i>${t}</span>`).join("") +
+    `<span><i style="background:${TYPE_FILL[t]}"></i>${typeLabel(t)}</span>`).join("") +
     // Drawn as the dashed lines they stand for, in the histogram's own style.
     (CAPS.length ? `<span><svg class="dash" width="18" height="10"><line class="capline" x1="0" y1="5"
       x2="18" y2="5"></line></svg>Fixed land cap (quick comparison)</span>` : "") +
@@ -1593,12 +1618,63 @@ if (document.getElementById("version").textContent === "__VIEWER" + "_VERSION__"
     "unversioned source copy; issue the one gen_viewer_data.py writes to report/loss/viewer/";
 }
 
+// The module's liquefaction escalation (landloss.loss.pricing.LIQ_COST_ESCALATION),
+// stamped in by gen_viewer_data.py as the version is, so the page opens on the
+// module's figure whatever CSV is dropped on it. The source copy is never
+// stamped, so it has none and opens on a CSV's own instead (load).
+const LIQ_ESC_STAMP = "__LIQ_ESCALATION__";
+const LIQ_ESC_DEFAULT = LIQ_ESC_STAMP === "__LIQ" + "_ESCALATION__" ? null : +LIQ_ESC_STAMP;
+function showLiqEsc(v) {
+  document.getElementById("liqEsc").value = v;
+  document.getElementById("liqEscDefault").textContent = v;
+}
+if (LIQ_ESC_DEFAULT != null) showLiqEsc(LIQ_ESC_DEFAULT);
+
+// Columns the CSV repeats, worked out from the ones they repeat where a CSV
+// leaves them out (tweaks-to-property-damage.md section 7). A CSV that still
+// carries one keeps its own. Each was checked equal to the column it stands in
+// for on every claim of the four authorities' CSVs (2026-10-14), except
+// has_damaged_wall: five claims of the CSVs from before the 2026-10-14 rerun
+// counted a damaged wall that cost nothing, zero-length pieces and walls only
+// buried, which that rerun's vul step 10 and loss no longer make. Wellington
+// City's rerun agrees on every claim; gen_viewer_data.py is to refuse a CSV
+// where the two would differ, so the page can take the count.
+function fillRepeatedColumns(rows) {
+  const fill = (r, column, value) => { if (r[column] == null) r[column] = value; };
+  for (const r of rows) {
+    if (r.new_wall_count != null) fill(r, "has_new_wall", nz(r.new_wall_count) > 0 ? 1 : 0);
+    if (r.damaged_wall_count != null) {
+      fill(r, "has_damaged_wall", nz(r.damaged_wall_count) > 0 ? 1 : 0);
+    }
+    if (r.damaged_crossing_count != null) {
+      fill(r, "has_crossing", nz(r.damaged_crossing_count) > 0 ? 1 : 0);
+    }
+    // Land damage states run from 1, None; worse than None is damage.
+    if (r.liq_state != null) fill(r, "has_liquefaction", nz(r.liq_state) > 1 ? 1 : 0);
+    // The ejecta cost the run settled: with volunteers or without, as it chose.
+    if (r.liq_inundated_cost_sva_excl_gst != null) {
+      fill(r, "liq_inundated_cost_excl_gst", nz(r.liq_sva) > 0
+        ? nz(r.liq_inundated_cost_sva_excl_gst) : nz(r.liq_inundated_cost_no_sva_excl_gst));
+    }
+  }
+}
+
+// How the run priced liquefaction, from the code the CSV carries. A CSV from
+// before the code carries the sentence itself, which is shown as it is.
+const LIQ_METHODS = {
+  area: "Priced from the ground lost, at rates fitted to claimant-only costs",
+  lookup: "Canterbury cost per damage state",
+};
+const liqMethod = code => code == null ? "how it was priced is not recorded in this CSV"
+  : LIQ_METHODS[code] ?? code;
+
 function load(text) {
   RAW = d3.csvParse(text, d3.autoType);
-  // Open on the module's escalation, which the CSV carries, so the page and
-  // the module agree; a CSV from before it was carried keeps the field's own.
-  if (RAW[0]?.liq_escalation != null) {
-    document.getElementById("liqEsc").value = RAW[0].liq_escalation;
+  fillRepeatedColumns(RAW);
+  // A stamped page keeps the module's escalation. The unstamped source copy
+  // takes the escalation a CSV carries, where it carries one.
+  if (LIQ_ESC_DEFAULT == null && RAW[0]?.liq_escalation != null) {
+    showLiqEsc(RAW[0].liq_escalation);
   }
   // Open on the module's choice too: volunteers in unless the run priced
   // clearing without them.

@@ -12,6 +12,7 @@ from scripts.landloss.loss.ui.gen_viewer_data import (
     AREA_METHOD,
     LOOKUP_METHOD,
     cause_label,
+    check_damaged_walls_are_priced,
     damaged_wall_length_by_claim,
     landslide_by_origin,
     liquefaction_method,
@@ -103,6 +104,15 @@ def test_the_written_page_carries_the_version_in_place_of_the_placeholder(
     text = page.read_text(encoding="utf-8")
     assert gen_viewer_data.VERSION_PLACEHOLDER not in text
     assert '<span id="version">v1a2b3c, built 2026-10-09</span>' in text
+
+
+def test_the_written_page_opens_on_the_module_liquefaction_escalation(
+    tmp_path,
+) -> None:
+    page = gen_viewer_data.write_viewer(tmp_path, "v1a2b3c, built 2026-10-09")
+    text = page.read_text(encoding="utf-8")
+    assert gen_viewer_data.LIQ_ESCALATION_PLACEHOLDER not in text
+    assert f'const LIQ_ESC_STAMP = "{gen_viewer_data.LIQ_COST_ESCALATION:g}";' in text
 
 
 def land_with(*polygons) -> pd.DataFrame:
@@ -487,3 +497,28 @@ def test_a_settlement_from_before_the_mapped_count_reads_none_mapped() -> None:
     )
 
     assert rows["new_wall_from_mapped_count"].tolist() == [0, 0]
+
+
+def walls(*rows) -> pd.DataFrame:
+    """Build viewer rows from (claim, has_damaged_wall, damaged_wall_count)."""
+    return pd.DataFrame(
+        rows, columns=["claim_id", "has_damaged_wall", "damaged_wall_count"]
+    )
+
+
+def test_a_csv_whose_wall_flag_and_count_agree_is_written() -> None:
+    check_damaged_walls_are_priced(walls(("a", 1, 2), ("b", 0, 0), ("c", 1, 1)))
+
+
+def test_a_damaged_wall_with_no_repair_cost_is_refused() -> None:
+    with pytest.raises(
+        ValueError, match=r"1 count one with no wall repair cost \['a'\]"
+    ):
+        check_damaged_walls_are_priced(walls(("a", 0, 1), ("b", 1, 1)))
+
+
+def test_a_wall_repair_cost_with_no_damaged_wall_is_refused() -> None:
+    with pytest.raises(
+        ValueError, match=r"1 have a wall repair cost with none counted \['b'\]"
+    ):
+        check_damaged_walls_are_priced(walls(("a", 0, 0), ("b", 1, 0)))

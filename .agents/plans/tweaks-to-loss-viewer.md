@@ -15,6 +15,45 @@ working tree, not yet committed or rerun, so the CSV columns below exist only
 after the rerun in `.agents/plans/tweaks-to-property-damage.md`. A CSV from
 before the rerun lacks them, and the page should read them as 0 or hide them.
 
+## Status (2026-10-14, Perrie Gilbert)
+
+- **Items 1, 2 and 3: not in the page for now.** The imminent ground columns
+  stay in the CSV; the page neither shows them, filters on them nor adds them
+  to the repair.
+- **Item 4:** the wording is done ("one per slip that scarred the claim").
+  `new_wall_from_mapped_count` stays in the CSV only: where the model puts a
+  new wall means nothing to a reader of one claim, and does not move its cost.
+- **Item 5: done.** The claim panel shows `wall_landslide_m2` as "Came down
+  with the claim's own wall", and "Retaining wall only" explains on hover, in
+  the claim panel and both legends, that this ground counts as wall damage.
+- **Items 6 and 7: done.** The claim panel shows `damaged_wall_length_m` to
+  2 dp as "Damaged retaining wall length", explained on hover as the length
+  supporting the claim's insured land, before the margins.
+- **Item 8: done.** `write_viewer()` stamps `LIQ_COST_ESCALATION` into the
+  page; the unstamped source copy falls back to a CSV's `liq_escalation`. This
+  touched `gen_viewer_data.py` and its test, with Perrie Gilbert's change agreed
+  for this one item.
+- **Item 11: done**, in the land structures note and on hover over "Walls
+  replaced".
+- **Item 9: done.** `fillRepeatedColumns()` works out `has_new_wall`,
+  `has_crossing`, `has_liquefaction`, `has_damaged_wall` and the run's ejecta
+  cost where a CSV leaves them out, and keeps a CSV's own where it carries
+  one. The first four and the ejecta cost matched their columns on every claim
+  of the four authorities' CSVs, and the page's own code refilled them on the
+  53,504 claims of the Wellington City rerun with no difference.
+  `has_damaged_wall` disagreed with `damaged_wall_count > 0` on 5 claims of
+  the pre-rerun CSVs (Lower Hutt 2, Porirua 2, Upper Hutt 1): each counted a
+  damaged wall that cost nothing, a zero-length piece from the old split or a
+  wall only buried, which the merged vul step 10 and loss no longer make. It
+  agrees on every claim of the Wellington City rerun.
+  `check_damaged_walls_are_priced()` in `gen_viewer_data.py` (Perrie Gilbert,
+  2026-10-14, agreed as a guard) refuses a CSV in which the two disagree,
+  naming the claims, so the column can be dropped: a rerun that still makes
+  one stops there. It refuses the pre-rerun Lower Hutt, Porirua and Upper Hutt
+  outputs until they are rerun.
+- **Item 10: done.** `liqMethod()` shows `area` and `lookup` as the two
+  sentences, and any other value, such as an older CSV's sentence, as it is.
+
 1. **Show imminent ground** (property damage section 2). Add
    `imminent_evacuated_m2`, `reinundated_m2` and `reinundated_m3` to the
    claim's damage split, beside evacuated and inundated (T-123). The CSV
