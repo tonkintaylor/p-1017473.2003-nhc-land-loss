@@ -277,9 +277,17 @@ What this module owes the retaining wall table `loss` reads
 - [x] Pass on only the walls with an insured stretch of 1 m or more: the line
   inside a claim's property and within 2 m of its insured land (2026-10-14).
 - [x] Carry `claim_id`, `size_class` and `length_m`, and the wall line.
+- [x] Write every candidate wall's insured stretches once per extent, so vul can
+  find the mapped wall behind a slip (2026-10-14).
 
 ## Where it is now
 
+- **Candidate stretches (the lead, 2026-10-14).** Step 6 also writes the stretches
+  it cuts for every candidate wall, drawn or not, once per extent, to
+  `temp/exposure/wall-candidate-stretches[-pilot].geoparquet`, so vul step 10 can
+  build a slip's new wall on the mapped wall of its unit. The per-world
+  insured stretches are unchanged. Built and unit tested; not yet run on real
+  data.
 - **Insured stretches (the lead, 2026-10-14).** A wall is cut into the stretches
   inside each claim's property and within 2 m of its insured land, written as
   `insured_lengths_m` and to a stretch file, and is insured on the claim with
@@ -412,6 +420,8 @@ What this module owes the retaining wall table `loss` reads
 
 ## Next
 
+1. Rerun this step first, for the candidate stretches that vul step 10 now
+   requires (`.agents/plans/tweaks-to-property-damage.md`, section 4).
 1. Review the pilot rerun of 2026-10-08 (`gen_all.py` over `wlg-pilot`, world
    0, earthquake 0, with the claim layer rebuilt that morning and the renamed
    wall types): 3,340 walls drawn on 5,747 candidates, 1,886 kept on insured

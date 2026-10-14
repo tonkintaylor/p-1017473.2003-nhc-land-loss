@@ -1,18 +1,18 @@
 # Plan: tweaks to property damage
 
-Written 2026-10-14 for review by the lead (Maxim Millen). **Sections 1, 5
-and 8 are done (built and tested in the working tree, not yet committed);
-2, 3, 4, 6 and 7 are to build, and 7 comes last.** Eight changes to what vul
-hands loss, and to the loss viewer's CSV:
+Written 2026-10-14 for review by the lead (Maxim Millen). **Sections 1, 2,
+3, 4, 5, 6 and 8 are done (built and tested in the working tree, not yet
+committed, not yet rerun); 7 is to build, and comes last, on the rerun's
+CSV.** Eight changes to what vul hands loss, and to the loss viewer's CSV:
 
 | # | Change | Where | Rerun from |
 | --- | --- | --- | --- |
 | 1 | A wall's length goes to each claim over the stretch within its property that supports its insured land (within 2 m) (**done**) | exposure rw s6, vul s10 | exposure rw s6 |
-| 2 | Imminent land: imminent evacuated and re-inundated ground, carried apart for the page to add | vul landslide land s3, vul s10, loss `ui/gen_viewer_data.py` | vul landslide land s3 |
-| 3 | A replaced wall keeps its own height and type; every wall built gets 1 m at each end and at least 3 m | loss s0 and s1 | loss s0 |
-| 4 | A slip's new wall is the mapped wall (drawn or undrawn) where there is one, else sized from the slip | exposure rw s6, vul s10, loss s1 | exposure rw s6 |
+| 2 | Imminent land: imminent evacuated and re-inundated ground, carried apart for the page to add (**built, not yet rerun**) | vul landslide land s3, vul s10, loss `ui/gen_viewer_data.py` | vul landslide land s3 |
+| 3 | A replaced wall keeps its own height and type; every wall built gets 1 m at each end and at least 3 m (**built, not yet rerun**) | loss s0 and s1 | loss s0 |
+| 4 | A slip's new wall is the mapped wall (drawn or undrawn) where there is one, else sized from the slip (**built, not yet rerun**) | exposure rw s6, vul s10, loss s1 | exposure rw s6 |
 | 5 | "Retaining wall only" claims stop reading as Combination (**done**) | loss `ui/gen_viewer_data.py` | the viewer only |
-| 6 | A wall clipped by another polygon's landslide is replaced over its damaged length only (T-158) | vul landslide rw s11, vul s10, loss s0 and s1 | vul landslide rw s11 |
+| 6 | A wall clipped by another polygon's landslide is replaced over its damaged length only (T-158) (**built, not yet rerun**) | vul landslide rw s11, vul s10, loss s0 and s1 | vul landslide rw s11 |
 | 7 | The viewer CSV: per-run repeats and derivable columns dropped, after 2, 3, 4 and 6 | loss `ui/gen_viewer_data.py` | the viewer only |
 | 8 | A slip-sized wall's length comes from the failure's evacuated insured ground only, not its deposit (**done and approved**) | vul landslide land s3, vul s10, loss s1 | vul landslide land s3 |
 
@@ -194,6 +194,50 @@ out.
    `evacuated_m2` and `inundated_m2` are now. `settled_in_python` leaves them
    out, as the page does with its switch off, so the model check still holds.
 
+**Built (2026-10-14).** In the working tree, not yet committed, not yet rerun.
+
+1. `imminent_ground_per_property` and `with_imminent_ground` in
+   `landloss.vul.landslide.land.damaged_area`, called from
+   `gen_landslide_land_damage.py`, write `imminent_evacuated_area_m2`,
+   `reinundated_area_m2`, `reinundated_depth_m` and `reinundated_volume_m3` on
+   each polygon. Imminent evacuated ground is the imminent union less the union
+   of ground evacuated by any failure, with inundated ground left in. The
+   re-inundated area is the union of inundated ground of failures that have an
+   imminent polygon, and the volume sums each failure's union area by its own
+   first finite inundated depth. A polygon only imminent ground reaches gets a
+   row of its own with no damaged ground.
+2. `damaged_area_per_failure` adds `imminent_area_m2` and `reinundated_area_m2`,
+   and `failures_per_property` writes `landslide_imminent_areas` and
+   `landslide_reinundated_areas` in the order of `landslide_ids`. Their contract
+   names are `LANDSLIDE_IMMINENT_AREAS_COLUMN` and
+   `LANDSLIDE_REINUNDATED_AREAS_COLUMN` (`IMMINENT_LAND_LIST_COLUMNS`), kept out
+   of `LANDSLIDE_FAILURE_COLUMNS`.
+3. `loss_input.build_land_table` carries them (`IMMINENT_LAND_SOURCES`) as
+   `imminent_evacuated_area`, `reinundated_insured_area`,
+   `reinundated_mean_depth`, `reinundated_volume` and the two lists, only where
+   s3 wrote them. The contract names are in `landloss.domain.loss_contract`
+   (`IMMINENT_LAND_COLUMNS`). `LAND_COLUMNS` does not change.
+4. `gen_viewer_data.py` (`imminent_by_claim`, `damaged_land`) writes
+   `imminent_evacuated_m2`, `reinundated_m2` and `reinundated_m3` per claim at 4
+   dp, zeros for a land table from before. A claim only imminent ground reaches
+   is kept, with no damaged ground and an empty `cause`.
+   `settled_in_python` does not read them.
+5. Loss s0, s1, pricing and claims are untouched, and
+   `include_imminent_damage` is still unused in Python.
+
+**Deviations from the plan:**
+
+- `IGNORED_LAND_CLASSES` is removed from `damaged_area`, with the step's "polygons
+  measure nothing" print, because imminent ground is now measured.
+- A failure that only imminent ground reaches on a polygon is not in
+  `landslide_ids`, so its imminent ground is in the scalar total but not in the
+  per-failure lists, which keeps them aligned.
+- `damaged_area_per_failure` and `imminent_ground_per_property` require
+  `landslide_id`, and raise without it.
+- The step test that asserted an imminent-only polygon is absent from s3's
+  output now asserts it is present with zero damaged ground and 400 m² imminent
+  evacuated. It is not a case the lead approved by eye.
+
 ## 3. Walls sized from their own height, with one margin rule
 
 **Today, in loss s1.**
@@ -262,6 +306,44 @@ out.
    length + 2 m.
 4. `attach_failures_to_walls` stays. It still decides which slips are held
    by a damaged wall (T-124) and types the viewer's claims (section 5).
+
+**Built (2026-10-14).** In the working tree, not yet committed, not yet rerun.
+
+1. `margin_rule_length_m` in `landloss.loss.pricing` is the one margin rule,
+   `max(damaged + 2 × LANDSLIDE_WALL_MARGIN_M, MIN_LANDSLIDE_WALL_LENGTH_M)`,
+   with the constants now 1.0 and 3.0, both still marked invented.
+   `landslide_wall_length_m` calls it, so the slip fallback takes the same
+   numbers.
+2. `wall_lengths_by_piece` in `landloss.loss.claims` groups the pieces on
+   `parent_rw_id` and returns each piece's `damaged_length_m`,
+   `replaced_length_m` and `valued_length_m`: the margin is added once per wall
+   to the sum of its damaged lengths, the valued length is capped at the sum of
+   the pieces' `rw_length`, and both are shared over the pieces in proportion to
+   their damaged length. A table without `rw_damaged_length`
+   (`RW_DAMAGED_LENGTH_COLUMN`, an extra column outside `RW_COLUMNS`) uses
+   `rw_length`. Pieces with no parent are each their own wall.
+3. Loss s1 prices each piece at its own `rw_height` and `rw_type` over its
+   replaced length (`wall_repair_by_claim`), and `replacement_wall_shape` keeps
+   its own `rw_size`. The size-class height, the slip-width length and
+   `wall_enlarged_for_landslide` are gone. Loss s0 values the wall over
+   `valued_length_m` (`wall_udv_by_claim`). `attach_failures_to_walls` is
+   unchanged.
+4. `gen_calc_walkthrough.py` and the research script
+   `table_clipped_wall_double_count.py` follow the new signatures.
+   `loss_viewer.html` and the viewer CSV never read
+   `wall_enlarged_for_landslide`, so no viewer change follows.
+
+**Deviations from the plan:**
+
+- `wall_lengths_by_piece` lives in `landloss.loss.claims`, not in a step,
+  because s0 cannot import s1 and sections 4 and 6 reuse it.
+- `replacement_wall_shape` and `wall_repair_by_claim` lost their `failures`
+  argument, because nothing in them reads a slip now.
+- A wall whose summed damaged length is 0 is replaced and valued over 0 m, not
+  the 3 m minimum.
+- A piece's damaged length is clipped to its `rw_length`.
+- Old tests of slip enlargement and the enlarged flag were replaced, as 3.1 and
+  3.3 remove that behaviour. None was a case the lead approved by eye.
 
 **Measured (world 0, earthquake 0, wall face × rate before GST and on-costs,
 with an earlier version of 3.2 that added 1 m in total):**
@@ -345,14 +427,78 @@ already been mapped.
    on the first failure, and 0 on the other.
 6. `gen_viewer_data.py` adds `new_wall_from_mapped_count`, so the page can
    say how many new walls stand on a mapped line.
+7. **A failure with no evacuated ground on the claim gets no new wall** (the
+   lead, 2026-10-14; see section 8). Loss s1 builds new walls only for
+   failures no damaged wall holds **and** whose `evacuated` area on the claim
+   is more than 0. A failure that only buried the claim still costs its land
+   repair (clearing the deposit), but no wall. A land table without the
+   evacuated list measures each failure's whole ground as its evacuated
+   ground (section 8's fallback), so an older table still builds a wall for
+   it.
+
+**Built (2026-10-14).** In the working tree, not yet committed, not yet rerun.
+
+1. rw s6 (`gen_wall_population.py`, `candidate_stretches_path`) writes
+   `temp/exposure/wall-candidate-stretches[-pilot].geoparquet` once per extent,
+   with `wall_line_id`, `claim_id`, `length_m` and the stretch line, the output
+   of `cut_walls_to_insured_stretches` over every candidate before the
+   per-world filter.
+2. `landloss.vul.mapped_walls` (new) holds `attach_mapped_walls`, called from
+   `gen_property_damage.py`. It reads each failure's `slope_id`, the polygon's
+   `wall_line_id` from the slope model, `face_height_m` from
+   `wall-probability`, and the stretch from the candidate stretches.
+   `alongside_length` cuts the stretch to within `RW_COVERAGE_BUFFER_M` of the
+   failure's evacuated ground, which `evacuated_ground_per_failure` in
+   `damaged_area` re-derives per claim and failure because s3 keeps only areas.
+   `held_failure_keys` is the held-by-a-damaged-wall rule of
+   `attach_failures_to_walls`, kept in vul because loss imports vul, and a test
+   holds the two together.
+3. The land table gains `landslide_wall_heights`, `landslide_wall_lengths`
+   (before the margin) and `landslide_wall_sources` (`MAPPED_WALL` or
+   `SLIP_WALL`), in the order of `landslide_ids`, outside `LAND_COLUMNS`. A
+   failure falls back to `slip` on any case 4.3 names, and also where the
+   mapped wall's height is not finite and above 0, or a damaged wall holds it.
+4. Loss s1 (`land_repair_by_claim`, `landslide_failures`) builds a `mapped wall`
+   at its height over `margin_rule_length_m` of its length, priced as timber
+   pole on the pile its height calls for, with its size class from
+   `classify_wall_size(height)`. A `slip` failure or an older table is sized
+   from the slip. It builds a new wall only where no damaged wall holds the
+   failure and its evacuated ground is more than 0, so a buried-only failure
+   keeps its clearing (`spoil_by_claim`) and gets no wall. An older table
+   without the evacuated list uses the whole ground, and a pooled older table
+   the claim's `evacuated_area`.
+5. Two failures on one unit and claim share one wall: the one with the most
+   evacuated ground takes the union of the cut stretches and the other carries
+   `mapped wall` with length 0, which loss reads as built on that wall. A
+   failure whose evacuated ground has no area gets no mapped wall (loss builds
+   none for it either). s1's `describe_failures` counts a failure that shares
+   a wall on its own, not as a new wall.
+6. `NEW_WALL_FROM_MAPPED_COLUMN` (`new_wall_from_mapped_count`) is carried onto
+   the settlement and written by `viewer_rows` beside `new_wall_count`, as 0
+   where a settlement written before the column exists lacks it.
+   `settled_in_python` does not read it.
+
+**Deviations from the plan:**
+
+- The second failure of a shared wall is `mapped wall` with length 0, not
+  `slip`, because loss could not otherwise tell it from a mapped wall.
+- A failure on two polygons of one claim puts its mapped values on the first
+  polygon's entry, and later entries carry the same height and source with
+  length 0. Loss merges them by claim and `landslide_id`.
+- vul s10 now reads the combined realisation again, and raises if
+  `wall-candidate-stretches` is missing.
+- s1 imports `classify_wall_size` from `landloss.exposure.rw.beta_population`
+  to label the new wall's class.
+- The section 8 test of a buried-only claim's minimum length is now a test of
+  no wall and a kept clearing, as section 8 said it would be.
 
 **Measured (world 0, earthquake 0, mapped failures only, before 3.2):** each
 unit's whole line, plus 1 m, costs more than today's slip-sized wall: $73.8M
 against $66.6M in Upper Hutt, and $121.1M against $97.1M in Porirua. Whole
 lines run 3.2 to 36 m (5th to 95th percentile), median 14 m, against a median
 of 11 m from slip area. That measured the whole line; under 4.4 only the
-part alongside the evacuated ground is built, so measure again once it is
-built.
+part alongside the evacuated ground is built, so measure again after the
+rerun.
 
 ## 5. "Retaining wall only" claims read as Combination
 
@@ -421,8 +567,12 @@ neighbour SP0003334, and it was replaced in full at $225k.
   sloping wall whose own polygon failed through it (`failed_with_polygon`).
   Both reach loss as `is_damaged_by_shaking`.
 - **A wall damaged by landslide ground is damaged only over the length inside
-  that ground.** Its damaged length is measured, not assumed to be the whole
-  wall.
+  evacuated ground.** Its damaged length is measured, not assumed to be the
+  whole wall.
+- **Inundated ground does not damage a wall** (the lead, 2026-10-14). A wall
+  that did not fail and is only buried by another failure's deposit has no
+  cost: the deposit is cleared as land, and the wall is not replaced. So a
+  wall carrying only `is_inundated` is not damaged.
 - **Shaking wins:** a wall with both is damaged over its whole length.
 - Each claim then takes the damaged length that falls on **its own insured
   stretch** (section 1): within its property and within 2 m of its insured
@@ -439,10 +589,19 @@ neighbour SP0003334, and it was replaced in full at $225k.
    - the same inside tolerance as the flag (`WALL_INSIDE_TOLERANCE_M`), so a
      line running along a failure's edge is not damaged.
 
-   It writes `evacuated_length_m`, `inundated_length_m`,
-   `damaged_length_m` (the union of the two) and the damaged stretch
-   line, `damaged_line`. A wall damaged by shaking gets its whole line as
-   `damaged_line`.
+   It writes `evacuated_length_m`, `inundated_length_m` (for information
+   only), `damaged_length_m` (the evacuated length alone) and the damaged
+   stretch line, `damaged_line` (the line inside evacuated ground). A wall
+   damaged by shaking gets its whole line as `damaged_line`. A wall carrying
+   only `is_inundated` gets an empty `damaged_line` and 0.
+
+   **`is_inundated` stays on the wall, for information** (the lead,
+   2026-10-14). It is in the shared contract for land, walls and crossings,
+   crossings still price it, and the reviewer page, the QGIS build and the
+   exec report maps show it. Loss stops costing it instead:
+   `damaged_walls` in `landloss.loss.claims` counts a wall as damaged only
+   when `is_damaged_by_shaking` or `is_evacuated` is set, not, as now, any of
+   the three flags. `RW_COLUMNS` does not change.
 2. vul s10 cuts each wall's `damaged_line` by the claim's insured stretch
    from `wall-insured-stretches-wNNN` (section 1). It writes the length as
    `rw_damaged_length` on each `rw` piece, an extra column outside
@@ -497,6 +656,55 @@ The Porirua wall would be replaced over 3.96 + 2 × 1 = 5.96 m, not 46 m (3.2).
   tolerance (`WALL_INSIDE_TOLERANCE_M`) is unchanged. A shaking-damaged
   piece is not tested.
 
+**Built (2026-10-14).** In the working tree, not yet committed, not yet rerun.
+6.4 below is not built, as planned.
+
+1. `measure_wall_damage` in `landloss.vul.landslide.flags`, called at the end of
+   `wall_flags`, measures each flagged wall not damaged by shaking against the
+   merged evacuated and inundated ground of every polygon but its own, with
+   `WALL_INSIDE_TOLERANCE_M`. The step writes `evacuated_length_m`,
+   `inundated_length_m`, `damaged_length_m` and `damaged_line`
+   (`WALL_DAMAGE_COLUMNS`), now as a geoparquet with `damaged_line` as geometry.
+   A shaking-damaged wall gets its whole line, an inundated-only wall an empty
+   line and 0. Absorbed and superseded walls are measured like any other, so
+   one whose absorbing ground covers no more than 0.1 m of its line is cleared
+   as undamaged by vul s10's sliver rule. s11's `describe_damage` prints how
+   many outcome-flagged walls that leaves, to read against the walls replaced
+   before the change.
+2. `damaged_walls` in `landloss.loss.claims` counts a wall as damaged only when
+   `is_damaged_by_shaking` or `is_evacuated` is set. `is_inundated` stays on
+   the wall.
+3. vul s10 (`build_rw_table(stretches=...)`, `damaged_piece_lengths`) cuts
+   `damaged_line` by the claim's stretch from `wall-insured-stretches-wNNN` and
+   writes `rw_damaged_length` on each piece. `shared_lengths` in
+   `landloss.exposure.coverage` is now public, and gives each of k claims 1/k of
+   a damaged part on a shared boundary. A piece never exceeds its `rw_length`.
+   A shaking piece takes its whole `rw_length`. A landslide-damaged piece with
+   `MIN_DAMAGED_PIECE_LENGTH_M` (0.1 m) or less is undamaged and loses both
+   flags.
+4. Loss s0 and s1 take the damaged length through `wall_lengths_by_piece`
+   (section 3), which forces the whole `rw_length` for a shaking-damaged piece.
+5. `damaged_wall_length_by_claim` in `gen_viewer_data.py` writes
+   `damaged_wall_length_m` per claim at 4 dp, the whole piece length where
+   `rw_damaged_length` is absent. `wall_value_excl_gst` and
+   `replacement_face_m2` follow s0 and s1 unchanged.
+
+**Deviations from the plan:**
+
+- A flat-land wall damaged only by the shaking step's state is unknown to s11,
+  so s10 gives it its whole `rw_length` from its own shaking flag.
+- A piece losing its flags under 6.3 loses `is_inundated` too; a piece of an
+  inundated-only wall keeps it.
+- The damaged part is placed on a claim's stretch with a 1 mm buffer
+  (`DAMAGED_STRETCH_TOLERANCE_M`), because the stretch and the damaged line are
+  float-rounded cuts of one line. Damage of exactly 0.1 m may land either side
+  of the 6.3 test.
+- `build_rw_table` without stretches writes no `rw_damaged_length`, so loss
+  falls back to the whole length. The step always passes them and raises if
+  `wall-insured-stretches` is missing.
+- Tests that kept an inundated-only wall as damaged were changed to the lead's
+  rule. None was a case approved by eye.
+
 **Check after the rerun (the lead, 2026-10-14: done retrospectively):**
 
 - **6.4. Double count against the slip's own new wall.** The slip that clips
@@ -536,11 +744,13 @@ dollars and rates to 6 dp). They are not rounded further (the lead,
 2026-10-14).
 
 **Build this section last, and update it first (the lead, 2026-10-14).**
-Sections 2, 4, 5 and 6 add columns (`imminent_evacuated_m2`,
-`reinundated_m2`, `reinundated_m3`, `new_wall_from_mapped_count`,
-`wall_landslide_m2`, `damaged_wall_length_m`), and section 1's stretches may
-remove the `has_damaged_wall` mismatch below. So once 2, 3, 4 and 6 are built
-and rerun, recount the columns, recheck the tables below on the new CSV and
+Sections 2, 4, 5 and 6 add columns, now built in `gen_viewer_data.py`
+(`imminent_evacuated_m2`, `reinundated_m2`, `reinundated_m3`,
+`new_wall_from_mapped_count`, `wall_landslide_m2`, `damaged_wall_length_m`),
+and section 1's stretches, with section 6's rule that inundated ground alone
+does not damage a wall, may remove the `has_damaged_wall` mismatch below. Section 3
+removes no CSV column (`wall_enlarged_for_landslide` was never in it). So once
+2, 3, 4 and 6 are rerun, recount the columns, recheck the tables below on the new CSV and
 measure its size, then build.
 
 **Decided (the lead, 2026-10-14):** make every change in this section, with
@@ -612,29 +822,37 @@ alone. The wall goes across the scar; the deposit is cleared, not retained.
    ground, as before; pooled ground of an older table uses the claim's
    `evacuated_area`.
 
-**Consequence to note.** A claim that was only buried by a slip from next
-door has zero evacuated ground, so its new wall is the shortest one,
-`MIN_LANDSLIDE_WALL_LENGTH_M`, rather than one as wide as the deposit.
-Whether a buried-only claim should get a wall at all is open.
+**Consequence, now decided.** As built, a claim that was only buried by a
+slip from next door has zero evacuated ground, so its new wall is the
+shortest one, `MIN_LANDSLIDE_WALL_LENGTH_M`, rather than one as wide as the
+deposit. Before section 8 it got a wall as wide as the deposit: s1 gives
+every failure no damaged wall holds a new wall, whatever its ground. **The
+lead decided (2026-10-14) that it gets no wall at all**: inundated ground
+alone needs no wall, only clearing. This is built with section 4 (step 7
+there), and the section 8 test of a buried-only claim's minimum length is now
+a test of no wall.
 
 Section 4's slip-sized fallback and 3.2's margin numbers apply on top of
-this, once those are built.
+this, and are built.
 
 ## Reruns
 
 | After | Rerun |
 | --- | --- |
 | 1 (built, not yet rerun) | exposure rw s6 onwards: all of hazard, because hazard s5 joins the drawn walls by `rw_id`, then vul and loss. For each of Lower Hutt, Upper Hutt and Porirua: `run_extent.ps1 -Module exposure -Step "rw s6, wall population"`, then loss, then the viewer. |
-| 2 alone | vul landslide land s3 onwards: s3, vul s10, loss s1 and the viewer. Section 2 itself moves no s1 number, but rerunning s3 also writes section 8's evacuated lists, which do move s1's slip-wall lengths. So s1 must be rerun before the viewer, or `check_viewer_against_the_model` compares against a stale settlement. |
-| 3 alone | loss s0 onwards, then the viewer |
-| 4 alone | exposure rw s6 for `wall-candidate-stretches-<extent>`, then vul s10, loss and the viewer. Hazard need not be rerun: the link is the slope model's existing `wall_line_id`. |
-| 6 alone | vul landslide rw s11 onwards, then loss and the viewer. It needs section 1's insured stretches, so in practice it comes with 1. |
+| 2 alone (built, not yet rerun) | vul landslide land s3 onwards: s3, vul s10, loss s1 and the viewer. Section 2 itself moves no s1 number, but rerunning s3 also writes section 8's evacuated lists, which do move s1's slip-wall lengths. So s1 must be rerun before the viewer, or `check_viewer_against_the_model` compares against a stale settlement. |
+| 3 alone (built, not yet rerun) | loss s0 onwards, then the viewer |
+| 4 alone (built, not yet rerun) | exposure rw s6 for `wall-candidate-stretches-<extent>`, then vul s10, loss and the viewer. Hazard need not be rerun: the link is the slope model's existing `wall_line_id`. |
+| 6 alone (built, not yet rerun) | vul landslide rw s11 onwards, then loss and the viewer. It needs section 1's insured stretches, so in practice it comes with 1. |
 | 5 (built) or 7 alone | `gen_viewer_data.py`. Section 5 needs a vul s10 land table with the T-124 lists and a wall table with `parent_rw_id`, and raises without them. |
 | 8 (built, not yet rerun) | vul landslide land s3 onwards (s3, then vul s10, then loss and the viewer). Until s3 is rerun, loss uses the whole ground as before. |
 
-Sections 1, 5 and 8 are built but not yet rerun. Build 2, 3, 4 and 6 before
-rerunning, so the whole pipeline (from exposure rw s6, which covers every row
-above) is rerun once; then build section 7 on that run's CSV.
+Sections 1, 2, 3, 4, 6 and 8 are built but not yet rerun (5 needs only the
+viewer). One rerun from exposure rw s6 covers every row above: exposure rw s6
+(it writes `wall-candidate-stretches`, which vul s10 now requires, and the
+insured stretches s11 needs), then hazard, vul landslide rw s11 and land s3,
+vul s10, loss s0 and s1, and the viewer. Then the 6.4 check, then build
+section 7 on that run's CSV.
 
 ## Tests
 
@@ -645,46 +863,58 @@ above) is rerun once; then build section 7 on that run's CSV.
   47934545); a wall on a shared boundary is split equally; a wall supporting
   nothing stays uninsured; each vul s10 piece is its claim's insured stretch,
   length that supports no claim is dropped, and `RW_COLUMNS` is unchanged.
-- vul rw s11 and s10: a wall clipped 4 m by a neighbour's evacuated ground
+- vul rw s11 and s10 (written, `test_flags.py`, `test_wall_landslide_damage_step.py`,
+  `test_loss_input.py`, `test_property_damage_step.py`): a wall clipped 4 m by a neighbour's evacuated ground
   gets `rw_damaged_length` 4 m on the piece that holds the clipped stretch and
   0 elsewhere. A shaking failure takes the whole length, even when it is also
-  clipped. A line along a failure's edge is not damaged. Overlapping failures
+  clipped. A wall inside only another failure's inundated ground keeps
+  `is_inundated`, is not damaged, and costs nothing (loss `damaged_walls`
+  skips it). A line along a failure's edge is not damaged.
+  Overlapping failures
   count a stretch once. A damaged stretch on a shared boundary gives each
   claim half, and no piece's damaged length exceeds its `rw_length`. A piece
   whose own damaged length is 0.1 m or less is undamaged, and a wall whose
   pieces are all that short is not replaced.
-- loss s0 and s1: a clipped wall is replaced over max(damaged length + 2 m,
+- loss s0 and s1 (written, `test_claims.py`, `test_land_cover_cap_step.py`,
+  `test_settlement_step.py`, `test_pricing.py`): a clipped wall is replaced over max(damaged length + 2 m,
   3 m) and valued over the same, capped at the wall's length, both worked per
   wall and shared over its pieces; a wall that failed whole is valued over its
   length and replaced over its length + 2 m;
   a slip no longer enlarges the wall it came with. A table without
   `rw_damaged_length` settles at the whole length.
-- vul land s3: imminent evacuated excludes ground already evacuated by any
+- vul land s3 (written, `test_damaged_area.py`,
+  `test_landslide_land_damage_step.py`, `test_loss_input.py`): imminent evacuated excludes ground already evacuated by any
   failure but keeps ground that is only inundated; re-inundated equals the
   failure's inundated ground, its volume is each failure's area by its own
   depth, its depth is the volume over the area; a failure with no imminent
   polygon gives zero.
-- viewer CSV: imminent and re-inundated ground are carried, and the model
+- viewer CSV (written, `test_viewer_data_step.py`): imminent and re-inundated ground are carried, and the model
   check still passes because `settled_in_python` leaves them out.
-- vul s10: a failure held by no damaged wall takes its polygon's mapped
+- vul s10 (written, `test_mapped_walls.py`, `test_property_damage_step.py`,
+  `test_damaged_area.py`; exposure rw s6's candidate stretches in
+  `test_population.py`): a failure held by no damaged wall takes its polygon's mapped
   wall's height, and the length of its stretch on the failure's claim within
   2 m of the failure's evacuated ground; under 1 m alongside, or no stretch,
   is `slip`; a large-model failure is `slip`; two failures on one unit and
   claim share one wall; the per-failure lists stay aligned with
   `landslide_ids`.
-- loss s1: a `mapped wall` is priced as timber pole at its height and
+- loss s1 (written, `test_settlement_step.py`): a `mapped wall` is priced as timber pole at its height and
   max(length alongside + 2 m, 3 m); a `slip` failure, or a table without the
-  lists, is sized from the slip with the 1 m and 3 m numbers.
+  lists, is sized from the slip with the 1 m and 3 m numbers; a failure with
+  no evacuated ground on the claim gets no new wall but keeps its land
+  repair.
 - Section 5 (written, `test_viewer_data_step.py`): a claim whose only ground
   came with its own wall is typed retaining wall only; one with a neighbour's
   slip as well is Combination; a land table without the T-124 lists, or a
   wall table without `parent_rw_id`, raises.
-- viewer CSV: the dropped columns are gone, `settled_in_python` works them
+- viewer CSV (to write with section 7): the dropped columns are gone, `settled_in_python` works them
   out from the counts, and the model check still passes.
-- Section 8 (written): each failure's evacuated area is measured and listed;
+- Section 8 (written, `test_damaged_area.py`, `test_loss_input.py`,
+  `test_settlement_step.py`): each failure's evacuated area is measured and listed;
   vul s10 carries it; a new wall's length and a replacement's slip-width
-  follow the evacuated ground; a buried-only claim gets the minimum length;
-  a table without the list measures off the whole ground.
+  follow the evacuated ground; a buried-only claim gets the minimum length
+  (changed to no wall and a kept clearing with section 4, step 7); a table without the list
+  measures off the whole ground.
 
 ## Status files to update when built
 

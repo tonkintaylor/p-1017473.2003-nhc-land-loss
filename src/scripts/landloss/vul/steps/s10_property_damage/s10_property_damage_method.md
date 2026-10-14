@@ -9,8 +9,8 @@
   `build_rw_table()` and `build_crossing_tables()`. The contract column names
   come from `landloss.domain.loss_contract`, and each builder checks them with
   `check_contract_columns()` before returning.
-- It reads eight files per world and earthquake, each through its own step's
-  path function:
+- It reads twelve files per world and earthquake (four of them for a slip's new
+  wall, below), each through its own step's path function:
   - the insured land (exposure step 5, `insured_land_path(extent=...)`);
   - the world's wall population (exposure rw step 6,
     `wall_population_path(world_id, extent=...)`);
@@ -24,7 +24,13 @@
   - the culvert and bridge damage states (`vul/shaking/culverts_bridges`
     step 9, `structure_damage_state_path(r)`, per earthquake only) and the
     crossing landslide flags (`vul/landslide/culverts_bridges` step 11,
-    `crossing_landslide_damage_path(w, r)`), keyed on `crossing_id`.
+    `crossing_landslide_damage_path(w, r)`), keyed on `crossing_id`;
+  - for a slip's new wall: the candidate stretches (exposure rw step 6,
+    `candidate_stretches_path(extent=...)`), the wall probabilities
+    (`wall_probability_path(extent=...)`), the urban slope model
+    (hazard landslide step 5, `urban_slope_model_path(w, extent=...)`) and the
+    combined realisation (hazard landslide step 6,
+    `combined_realisation_path(w, r, extent=...)`).
 - Every row carries its asset id and the `claim_id` of the LINZ property it
   belongs to, both minted in exposure and carried unchanged. Only insured
   assets reach this step: exposure rw step 6 insures a wall by the stretches
@@ -43,7 +49,41 @@
     and `inundated_mean_depth` defaults to missing;
   - `Liq_LD_state` is null on land off the liquefaction grid, as written by
     vul step 2;
-  - `dwelling_count` is carried as an extra column, pending Q-07.
+  - `dwelling_count` is carried as an extra column, pending Q-07;
+  - the imminent and re-inundated ground from vul step 3 are extra columns too,
+    outside `LAND_COLUMNS` and settled by nothing in loss: `imminent_evacuated_area`,
+    `reinundated_insured_area`, `reinundated_mean_depth` and
+    `reinundated_volume` (zero where no landslide reached the polygon), and the
+    lists `landslide_imminent_areas` and `landslide_reinundated_areas` in the
+    order of `landslide_ids`. A step 3 file from before them gives none of the
+    columns. The viewer's CSV reads them. Written by `build_land_table`;
+  - **a slip's new wall is the mapped wall where there is one** (section 4 of
+    the property damage tweaks, 2026-10-14): where the land table lists the
+    failures, `attach_mapped_walls()` (`landloss.vul.mapped_walls`) adds three
+    lists in the order of `landslide_ids`, outside `LAND_COLUMNS`:
+    `landslide_wall_heights`, `landslide_wall_lengths` and
+    `landslide_wall_sources` (`mapped wall` or `slip`). For each failure no
+    damaged wall holds (the piece of its wall on the claim is damaged, matched
+    on `parent_rw_id`, the rule loss settles with) it takes the failure's
+    `slope_id` from the realisation, the polygon's `wall_line_id` from the
+    urban slope model (so a wall that was not drawn in the world is reached the
+    same way, and a drawn wall insured on no claim too), that unit's
+    `face_height_m` from `wall-probability`, and the unit's stretch on the
+    failure's claim from `wall-candidate-stretches`. The length is that stretch
+    line cut to the part within `RW_COVERAGE_BUFFER_M` (2 m) of the failure's
+    evacuated ground on the claim (`evacuated_ground_per_failure()`, 4.4), the
+    stretch shared between claims on a boundary as exposure shared it, and it is
+    before the margin, which loss adds. **A failure is `slip`, with no height or
+    length,** when it is a large-model landslide (no `slope_id`), its polygon's
+    pif is in no wall unit, its unit has no stretch on the claim, it has no
+    evacuated ground on the claim, or under 1 m of the stretch lies alongside
+    it (4.3); and so is one a damaged wall holds, since loss builds nothing for
+    it. Two failures on one unit and claim share one wall: the one with the most
+    evacuated ground takes the union of their cut stretches and the other 0. A failure on two polygons of
+    one claim is one failure, with its values on the first polygon and 0 length
+    on the rest. A land table without the failure lists gets no lists, and loss
+    sizes every new wall from the slip. The run prints how many entries have a
+    mapped wall (`describe_mapped_walls()`).
 - **Retaining walls**, one row per insured wall, **spined on the world's wall
   population** (`build_rw_table(walls, states, flags)`), so a wall on sloping
   ground, which the shaking step never sees, appears beside the flat-land walls
@@ -67,7 +107,27 @@
   no stretch gives no row; a piece on a claim with no insured land is dropped.
   A wall with one stretch keeps its own id. `parent_rw_id` is written after
   the contract columns to tie the pieces back to the wall. Each piece keeps the
-  whole wall's line. The run prints the walls that give no piece. Over Lower Hutt
+  whole wall's line. **Each piece also carries `rw_damaged_length`**, an extra
+  column outside `RW_COLUMNS` (T-158, 2026-10-14), written when the run is given
+  the world's `wall-insured-stretches-w<NNN>-<extent>.geoparquet` (exposure rw
+  step 6; `build_rw_table(..., stretches=...)`): a piece damaged by shaking takes
+  its whole `rw_length`; one damaged by landslide ground takes the wall's
+  `damaged_line` (the line inside evacuated ground, from vul landslide rw
+  step 11) cut by the claim's own insured stretch, so a wall damaged only on a
+  neighbour's stretch leaves this claim's piece undamaged (0, and it loses
+  `is_evacuated` and `is_inundated`); every other piece takes 0, and a piece only
+  inundated keeps `is_inundated`. A damaged part lying in k claims' stretches (a
+  wall on a shared boundary) gives each 1/k of its length, by
+  `landloss.exposure.coverage.shared_lengths()`, the rule that shared the
+  stretch, so a piece's damaged length never exceeds its `rw_length`. A piece
+  damaged by landslide ground with `MIN_DAMAGED_PIECE_LENGTH_M` (0.1 m) or less
+  of damage is undamaged with 0 and no flags (6.3, the lead's judgement), so a
+  few millimetres of overlap cannot buy the 3 m minimum wall in loss; a piece
+  damaged by shaking is not tested. The stretches and the flags' `damaged_line`
+  are required together: stretches with flags written before step 11 measured
+  damage raise, naming step 11. The run prints the damaged pieces and their
+  damaged length (`describe_walls()`). The run prints the walls that give no
+  piece. Over Lower Hutt
   world 0 before 2026-10-14 (the primary took the remainder), 7,772 walls became
   10,590 rows and the claims with a damaged wall rose from 4,961 to 6,244; the
   stretch rule has not been run on real data.
@@ -106,7 +166,8 @@
   exposure world and earthquake, with its own `WORLD_IDS` setting (T-66). The
   old world-less `loss_input_path` is deleted.
 - The step is exercised end to end on synthetic inputs by
-  `tests/landloss/vul/test_property_damage_step.py`. It has not been run on
+  `tests/landloss/vul/test_property_damage_step.py`, and the new-wall join by
+  `tests/landloss/vul/test_mapped_walls.py`. It has not been run on
   the pilot since the rework, so no counts are recorded here; it needs
   the ground module, exposure steps 5, 6 and 7, landslide steps 1 to 6 and every vul step it
   reads run first.

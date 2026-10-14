@@ -7,16 +7,23 @@ from landloss.exposure.land import extent
 from landloss.loss.claims import (
     CLAIM_ID_COLUMN,
     DAMAGED_AREA_COLUMN,
+    DAMAGED_LENGTH_COLUMN,
     DWELLING_COUNT_COLUMN,
     LAND_RATE_COLUMN,
+    PARENT_RW_ID_COLUMN,
+    REPLACED_LENGTH_COLUMN,
+    VALUED_LENGTH_COLUMN,
     damaged_area_m2,
     damaged_walls,
     dwelling_counts,
     land_by_claim,
+    wall_lengths_by_piece,
 )
 from landloss.loss.policy import PolicySettings
+from landloss.loss.pricing import LANDSLIDE_WALL_MARGIN_M
 from landloss.loss.qv_land_value import DAMAGED_LAND_RATE_COLUMN
 from landloss.loss.settlement import DamagedClaim, settle
+from landloss.vul import loss_input
 
 ACT = PolicySettings()
 
@@ -247,11 +254,19 @@ def wall_table(flags):
     )
 
 
-def test_any_damage_flag_keeps_a_wall():
-    walls = wall_table(
-        [(True, False, False), (False, True, False), (False, False, True)]
-    )
-    assert len(damaged_walls(walls)) == 3
+def test_a_wall_damaged_by_shaking_or_on_evacuated_ground_is_kept():
+    walls = wall_table([(True, False, False), (False, True, False)])
+    assert len(damaged_walls(walls)) == 2
+
+
+def test_a_wall_only_in_inundated_ground_is_not_damaged():
+    walls = wall_table([(False, False, True), (False, False, False)])
+    assert damaged_walls(walls).empty
+
+
+def test_a_wall_in_inundated_ground_is_damaged_when_a_damaging_flag_is_set_too():
+    walls = wall_table([(True, False, True), (False, True, True)])
+    assert len(damaged_walls(walls)) == 2
 
 
 def test_an_undamaged_wall_is_dropped_rather_than_priced_at_zero():
@@ -263,3 +278,100 @@ def test_an_undamaged_wall_is_dropped_rather_than_priced_at_zero():
 def test_a_wall_damaged_three_ways_is_still_one_wall():
     walls = wall_table([(True, True, True)])
     assert len(damaged_walls(walls)) == 1
+
+
+# ---------------------------------------------------------------------------
+# The length a damaged wall is replaced and valued over, worked per wall.
+# ---------------------------------------------------------------------------
+
+MARGIN_M = 2.0 * LANDSLIDE_WALL_MARGIN_M
+
+
+def wall_pieces(lengths, damaged=None, parent="rwA"):
+    """Return damaged pieces of one wall, one per length, on separate claims."""
+    n = len(lengths)
+    table = pd.DataFrame(
+        {
+            loss_contract.RW_ID_COLUMN: [f"{parent}-P{i}" for i in range(n)],
+            PARENT_RW_ID_COLUMN: [parent] * n,
+            loss_contract.RW_LENGTH_COLUMN: lengths,
+        }
+    )
+    if damaged is not None:
+        table[loss_contract.RW_DAMAGED_LENGTH_COLUMN] = damaged
+    return table
+
+
+def test_the_parent_column_matches_what_vul_writes():
+    assert PARENT_RW_ID_COLUMN == loss_input.PARENT_RW_ID_COLUMN
+
+
+def test_a_wall_that_failed_whole_is_valued_over_its_length_and_replaced_over_more():
+    lengths = wall_lengths_by_piece(wall_pieces([12.0]))
+    assert lengths[VALUED_LENGTH_COLUMN].tolist() == pytest.approx([12.0])
+    assert lengths[REPLACED_LENGTH_COLUMN].tolist() == pytest.approx([12.0 + MARGIN_M])
+
+
+def test_a_clipped_wall_is_valued_and_replaced_over_the_damaged_length_and_margin():
+    lengths = wall_lengths_by_piece(wall_pieces([46.0], damaged=[3.96]))
+    assert lengths[VALUED_LENGTH_COLUMN].tolist() == pytest.approx([3.96 + MARGIN_M])
+    assert lengths[REPLACED_LENGTH_COLUMN].tolist() == pytest.approx([3.96 + MARGIN_M])
+
+
+def test_the_valued_length_never_exceeds_the_wall():
+    # 1 m damaged on a 2 m wall: 3 m is wanted, the property had 2 m.
+    lengths = wall_lengths_by_piece(wall_pieces([2.0], damaged=[1.0]))
+    assert lengths[VALUED_LENGTH_COLUMN].tolist() == pytest.approx([2.0])
+    assert lengths[REPLACED_LENGTH_COLUMN].tolist() == pytest.approx([3.0])
+
+
+def test_the_pieces_of_one_wall_share_one_margin_by_damaged_length():
+    lengths = wall_lengths_by_piece(wall_pieces([20.0, 20.0], damaged=[4.0, 6.0]))
+    replaced = lengths[REPLACED_LENGTH_COLUMN]
+    assert replaced.sum() == pytest.approx(10.0 + MARGIN_M)
+    assert replaced.tolist() == pytest.approx([4.8, 7.2])
+    assert lengths[VALUED_LENGTH_COLUMN].sum() == pytest.approx(10.0 + MARGIN_M)
+
+
+def test_the_valued_length_of_a_shared_wall_is_capped_at_its_pieces_together():
+    lengths = wall_lengths_by_piece(wall_pieces([1.5, 1.5], damaged=[1.0, 1.0]))
+    assert lengths[VALUED_LENGTH_COLUMN].sum() == pytest.approx(3.0)
+
+
+def test_a_piece_damaged_by_shaking_is_damaged_over_its_whole_length():
+    table = wall_pieces([20.0, 20.0], damaged=[4.0, 4.0])
+    table[loss_contract.IS_DAMAGED_BY_SHAKING_COLUMN] = [True, False]
+    lengths = wall_lengths_by_piece(table)
+    assert lengths[DAMAGED_LENGTH_COLUMN].tolist() == [20.0, 4.0]
+
+
+def test_a_table_without_damaged_lengths_takes_the_whole_length():
+    lengths = wall_lengths_by_piece(wall_pieces([10.0, 5.0]))
+    assert lengths[DAMAGED_LENGTH_COLUMN].tolist() == [10.0, 5.0]
+    assert lengths[REPLACED_LENGTH_COLUMN].sum() == pytest.approx(15.0 + MARGIN_M)
+
+
+def test_a_table_without_parents_treats_each_piece_as_its_own_wall():
+    table = wall_pieces([10.0, 5.0]).drop(columns=[PARENT_RW_ID_COLUMN])
+    lengths = wall_lengths_by_piece(table)
+    assert lengths[REPLACED_LENGTH_COLUMN].tolist() == pytest.approx(
+        [10.0 + MARGIN_M, 5.0 + MARGIN_M]
+    )
+
+
+def test_a_wall_with_no_damaged_length_is_replaced_over_none():
+    lengths = wall_lengths_by_piece(wall_pieces([10.0], damaged=[0.0]))
+    assert lengths[REPLACED_LENGTH_COLUMN].tolist() == [0.0]
+    assert lengths[VALUED_LENGTH_COLUMN].tolist() == [0.0]
+
+
+def test_a_pieces_damaged_length_never_exceeds_its_length():
+    lengths = wall_lengths_by_piece(wall_pieces([5.0], damaged=[9.0]))
+    assert lengths[DAMAGED_LENGTH_COLUMN].tolist() == [5.0]
+
+
+def test_a_piece_with_no_parent_raises():
+    table = wall_pieces([10.0, 10.0], damaged=[2.0, 5.0])
+    table[PARENT_RW_ID_COLUMN] = None
+    with pytest.raises(ValueError, match="rerun vul step 10"):
+        wall_lengths_by_piece(table)

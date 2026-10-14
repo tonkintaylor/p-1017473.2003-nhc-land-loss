@@ -181,6 +181,10 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
         "landslide_area_m2",
         "evacuated_depth_m",
         "inundated_depth_m",
+        "imminent_evacuated_area_m2",
+        "reinundated_area_m2",
+        "reinundated_depth_m",
+        "reinundated_volume_m3",
         "landslide_footprint_area_m2",
         "landslide_ids",
         "landslide_rw_ids",
@@ -188,6 +192,8 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
         "landslide_evacuated_areas",
         "landslide_inundated_areas",
         "landslide_inundated_depths",
+        "landslide_imminent_areas",
+        "landslide_reinundated_areas",
         "cause_evacuated",
         "cause_inundated",
     ]
@@ -201,13 +207,20 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
     )
 
 
-def test_both_populations_are_measured_and_imminent_ground_is_not(synthetic_run):
+def test_both_populations_are_measured_and_imminent_ground_is_apart(synthetic_run):
     step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
     damaged = read_damage(0, 0).set_index("land_id")
 
-    # The third polygon, under imminent ground only, is absent.
-    assert damaged.index.tolist() == ["C01-L01", "C02-L01"]
-    assert damaged["claim_id"].tolist() == ["C01", "C02"]
+    # The third polygon, under imminent ground only, has a row of its own with
+    # no damaged ground, only the imminent ground beside it.
+    assert damaged.index.tolist() == ["C01-L01", "C02-L01", "C03-L01"]
+    assert damaged["claim_id"].tolist() == ["C01", "C02", "C03"]
+    third = damaged.loc["C03-L01"]
+    assert third["imminent_evacuated_area_m2"] == pytest.approx(400.0)
+    assert third["landslide_area_m2"] == 0.0
+    assert third["reinundated_area_m2"] == 0.0
+    assert damaged.loc["C01-L01", "imminent_evacuated_area_m2"] == 0.0
+    assert damaged.loc["C01-L01", "reinundated_volume_m3"] == 0.0
 
     first = damaged.loc["C01-L01"]
     assert first["evacuated_area_m2"] == pytest.approx(200.0)

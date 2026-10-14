@@ -509,6 +509,12 @@ within `RW_COVERAGE_BUFFER_M` of its insured land
 - [ ] Section 6 of `.agents/plans/tweaks-to-property-damage.md` cuts damaged
       lines by the stretches and must share a boundary the same way.
 
+- [x] Write the stretches of every candidate wall, drawn or not, once per
+      extent, to `wall-candidate-stretches[-pilot].geoparquet`
+      (`candidate_stretches_path`), for vul step 10 to place a slip's new wall
+      on the mapped wall (section 4, 2026-10-14).
+- [ ] Rerun over the pilot to write `wall-candidate-stretches`.
+
 ## Potential future improvements
 
 - Read the type from evidence where a wall's type is known (a claim report or

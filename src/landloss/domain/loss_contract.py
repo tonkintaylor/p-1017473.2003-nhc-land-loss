@@ -65,6 +65,51 @@ LANDSLIDE_INUNDATED_DEPTHS_COLUMN = "landslide_inundated_depths"
 # Kept out of LANDSLIDE_FAILURE_COLUMNS so a land table written before it still
 # lists its failures; loss then measures the wall off the failure's whole ground.
 LANDSLIDE_EVACUATED_AREAS_COLUMN = "landslide_evacuated_areas"
+# Imminent ground and re-inundation, carried apart from the damaged ground for
+# the viewer's page to add (2026-10-14). Not in LAND_COLUMNS and not settled by
+# loss: the polygon's imminent ground less any ground evacuated on it by any
+# failure, counted once; and the ground of the failures that have imminent land
+# buried again, as a union, its volume summed over failures at each one's own
+# depth, and its mean depth, the volume over the area (0 with no area). The two
+# lists hold each failure's own imminent and re-inundated ground, in the order
+# of LANDSLIDE_IDS_COLUMN. A land table from before they were written has none,
+# and the viewer's CSV then reads zeros.
+IMMINENT_EVACUATED_AREA_COLUMN = "imminent_evacuated_area"
+REINUNDATED_AREA_COLUMN = "reinundated_insured_area"
+REINUNDATED_MEAN_DEPTH_COLUMN = "reinundated_mean_depth"
+REINUNDATED_VOLUME_COLUMN = "reinundated_volume"
+IMMINENT_LAND_COLUMNS = (
+    IMMINENT_EVACUATED_AREA_COLUMN,
+    REINUNDATED_AREA_COLUMN,
+    REINUNDATED_MEAN_DEPTH_COLUMN,
+    REINUNDATED_VOLUME_COLUMN,
+)
+LANDSLIDE_IMMINENT_AREAS_COLUMN = "landslide_imminent_areas"
+LANDSLIDE_REINUNDATED_AREAS_COLUMN = "landslide_reinundated_areas"
+IMMINENT_LAND_LIST_COLUMNS = (
+    LANDSLIDE_IMMINENT_AREAS_COLUMN,
+    LANDSLIDE_REINUNDATED_AREAS_COLUMN,
+)
+# The wall each failure no damaged wall holds is built as, in the order of
+# LANDSLIDE_IDS_COLUMN (2026-10-14, section 4 of the property damage tweaks):
+# the height of the mapped wall on the failure's polygon's unit, the length of
+# that wall's stretch on the claim alongside the failure's evacuated ground
+# (before the margin; 0 on a failure sharing the wall another failure on the
+# same unit and claim already has), and where the wall comes from, MAPPED_WALL
+# or SLIP_WALL. A SLIP_WALL failure carries no height or length, and a failure a
+# damaged wall holds is SLIP_WALL too, since loss never builds for it. Not in
+# LAND_COLUMNS: a land table from before they were written has none, and loss
+# then sizes every new wall from the slip.
+LANDSLIDE_WALL_HEIGHTS_COLUMN = "landslide_wall_heights"
+LANDSLIDE_WALL_LENGTHS_COLUMN = "landslide_wall_lengths"
+LANDSLIDE_WALL_SOURCES_COLUMN = "landslide_wall_sources"
+LANDSLIDE_WALL_COLUMNS = (
+    LANDSLIDE_WALL_HEIGHTS_COLUMN,
+    LANDSLIDE_WALL_LENGTHS_COLUMN,
+    LANDSLIDE_WALL_SOURCES_COLUMN,
+)
+MAPPED_WALL = "mapped wall"
+SLIP_WALL = "slip"
 LANDSLIDE_FAILURE_COLUMNS = (
     LANDSLIDE_IDS_COLUMN,
     LANDSLIDE_RW_IDS_COLUMN,
@@ -82,6 +127,11 @@ RW_SIZE_COLUMN = "rw_size"
 RW_TYPE_COLUMN = "rw_type"
 RW_HEIGHT_COLUMN = "rw_height"
 RW_LENGTH_COLUMN = "rw_length"
+# The length of a piece that is damaged, in metres, which loss replaces the wall
+# over (plus its margin) instead of the whole piece. Not in RW_COLUMNS: a wall
+# table written before it has none, and loss then takes the whole length as
+# damaged.
+RW_DAMAGED_LENGTH_COLUMN = "rw_damaged_length"
 IS_DAMAGED_BY_SHAKING_COLUMN = "is_damaged_by_shaking"
 IS_EVACUATED_COLUMN = "is_evacuated"
 IS_INUNDATED_COLUMN = "is_inundated"

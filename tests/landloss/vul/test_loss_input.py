@@ -7,13 +7,17 @@ from shapely.geometry import LineString, Point, box
 from landloss.domain.loss_contract import (
     BRIDGE_COLUMNS,
     CULVERT_COLUMNS,
+    IMMINENT_LAND_COLUMNS,
+    IMMINENT_LAND_LIST_COLUMNS,
     LAND_COLUMNS,
     LANDSLIDE_FAILURE_COLUMNS,
     RW_COLUMNS,
 )
+from landloss.loss.claims import damaged_walls
 from landloss.loss.pricing import wall_type_rate_excl_gst_nzd_per_m2
 from landloss.vul.landslide.land.damaged_area import UNION_AREA_COLUMN
 from landloss.vul.loss_input import (
+    MIN_DAMAGED_PIECE_LENGTH_M,
     build_crossing_tables,
     build_land_table,
     build_rw_table,
@@ -420,6 +424,247 @@ def test_each_failures_evacuated_ground_is_carried_where_the_step_wrote_it():
     assert land.loc["2-L01", "landslide_evacuated_areas"] == []
 
 
+def test_imminent_and_reinundated_ground_are_carried_outside_the_contract():
+    slides = landslide().assign(
+        imminent_evacuated_area_m2=[60.0],
+        reinundated_area_m2=[40.0],
+        reinundated_depth_m=[1.5],
+        reinundated_volume_m3=[60.0],
+        landslide_ids=[np.array(["LS1"])],
+        landslide_rw_ids=[np.array([None], dtype=object)],
+        landslide_areas=[np.array([120.0])],
+        landslide_inundated_areas=[np.array([80.0])],
+        landslide_inundated_depths=[np.array([1.5])],
+        landslide_imminent_areas=[np.array([60.0])],
+        landslide_reinundated_areas=[np.array([40.0])],
+    )
+    land = build_land_table(insured(), liquefaction(), slides).set_index("land_id")
+    assert land.loc["1-L01", "imminent_evacuated_area"] == pytest.approx(60.0)
+    assert land.loc["1-L01", "reinundated_insured_area"] == pytest.approx(40.0)
+    assert land.loc["1-L01", "reinundated_mean_depth"] == pytest.approx(1.5)
+    assert land.loc["1-L01", "reinundated_volume"] == pytest.approx(60.0)
+    assert land.loc["1-L01", "landslide_imminent_areas"] == pytest.approx([60.0])
+    assert land.loc["1-L01", "landslide_reinundated_areas"] == pytest.approx([40.0])
+    # Land the step did not reach has none of it.
+    assert land.loc["2-L01", "imminent_evacuated_area"] == 0.0
+    assert land.loc["2-L01", "landslide_imminent_areas"] == []
+    assert not set(IMMINENT_LAND_COLUMNS) & set(LAND_COLUMNS)
+    assert list(land.reset_index().columns[: len(LAND_COLUMNS)]) == list(LAND_COLUMNS)
+
+
+def test_a_landslide_step_without_imminent_ground_writes_none_of_it():
+    land = build_land_table(insured(), liquefaction(), landslide())
+    assert not set(IMMINENT_LAND_COLUMNS) & set(land.columns)
+    assert not set(IMMINENT_LAND_LIST_COLUMNS) & set(land.columns)
+
+
 def test_a_landslide_step_without_the_lists_writes_none():
     land = build_land_table(insured(), liquefaction(), landslide())
     assert not set(LANDSLIDE_FAILURE_COLUMNS) & set(land.columns)
+
+
+# How much of a wall is damaged, per piece (T-158).
+
+
+def one_wall(stretch_claims):
+    """A 30 m wall along y = 0, insured on each of the given claims' stretches."""
+    return gpd.GeoDataFrame(
+        {
+            "rw_id": ["W-RW01"],
+            "claim_id": [1],
+            "size_class": ["medium"],
+            "wall_type": ["concrete_block"],
+            "height_m": [1.5],
+            "length_m": [30.0],
+            "is_flatland": [False],
+            "insured_lengths_m": [
+                [
+                    {"claim_id": claim, "length_m": shared_length(line, stretch_claims)}
+                    for claim, line in stretch_claims.items()
+                ]
+            ],
+        },
+        geometry=[LineString([(0, 0), (30, 0)])],
+        crs=CRS,
+    )
+
+
+def shared_length(line, stretch_claims):
+    """A stretch's length with the ground two stretches share split between them."""
+    length = line.length
+    for other in stretch_claims.values():
+        if other is not line:
+            length -= line.intersection(other).length / 2
+    return length
+
+
+def stretch_table(stretch_claims):
+    """Exposure rw step 6's stretches of the wall above, one row per claim."""
+    return gpd.GeoDataFrame(
+        {
+            "wall_line_id": "WL0000001",
+            "rw_id": "W-RW01",
+            "claim_id": list(stretch_claims),
+            "length_m": [line.length for line in stretch_claims.values()],
+        },
+        geometry=list(stretch_claims.values()),
+        crs=CRS,
+    )
+
+
+# Claim 1 holds the first 18 m of the wall and claim 2 the last 12 m.
+SPLIT = {
+    1: LineString([(0, 0), (18, 0)]),
+    2: LineString([(18, 0), (30, 0)]),
+}
+# Both hold the 10 m between x = 10 and x = 20.
+OVERLAPPING = {
+    1: LineString([(0, 0), (20, 0)]),
+    2: LineString([(10, 0), (30, 0)]),
+}
+
+
+def damaged_pieces(
+    stretch_claims,
+    damaged_line,
+    *,
+    shaking=False,
+    evacuated=True,
+    inundated=False,
+    state="no damage",
+):
+    """Build the pieces of the wall above, damaged along ``damaged_line``."""
+    flags = pd.DataFrame(
+        {
+            "rw_id": ["W-RW01"],
+            "is_damaged_by_shaking": [shaking],
+            "is_evacuated": [evacuated],
+            "is_inundated": [inundated],
+            "damaged_line": [damaged_line],
+        }
+    )
+    states = pd.DataFrame({"rw_id": ["W-RW01"], "damage_state": [state]})
+    return build_rw_table(
+        one_wall(stretch_claims),
+        states,
+        flags,
+        stretches=stretch_table(stretch_claims),
+    ).set_index("claim_id")
+
+
+def test_a_wall_clipped_4_m_is_damaged_on_the_piece_holding_the_clipped_stretch():
+    rw = damaged_pieces(SPLIT, LineString([(2, 0), (6, 0)]))
+    assert rw.loc[1, "rw_damaged_length"] == pytest.approx(4.0)
+    assert rw.loc[2, "rw_damaged_length"] == 0.0
+
+
+def test_a_piece_damaged_only_on_a_neighbours_stretch_loses_its_flags():
+    rw = damaged_pieces(SPLIT, LineString([(2, 0), (6, 0)]))
+    assert rw.loc[1, "is_evacuated"]
+    assert not rw.loc[2, "is_evacuated"]
+    assert not rw.loc[2, "is_inundated"]
+
+
+def test_the_damaged_length_is_the_part_within_the_pieces_own_stretch():
+    rw = damaged_pieces(SPLIT, LineString([(15, 0), (22, 0)]))
+    assert rw.loc[1, "rw_damaged_length"] == pytest.approx(3.0)
+    assert rw.loc[2, "rw_damaged_length"] == pytest.approx(4.0)
+
+
+def test_a_wall_damaged_by_shaking_is_damaged_over_the_whole_length_of_each_piece():
+    rw = damaged_pieces(
+        SPLIT, LineString([(2, 0), (6, 0)]), shaking=True, evacuated=True
+    )
+    assert rw["rw_damaged_length"].tolist() == pytest.approx([18.0, 12.0])
+    assert rw["is_evacuated"].all()
+
+
+def test_a_flat_land_wall_replaced_by_the_shaking_step_is_damaged_whole_if_clipped():
+    rw = damaged_pieces(SPLIT, LineString([(2, 0), (6, 0)]), state="replace")
+    assert rw["is_damaged_by_shaking"].all()
+    assert rw["rw_damaged_length"].tolist() == pytest.approx([18.0, 12.0])
+
+
+def test_a_wall_only_in_inundated_ground_keeps_the_flag_and_has_no_damaged_length():
+    rw = damaged_pieces(SPLIT, LineString(), evacuated=False, inundated=True)
+    assert rw["is_inundated"].all()
+    assert rw["rw_damaged_length"].tolist() == [0.0, 0.0]
+    assert damaged_walls(rw).empty
+
+
+def test_an_undamaged_wall_has_no_damaged_length():
+    rw = damaged_pieces(SPLIT, LineString(), evacuated=False)
+    assert rw["rw_damaged_length"].tolist() == [0.0, 0.0]
+
+
+def test_a_damaged_part_on_a_shared_boundary_gives_each_claim_half():
+    rw = damaged_pieces(OVERLAPPING, LineString([(12, 0), (16, 0)]))
+    assert rw["rw_damaged_length"].tolist() == pytest.approx([2.0, 2.0])
+
+
+def test_a_damaged_part_is_shared_only_where_the_stretches_overlap():
+    # 2 m of claim 1 alone, 10 m shared from x = 10 to 20 (of which 10 is
+    # damaged), 1 m of claim 2 alone.
+    rw = damaged_pieces(OVERLAPPING, LineString([(8, 0), (21, 0)]))
+    assert rw.loc[1, "rw_damaged_length"] == pytest.approx(2.0 + 5.0)
+    assert rw.loc[2, "rw_damaged_length"] == pytest.approx(5.0 + 1.0)
+
+
+def test_no_pieces_damaged_length_exceeds_its_length():
+    for stretches in (SPLIT, OVERLAPPING):
+        rw = damaged_pieces(stretches, LineString([(0, 0), (30, 0)]))
+        assert (rw["rw_damaged_length"] <= rw["rw_length"] + 1e-9).all()
+    whole = damaged_pieces(OVERLAPPING, LineString([(0, 0), (30, 0)]))
+    assert whole["rw_damaged_length"].sum() == pytest.approx(30.0)
+
+
+def test_a_piece_with_a_tenth_of_a_metre_of_damage_or_less_is_undamaged():
+    rw = damaged_pieces(SPLIT, LineString([(17.95, 0), (18.05, 0)]))
+    assert rw["rw_damaged_length"].tolist() == [0.0, 0.0]
+    assert not rw["is_evacuated"].any()
+    assert not rw["is_inundated"].any()
+
+
+def test_the_minimum_damaged_piece_length_is_a_tenth_of_a_metre():
+    assert MIN_DAMAGED_PIECE_LENGTH_M == 0.1
+
+
+def test_a_piece_with_over_a_tenth_of_a_metre_is_damaged_and_one_under_is_not():
+    rw = damaged_pieces(SPLIT, LineString([(17.95, 0), (18.3, 0)]))
+    assert rw.loc[1, "rw_damaged_length"] == 0.0
+    assert not rw.loc[1, "is_evacuated"]
+    assert rw.loc[2, "rw_damaged_length"] == pytest.approx(0.3, abs=0.005)
+    assert rw.loc[2, "is_evacuated"]
+
+
+def test_a_wall_whose_pieces_are_all_short_is_not_replaced():
+    rw = damaged_pieces(SPLIT, LineString([(17.97, 0), (18.03, 0)]))
+    assert damaged_walls(rw).empty
+
+
+def test_a_piece_damaged_by_shaking_is_not_tested_against_the_minimum():
+    rw = damaged_pieces(SPLIT, LineString(), shaking=True, evacuated=False)
+    assert rw["rw_damaged_length"].tolist() == pytest.approx([18.0, 12.0])
+
+
+def test_the_damaged_line_may_come_back_from_parquet_as_wkb():
+    rw = damaged_pieces(SPLIT, LineString([(2, 0), (6, 0)]).wkb)
+    assert rw.loc[1, "rw_damaged_length"] == pytest.approx(4.0)
+
+
+def test_without_stretches_the_table_has_no_damaged_length_column():
+    rw = build_rw_table(walls(), wall_states(), wall_flags())
+    assert "rw_damaged_length" not in rw.columns
+
+
+def test_stretches_without_a_damaged_line_in_the_flags_raise():
+    with pytest.raises(ValueError, match=r"damaged_line.*step 11"):
+        build_rw_table(
+            walls(), wall_states(), wall_flags(), stretches=stretch_table(SPLIT)
+        )
+
+
+def test_the_damaged_length_is_an_extra_column_outside_the_contract():
+    rw = damaged_pieces(SPLIT, LineString([(2, 0), (6, 0)])).reset_index()
+    assert list(rw.columns)[-3:] == ["parent_rw_id", "rw_damaged_length", "geometry"]
+    assert "rw_damaged_length" not in RW_COLUMNS

@@ -1,10 +1,11 @@
 # Retaining walls, landslide: status
 
 **Status:** The three contract flags are written per wall per exposure world
-and earthquake, from the urban wall outcome and the landslide polygons. Not yet
+and earthquake, from the urban wall outcome and the landslide polygons, with the
+length of each flagged wall inside landslide ground (T-158, 2026-10-14). Not yet
 run on the pilot.
 
-**Updated:** 2026-10-13
+**Updated:** 2026-10-14
 
 ## Approach
 
@@ -25,6 +26,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   those flagged inundated from 798 to 137; the walls with any flag (one
   replacement each) stay at 1,121.
 
+- [x] Measure the length of each flagged wall inside other polygons' evacuated
+  and inundated ground, and write the damaged stretch (the lead, 2026-10-14):
+  a wall damaged in shaking takes its whole line, one carrying only
+  `is_inundated` is not damaged, and absorbed and superseded walls are measured
+  like any other.
+
 ## Loss contract
 
 What this module owes the retaining wall table `loss` reads, as set in
@@ -37,6 +44,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 - [x] Key every row on `rw_id`, carrying `claim_id` beside it.
 - [x] Supply `is_damaged_by_shaking` for sloping walls, from the urban wall
   outcome; flat-land walls take theirs from vul/shaking/rw s9.
+- [x] Supply the damaged stretch as `damaged_line`, with `evacuated_length_m`,
+  `inundated_length_m` and `damaged_length_m`. Vul step 10 turns it into
+  `rw_damaged_length` per claim's piece, outside `RW_COLUMNS`.
 
 ## Where it is now
 
@@ -45,8 +55,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   outcome table, and writes
   `temp/vul/wall-landslide-damage-wNNN-rNNN[-pilot].parquet`, one row per wall,
   flat-land and sloping alike, with `slope_id`, `outcome` and the three flags
-  (`landloss.vul.landslide.flags.wall_flags`). It is tested end to end on
-  synthetic inputs and has not been run on the pilot.
+  (`landloss.vul.landslide.flags.wall_flags`), and the measured damage
+  (`measure_wall_damage`: `evacuated_length_m`, `inundated_length_m`,
+  `damaged_length_m` and the `damaged_line` geometry, so the file is now a
+  geoparquet). It is tested end to end on synthetic inputs and has not been
+  run on the pilot.
 - Landslide step 6 supersedes failed urban polygons only, and only where they
   share more than `SHARED_GROUND_TOLERANCE_M2` of ground with a large slide
   (`supersede_by_large`, contract decision 35, built). A sloping wall whose
@@ -58,7 +71,8 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 ## Next
 
 1. Run the step over the pilot after exposure step 6 and landslide steps 5, 3
-   and 6.
+   and 6, then check the clipped walls against the slip's own new wall (6.4 in
+   `.agents/plans/tweaks-to-property-damage.md`).
 2. ~~In the loss calculation, a wall that crosses property boundaries counts
    as a wall on each property it enters by at least 1 m.~~ Superseded
    2026-10-14: a wall counts on each claim over its insured stretch, the line
@@ -71,9 +85,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    step 3 lists each failure on a polygon with the wall it failed with, and
    loss step 1 holds each slip with its own wall.
 
-A failed wall is replaced over its whole length, up to 50 m a segment, with
-no partly failed state. This was accepted on 2026-10-07 as an assumption
-justified by the size of the earthquake (**L-64**).
+A wall failed in shaking is replaced over its whole length, up to 50 m a
+segment, with no partly failed state. This was accepted on 2026-10-07 as an
+assumption justified by the size of the earthquake (**L-64**). A wall damaged
+only by landslide ground is replaced over its damaged length (2026-10-14).
 
 ## Validation
 
@@ -95,29 +110,21 @@ Not yet defined.
   ground of the neighbouring polygon SP0003334, where the two overlap by
   13 m², yet it was replaced in full at $225k
   (`temp/qgis/wall-neighbour-slide/wall_neighbour_slide.qgs`).
-  The proposed fix:
-  1. Write the length of the line inside evacuated ground, inside inundated
-     ground and inside both together, as extra columns next to the three
-     flags. Merge each kind of ground before measuring, so stretches where
-     overlapping polygons cover the same line are counted once.
-  2. Absorbed and superseded walls take their full length.
-  3. Have `build_rw_table` keep those columns.
-  4. Loss would then price the damaged stretch, for example with the slip
-     wall's 2 m margin at each end and 5 m minimum. Loss is not ours to
-     change, so that part is the loss owner's.
-
-  **Planned, 2026-10-14:** section 6 of
-  `.agents/plans/tweaks-to-property-damage.md`. A wall failed in shaking is
+  **Fixed in code 2026-10-14, pending rerun** (section 6 of
+  `.agents/plans/tweaks-to-property-damage.md`). A wall failed in shaking is
   damaged over its whole length. One damaged by landslide ground is damaged
-  only over the measured stretch inside it, replaced with 1 m at each end and
-  at least 3 m, and each claim takes the part on its own insured stretch. The
-  loss side is now ours to change.
-
-  Storing the lengths in the existing flag columns does not work: loss reads
-  those columns as true or false, so any length above zero would still count
-  as a whole-wall replacement and nothing would fail. Same-scale polygons
-  that overlap make most of these clips, so making them tile removes the
-  cause; the lengths only make what is left proportionate.
+  only over the stretch inside it, measured here and written as
+  `evacuated_length_m`, `inundated_length_m`, `damaged_length_m` and
+  `damaged_line`, merged first so overlapping failures count a stretch once,
+  and an absorbed or superseded wall is measured like any other. Inundated
+  ground alone no longer damages a wall: `is_inundated` stays on the wall, and
+  loss stops costing it. Vul step 10 cuts the damaged line by each claim's
+  insured stretch into `rw_damaged_length`, and loss replaces the wall over its
+  damaged length plus 1 m at each end, at least 3 m, counted once per wall. The
+  check for a double count against the slip's own new wall (6.4) is still to
+  run after the rerun. Same-scale polygons that overlap make most of these
+  clips, so making them tile removes the cause; the lengths only make what is
+  left proportionate.
 - Trimming and filling a walled polygon at its wall line leaves thin slivers
   (**T-159**). Hazard landslide step 4 (`wall_trim.py`, `zone_alignment.py`)
   leaves narrow spikes where the polygon's old outline meets the end of the

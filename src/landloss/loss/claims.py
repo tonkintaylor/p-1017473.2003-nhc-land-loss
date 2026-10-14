@@ -58,11 +58,15 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
+    RW_DAMAGED_LENGTH_COLUMN,
+    RW_ID_COLUMN,
+    RW_LENGTH_COLUMN,
 )
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     crossing_clearing_cost_incl_gst_nzd,
     crossing_replacement_cost_incl_gst_nzd,
+    margin_rule_length_m,
 )
 from landloss.loss.qv_land_value import DAMAGED_LAND_RATE_COLUMN
 
@@ -287,21 +291,25 @@ def land_by_claim(land: pd.DataFrame) -> pd.DataFrame:
 def damaged_walls(rw: pd.DataFrame) -> pd.DataFrame:
     """Return the retaining walls a settlement has to replace.
 
-    A wall carries a flag per cause -- shaking, evacuation and inundation --
-    and since a damaged wall is replaced rather than repaired, **any flag being
-    true is one replacement, not one per flag**. An undamaged wall contributes
-    nothing to the cap, so it is dropped here rather than priced at zero.
+    A wall is damaged when it failed in shaking or sits on evacuated ground,
+    and since a damaged wall is replaced rather than repaired, **either flag
+    being true is one replacement, not one per flag**. **Inundated ground does
+    not damage a wall** (the lead, 2026-10-14): a wall only buried by another
+    failure's deposit is not replaced, because the deposit is cleared as land.
+    ``is_inundated`` stays on the table for information. An undamaged wall
+    contributes nothing to the cap, so it is dropped here rather than priced at
+    zero.
 
     Args:
         rw: The contract's retaining wall table, one row per insured wall.
 
     Returns:
-        The rows carrying at least one damage flag.
+        The rows with ``is_damaged_by_shaking`` or ``is_evacuated`` set.
 
     Raises:
         ValueError: If a flag column is missing.
     """
-    flags = (IS_DAMAGED_BY_SHAKING_COLUMN, IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN)
+    flags = (IS_DAMAGED_BY_SHAKING_COLUMN, IS_EVACUATED_COLUMN)
     missing = [column for column in flags if column not in rw.columns]
     if missing:
         msg = f"the retaining wall table carries no {missing} column(s)"
@@ -310,6 +318,95 @@ def damaged_walls(rw: pd.DataFrame) -> pd.DataFrame:
     for flag in flags:
         damaged |= rw[flag].to_numpy(dtype=bool)
     return rw.loc[damaged]
+
+
+# The wall a row of the retaining wall table is a piece of, written by `vul`
+# after the contract columns. A name written out here, as the claim key is, and
+# held to ``landloss.vul.loss_input.PARENT_RW_ID_COLUMN`` by a test.
+PARENT_RW_ID_COLUMN = "parent_rw_id"
+DAMAGED_LENGTH_COLUMN = "damaged_length_m"
+REPLACED_LENGTH_COLUMN = "replaced_length_m"
+VALUED_LENGTH_COLUMN = "valued_length_m"
+
+
+def wall_lengths_by_piece(walls: pd.DataFrame) -> pd.DataFrame:
+    """Return the length each damaged wall piece is replaced and valued over.
+
+    **Worked per wall, not per piece** (2026-10-14). The pieces are grouped on
+    their parent wall, so a wall shared by two claims gets the margin once, and
+    one damaged at two separate places still gets one margin, not one per
+    stretch. For a wall whose pieces are damaged over ``D`` metres in all:
+
+    - **replaced length** = :func:`~landloss.loss.pricing.margin_rule_length_m`
+      of ``D``, which is what the repair prices;
+    - **valued length** = the same, but no longer than the wall itself -- the
+      sum of its pieces' ``rw_length`` -- because the cap never counts more
+      wall than the property had. A wall that failed whole is valued over its
+      length and replaced over its length plus the margin.
+
+    Each is shared over the pieces in proportion to their damaged length, so
+    the pieces add back to the wall's. A piece's damaged length is its
+    ``rw_damaged_length`` where the table carries one, else its whole
+    ``rw_length``: a table written before the column settles at the whole
+    length. A piece damaged by shaking is damaged over its whole ``rw_length``.
+    A wall with no damaged length at all is replaced over none.
+
+    Args:
+        walls: Damaged rows of the contract's retaining wall table
+            (:func:`damaged_walls`), with ``parent_rw_id`` where walls are split
+            across claims; without it each row is its own wall.
+
+    Returns:
+        A frame on ``walls``' index with ``damaged_length_m``,
+        ``replaced_length_m`` and ``valued_length_m``, one row per piece.
+
+    Raises:
+        ValueError: If ``parent_rw_id`` is present but missing on any piece.
+    """
+    length = walls[RW_LENGTH_COLUMN].to_numpy(dtype=float)
+    damaged = (
+        walls[RW_DAMAGED_LENGTH_COLUMN].fillna(0.0).to_numpy(dtype=float)
+        if RW_DAMAGED_LENGTH_COLUMN in walls.columns
+        else length
+    )
+    if IS_DAMAGED_BY_SHAKING_COLUMN in walls.columns:
+        # A wall that fails in shaking is damaged over its whole length.
+        shaken = walls[IS_DAMAGED_BY_SHAKING_COLUMN].astype(bool).to_numpy()
+        damaged = np.where(shaken, length, damaged)
+    damaged = np.minimum(damaged, length)
+    parent = walls[RW_ID_COLUMN].astype(object)
+    if PARENT_RW_ID_COLUMN in walls.columns:
+        # vul step 10 gives every piece its wall, so a gap is a broken table,
+        # not an old one (the lead, 2026-10-14).
+        missing = walls[PARENT_RW_ID_COLUMN].isna()
+        if missing.any():
+            msg = (
+                f"{int(missing.sum())} wall pieces have no {PARENT_RW_ID_COLUMN}, "
+                f"for example {walls.loc[missing, RW_ID_COLUMN].iloc[0]}: rerun "
+                "vul step 10"
+            )
+            raise ValueError(msg)
+        parent = walls[PARENT_RW_ID_COLUMN].astype(object)
+    grouped = pd.DataFrame(
+        {"parent": parent.to_numpy(dtype=object), "length": length, "damaged": damaged}
+    ).groupby("parent")
+    wall_length = grouped["length"].transform("sum").to_numpy()
+    wall_damaged = grouped["damaged"].transform("sum").to_numpy()
+
+    has_damage = wall_damaged > 0
+    share = np.divide(
+        damaged, wall_damaged, out=np.zeros_like(damaged), where=has_damage
+    )
+    replaced = np.where(has_damage, margin_rule_length_m(wall_damaged), 0.0)
+    valued = np.minimum(replaced, wall_length)
+    return pd.DataFrame(
+        {
+            DAMAGED_LENGTH_COLUMN: damaged,
+            REPLACED_LENGTH_COLUMN: replaced * share,
+            VALUED_LENGTH_COLUMN: valued * share,
+        },
+        index=walls.index,
+    )
 
 
 def damaged_crossings(crossings: pd.DataFrame) -> pd.DataFrame:

@@ -47,6 +47,7 @@ from landloss.loss.pricing import (
     contingency_incl_gst_nzd,
     inundation_volume_m3,
     landslide_wall_length_m,
+    margin_rule_length_m,
     on_costs_incl_gst_nzd,
     professional_fees_incl_gst_nzd,
     replacement_construction_type,
@@ -880,3 +881,16 @@ def test_mob_demob_never_falls_below_five_thousand_before_gst():
 def test_a_negative_fee_is_refused_by_the_on_costs():
     with pytest.raises(ValueError, match="fees_incl_gst_nzd"):
         on_costs_incl_gst_nzd(1.0, -1.0, 0.0, policy=ACT)
+
+
+def test_the_margin_rule_is_one_metre_each_end_and_three_metres_at_least():
+    assert LANDSLIDE_WALL_MARGIN_M == 1.0
+    assert MIN_LANDSLIDE_WALL_LENGTH_M == 3.0
+    assert margin_rule_length_m([10.0, 0.5, 0.0]).tolist() == [12.0, 3.0, 3.0]
+
+
+def test_a_slips_new_wall_takes_the_same_margin_rule():
+    # 200 m2 is 20 m across; the same rule as a wall that failed whole.
+    assert landslide_wall_length_m([200.0]).tolist() == (
+        margin_rule_length_m([20.0]).tolist()
+    )

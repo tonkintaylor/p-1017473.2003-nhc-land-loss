@@ -395,6 +395,20 @@ def test_a_walls_shares_never_exceed_its_length():
     assert (total <= length.reindex(total.index) + 1e-9).all()
 
 
+def test_overlapping_stretches_cut_off_the_grid_are_shared_not_doubled():
+    # Overlapping parcels cut a diagonal wall at off-grid points, so the two
+    # stretches over the overlap differ by float noise. Unsnapped, the union
+    # kept both copies and the shares summed to 24.6 m on a 19.3 m wall
+    # (WU0000893 in the Wellington pilot, 2026-10-14).
+    parcels = make_parcels(["A", "B"], [box(-1, -1, 10, 20), box(5.3, -1, 30, 20)])
+    wall = LineString([(0.123456, 0.987654), (17.31, 9.77)])
+    stretches = cut(make_lines([wall]), make_regions(parcels, parcels))
+    assert stretches["length_m"].sum() == pytest.approx(wall.length, abs=1e-6)
+    overlap = wall.intersection(box(5.3, -1, 10, 20)).length
+    alone_a = wall.intersection(box(-1, -1, 5.3, 20)).length
+    assert shares(stretches)["A"] == pytest.approx(alone_a + overlap / 2, abs=1e-6)
+
+
 def test_wall_supporting_nothing_gives_no_row():
     wall = LineString([(0, 0), (10, 0)])
     assert cut(make_lines([wall])).empty

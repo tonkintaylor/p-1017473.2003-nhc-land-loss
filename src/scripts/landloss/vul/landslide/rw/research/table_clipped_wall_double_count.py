@@ -50,6 +50,7 @@ import shapely
 from shapely.geometry import LineString
 
 from landloss.domain.loss_contract import (
+    MAPPED_WALL,
     CLAIM_ID_COLUMN,
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
@@ -63,6 +64,7 @@ from landloss.domain.loss_contract import (
     RW_SIZE_COLUMN,
     RW_TYPE_COLUMN,
 )
+from landloss.exposure.rw.beta_population import classify_wall_size
 from landloss.hazard.landslide.land_class import (
     EVACUATED,
     INUNDATED,
@@ -74,13 +76,13 @@ from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     LANDSLIDE_WALL_MARGIN_M,
     MIN_LANDSLIDE_WALL_LENGTH_M,
-    SIZE_CLASSES,
     beta_wall_face_area_m2,
     beta_wall_height_m,
     beta_wall_repair_cost_incl_gst_nzd,
     classify_landslide_wall_size,
     contingency_incl_gst_nzd,
     landslide_wall_length_m,
+    margin_rule_length_m,
     on_costs_incl_gst_nzd,
     professional_fees_incl_gst_nzd,
     replacement_rate_excl_gst_nzd_per_m2,
@@ -111,11 +113,10 @@ WORLD_ID = 0
 REALISATION_ID = 0
 
 # How close to the slip ground's boundary a stretch of wall must lie to be
-# "along the slip's edge", in m. Loss widens a slip's new wall by
-# LANDSLIDE_WALL_MARGIN_M at each end because a wall is not stopped at the edge
-# of the ground that moved, so the same distance is how far a wall may stand
-# from the edge and still be the one that holds it.
-EDGE_TOLERANCE_M = LANDSLIDE_WALL_MARGIN_M
+# "along the slip's edge", in m. Kept at the 2 m the 6.4 check was first
+# written with; loss's margin rule has since narrowed to 1 m at each end
+# (LANDSLIDE_WALL_MARGIN_M), and the verdicts are not to move with it.
+EDGE_TOLERANCE_M = 2.0
 # The share of the clipped stretch that must lie within EDGE_TOLERANCE_M of the
 # boundary for the pair to be the same structure.
 SAME_STRUCTURE_SHARE = 0.5
@@ -406,13 +407,11 @@ def clipped_piece_costs(
     rw: pd.DataFrame,
     pieces: pd.DataFrame,
     ratings: pd.DataFrame,
-    failures: pd.DataFrame,
     policy: PolicySettings,
 ) -> pd.Series:
     """Price each clipped piece as loss s1 replaces it, by ``rw_id``.
 
-    Each damaged wall is shaped by :func:`replacement_wall_shape` against the
-    claim's failures and priced as ``wall_repair_by_claim`` does: replacement
+    Each damaged wall is shaped by :func:`replacement_wall_shape` and priced as ``wall_repair_by_claim`` does: replacement
     rate by type and height, the site multiplier and GST. The cost is the wall
     alone, before professional fees, on-costs and contingency.
 
@@ -420,14 +419,13 @@ def clipped_piece_costs(
         rw: The loss contract's retaining wall table.
         pieces: The clipped pieces, a subset of ``rw``.
         ratings: The site ratings per claim.
-        failures: loss s1's landslide failures.
         policy: The scenario's settings.
 
     Returns:
         The cost including GST, with ``rw_id`` as the index, for the pieces.
     """
     damaged = loss_claims.damaged_walls(rw).reset_index(drop=True)
-    _, height, length = replacement_wall_shape(damaged, failures)
+    _, height, length = replacement_wall_shape(damaged)
     face = wall_face_area_m2(height, length)
     rate = replacement_rate_excl_gst_nzd_per_m2(
         damaged[RW_TYPE_COLUMN].to_numpy(), height
@@ -442,16 +440,39 @@ def clipped_piece_costs(
     return priced.reindex(pieces[RW_ID_COLUMN].to_numpy())
 
 
+def wanted_failures(failures: pd.DataFrame, damaged: pd.DataFrame) -> pd.DataFrame:
+    """Return the failures that get a new wall, as ``land_repair_by_claim`` picks them.
+
+    A failure is left out where a damaged wall holds it, where it evacuated no
+    ground, or where it is mapped with no length of its own (it shares the wall
+    another failure on its unit and claim has).
+
+    Args:
+        failures: loss s1's landslide failures.
+        damaged: The damaged rows of the contract's retaining wall table.
+
+    Returns:
+        The failures that build a wall, with a fresh index.
+    """
+    held = attach_failures_to_walls(failures, damaged) >= 0
+    mapped = (failures["wall_source"] == MAPPED_WALL).to_numpy()
+    shares = mapped & (failures["wall_length"].fillna(0.0) <= 0.0).to_numpy()
+    wanted = ~held & (failures["evacuated"] > 0).to_numpy() & ~shares
+    return failures[wanted].reset_index(drop=True)
+
+
 def new_wall_costs(
     building: pd.DataFrame, ratings: pd.DataFrame, policy: PolicySettings
 ) -> pd.DataFrame:
-    """Price the new wall of each failure held by no damaged wall.
+    """Price the new wall of each failure that gets one.
 
     The same steps as ``land_repair_by_claim``, kept per failure instead of per
-    claim.
+    claim: a failure on a mapped wall takes that wall's height and its length
+    through the margin rule, any other the slip's own size class and its
+    evacuated ground's length.
 
     Args:
-        building: The failures held by no damaged wall.
+        building: The failures that get a new wall (:func:`wanted_failures`).
         ratings: The site ratings per claim.
         policy: The scenario's settings.
 
@@ -460,11 +481,18 @@ def new_wall_costs(
         ``new_wall_height_m``, ``new_wall_face_m2``, ``new_wall_rate`` and
         ``new_wall_cost`` (including GST, the wall alone).
     """
-    size = classify_landslide_wall_size(
+    from_mapped = (building["wall_source"] == MAPPED_WALL).to_numpy()
+    slip_size = classify_landslide_wall_size(
         building["area"].to_numpy(), building["volume"].to_numpy()
     )
-    length = landslide_wall_length_m(building["area"].to_numpy())
-    height = beta_wall_height_m(size)
+    mapped_height = building["wall_height"].fillna(0.0).to_numpy(dtype=float)
+    size = np.where(from_mapped, classify_wall_size(mapped_height), slip_size)
+    length = np.where(
+        from_mapped,
+        margin_rule_length_m(building["wall_length"].fillna(0.0).to_numpy()),
+        landslide_wall_length_m(building["evacuated"].to_numpy()),
+    )
+    height = np.where(from_mapped, mapped_height, beta_wall_height_m(slip_size))
     face = beta_wall_face_area_m2(size, length)
     rate = timber_pole_rate_excl_gst_nzd_per_m2(height)
     cost = beta_wall_repair_cost_incl_gst_nzd(
@@ -486,7 +514,6 @@ def new_wall_costs(
 def check_against_settlement(
     extent: str,
     rw: pd.DataFrame,
-    failures: pd.DataFrame,
     ratings: pd.DataFrame,
     built: pd.DataFrame,
     policy: PolicySettings,
@@ -496,7 +523,6 @@ def check_against_settlement(
     Args:
         extent: The extent.
         rw: The loss contract's retaining wall table.
-        failures: loss s1's landslide failures.
         ratings: The site ratings per claim.
         built: :func:`new_wall_costs` over the failures that get a new wall.
         policy: The scenario's settings.
@@ -509,7 +535,7 @@ def check_against_settlement(
         return "no local settlement file, so the costs are not cross-checked"
     disk = pd.read_parquet(path).set_index(CLAIM_ID_COLUMN)
     damaged = loss_claims.damaged_walls(rw).reset_index(drop=True)
-    _, height, length = replacement_wall_shape(damaged, failures)
+    _, height, length = replacement_wall_shape(damaged)
     walls = pd.Series(
         beta_wall_repair_cost_incl_gst_nzd(
             wall_face_area_m2(height, length),
@@ -634,17 +660,16 @@ def analyse(
     ratings = site_ratings_by_claim(land, extent=extent)
     failures = landslide_failures(land)
     damaged = loss_claims.damaged_walls(rw).reset_index(drop=True)
-    held = attach_failures_to_walls(failures, damaged) >= 0
-    building = failures[~held].reset_index(drop=True)
+    building = wanted_failures(failures, damaged)
     built = new_wall_costs(building, ratings, policy)
     if root == TEMP_DIR:
-        check = check_against_settlement(extent, rw, failures, ratings, built, policy)
+        check = check_against_settlement(extent, rw, ratings, built, policy)
     else:
         check = "a saved run, so there is no settlement file to check against"
 
     pieces = clipped_pieces(rw)
     pieces = pieces.assign(
-        replace_cost=clipped_piece_costs(rw, pieces, ratings, failures, policy).to_numpy()
+        replace_cost=clipped_piece_costs(rw, pieces, ratings, policy).to_numpy()
     )
     ground = slip_ground(slides)
     inside = stretches_inside(pieces, ground, own_slope)

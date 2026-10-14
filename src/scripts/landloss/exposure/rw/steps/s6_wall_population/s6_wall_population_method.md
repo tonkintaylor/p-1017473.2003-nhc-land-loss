@@ -356,6 +356,16 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   the wall's, the id vul calls `parent_rw_id`, so a later step joins on
   `(rw_id, claim_id)` to place a damaged length on a claim's stretch. Nothing
   reads it yet.
+- **The candidate stretch file** (section 4 of the property damage tweaks,
+  2026-10-14). The cut depends on each candidate's line and the parcels, not on
+  the world, so the same stretches are written for **every candidate**, drawn
+  or not, once per extent, to `temp/exposure/wall-candidate-stretches[-pilot].geoparquet`
+  from `candidate_stretches_path(extent=...)`: `wall_line_id`, `claim_id`,
+  `length_m` (the claim's share on a shared boundary) and the stretch line, one
+  row per candidate and claim. Vul step 10 reads it to build a slip's new wall
+  on the mapped wall its polygon stands on, drawn or not, over the part of the
+  stretch alongside the failure's evacuated ground. The per-world
+  `wall-insured-stretches` file is unchanged.
 - **Every drawn wall is written too.** The stretch rule decides what is
   insured, not whether a wall stands: a council or road-reserve wall above or
   below a property, or a wall at the back of a section more than

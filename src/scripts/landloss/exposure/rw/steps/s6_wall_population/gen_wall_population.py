@@ -15,7 +15,9 @@ and is given an ``rw_id`` on the claim with its longest stretch, so a wall that
 holds up a neighbour's land is insured on the neighbour (this replaces the
 primary-claim test and the claimless drop, **I-05**, for such a wall). The
 stretches are written on the wall as ``insured_lengths_m``, and one row per
-wall and claim with its line goes to a stretch file. That insured population
+wall and claim with its line goes to a stretch file. The stretches of every
+candidate, drawn or not, are written once per extent too, for vul to place a
+slip's new wall on the mapped wall. That insured population
 is what vul and loss read.
 
 The stretch rule decides what is insured, not whether a wall stands: a road
@@ -118,6 +120,7 @@ WORK_DIR = TEMP_DIR / "exposure"
 OUT_STEM = "wall-population"
 DRAWN_STEM = "drawn-walls"
 STRETCH_STEM = "wall-insured-stretches"
+CANDIDATE_STRETCH_STEM = "wall-candidate-stretches"
 
 # The stream the world's draws come from, under EXPOSURE_BASE_SEED.
 RNG_STREAM = "exposure"
@@ -183,6 +186,25 @@ def insured_stretches_path(world_id, *, extent):
     """
     suffix = extent_suffix(extent)
     return WORK_DIR / f"{STRETCH_STEM}-w{world_id:03d}{suffix}.geoparquet"
+
+
+def candidate_stretches_path(*, extent):
+    """Return the file a run writes every candidate wall's stretches to.
+
+    One row per candidate wall and claim, drawn or not, once per extent: the
+    cut depends on the line and the parcels, not on the world. Vul step 10
+    reads it to size a slip's new wall on the mapped wall (section 4 of the
+    property damage tweaks).
+
+    Args:
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        The output path, under ``temp/exposure/``.
+    """
+    suffix = extent_suffix(extent)
+    return WORK_DIR / f"{CANDIDATE_STRETCH_STEM}{suffix}.geoparquet"
 
 
 def read_claim_parcels(*, extent, use_cached_layers):
@@ -479,6 +501,14 @@ def main(*, extent, world_ids, use_cached_layers):
         regions,
         wall_id_column=WALL_LINE_ID_COLUMN,
         min_length_m=BETA_MIN_WALL_LENGTH_IN_PROPERTY_M,
+    )
+    candidate_path = candidate_stretches_path(extent=extent)
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
+    candidate_stretches.to_parquet(candidate_path)
+    print(
+        f"Wrote {len(candidate_stretches):,} candidate stretches "
+        f"({candidate_stretches[WALL_LINE_ID_COLUMN].nunique():,} candidate walls, "
+        f"drawn or not) to {candidate_path}"
     )
 
     for world_id in world_ids:

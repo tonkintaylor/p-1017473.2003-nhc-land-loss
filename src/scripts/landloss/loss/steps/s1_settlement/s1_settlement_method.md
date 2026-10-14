@@ -18,9 +18,23 @@ Every line rests on an assumption, and each is named here rather than buried.
   blocks, crib, old poured concrete, garden timber -- except that a concrete
   block wall goes back as concrete block (**T-122**, 2026-10-07 and
   2026-10-12). Sprayed concrete would also go back in kind, but no wall type is
-  sprayed concrete yet (**T-119**). Face area is `rw_height` by `rw_length`, or
-  the taller and longer wall a slip on the claim needs. Undepreciated value, in
-  step 0, stays at the failed type's rate.
+  sprayed concrete yet (**T-119**). A replacement keeps the wall's own
+  `rw_height`, `rw_type` and `rw_size`, and is built over its damaged length
+  plus 1 m at each end, at least 3 m (2026-10-14). **The margin is worked per
+  wall, not per piece**: the pieces are grouped on `parent_rw_id`, the margin
+  rule is applied once to the sum of their damaged lengths, and the result is
+  shared over the pieces in proportion to their damaged length
+  (`landloss.loss.claims.wall_lengths_by_piece()`, which step 0 also uses). A
+  piece's damaged length is `rw_damaged_length`, or its whole `rw_length` where
+  the table has no such column, and the whole `rw_length` of a piece damaged by
+  shaking, so a wall that failed whole is replaced over its length plus 2 m and
+  one clipped by a neighbour's landslide over the clipped length plus 2 m (T-158;
+  the Porirua `4eef7bbf-...-RW01` clipped for 3.96 m is replaced over 5.96 m, not
+  its 46 m). A wall only buried by inundated ground is not damaged
+  (`damaged_walls()`) and costs nothing. A slip no longer enlarges the wall it came with, and
+  `wall_enlarged_for_landslide` is gone from the settlement. A replacement can be
+  narrower than its slip. Undepreciated value, in step 0, stays at the failed
+  type's rate.
 - **One wall per slip** (**T-124**, 2026-10-13). `vul` lists each landslide
   that reached a property, and the retaining wall it failed with, if any. A
   slip that came with a wall is held by that wall's replacement; **every other
@@ -32,25 +46,42 @@ Every line rests on an assumption, and each is named here rather than buried.
   stands on. A land table from before the lists were written pools each
   claim's ground as one slip, held as before: by the claim's largest damaged
   wall, or by one new wall.
-- **A replacement is never smaller than the wall it replaces, but its slip
-  can make it larger** (2026-09-30). The wall the slip would need is sized as
-  below, and the replacement takes the larger size class and the longer length
-  of the two. Each wall is sized against its own slip only. Concrete stays
-  concrete; a timber wall takes the pile its new height calls for. UDV stays on
-  the wall as it was.
-- **A slip no damaged wall holds** is repaired by building a wall that was
-  never there. Its size comes from
-  `classify_landslide_wall_size()`, on the damaged area and — where an
-  inundated depth makes one available — the volume, taking the **larger** of
-  the two classes. Its length follows the **width of the failure's
-  evacuated insured ground** on the claim, not its deposit (2026-10-14; the
-  whole ground on a land table without `landslide_evacuated_areas`): ground goes
-  as a strip twice as wide as it is deep, plus a 2 m margin at each end, floored
-  at a 5 m minimum below which nobody mobilises
-  (`MIN_LANDSLIDE_WALL_LENGTH_M`). That floor is what stops the
-  pilot's many small slips -- a median of 17 m2 -- pricing at almost nothing.
-  The size bands were set at 10 m2 and 100 m2 on the reasoning that ground which
-  has failed is not retained by a garden edge.
+- **A slip that came with a wall does not enlarge it** (2026-10-14, replacing
+  the 2026-09-30 rule that took the larger class and length of the wall and the
+  slip). The wall is replaced as above. Concrete stays concrete; a timber wall
+  takes the pile its own height calls for. UDV stays on the wall as it was.
+- **A slip no damaged wall holds gets a new wall, if it evacuated ground on the
+  claim** (2026-10-14). A slip that **only buried** the claim -- its
+  `landslide_evacuated_areas` entry is 0 -- gets no wall: inundated ground alone
+  needs no wall, only clearing, so it keeps its spoil line and nothing else. A
+  land table without `landslide_evacuated_areas` measures each failure's whole
+  ground as its evacuated ground, so an older table still builds one; the pooled
+  ground of a table with no failure lists takes the claim's `evacuated_area`.
+- **A new wall is the mapped wall where there is one** (section 4 of the
+  property damage tweaks). `vul` lists, in the order of `landslide_ids`,
+  `landslide_wall_heights`, `landslide_wall_lengths` and
+  `landslide_wall_sources` (`mapped wall` or `slip`). A `mapped wall` failure is
+  built at the mapped unit's face height, over the length of the unit's stretch
+  on the claim alongside the failure's evacuated ground plus the margin rule's
+  1 m at each end, at least 3 m
+  (`landloss.loss.pricing.margin_rule_length_m()`), as timber pole on the pile
+  that height calls for (4.1: the undrawn wall's own type is not used). Its size
+  class, for the report, is the height's. A failure that shares the wall another
+  failure on the same unit and claim already has comes with a length of 0 and
+  builds nothing. The count of new walls built on a mapped wall is
+  `new_wall_from_mapped_count`, which the viewer's CSV carries.
+- **A `slip` failure, or a table without the lists, is sized from the slip.**
+  Its size comes from `classify_landslide_wall_size()`, on the damaged area and
+  -- where an inundated depth makes one available -- the volume, taking the
+  **larger** of the two classes. Its length follows the **width of the failure's
+  evacuated insured ground** on the claim, not its deposit (2026-10-14): ground
+  goes as a strip twice as wide as it is deep, plus a 1 m margin at each end,
+  floored at a 3 m minimum below which nobody mobilises
+  (`LANDSLIDE_WALL_MARGIN_M`, `MIN_LANDSLIDE_WALL_LENGTH_M`, both invented): the
+  same margin rule as every other wall that is built. That floor is what stops
+  the pilot's many small slips -- a median of 17 m2 -- pricing at almost
+  nothing. The size bands were set at 10 m2 and 100 m2 on the reasoning that
+  ground which has failed is not retained by a garden edge.
 - **Liquefaction land damage** carries its own Canterbury settled cost, which
   `vul` now sends through the contract as `Liq_LD_cost_excl_gst_nzd`. It is
   grossed up for GST here and added on top, being a different mechanism from
@@ -69,7 +100,7 @@ Every line rests on an assumption, and each is named here rather than buried.
 
 ## The invented wall is a cost, never an asset
 
-A wall that never existed has no undepreciated value, so it reaches the repair
+A wall that never existed, mapped or not, has no undepreciated value, so it reaches the repair
 cost and **never the cap**. The undepreciated value handed to `settle()` is the
 real walls' alone, taken from what step 0 priced. Adding the invented wall to
 the cap as well would raise the ceiling using the very thing being paid for.

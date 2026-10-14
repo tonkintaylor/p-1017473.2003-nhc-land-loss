@@ -6,6 +6,17 @@ Outputs: `temp/vul/research/clipped-wall-double-count/` (`summary.csv`, then
 `pairs-`, `claims-` and `samples-<extent>.csv` per extent, and
 `example-porirua-wall.csv`).
 
+**Script and results differ after the 2026-10-14 loss changes.** The figures
+below are from the run of that date, which priced a new wall on the slip's whole
+area at 2 m a side, at least 5 m. The script now prices new walls as loss s1
+does: only for a failure with evacuated ground, on the mapped wall (its height,
+its length through the margin rule) where vul listed one, else on the slip's
+evacuated ground with the 1 m margin and 3 m minimum. The 6.4 edge tolerance is
+pinned at 2 m (`EDGE_TOLERANCE_M`), as in the run, so its verdicts keep their
+definition. A rerun will therefore give different new wall costs, and its
+cross-check against the settlement file holds only for a settlement written
+after the loss s1 change.
+
 ## Question
 
 Check 6.3 of `.agents/plans/tweaks-to-property-damage.md`. A wall flagged

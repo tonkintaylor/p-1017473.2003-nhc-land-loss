@@ -39,6 +39,9 @@
 - [ ] Settle with `settle()` once both exist, and report the share of claims
       binding on each constraint, which is the module's stated validation.
 
+- [x] Value a wall over its damaged length plus the margin rule, no longer than
+      the wall, worked per wall (2026-10-14).
+
 ## Notes
 
 - **Steps number from 0 within their own module, and the numbers are unique

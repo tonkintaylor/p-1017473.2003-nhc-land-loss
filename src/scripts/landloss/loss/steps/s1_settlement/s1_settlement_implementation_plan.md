@@ -35,6 +35,18 @@
 - [ ] Distinguish a claim with no driveway routed from one with a short
       driveway. Both rate easy today.
 
+- [x] Replace a damaged wall at its own height and type over its damaged length
+      plus 1 m at each end, at least 3 m, worked once per wall; a slip no longer
+      enlarges it, and the new-wall fallback takes the same margin and minimum
+      (2026-10-14).
+
+- [x] Build a slip's new wall on the mapped wall where `vul` lists one, at its
+      height and its length alongside the failure's evacuated ground plus the
+      margin, as timber pole; a `slip` failure, or a table without the lists,
+      is sized from the slip as before. Build no new wall for a failure with
+      no evacuated ground on the claim, which keeps its clearing; count the
+      mapped ones in `new_wall_from_mapped_count` (section 4, 2026-10-14).
+
 ## Phase 3 — What the settlement still cannot see
 
 - [ ] Enabling works and compliance, which the wall rates do not carry, so

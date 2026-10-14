@@ -30,10 +30,13 @@
   case both reduce to that polygon's own rate.
 - A claim whose polygons disagree about the dwelling count is refused rather
   than resolved, because nothing here can say which count is right.
-- `damaged_walls()` keeps a wall carrying **any** of the three damage flags.
-  A damaged wall is replaced rather than repaired, so any flag being true is one
-  replacement, not one per flag. An undamaged wall is dropped rather than priced
-  at zero.
+- `damaged_walls()` keeps a wall carrying `is_damaged_by_shaking` or
+  `is_evacuated`. A damaged wall is replaced rather than repaired, so either flag
+  being true is one replacement, not one per flag. **Inundated ground does not
+  damage a wall** (T-158, the lead, 2026-10-14): a wall only buried by another
+  failure's deposit keeps `is_inundated` on the table, but is not valued, and its
+  deposit is cleared as land. An undamaged wall is dropped rather than priced at
+  zero.
 - Walls are summed over the claim before the sub-cap applies, because the
   sub-cap limits a claim's walls together rather than each wall on its own.
 
@@ -67,7 +70,18 @@
   their height calls for (`TIMBER_POLE_HEIGHT_BANDS_M`). The rates span a factor
   of 21, so the mapping is the largest single assumption in the wall half of the
   cap.
-- Face area is `rw_height` by `rw_length`.
+- **A wall is valued over the length it is rebuilt over, never more than it
+  had** (2026-10-14). Face area is `rw_height` by the valued length:
+  `min(max(damaged length + 2 x 1 m, 3 m), wall length)`, where the damaged
+  length is `rw_damaged_length` (the whole `rw_length` where the table has no
+  such column) and the wall length is the sum of its pieces' `rw_length`. It is
+  worked per wall by `landloss.loss.claims.wall_lengths_by_piece()` -- grouped
+  on `parent_rw_id`, shared over the pieces in proportion to their damaged
+  length -- so the margin is added once per wall. The cap and the repair price
+  the same metres, except that the cap never counts more wall than the property
+  had: a wall that failed whole is valued over its length and replaced over its
+  length plus 2 m. The 1 m margin and 3 m minimum are invented
+  (`LANDSLIDE_WALL_MARGIN_M`, `MIN_LANDSLIDE_WALL_LENGTH_M`).
 
 ## Output
 

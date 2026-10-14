@@ -881,3 +881,63 @@ def test_describe_stretches_counts_the_ground_a_wall_shares(capsys):
 def test_describe_stretches_raises_when_a_wall_has_more_stretch_than_line():
     with pytest.raises(ValueError, match="more stretch than line"):
         describe_one_wall(shared_stretch_rows([("A", 10.0, 10.0), ("B", 10.0, 10.0)]))
+
+
+CANDIDATE_STRETCH_COLUMNS = ("wall_line_id", "claim_id", "length_m", "geometry")
+
+
+def test_candidate_stretches_path_names_the_extent_only():
+    assert script.candidate_stretches_path(extent="wlg-pilot").name == (
+        "wall-candidate-stretches-pilot.geoparquet"
+    )
+    assert script.candidate_stretches_path(extent="full").name == (
+        "wall-candidate-stretches.geoparquet"
+    )
+
+
+def test_every_candidates_stretches_are_written_once_per_extent(redirected_script):
+    run(world_ids=[0, 1])
+
+    candidates = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+    assert candidates.columns.tolist() == list(CANDIDATE_STRETCH_COLUMNS)
+    assert candidates.crs == CRS
+    assert not candidates.duplicated(["wall_line_id", "claim_id"]).any()
+    assert candidates["length_m"].tolist() == pytest.approx(
+        candidates.geometry.length.tolist()
+    )
+    # A candidate with a stretch on a claim's insured land is in it, and the
+    # drawn walls' stretches are a part of it.
+    for world_id in (0, 1):
+        drawn = gpd.read_parquet(
+            script.insured_stretches_path(world_id, extent="wlg-pilot")
+        )
+        keys = set(zip(candidates["wall_line_id"], candidates["claim_id"], strict=True))
+        assert set(zip(drawn["wall_line_id"], drawn["claim_id"], strict=True)) <= keys
+
+
+def test_candidates_no_world_drew_still_have_their_stretches(
+    redirected_script, monkeypatch
+):
+    draws = script.wall_draws_path(extent="wlg-pilot")
+    every_wall_walled(redirected_script, world_ids=(0,), walled=False).to_parquet(draws)
+
+    run(world_ids=[0])
+
+    population = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
+    candidates = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+    assert population.empty
+    assert not candidates.empty
+    # The insured stretches of the world are empty, the candidates' are not.
+    assert gpd.read_parquet(script.insured_stretches_path(0, extent="wlg-pilot")).empty
+
+
+def test_the_candidate_stretches_are_the_same_whatever_the_worlds_run(
+    redirected_script,
+):
+    run(world_ids=[0])
+    first = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+    run(world_ids=[0, 1])
+    second = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+
+    assert first["wall_line_id"].tolist() == second["wall_line_id"].tolist()
+    assert first["length_m"].tolist() == pytest.approx(second["length_m"].tolist())

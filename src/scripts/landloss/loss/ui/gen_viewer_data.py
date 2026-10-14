@@ -45,12 +45,15 @@ import pyarrow.parquet as pq
 from landloss.domain.gst import GST_RATE
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    IMMINENT_EVACUATED_AREA_COLUMN,
     IS_DAMAGED_BY_SHAKING_COLUMN,
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LANDSLIDE_FAILURE_COLUMNS,
     LIQ_LD_STATE_COLUMN,
+    REINUNDATED_AREA_COLUMN,
+    REINUNDATED_VOLUME_COLUMN,
     RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
@@ -88,6 +91,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     LIQ_REPAIR_COLUMN,
     NEW_WALL_COUNT_COLUMN,
     NEW_WALL_FACE_COLUMN,
+    NEW_WALL_FROM_MAPPED_COLUMN,
     NEW_WALL_RATE_COLUMN,
     REPLACEMENT_WALL_FACE_COLUMN,
     REPLACEMENT_WALL_RATE_COLUMN,
@@ -302,6 +306,41 @@ def landslide_by_origin(land: pd.DataFrame, rw: pd.DataFrame) -> pd.DataFrame:
     return origin
 
 
+# What the page adds for imminent ground, per claim: the land table's column and
+# the CSV's, in the order of the contract's IMMINENT_LAND_COLUMNS it is read from.
+IMMINENT_VIEWER_COLUMNS = {
+    IMMINENT_EVACUATED_AREA_COLUMN: "imminent_evacuated_m2",
+    REINUNDATED_AREA_COLUMN: "reinundated_m2",
+    REINUNDATED_VOLUME_COLUMN: "reinundated_m3",
+}
+
+
+def imminent_by_claim(path) -> pd.DataFrame:
+    """Return each claim's imminent evacuated and re-inundated ground and volume.
+
+    Imminent ground is not settled (loss does not price it), so it is carried
+    apart from the damaged ground for the page to add (T-127). The land table
+    holds it as optional extra columns, so one written before them gives none.
+
+    Args:
+        path: The loss input's land table.
+
+    Returns:
+        ``imminent_evacuated_m2``, ``reinundated_m2`` and ``reinundated_m3``
+        per claim, summed over its polygons; empty, with those columns, when the
+        table has none of them.
+    """
+    names = pq.read_schema(path).names
+    present = [column for column in IMMINENT_VIEWER_COLUMNS if column in names]
+    if not present:
+        return pd.DataFrame(columns=list(IMMINENT_VIEWER_COLUMNS.values()), dtype=float)
+    land = pd.read_parquet(path, columns=[CLAIM_ID_COLUMN, *present])
+    by_claim = land.groupby(CLAIM_ID_COLUMN)[present].sum()
+    return by_claim.rename(columns=IMMINENT_VIEWER_COLUMNS).reindex(
+        columns=list(IMMINENT_VIEWER_COLUMNS.values()), fill_value=0.0
+    )
+
+
 def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return each claim's evacuated and inundated land, and what caused it.
 
@@ -324,11 +363,16 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
             landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
-        ``evacuated_m2``, ``inundated_m2``, ``cause``, ``has_landslide`` and
-        ``wall_landslide_m2`` per claim that has any. The last is the ground
-        that came down with the claim's own walls, summed over failures and
-        capped at the claim's landslide ground; it is not additive with
-        ``evacuated_m2`` or ``inundated_m2``.
+        ``evacuated_m2``, ``inundated_m2``, ``cause``, ``has_landslide``,
+        ``wall_landslide_m2``, ``imminent_evacuated_m2``, ``reinundated_m2`` and
+        ``reinundated_m3`` per claim that has any. ``wall_landslide_m2`` is the
+        ground that came down with the claim's own walls, summed over failures
+        and capped at the claim's landslide ground; it is not additive with
+        ``evacuated_m2`` or ``inundated_m2``. The imminent evacuated ground is
+        apart from both, the re-inundated ground is the same footprint as
+        ground already inundated, and its volume is area by depth; none is
+        settled in Python and zeros stand for a land table written before them
+        (T-127).
 
     Raises:
         ValueError: If the loss input's land or wall table lacks a column read
@@ -353,10 +397,12 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
         ),
         columns=[CLAIM_ID_COLUMN, "outcome"],
     )
+    land_path = world_loss_input_path("land", world_id, realisation_id, extent=extent)
     land_in = read_loss_input(
-        world_loss_input_path("land", world_id, realisation_id, extent=extent),
+        land_path,
         [CLAIM_ID_COLUMN, LANDSLIDE_AREA_COLUMN, *LANDSLIDE_FAILURE_COLUMNS],
     )
+    imminent = imminent_by_claim(land_path)
     rw_in = read_loss_input(
         world_loss_input_path("rw", world_id, realisation_id, extent=extent),
         [
@@ -384,7 +430,14 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
     by_landslide = set(origin.index[origin["other_landslide_m2"] > 0])
     by_wall |= set(origin.index[origin["wall_landslide_m2"] > 0])
     # A claim with any ground stays in the table, whatever typed it.
-    land = land.reindex(sorted(by_liquefaction | with_ground | by_wall), fill_value=0)
+    # A claim only imminent ground reaches is kept too, with no damaged ground.
+    kept = (
+        by_liquefaction
+        | with_ground
+        | by_wall
+        | set(imminent.index[imminent.any(axis=1)])
+    )
+    land = land.reindex(sorted(kept), fill_value=0)
     land["cause"] = [
         cause_label(
             liquefaction=claim in by_liquefaction,
@@ -397,6 +450,9 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
     land["has_landslide"] = land.index.isin(by_landslide).astype(int)
     land["wall_landslide_m2"] = (
         origin["wall_landslide_m2"].reindex(land.index).fillna(0.0)
+    )
+    land[list(imminent.columns)] = (
+        imminent.reindex(land.index).fillna(0.0).astype(float)
     )
     return land.round(4)
 
@@ -577,6 +633,30 @@ def damaged_structure_counts(
     )
 
 
+def damaged_wall_length_by_claim(rw: pd.DataFrame) -> pd.Series:
+    """Return the length of each claim's walls that are damaged, in metres.
+
+    The sum over the claim's damaged pieces of the length each is damaged over
+    (T-158): the clipped length of a wall a neighbour's landslide reached, the
+    whole length of one that failed in shaking, and the whole length of every
+    piece where the table has no ``rw_damaged_length``. It is the length the
+    page shows, before the margin the replacement adds
+    (:func:`~landloss.loss.claims.wall_lengths_by_piece`).
+
+    Args:
+        rw: The loss input's retaining wall table.
+
+    Returns:
+        Metres per claim, rounded as the viewer's other areas and lengths are;
+        a claim with no damaged wall does not appear.
+    """
+    damaged = loss_claims.damaged_walls(rw)
+    lengths = loss_claims.wall_lengths_by_piece(damaged)[
+        loss_claims.DAMAGED_LENGTH_COLUMN
+    ]
+    return lengths.groupby(damaged[CLAIM_ID_COLUMN]).sum().round(4)
+
+
 def viewer_rows(
     claims: pd.DataFrame, wall_value: pd.Series, liq_state: pd.Series
 ) -> pd.DataFrame:
@@ -621,6 +701,15 @@ def viewer_rows(
             "new_wall_face_m2": claims[NEW_WALL_FACE_COLUMN].round(6),
             "new_wall_rate_excl_gst": claims[NEW_WALL_RATE_COLUMN].round(6),
             "new_wall_count": claims[NEW_WALL_COUNT_COLUMN].astype(int),
+            # How many of them stand on a mapped wall (the height and length of
+            # the wall unit the slip's polygon stands on) rather than being
+            # sized from the slip, for the page to say. Counts only; the face
+            # and rate above already price them.
+            # A settlement written before loss s1 counted them has no column:
+            # none are counted.
+            "new_wall_from_mapped_count": claims.get(
+                NEW_WALL_FROM_MAPPED_COLUMN, pd.Series(0, index=claims.index)
+            ).astype(int),
             "spoil_m3": claims[SPOIL_VOLUME_COLUMN].round(6),
             # The Canterbury cost is a settled amount, so it arrives whole --
             # but in 2010/2011 dollars and before GST, because the page applies
@@ -774,9 +863,13 @@ def main(*, extent, world_ids, realisation_ids):
     )
     land = damaged_land(world_id, realisation_id, extent=extent)
     rows = rows.join(land)
-    rows[["evacuated_m2", "inundated_m2", "wall_landslide_m2"]] = rows[
-        ["evacuated_m2", "inundated_m2", "wall_landslide_m2"]
-    ].fillna(0.0)
+    ground = [
+        "evacuated_m2",
+        "inundated_m2",
+        "wall_landslide_m2",
+        *IMMINENT_VIEWER_COLUMNS.values(),
+    ]
+    rows[ground] = rows[ground].fillna(0.0)
     rows["cause"] = rows["cause"].fillna("")
     ejecta = liquefaction_ejecta(realisation_id, extent=extent)
     rows = rows.join(ejecta)
@@ -792,6 +885,9 @@ def main(*, extent, world_ids, realisation_ids):
     rows = rows.join(counts)
     for column in counts.columns:
         rows[column] = rows[column].fillna(0).astype(int)
+    rows["damaged_wall_length_m"] = (
+        damaged_wall_length_by_claim(rw).reindex(rows.index).fillna(0.0)
+    )
     method = liquefaction_method(claims, realisation_id, extent=extent)
     print(f"  Liquefaction costs: {method}")
     rows["liq_method"] = method

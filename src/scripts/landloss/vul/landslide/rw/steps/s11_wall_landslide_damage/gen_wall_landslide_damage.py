@@ -19,8 +19,17 @@ two are OR-ed. A flat-land wall has no outcome row and takes its flags from
 geometry alone; its shaking flag is the shaking step's, applied when the loss
 tables are built.
 
-**No cost is attached.** The flags are what the loss module prices, and any
-flag true means one replacement; which flag is set only attributes the cause.
+**How much of a wall is damaged** is written beside the flags (T-158): a wall
+that fails in shaking is damaged over its whole line, a wall damaged by
+landslide ground only over the length of its line inside the evacuated ground
+of every failure other than its own polygon, and a wall only buried by
+inundated ground not at all (``is_inundated`` stays on it for information).
+``damaged_line`` is that stretch, for vul step 10 to place on each claim's
+insured stretch; ``damaged_length_m`` is its length, and the evacuated and
+inundated lengths are kept apart (``landloss.vul.landslide.flags.measure_wall_damage``).
+
+**No cost is attached.** The flags and lengths are what the loss module
+prices; which flag is set only attributes the cause.
 
 What it runs over comes from ``config.py`` beside it.
 """
@@ -32,18 +41,24 @@ import pandas as pd
 
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    IS_DAMAGED_BY_SHAKING_COLUMN,
+    IS_EVACUATED_COLUMN,
+    IS_INUNDATED_COLUMN,
     REALISATION_ID_COLUMN,
     RW_ID_COLUMN,
 )
 from landloss.hazard.landslide.land_class import LAND_CLASS_COLUMN
+from landloss.hazard.landslide.urban.realisation import ABSORBED, SUPERSEDED
 from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.landslide.flags import (
+    DAMAGED_LENGTH_COLUMN,
+    DAMAGED_LINE_COLUMN,
     OUTCOME_COLUMN,
     SLOPE_ID_COLUMN,
     WALL_FLAG_COLUMNS,
     wall_flags,
 )
-from landloss.vul.loss_input import WORLD_ID_COLUMN
+from landloss.vul.loss_input import MIN_DAMAGED_PIECE_LENGTH_M, WORLD_ID_COLUMN
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     wall_population_path,
 )
@@ -121,6 +136,40 @@ def describe_flags(flags, walls, outcomes):
     print(f"  any flag, so one replacement in loss: {int(any_flag.sum()):,}")
 
 
+def describe_damage(flags):
+    """Print how many walls are damaged over part of their line, and how much."""
+    shaken = flags[IS_DAMAGED_BY_SHAKING_COLUMN]
+    landslide = ~shaken & (flags[DAMAGED_LENGTH_COLUMN] > 0)
+    print(RULE)
+    print(
+        f"Damaged length: {int(shaken.sum()):,} walls over their whole line "
+        f"(shaking); {int(landslide.sum()):,} walls over "
+        f"{flags.loc[landslide, DAMAGED_LENGTH_COLUMN].sum():,.0f} m of their "
+        "line inside evacuated ground"
+    )
+    buried = (
+        ~shaken
+        & flags[IS_INUNDATED_COLUMN]
+        & ~flags[IS_EVACUATED_COLUMN]
+        & (flags[DAMAGED_LENGTH_COLUMN] == 0)
+    )
+    print(f"  {int(buried.sum()):,} walls only buried by inundated ground: not damaged")
+    # A wall flagged by its outcome alone (absorbed into, or superseded by,
+    # another failure) is damaged only where that ground covers its line. One
+    # the ground does not cover is cleared by vul s10's sliver rule and goes
+    # unreplaced, so the count is read against the walls replaced before.
+    by_outcome = flags[OUTCOME_COLUMN].isin([ABSORBED, SUPERSEDED]) & ~shaken
+    uncovered = by_outcome & (
+        flags[DAMAGED_LENGTH_COLUMN] <= MIN_DAMAGED_PIECE_LENGTH_M
+    )
+    print(
+        f"  {int(by_outcome.sum()):,} walls flagged by an absorbed or superseded "
+        f"outcome; {int(uncovered.sum()):,} of them have no more than "
+        f"{MIN_DAMAGED_PIECE_LENGTH_M:g} m of line inside the ground and are "
+        "cleared as undamaged in vul s10"
+    )
+
+
 def main(*, extent, world_ids, realisation_ids):
     """Write the three contract flags per wall, per world and earthquake.
 
@@ -156,16 +205,18 @@ def main(*, extent, world_ids, realisation_ids):
             flags.insert(3, CLAIM_ID_COLUMN, flags[RW_ID_COLUMN].map(claims))
             describe_landslides(landslides)
             describe_flags(flags, walls, outcomes)
+            describe_damage(flags)
 
             out_path = wall_landslide_damage_path(
                 world_id, realisation_id, extent=extent
             )
             out_path.parent.mkdir(parents=True, exist_ok=True)
+            flags = gpd.GeoDataFrame(flags, geometry=DAMAGED_LINE_COLUMN, crs=walls.crs)
             flags.to_parquet(out_path)
             print(f"Wrote {len(flags):,} rows to {out_path}")
 
     print(RULE)
-    print("Flags only. Nothing here is priced.")
+    print("Flags and damaged lengths only. Nothing here is priced.")
 
 
 if __name__ == "__main__":

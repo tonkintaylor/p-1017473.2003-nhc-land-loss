@@ -103,8 +103,9 @@ The settlement core is built and is the only part that needed no upstream data.
 - **The aggregation onto `claim_id` is built**, which was item 5 of Next.
   `landloss.loss.claims` gained `land_by_claim()`, `damaged_area_m2()` and
   `damaged_walls()`. Polygon areas add; the market rate is averaged weighted by
-  the damaged area it values; a wall carrying any of the three flags is one
-  replacement.
+  the damaged area it values; a wall damaged by shaking or evacuated is one
+  replacement, and one carrying only the inundated flag is not damaged
+  (2026-10-14).
 - **Step 1 settles.** It prices a damaged wall's replacement, treats that wall
   as also reinstating the land it retained, invents a wall where landslide
   ground has none, carries the Canterbury liquefaction cost through the
@@ -133,6 +134,27 @@ The settlement core is built and is the only part that needed no upstream data.
   retaining wall failure, not landslide, so such a claim is no longer typed
   Combination. `wall_landslide_m2` carries that ground; costs do not move. A
   land table without the per-failure lists raises (rerun vul step 10).
+- **Walls are sized per wall by one margin rule (2026-10-14).** A replaced wall
+  keeps its own height and type and is replaced over its damaged length plus
+  1 m at each end, at least 3 m, counted once per wall and shared over its
+  pieces (`wall_lengths_by_piece`, `margin_rule_length_m`). Step 0 values the
+  same metres, capped at the wall's length. A slip no longer enlarges the wall
+  it came with, and `wall_enlarged_for_landslide` is gone from the settlement.
+  A table without `rw_damaged_length` settles at the whole length. Built and
+  unit tested; not yet rerun.
+- **A slip's new wall is the mapped wall where there is one (2026-10-14).** A
+  failure no damaged wall holds is built at the mapped wall's height over its
+  stretch alongside the failure's evacuated ground plus the margin, as timber
+  pole, where vul step 10 listed one (`landslide_wall_heights`, `_lengths` and
+  `_sources`); otherwise it is sized from the slip with the 1 m and 3 m
+  numbers. A slip with no evacuated ground on the claim gets no new wall, only
+  its clearing. The viewer CSV gains `new_wall_from_mapped_count` and
+  `damaged_wall_length_m`. Built and unit tested; not yet rerun.
+- **Imminent ground reaches the viewer CSV but step 1 does not settle it
+  (2026-10-14).** The CSV carries `imminent_evacuated_m2`, `reinundated_m2` and
+  `reinundated_m3`; no cost, cap or new wall moves, and
+  `include_imminent_damage` stays unused in Python. The switch (**T-127**) is
+  the page's.
 
 ## Next
 
@@ -167,14 +189,16 @@ The settlement core is built and is the only part that needed no upstream data.
     Gilbert unless noted):
     - Price a failed wall's replacement as timber pole whatever failed, except
       block, which may go back as block, and anchored sprayed concrete, which
-      is replaced in kind (**T-122**).
+      is replaced in kind (**T-122**; the Python side is Maxim Millen's under
+      the 2026-10-14 split, the page side Perrie Gilbert's).
     - Split each claim's damaged land into inundated and evacuated in the
       viewer, and label its damage as liquefaction, wall failure, landslide or
       a combination (**T-123**); split by origin done in the CSV.
     - Show the wall repair cost apart from inundation removal (**T-125**), and
       retitle professional fees as including consents (**T-126**).
     - Carry imminent risk through to the outputs, with a switch to exclude it
-      (**T-127**).
+      (**T-127**; the Python side is Maxim Millen's and the CSV carries it from
+      2026-10-14, the page's switch is Perrie Gilbert's).
     - Check the largest claims for what drives them (**T-129**) and the pilot
       total of $163 million under the current Act (**T-130**).
     - Add the percentage change against the current Act per land cap, with
@@ -215,10 +239,10 @@ The settlement core is built and is the only part that needed no upstream data.
   `reinforced_concrete_post_1992` on MSE rather than Soil Nail. The timber pole
   height bands are assumed.
 - **Wall height (I-14).** An existing wall is priced at the height exposure drew
-  for it, `rw_height`, the DEM face height of its line. A wall invented for a
-  landslide still takes its size class's set height, 0.75 m, 1.75 m or 2.75 m,
-  and a replacement a slip enlarges takes the taller of its own height and the
-  slip's class height.
+  for it, `rw_height`, the DEM face height of its line, and so is its
+  replacement (2026-10-14; a slip no longer enlarges it). A wall invented for a
+  landslide takes its mapped wall's height where it has one, else its size
+  class's set height, 0.75 m, 1.75 m or 2.75 m.
 - **How the per-cause damage flags combine (Q-06, Q-09).** A wall carries a flag
   each for shaking, evacuation and inundation. Since a damaged structure is
   replaced rather than repaired, any flag being true is one replacement, not
@@ -330,6 +354,8 @@ Raised by Perrie Gilbert, 2026-09-24. Not yet numbered in
   the slip would need, so it is never smaller than what was there but can be
   larger. Where a claim has several damaged walls only the largest is compared.
   Four of the pilot's five such claims are enlarged, adding $123k of repair.
+  **Superseded 2026-10-14:** the replacement keeps its own height and type, and
+  its length follows the margin rule.
 - **Decided 2026-10-13: one wall per slip (T-124).** `vul` lists each
   landslide on a property and the wall it failed with, if any. A slip that
   came with a wall is held by that wall's replacement, sized against that slip

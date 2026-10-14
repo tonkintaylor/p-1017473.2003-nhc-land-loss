@@ -9,8 +9,8 @@ urban model alike, carries one of three classes in :data:`LAND_CLASS_COLUMN`:
   on somebody else's property entirely.
 - :data:`IMMINENT`: ground left standing immediately behind an urban failure's
   headscarp, at risk of going next. Only the urban model writes it, and the
-  land damage step ignores it until the register decides how it is settled
-  (**T-45**).
+  land damage step measures it apart from the damaged ground and carries it
+  to the viewer rather than settling it (**T-45**).
 
 Evacuated polygons never overlap one another; inundated and imminent polygons
 may. The vocabulary lives here, in hazard, so that it is read downstream in the

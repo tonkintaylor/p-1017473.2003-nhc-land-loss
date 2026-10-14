@@ -44,6 +44,13 @@ CROSSING_COVERAGE_TOLERANCE_M = 1e-3
 # wall for the two to count as the same ground, in metres: coordinate noise on
 # a wall lying along a shared boundary, not a distance a wall is ever off by.
 SHARED_STRETCH_TOLERANCE_M = 0.01
+# The grid a wall's stretches are noded on, in metres. Two claims' stretches of
+# one wall are cut from it by different regions, so where they overlap their
+# vertices differ by float noise, and an unsnapped union keeps both copies of
+# that ground as separate pieces (Wellington pilot, 2026-10-14: WU0000893's
+# three stretches noded to 32.1 m on a 13.5 m wall). A micrometre snaps the
+# copies together without moving any line by a length that matters.
+STRETCH_NODING_GRID_M = 1e-6
 
 
 def _check_frames(assets: gpd.GeoDataFrame, insured: gpd.GeoDataFrame) -> None:
@@ -215,7 +222,7 @@ def insured_support_regions(
     return out[~out.geometry.is_empty].reset_index(drop=True)
 
 
-def _shared_lengths(wall_position: pd.Series, lines: pd.Series) -> np.ndarray:
+def shared_lengths(wall_position: pd.Series, lines: pd.Series) -> np.ndarray:
     """Return each stretch's length, with ground in several stretches shared.
 
     A wall's stretches are noded together, so each piece lies wholly in one or
@@ -235,7 +242,9 @@ def _shared_lengths(wall_position: pd.Series, lines: pd.Series) -> np.ndarray:
     walls, counts = np.unique(positions, return_counts=True)
     for wall in walls[counts > 1]:
         rows = np.flatnonzero(positions == wall)
-        noded = shapely.get_parts(shapely.union_all(geoms[rows]))
+        noded = shapely.get_parts(
+            shapely.union_all(geoms[rows], grid_size=STRETCH_NODING_GRID_M)
+        )
         noded = noded[shapely.get_type_id(noded) == 1]
         pieces = shapely.length(noded)
         middles = shapely.line_interpolate_point(noded, 0.5, normalized=True)
@@ -318,7 +327,7 @@ def cut_walls_to_insured_stretches(
         }
     )
     out = out[out["geometry"].notna()]
-    out["length_m"] = _shared_lengths(out["wall_position"], out["geometry"])
+    out["length_m"] = shared_lengths(out["wall_position"], out["geometry"])
     out = out[out["length_m"] >= min_length_m]
     out = out.sort_values(
         ["wall_position", "length_m", id_column], ascending=[True, False, True]

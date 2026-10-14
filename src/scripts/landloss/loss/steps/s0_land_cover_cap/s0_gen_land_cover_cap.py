@@ -47,7 +47,6 @@ from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
     REALISATION_ID_COLUMN,
     RW_HEIGHT_COLUMN,
-    RW_LENGTH_COLUMN,
     RW_TYPE_COLUMN,
 )
 from landloss.exposure.land.land_value import load_base_rates
@@ -171,6 +170,14 @@ def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
     Walls are summed over the claim, because the sub-cap applies to a claim's
     walls together rather than to each wall on its own.
 
+    **A wall is valued over the length it is rebuilt over, but never more than
+    it had** (2026-10-14): its damaged length plus the margin at each end, at
+    least the minimum, and no longer than the wall itself
+    (:func:`~landloss.loss.claims.wall_lengths_by_piece`). It is worked per
+    wall and shared over the wall's pieces, so the cap and the repair price the
+    same metres, except that the cap never counts more wall than the property
+    had.
+
     Args:
         rw: The contract's retaining wall table.
         policy: The settings this scenario runs under.
@@ -183,7 +190,10 @@ def wall_udv_by_claim(rw: pd.DataFrame, *, policy: PolicySettings) -> pd.Series:
     if damaged.empty:
         return pd.Series(dtype=float)
     height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)
-    face_area = wall_face_area_m2(height, damaged[RW_LENGTH_COLUMN].to_numpy())
+    valued_length = loss_claims.wall_lengths_by_piece(damaged)[
+        loss_claims.VALUED_LENGTH_COLUMN
+    ]
+    face_area = wall_face_area_m2(height, valued_length.to_numpy())
     walls = pd.DataFrame(
         {
             CLAIM_ID_COLUMN: damaged[CLAIM_ID_COLUMN].to_numpy(),
