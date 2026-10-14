@@ -133,8 +133,12 @@ RUN_GEN_WALL_AGE_FIRST = "run gen_wall_age.py in exposure rw step 6 first"
 
 RULE = "-" * 72
 # A wall's stretches may exceed its line by this much (metres) before it counts
-# as more stretch than line: floating-point noise from cutting the line.
-STRETCH_LENGTH_TOLERANCE_M = 1e-6
+# as more stretch than line: floating-point noise from cutting the line, and
+# from noding the stretches on landloss.exposure.coverage's micrometre grid,
+# which can add a micrometre to a wall (Wellington City, 2026-10-14: three walls
+# over by 1.0 to 1.07e-6 m). A millimetre is far above that noise and far below
+# ground counted twice, which is metres.
+STRETCH_LENGTH_TOLERANCE_M = 1e-3
 
 
 def wall_population_path(world_id, *, extent):

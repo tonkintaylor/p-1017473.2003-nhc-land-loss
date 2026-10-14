@@ -24,8 +24,11 @@ answer leans on them; at a scale of one each, it is the module's answer, less
 GST.
 
 The land cap scenarios NHC is weighing are drawn over the main histogram, with
-the share of claims above each cap and the total settled under it. Those are
-the page's own arithmetic over the same rows, not something this file carries.
+the share of claims above each cap and the total settled under it. The page also
+compares a scenario the user designs -- a fixed land cap per dwelling, land
+structure sub-caps on top of it or none, and its own excess -- with the Act as
+the baseline, figure by figure and claim by claim. Those are the page's own
+arithmetic over the same rows, not something this file carries.
 
 That split is also what keeps the page honest. It cannot show a settlement that
 the module would not produce, because it is running the same arithmetic on the
@@ -539,13 +542,12 @@ def viewer_version() -> str:
 
     The first six characters of the commit they are built from and the date,
     so an issued copy can be traced to the code that made it. Uncommitted
-    changes under ``src`` mean the commit alone does not say what was issued,
-    so the version says so.
+    changes are not flagged: the page goes to the client, and a warning there
+    would only confuse. Build from a clean tree to issue.
 
     Returns:
-        For example ``v1a2b3c, built 2026-10-09``, ending ``, with uncommitted
-        changes`` when there are any, or ``unknown`` in place of the commit
-        when git cannot be read.
+        For example ``v1a2b3c, built 2026-10-09``, or ``unknown`` in place of
+        the commit when git cannot be read.
     """
 
     def git(*args: str) -> str:
@@ -560,10 +562,7 @@ def viewer_version() -> str:
 
     commit = git("rev-parse", "--short=6", "HEAD")
     built = datetime.now(UTC).astimezone().date().isoformat()
-    version = f"v{commit}, built {built}" if commit else f"unknown, built {built}"
-    if git("status", "--porcelain", "--", "src"):
-        version += ", with uncommitted changes"
-    return version
+    return f"v{commit}, built {built}" if commit else f"unknown, built {built}"
 
 
 def write_viewer(out_dir, version: str):

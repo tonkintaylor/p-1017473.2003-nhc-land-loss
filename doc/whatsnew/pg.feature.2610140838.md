@@ -1,0 +1,1 @@
+In the loss viewer, the selected claim's detail now sits in its own card under the map, the dots it is chosen from, rather than at the foot of the summary column. Rebuild the viewer to issue the page.

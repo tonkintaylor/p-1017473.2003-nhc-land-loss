@@ -1,0 +1,1 @@
+The quick comparisons in the loss viewer can be turned off, with "Show quick comparisons" at the bottom of the scenario panel: applied, it takes the fixed caps off the histogram, out of the land cap tables and out of the selected claim. Rebuild the viewer to issue the page.
