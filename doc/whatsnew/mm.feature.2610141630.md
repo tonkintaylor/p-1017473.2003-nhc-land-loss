@@ -1,0 +1,1 @@
+Landslide spoil is now cleared per failure: loss step 1 adds each failure's inundated area at its own depth, so overlapping deposits are each cleared, and the earthworks rating reads the same volume; an older vul s11 run's absorbed and superseded walls now count as failed with their polygon, over their whole length. Loss step 1 needs rerunning.

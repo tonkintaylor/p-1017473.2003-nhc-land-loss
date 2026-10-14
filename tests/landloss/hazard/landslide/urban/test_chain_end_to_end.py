@@ -659,13 +659,13 @@ def run_chain(root):
     outcomes = pd.read_parquet(
         realisation_step.urban_wall_outcome_path(WORLD, EARTHQUAKE, extent=extent)
     )
-    read_model, _, pga, read_large = realisation_step.read_inputs(
+    read_model, _, pga, _read_large = realisation_step.read_inputs(
         WORLD, EARTHQUAKE, extent=extent
     )
     rng = realisation_seed(
         constants.BASE_SEED, EARTHQUAKE, urban.URBAN_STREAM, world_id=WORLD
     )
-    realised = realisation_step.realise(read_model, pga, read_large, rng)
+    realised_draws = realisation_step.realise(read_model, pga, rng)
 
     # Vul shaking rw step 9, flat-land walls only.
     states = write(
@@ -715,10 +715,7 @@ def run_chain(root):
         "walls": walls,
         "drawn": drawn,
         "model": model,
-        "draws": realised.draws,
-        "absorbed_by": realised.absorbed_by,
-        "superseded_by": realised.superseded_by,
-        "survivors": realised.survivors,
+        "draws": realised_draws,
         "combined": combined,
         "outcomes": outcomes,
         "states": states,
@@ -979,7 +976,7 @@ def test_every_polygon_fails_under_the_forced_shaking(chain):
     assert (chain["draws"][urban.P_FAIL_COLUMN] > 0.999).all()
 
 
-def test_the_nested_pair_resolves_largest_first(chain):
+def test_the_nested_pair_both_survive(chain):
     face = chain["slope_of"]["face"]
     nested = chain["slope_of"]["nested"]
     model = chain["model"]
@@ -987,34 +984,25 @@ def test_the_nested_pair_resolves_largest_first(chain):
         geometry.NO_WALL
     )
 
-    face_row, nested_row = model_row(chain, "face"), model_row(chain, "nested")
-    assert chain["absorbed_by"][nested_row] == face_row
-    assert chain["absorbed_by"][face_row] == urban.NONE
-    assert chain["survivors"][face_row]
-    assert not chain["survivors"][nested_row]
-    assert face in urban_landslide_ids(chain)
-    assert nested not in urban_landslide_ids(chain)
+    assert chain["draws"][urban.FAILED_COLUMN].iloc[model_row(chain, "face")]
+    assert chain["draws"][urban.FAILED_COLUMN].iloc[model_row(chain, "nested")]
+    assert {face, nested} <= urban_landslide_ids(chain)
 
 
-def test_an_urban_failure_under_the_large_polygon_is_superseded_and_counted_once(
-    chain,
-):
+def test_an_urban_failure_under_the_large_polygon_survives_beside_it(chain):
     row = model_row(chain, "under_large")
     assert chain["draws"][urban.FAILED_COLUMN].iloc[row]
-    assert chain["superseded_by"][row] == 0
-    assert chain["slope_of"]["under_large"] not in urban_landslide_ids(chain)
+    assert chain["slope_of"]["under_large"] in urban_landslide_ids(chain)
 
-    # Its evacuated ground is in the combined realisation exactly once, in the
-    # large polygon.
+    # Its evacuated ground is written in the large polygon and in its own.
     evacuated = chain["model"][urban.EVACUATED_GEOMETRY_COLUMN].iloc[row]
     combined = chain["combined"]
     evacuated_rows = combined[combined[LAND_CLASS_COLUMN] == EVACUATED]
     shared = shapely.area(
         shapely.intersection(evacuated_rows.geometry.to_numpy(), evacuated)
     )
-    sharing = evacuated_rows[shared > urban.SHARED_GROUND_TOLERANCE_M2]
-    assert len(sharing) == 1
-    assert sharing[urban.POPULATION_COLUMN].iloc[0] == urban.LARGE
+    sharing = evacuated_rows[shared > 0.01]
+    assert set(sharing[urban.POPULATION_COLUMN]) == {urban.LARGE, urban.URBAN}
 
 
 def test_the_wall_on_the_failed_polygon_is_flagged(chain):
@@ -1086,16 +1074,6 @@ def test_the_retaining_wall_table_carries_every_insured_wall_once(chain):
     assert sorted(rw[RW_ID_COLUMN]) == sorted(walls[RW_ID_COLUMN])
     insured_lines = {chain["unit_ids"][label] for label in ("toe", "flat")}
     assert set(walls[urban.WALL_LINE_ID_COLUMN]) == insured_lines
-
-
-def test_evacuated_polygons_in_the_combined_realisation_never_overlap(chain):
-    combined = chain["combined"]
-    evacuated = combined[combined[LAND_CLASS_COLUMN] == EVACUATED].geometry.to_numpy()
-    assert len(evacuated) == 2
-    for i in range(len(evacuated)):
-        for j in range(i + 1, len(evacuated)):
-            shared = shapely.area(shapely.intersection(evacuated[i], evacuated[j]))
-            assert shared <= urban.SHARED_GROUND_TOLERANCE_M2
 
 
 def test_the_land_table_measures_the_surviving_failures_on_the_insured_land(chain):

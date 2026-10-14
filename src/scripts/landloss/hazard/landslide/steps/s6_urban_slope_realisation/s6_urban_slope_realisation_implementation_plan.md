@@ -15,19 +15,12 @@ the contract is sections 3.10, 5 and 7.11 of
 - [x] Evaluate each row's lognormal fragility and draw one uniform per row on
       the `"urban"` stream seeded on the earthquake and the world
       (`realisation.draw_failures`).
-- [x] Supersede every failed polygon whose evacuated polygon shares ground
-      with a large-model evacuated polygon (`realisation.supersede_by_large`;
-      failed polygons only since the review, see below).
-- [x] Absorb nested failures largest first among the failed polygons that
-      were not superseded, an absorbed polygon absorbing nothing, as landslide step 3's
-      `drop_overlapping` does (`realisation.resolve_overlaps`). Supersession
-      runs first so every absorber is a survivor in the combined file; with
-      absorption first, a polygon absorbed by an absorber that was then
-      superseded, lying outside the large landslide, was counted nowhere.
-- [x] Polygons that only touch along an edge or at a corner share no ground:
-      neither absorbs nor supersedes on contact alone
-      (`realisation.SHARED_GROUND_TOLERANCE_M2`).
-- [x] Write the survivors' evacuated, inundated and imminent polygons beside
+- [x] Keep every failed polygon: no supersession by a large-model landslide
+      and no absorption between urban polygons (the lead, 2026-10-14; this
+      replaced `supersede_by_large`, `resolve_overlaps` and
+      `SHARED_GROUND_TOLERANCE_M2`, built earlier, and the `taken_by` column).
+      Shared ground is counted once downstream.
+- [x] Write the failed polygons' evacuated, inundated and imminent polygons beside
       the large-model rows as one combined realisation carrying both ids
       (`realisation.to_landslide_rows`, `realisation.combine_with_large`).
 - [x] Write the wall outcome table spined on the world's sloping-land walls
@@ -45,16 +38,13 @@ the contract is sections 3.10, 5 and 7.11 of
       same `wall_line_id`, so a wall on polygons at several scales fails or
       stands once, at the published rate, rather than at 1 − Π(1 − p_i).
       Rows without a wall keep their own uniform.
-- [x] Only a failed polygon is superseded (decision 35): `realise()` runs
-      `supersede_by_large` on the failed rows' evacuated geometry and maps the
-      result onto every model row, `NONE` where the row did not fail; the
-      wall outcome table reads a polygon that did not fail as `standing`
-      whatever position it is handed. A wall a large slide reaches is left to
-      vul step 11's line intersection.
+- [x] A polygon that did not fail is `standing` whatever a large slide does
+      around it (decision 35). A wall a large slide reaches is left to vul
+      step 11's line intersection. (The supersession half of decision 35 was
+      removed 2026-10-14.)
 - [x] Tests: two rows on one `wall_line_id` read one uniform and fail or stand
       together while rows without a wall keep their own; a polygon that did
-      not fail under a large slide stands, and a failed one there is
-      superseded with `taken_by` set.
+      not fail under a large slide stands, and a failed one there survives.
 
 ## Review corrections (2026-10-02, second review; complete)
 
@@ -117,12 +107,8 @@ lead, follows from the face polygons (faces plan, phase 3):
       road, and the imminent polygon the band to a 35° repose line from the
       toe, both written by the faces step [de_vilder_2022; de_vilder_2024].
       No change to `to_landslide_rows`.
-- [ ] **Absorption and the inundated strip.** Under the face rules an
-      inundated strip routinely runs past the evacuated ground of the polygon
-      that absorbs it, so the open question below ("an inundated strip of an
-      absorbed failure ... is lost with it") matters more than before. The
-      proposal is to keep the absorbed polygon's inundated ground where it
-      falls outside the absorber's.
+- [x] **Absorption and the inundated strip** no longer arises: nothing is
+      absorbed (2026-10-14), so an inundated strip is never lost with an absorber.
 
 ## Phase 3 — Checks
 
@@ -165,15 +151,11 @@ lead, follows from the face polygons (faces plan, phase 3):
   draw would stay right if the PGA and PGV realisations are ever drawn
   apart. Landslide step 5 would then carry the wall median in g, and this step would
   read both fields.
-- Absorption and supersession are tested on the evacuated geometry only; an
-  inundated strip of an absorbed failure that reaches past its absorber's is
-  lost with it. Whether that ground should still count is open.
-- A wall whose line sits on polygons at several scales takes the highest-ranked
-  outcome among them (superseded, failed with polygon, absorbed, standing); a
-  rule by scale, keeping the finest polygon's outcome, is the alternative.
-- The run writes no per-polygon outcome, so the figure colours absorbed
-  and superseded polygons only where a wall records them; a per-polygon
-  table from the run would colour the unwalled ones too.
+- A wall whose line sits on polygons at several scales is
+  `failed_with_polygon` if any of its polygons failed; a rule by scale,
+  keeping the finest polygon's outcome, is the alternative.
+- The run writes no per-polygon outcome, so the figure colours only the failed
+  polygons from the combined realisation and the model's faces.
 - Polygons off the PGV grid are not drawn (`p_fail` NaN) and are counted by the
   run, apart from those with no fragility median (2026-10-02); a nearest-cell
   fallback would draw them.

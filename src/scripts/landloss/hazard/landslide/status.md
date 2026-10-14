@@ -21,7 +21,7 @@ proof (stage D1) on 2026-10-02 and run over pilot examples (stage D2) on
 2026-10-04, and its wall units, their probability and a draw per exposure
 world on 2026-10-05 (now exposure rw step 6); the per-zone fragility is next.
 
-**Updated:** 2026-10-13
+**Updated:** 2026-10-14
 
 For a reviewer: read this page, then the plans it names, then each step's
 method file under `steps/`, then the code. Detail that used to sit here (the
@@ -154,7 +154,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   to reinforced concrete from July 1992 (p50 5.12 g), with walls 2 m and over
   at 0.85 times. Neither is rerun on the pilot yet; the rate factors are
   still placeholders.
-- [x] Draw the urban failures per world and earthquake (landslide step 6).
+- [x] Draw the urban failures per world and earthquake (landslide step 6), keeping
+  every failed polygon: no absorption between urban polygons and none by a
+  large-model landslide (the lead, 2026-10-14); shared ground is counted once downstream.
 - [~] Run per territorial authority, tiled, with the static layers built once
   (`.agents/plans/running-per-territorial-authority.md`). Landslide step 4's
   tiles now build on `TILE_WORKERS` processes, are kept on disk and resume after
@@ -173,6 +175,12 @@ interface event, the modal NSHM 2022 deaggregation for Wellington
 
 ## Where it is now
 
+- **Landslide step 6 keeps every failed urban polygon (2026-10-14).** Absorption
+  and supersession are gone: in the Wellington pilot 514 of 2,980 failed polygons
+  had been absorbed by a larger one they overlapped by a median of 4% of their
+  area, losing 94% of their ground. A wall on a failed polygon is
+  `failed_with_polygon`; `taken_by` is no longer written; the run prints how much
+  evacuated ground is covered twice. Needs a rerun from step 6 onwards.
 - **The whole chain ran over the pilot on 2026-10-02**, in 67 minutes, 49 of
   them in the old steps 6 and 7 (removed 2026-10-08).
 - **Landslide step 3, large failures (then step 1):** 7 failures, 0.95 ha, 0.14% coverage of the slope

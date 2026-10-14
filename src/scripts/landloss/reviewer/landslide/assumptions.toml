@@ -462,11 +462,11 @@ source = "slope_polygons.py (conditional_failure_probability); gen_urban_slope_r
 [[assumptions]]
 id = "LS-A52"
 step = "realisation"
-title = "Large failures supersede, larger urban failures absorb"
-text = "A failed urban polygon sharing more than 0.01 m² of evacuated ground with a large failure is superseded; survivors are then resolved largest first and a smaller overlapping one is absorbed. A polygon that did not fail stays standing even under a large slide. Evacuated ground never overlaps across the two populations; inundated and imminent ground may."
+title = "Every failed urban polygon is kept, overlaps and all"
+text = "Every failed urban polygon is written to the realisation, whether or not it overlaps a larger urban failure or a large landslide; none is absorbed or superseded. Overlapping ground is counted once where vul measures damaged area, on the union of the failures, while each failure's spoil is cleared and each gets its own new wall where it needs one. A wall on a failed polygon failed with it. Replaces the earlier rule (decision 35) of superseding by large failures and absorbing into larger urban ones, which dropped most of an absorbed polygon's ground."
 status = "decided"
-decided = "urban slope build contract, decision 35"
-source = "gen_urban_slope_realisation.py (SHARED_GROUND_TOLERANCE_M2)"
+decided = "the lead, 2026-10-14 (urban slope build contract, decision 40)"
+source = "gen_urban_slope_realisation.py (realise)"
 
 [[assumptions]]
 id = "LS-A53"

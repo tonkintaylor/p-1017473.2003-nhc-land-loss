@@ -57,6 +57,11 @@ Every line rests on an assumption, and each is named here rather than buried.
   land table without `landslide_evacuated_areas` measures each failure's whole
   ground as its evacuated ground, so an older table still builds one; the pooled
   ground of a table with no failure lists takes the claim's `evacuated_area`.
+- **Spoil is summed per failure** (the lead, 2026-10-14): each failure's own
+  inundated area at its own depth (`landslide_inundated_areas`,
+  `landslide_inundated_depths`), so two deposits on the same ground are both
+  cleared, while the damaged area stays the union `vul` measures. A table with
+  no failure lists takes the inundated union at its mean depth, as before.
 - **A new wall is the mapped wall where there is one** (section 4 of the
   property damage tweaks). `vul` lists, in the order of `landslide_ids`,
   `landslide_wall_heights`, `landslide_wall_lengths` and
@@ -114,7 +119,7 @@ their bands marked as invented.
 | --- | --- | --- |
 | `construction_access` | driveway length (exposure) | the **longest** driveway on the claim |
 | `constructability_reinstatement` | ground slope (exposure) | the **steepest** address on the claim |
-| `earthworks_required` | inundated volume (contract) | summed over the claim's polygons |
+| `earthworks_required` | spoil volume (contract failure lists) | each failure's inundated area at its own depth, summed over the claim's failures |
 
 - The worst case is taken where a claim has several driveways or addresses.
 - **A claim with no driveway routed and no address matched rates easy on both**,

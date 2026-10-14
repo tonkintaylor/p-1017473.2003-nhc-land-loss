@@ -482,6 +482,21 @@ def test_a_deposit_with_no_scar_on_the_claim_gets_no_wall_but_keeps_its_clearing
     assert out[LANDSLIDE_REPAIR_AREA_COLUMN] == pytest.approx(40.0)
 
 
+def test_overlapping_deposits_each_add_their_spoil():
+    # Two failures bury the same 30 m2: the damaged area is the union, but
+    # each deposit is cleared, so the spoil is summed (the lead, 2026-10-14).
+    land = failure_land((CLAIM, [("LS1", None, 30.0, 30.0), ("LS2", None, 30.0, 30.0)]))
+    land[INUNDATED_AREA_COLUMN] = 30.0
+    assert spoil_by_claim(land).loc[CLAIM] == pytest.approx(2 * 30.0 * 0.3)
+
+
+def test_an_older_table_without_the_failure_lists_takes_the_pooled_spoil():
+    land = failure_land((CLAIM, [("LS1", None, 30.0, 30.0)]))[
+        [CLAIM_ID_COLUMN, LANDSLIDE_AREA_COLUMN, INUNDATED_AREA_COLUMN]
+    ].assign(**{INUNDATED_MEAN_DEPTH_COLUMN: 0.5})
+    assert spoil_by_claim(land).loc[CLAIM] == pytest.approx(30.0 * 0.5)
+
+
 def test_a_buried_only_failure_beside_a_scarred_one_leaves_just_one_wall(ratings):
     land = with_evacuated(
         failure_land((CLAIM, [("LS1", None, 40.0, 40.0), ("LS2", None, 30.0, 0.0)])),

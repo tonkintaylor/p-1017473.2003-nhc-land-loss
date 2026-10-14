@@ -795,7 +795,6 @@ def joined_walls(frames):
     if frames["wall_outcome"] is not None:
         outcome = frames["wall_outcome"].set_index("rw_id")
         walls["outcome"] = walls["rw_id"].map(outcome["outcome"])
-        walls["taken_by"] = walls["rw_id"].map(outcome["taken_by"])
     if frames["loss_input_rw"] is not None:
         flags = frames["loss_input_rw"].set_index("rw_id")[FLAG_COLUMNS]
         for column in FLAG_COLUMNS:
@@ -870,7 +869,7 @@ def site_layers(box, frames, walls):
     if walls is not None:
         layers["walls"] = to_geojson(
             around(walls, box),
-            [*WALL_COLUMNS, "insured", "outcome", "taken_by", *FLAG_COLUMNS],
+            [*WALL_COLUMNS, "insured", "outcome", *FLAG_COLUMNS],
         )
     return layers
 
@@ -1049,7 +1048,7 @@ def unit_chains(unit_ids, frames, walls):
             chain["walled"] = bool(draws.get(unit_id, default=False))
     if walls is not None:
         mine = walls[walls["wall_line_id"].isin(unit_ids)]
-        wall_columns = [*WALL_COLUMNS, "insured", "outcome", "taken_by", *FLAG_COLUMNS]
+        wall_columns = [*WALL_COLUMNS, "insured", "outcome", *FLAG_COLUMNS]
         for row in records(mine, wall_columns):
             chains[row["wall_line_id"]]["wall"] = row
     return chains

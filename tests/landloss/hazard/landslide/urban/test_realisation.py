@@ -333,92 +333,6 @@ def test_a_walled_row_with_no_wall_line_keeps_its_own_uniform():
     assert draws_for(model)["uniform"].tolist() == own.tolist()
 
 
-# --- Absorption and supersession --------------------------------------------
-
-
-def test_a_nested_pair_resolves_largest_first():
-    faces = gpd.GeoSeries(
-        [square(2, 2, 3), square(0, 0, 10)], crs=constants.DEFAULT_CRS
-    )
-    absorbed_by = urban.resolve_overlaps(faces, faces.area.to_numpy())
-    assert absorbed_by.tolist() == [1, urban.NONE]
-
-
-def test_an_absorbed_polygon_absorbs_nothing():
-    # Three in a chain: the middle one touches the largest, the smallest
-    # touches only the middle. The smallest survives, because the polygon
-    # that would have taken it did not happen.
-    faces = gpd.GeoSeries(
-        [square(0, 0, 10), square(8, 0, 5), square(12, 0, 2)],
-        crs=constants.DEFAULT_CRS,
-    )
-    absorbed_by = urban.resolve_overlaps(faces, faces.area.to_numpy())
-    assert absorbed_by.tolist() == [urban.NONE, 0, urban.NONE]
-
-
-def test_ties_resolve_in_incoming_order():
-    faces = gpd.GeoSeries(
-        [square(0, 0, 10), square(5, 0, 10)], crs=constants.DEFAULT_CRS
-    )
-    absorbed_by = urban.resolve_overlaps(faces, faces.area.to_numpy())
-    assert absorbed_by.tolist() == [urban.NONE, 0]
-
-
-def test_two_failures_that_only_share_an_edge_both_survive():
-    # Neighbouring candidates of one scale tile the ground, so they touch;
-    # touching is not nesting.
-    faces = gpd.GeoSeries(
-        [square(0, 0, 10), square(10, 0, 5)], crs=constants.DEFAULT_CRS
-    )
-    absorbed_by = urban.resolve_overlaps(faces, faces.area.to_numpy())
-    assert absorbed_by.tolist() == [urban.NONE, urban.NONE]
-
-
-def test_two_failures_that_only_share_a_corner_both_survive():
-    faces = gpd.GeoSeries(
-        [square(0, 0, 10), square(10, 10, 5)], crs=constants.DEFAULT_CRS
-    )
-    absorbed_by = urban.resolve_overlaps(faces, faces.area.to_numpy())
-    assert absorbed_by.tolist() == [urban.NONE, urban.NONE]
-
-
-def test_a_polygon_touching_a_large_landslide_is_not_superseded():
-    # The first face shares an edge with the large polygon, the second a
-    # corner; neither shares ground with it. The third overlaps it.
-    faces = gpd.GeoSeries(
-        [square(0, 0, 10), square(20, 10, 5), square(15, 0, 3)],
-        crs=constants.DEFAULT_CRS,
-    )
-    large = gpd.GeoSeries([square(10, 0, 10)], crs=constants.DEFAULT_CRS)
-    assert urban.supersede_by_large(faces, large).tolist() == [
-        urban.NONE,
-        urban.NONE,
-        0,
-    ]
-
-
-def test_a_polygon_inside_a_large_landslide_is_superseded_by_it():
-    faces = gpd.GeoSeries(
-        [square(0, 0, 4), square(50, 50, 4)], crs=constants.DEFAULT_CRS
-    )
-    large = gpd.GeoSeries([Point(X0 + 2, Y0 - 2).buffer(10)], crs=constants.DEFAULT_CRS)
-    assert urban.supersede_by_large(faces, large).tolist() == [0, urban.NONE]
-
-
-def test_the_large_polygon_sharing_the_most_ground_takes_it():
-    face = gpd.GeoSeries([square(0, 0, 10)], crs=constants.DEFAULT_CRS)
-    large = gpd.GeoSeries(
-        [square(9, 0, 10), square(5, 0, 10)], crs=constants.DEFAULT_CRS
-    )
-    assert urban.supersede_by_large(face, large).tolist() == [1]
-
-
-def test_a_geographic_frame_is_refused():
-    faces = gpd.GeoSeries([square(0, 0, 10)], crs="EPSG:4326")
-    with pytest.raises(ValueError, match="projected"):
-        urban.resolve_overlaps(faces, np.array([100.0]))
-
-
 # --- Wall outcomes -----------------------------------------------------------
 
 
@@ -426,28 +340,25 @@ def outcomes_for(model, walls, large):
     rng = realisation_seed(
         constants.BASE_SEED, EARTHQUAKE, urban.URBAN_STREAM, world_id=WORLD
     )
-    realised = step.realise(model, pd.Series(1.0, index=model.index), large, rng)
-    outcomes = urban.wall_outcomes(
-        model,
-        walls,
-        realised.draws,
-        realised.absorbed_by,
-        realised.superseded_by,
-        realised.large_evacuated["landslide_id"],
-    )
-    return outcomes.set_index("rw_id"), realised
+    draws = step.realise(model, pd.Series(1.0, index=model.index), rng)
+    return urban.wall_outcomes(model, walls, draws).set_index("rw_id"), draws
+
+
+def combined_for(model, draws, large):
+    urban_rows = urban.to_landslide_rows(model, draws)
+    urban_rows["realisation_id"] = EARTHQUAKE
+    return urban.combine_with_large(urban_rows, large)
 
 
 def test_the_outcome_values_are_exact():
-    # Five walls: on a standing face, on a failed face that survives, on a
-    # failed face absorbed by the larger failed face beside it, on the face
-    # that absorbs it, and on a failed face a large landslide reaches.
+    # Walls on a standing face, on failed faces that overlap, on a failed face
+    # a large landslide reaches, on a line with no polygon, and on flat land.
     faces = [
         square(0, 0, 10),  # standing
-        square(20, 0, 10),  # failed, survives
-        square(42, 2, 3),  # failed, absorbed by the next
-        square(40, 0, 10),  # failed, absorbs the one above
-        square(200, 200, 4),  # failed, and a large landslide takes it
+        square(20, 0, 10),  # failed
+        square(42, 2, 3),  # failed, nested in the next
+        square(40, 0, 10),  # failed, holds the one above
+        square(200, 200, 4),  # failed, and a large landslide reaches it
     ]
     rw_ids = ["A-RW01", "B-RW01", "C-RW01", "D-RW01", "E-RW01"]
     model = model_rows(
@@ -465,18 +376,12 @@ def test_the_outcome_values_are_exact():
     walls = wall_population([*rw_ids, "F-RW01", "G-RW01"], flat=("G-RW01",))
     large = large_rows([Point(X0 + 202, Y0 - 202).buffer(20)])
 
-    outcomes, realised = outcomes_for(model, walls, large)
+    outcomes, draws = outcomes_for(model, walls, large)
 
     assert outcomes.loc["A-RW01", "outcome"] == urban.STANDING
     assert outcomes.loc["A-RW01", "slope_id"] == "SP0000001"
-    assert outcomes.loc["A-RW01", "taken_by"] is None
-    assert outcomes.loc["B-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
-    assert outcomes.loc["B-RW01", "taken_by"] is None
-    assert outcomes.loc["C-RW01", "outcome"] == urban.ABSORBED
-    assert outcomes.loc["C-RW01", "taken_by"] == "SP0000004"
-    assert outcomes.loc["D-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
-    assert outcomes.loc["E-RW01", "outcome"] == urban.SUPERSEDED
-    assert outcomes.loc["E-RW01", "taken_by"] == "LS0000001"
+    for rw_id in ("B-RW01", "C-RW01", "D-RW01", "E-RW01"):
+        assert outcomes.loc[rw_id, "outcome"] == urban.FAILED_WITH_POLYGON
     # A wall whose line's polygon was not delineated stands with no polygon.
     assert outcomes.loc["F-RW01", "outcome"] == urban.STANDING
     assert outcomes.loc["F-RW01", "slope_id"] is None
@@ -487,18 +392,53 @@ def test_the_outcome_values_are_exact():
         "claim_id",
         "slope_id",
         "outcome",
-        "taken_by",
     ]
     assert outcomes["claim_id"].tolist() == ["A", "B", "C", "D", "E", "F"]
-    assert set(outcomes["outcome"]) <= set(urban.OUTCOMES)
-    # The survivors are the two failed faces nobody took.
-    assert realised.survivors.tolist() == [False, True, False, True, False]
+    assert set(outcomes["outcome"]) <= {urban.STANDING, urban.FAILED_WITH_POLYGON}
+    assert draws["failed"].tolist() == [False, True, True, True, True]
 
 
-def test_only_a_failed_polygon_under_a_large_landslide_is_superseded():
+def test_nested_failed_polygons_all_survive_and_their_walls_failed():
+    # A small failure nested in a larger one: neither absorbs the other.
+    model = model_rows(
+        [square(2, 2, 3), square(0, 0, 10)],
+        theta=ALWAYS_FAILS_G,
+        rw_ids=["A-RW01", "B-RW01"],
+    )
+    walls = wall_population(["A-RW01", "B-RW01"])
+    large = large_rows([Point(X0 + 500, Y0 - 500).buffer(10)])
+
+    outcomes, draws = outcomes_for(model, walls, large)
+    combined = combined_for(model, draws, large)
+
+    assert outcomes["outcome"].tolist() == [urban.FAILED_WITH_POLYGON] * 2
+    urban_part = combined[combined["population"] == urban.URBAN]
+    assert sorted(set(urban_part["landslide_id"])) == ["SP0000001", "SP0000002"]
+    assert len(urban_part) == 6
+
+
+def test_partially_overlapping_failed_polygons_both_survive():
+    model = model_rows(
+        [square(0, 0, 10), square(8, 0, 10)],
+        theta=ALWAYS_FAILS_G,
+        rw_ids=["A-RW01", "B-RW01"],
+    )
+    walls = wall_population(["A-RW01", "B-RW01"])
+
+    outcomes, draws = outcomes_for(model, walls, no_large())
+    urban_rows = urban.to_landslide_rows(model, draws)
+
+    assert outcomes["outcome"].tolist() == [urban.FAILED_WITH_POLYGON] * 2
+    evacuated = urban_rows[urban_rows[LAND_CLASS_COLUMN] == EVACUATED]
+    assert evacuated["slope_id"].tolist() == ["SP0000001", "SP0000002"]
+    assert (evacuated["source_area_m2"] == 100.0).all()
+
+
+def test_a_failed_polygon_inside_a_large_landslide_survives():
     # Two faces inside one large evacuated circle: the first fails, the second
-    # never does. The failed one is superseded and names the large landslide;
-    # the other stands, its wall left to vul step 11's line intersection.
+    # never does. The failed one is written beside the large landslide and its
+    # wall failed with it; the other stands, its wall left to vul step 11's
+    # line intersection.
     model = model_rows(
         [square(0, 0, 4), square(6, 0, 4)],
         theta=[ALWAYS_FAILS_G, NEVER_FAILS_G],
@@ -508,99 +448,21 @@ def test_only_a_failed_polygon_under_a_large_landslide_is_superseded():
     walls = wall_population(["A-RW01", "B-RW01"])
     large = large_rows([Point(X0 + 5, Y0 - 2).buffer(20)])
 
-    outcomes, realised = outcomes_for(model, walls, large)
+    outcomes, draws = outcomes_for(model, walls, large)
+    combined = combined_for(model, draws, large)
 
-    assert realised.superseded_by.tolist() == [0, urban.NONE]
-    assert realised.survivors.tolist() == [False, False]
-    assert outcomes.loc["A-RW01", "outcome"] == urban.SUPERSEDED
-    assert outcomes.loc["A-RW01", "taken_by"] == "LS0000001"
+    assert outcomes.loc["A-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
     assert outcomes.loc["A-RW01", "slope_id"] == "SP0000001"
     assert outcomes.loc["B-RW01", "outcome"] == urban.STANDING
-    assert outcomes.loc["B-RW01", "taken_by"] is None
     assert outcomes.loc["B-RW01", "slope_id"] == "SP0000002"
-
-
-def test_a_superseder_set_on_a_polygon_that_did_not_fail_is_ignored():
-    # Handed a position on a row that did not fail, the outcome table still
-    # reads it standing: only a failed polygon is superseded or absorbed.
-    model = model_rows([square(0, 0, 4)], theta=NEVER_FAILS_G, rw_ids=["A-RW01"])
-    walls = wall_population(["A-RW01"])
-    outcomes = urban.wall_outcomes(
-        model,
-        walls,
-        draws_for(model),
-        np.array([urban.NONE]),
-        np.array([0]),
-        pd.Series(["LS0000001"]),
-    )
-    assert outcomes["outcome"].tolist() == [urban.STANDING]
-    assert outcomes["taken_by"].tolist() == [None]
-
-
-def test_supersession_outranks_absorption_and_failure():
-    small = square(2, 2, 3)
-    big = square(0, 0, 10)
-    model = model_rows([small, big], theta=ALWAYS_FAILS_G, rw_ids=["A-RW01", "B-RW01"])
-    walls = wall_population(["A-RW01", "B-RW01"])
-    large = large_rows([Point(X0 + 3, Y0 - 3).buffer(2)])
-
-    outcomes, _ = outcomes_for(model, walls, large)
-
-    assert outcomes.loc["A-RW01", "outcome"] == urban.SUPERSEDED
-    assert outcomes.loc["A-RW01", "taken_by"] == "LS0000001"
-    assert outcomes.loc["B-RW01", "outcome"] == urban.SUPERSEDED
-
-
-def test_a_superseded_failure_absorbs_nothing_so_its_neighbour_survives():
-    # A 30 m failure shares ground with a 20 m failure beside it, and a large
-    # landslide takes the 30 m one but does not reach the 20 m one. The 20 m
-    # failure survives: its ground is in neither the large polygon nor a
-    # surviving urban one, so absorbing it would count it nowhere.
-    bigger = square(0, 0, 30)
-    smaller = square(25, 5, 20)
-    model = model_rows(
-        [bigger, smaller], theta=ALWAYS_FAILS_G, rw_ids=["A-RW01", "B-RW01"]
-    )
-    walls = wall_population(["A-RW01", "B-RW01"])
-    large = large_rows([Point(X0 - 5, Y0 - 15).buffer(12)])
-    assert not large.geometry.iloc[0].intersects(smaller)
-
-    outcomes, realised = outcomes_for(model, walls, large)
-
-    assert realised.superseded_by.tolist() == [0, urban.NONE]
-    assert realised.absorbed_by.tolist() == [urban.NONE, urban.NONE]
-    assert realised.survivors.tolist() == [False, True]
-    assert outcomes.loc["A-RW01", "outcome"] == urban.SUPERSEDED
-    assert outcomes.loc["A-RW01", "taken_by"] == "LS0000001"
-    assert outcomes.loc["B-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
-
-    urban_rows = urban.to_landslide_rows(model, realised.draws, realised.survivors)
-    urban_rows["realisation_id"] = EARTHQUAKE
-    combined = urban.combine_with_large(urban_rows, large)
-    written = set(combined["landslide_id"])
-    assert "SP0000002" in written
-    assert set(outcomes["taken_by"].dropna()) <= written
-
-
-def test_every_absorber_is_written_to_the_combined_realisation():
-    # A small failure nested in a larger one, both clear of the large
-    # landslide: the larger absorbs the smaller and is itself written.
-    model = model_rows(
-        [square(2, 2, 3), square(0, 0, 10)],
-        theta=ALWAYS_FAILS_G,
-        rw_ids=["A-RW01", "B-RW01"],
-    )
-    walls = wall_population(["A-RW01", "B-RW01"])
-    large = large_rows([Point(X0 + 500, Y0 - 500).buffer(10)])
-
-    outcomes, realised = outcomes_for(model, walls, large)
-
-    urban_rows = urban.to_landslide_rows(model, realised.draws, realised.survivors)
-    urban_rows["realisation_id"] = EARTHQUAKE
-    combined = urban.combine_with_large(urban_rows, large)
-    assert outcomes.loc["A-RW01", "outcome"] == urban.ABSORBED
-    assert outcomes.loc["A-RW01", "taken_by"] == "SP0000002"
-    assert set(outcomes["taken_by"].dropna()) <= set(combined["landslide_id"])
+    urban_part = combined[combined["population"] == urban.URBAN]
+    assert set(urban_part["landslide_id"]) == {"SP0000001"}
+    assert set(combined["landslide_id"]) == {"LS0000001", "SP0000001"}
+    # The urban polygon lies wholly inside the large one, and both are kept.
+    is_large = combined["population"] == urban.LARGE
+    large_evacuated = combined[is_large & (combined[LAND_CLASS_COLUMN] == EVACUATED)]
+    urban_evacuated = urban_part[urban_part[LAND_CLASS_COLUMN] == EVACUATED]
+    assert large_evacuated.geometry.iloc[0].contains(urban_evacuated.geometry.iloc[0])
 
 
 def test_every_line_of_a_wall_split_at_a_property_boundary_takes_the_polygon():
@@ -626,8 +488,8 @@ def test_every_line_of_a_wall_split_at_a_property_boundary_takes_the_polygon():
 
 
 def test_a_wall_on_polygons_at_two_scales_takes_the_strongest_outcome():
-    # The same wall on a fine face that failed and was absorbed, and on the
-    # coarse face that absorbed it: the wall failed with the coarse polygon.
+    # The same wall on a fine face and on the coarse face around it, both
+    # failed: the wall failed, and the first polygon in model order names it.
     model = model_rows(
         [square(2, 2, 3), square(0, 0, 10)],
         theta=ALWAYS_FAILS_G,
@@ -636,16 +498,18 @@ def test_a_wall_on_polygons_at_two_scales_takes_the_strongest_outcome():
     walls = wall_population(["A-RW01"])
     outcomes, _ = outcomes_for(model, walls, no_large())
     assert outcomes.loc["A-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
-    assert outcomes.loc["A-RW01", "slope_id"] == "SP0000002"
+    assert outcomes.loc["A-RW01", "slope_id"] == "SP0000001"
 
 
 # --- The landslide rows ------------------------------------------------------
 
 
-def test_a_survivor_writes_three_rows_with_the_contract_columns():
-    model = model_rows([square(0, 0, 10), square(50, 0, 10)], theta=ALWAYS_FAILS_G)
+def test_a_failed_polygon_writes_three_rows_with_the_contract_columns():
+    model = model_rows(
+        [square(0, 0, 10), square(50, 0, 10)], theta=[ALWAYS_FAILS_G, NEVER_FAILS_G]
+    )
     draws = draws_for(model)
-    rows = urban.to_landslide_rows(model, draws, np.array([True, False]))
+    rows = urban.to_landslide_rows(model, draws)
 
     assert rows[LAND_CLASS_COLUMN].tolist() == [EVACUATED, IMMINENT, INUNDATED]
     assert rows["landslide_id"].tolist() == ["SP0000001"] * 3
@@ -666,7 +530,7 @@ def test_a_survivor_writes_three_rows_with_the_contract_columns():
 
 def test_the_combined_realisation_puts_both_populations_in_one_schema():
     model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_G)
-    urban_rows = urban.to_landslide_rows(model, draws_for(model), np.array([True]))
+    urban_rows = urban.to_landslide_rows(model, draws_for(model))
     urban_rows["realisation_id"] = EARTHQUAKE
     large = large_rows([Point(X0 + 500, Y0 - 500).buffer(10)])
 
@@ -694,7 +558,7 @@ def test_the_combined_realisation_puts_both_populations_in_one_schema():
 
 def test_large_rows_without_the_contract_columns_are_refused():
     model = model_rows([square(0, 0, 10)], theta=ALWAYS_FAILS_G)
-    urban_rows = urban.to_landslide_rows(model, draws_for(model), np.array([True]))
+    urban_rows = urban.to_landslide_rows(model, draws_for(model))
     old_style = large_rows([Point(X0, Y0).buffer(5)]).drop(columns=["population"])
     with pytest.raises(ValueError, match="population"):
         urban.combine_with_large(urban_rows, old_style)
@@ -794,7 +658,6 @@ def test_the_step_writes_the_two_outputs_with_the_contract_columns(work_dirs):
         "claim_id",
         "slope_id",
         "outcome",
-        "taken_by",
     ]
     by_wall = outcomes.set_index("rw_id")
     assert by_wall.loc["A-RW01", "outcome"] == urban.FAILED_WITH_POLYGON
@@ -852,12 +715,12 @@ def test_nothing_failing_still_writes_both_files(work_dirs):
 
 @ignore_affine_matmul
 def test_the_figure_reads_what_the_run_wrote(work_dirs):
-    # A surviving failure, a failure absorbed by it, a failure a large
-    # landslide takes, and a standing one, all in the shaken cell.
+    # Two overlapping failures, a failure inside a large landslide, and a
+    # standing one, all in the shaken cell.
     faces = [
-        square(10, 10, 20),  # failed, survives
-        square(12, 12, 5),  # failed, absorbed by the one above
-        square(60, 10, 10),  # failed, superseded
+        square(10, 10, 20),  # failed
+        square(12, 12, 5),  # failed, nested in the one above
+        square(60, 10, 10),  # failed, inside the large landslide
         square(10, 60, 10),  # standing
     ]
     rw_ids = ["A-RW01", "B-RW01", "C-RW01", "D-RW01"]
@@ -878,9 +741,11 @@ def test_the_figure_reads_what_the_run_wrote(work_dirs):
 
     assert set(layers) == set(fig.LAYER_COLOURS)
     assert len(layers[urban.STANDING]) == len(model)
-    assert layers[urban.FAILED_WITH_POLYGON]["slope_id"].tolist() == ["SP0000001"]
-    assert layers[urban.ABSORBED]["slope_id"].tolist() == ["SP0000002"]
-    assert layers[urban.SUPERSEDED]["slope_id"].tolist() == ["SP0000003"]
+    assert layers[urban.FAILED_WITH_POLYGON]["slope_id"].tolist() == [
+        "SP0000001",
+        "SP0000002",
+        "SP0000003",
+    ]
     assert large_evacuated["landslide_id"].tolist() == ["LS0000001"]
 
 

@@ -283,19 +283,7 @@ def site_ratings_by_claim(land: pd.DataFrame, *, extent: str) -> pd.DataFrame:
         .max()
     )
 
-    volume = (
-        pd.DataFrame(
-            {
-                CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
-                "volume": inundation_volume_m3(
-                    land[INUNDATED_AREA_COLUMN].fillna(0.0).to_numpy(),
-                    land[INUNDATED_MEAN_DEPTH_COLUMN].fillna(0.0).to_numpy(),
-                ),
-            }
-        )
-        .groupby(CLAIM_ID_COLUMN)["volume"]
-        .sum()
-    )
+    volume = spoil_by_claim(land)
 
     return pd.DataFrame(
         {
@@ -839,25 +827,19 @@ def land_repair_by_claim(
 def spoil_by_claim(land: pd.DataFrame) -> pd.Series:
     """Return the volume of landslide spoil on each claim.
 
+    **Each failure's spoil is added** (the lead, 2026-10-14): its own inundated
+    area at its own depth (:func:`landslide_failures`), so two deposits on the
+    same ground are both cleared. The area a claim is damaged over stays the
+    union, which vul measures. A land table from before the failure lists
+    takes the pooled volume, the inundated union at its mean depth.
+
     Args:
         land: The contract's land table.
 
     Returns:
         The volume per claim, indexed by ``claim_id``.
     """
-    return (
-        pd.DataFrame(
-            {
-                CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
-                "volume": inundation_volume_m3(
-                    land[INUNDATED_AREA_COLUMN].fillna(0.0).to_numpy(),
-                    land[INUNDATED_MEAN_DEPTH_COLUMN].fillna(0.0).to_numpy(),
-                ),
-            }
-        )
-        .groupby(CLAIM_ID_COLUMN)["volume"]
-        .sum()
-    )
+    return landslide_failures(land).groupby(CLAIM_ID_COLUMN)["volume"].sum()
 
 
 def liquefaction_repair_by_claim(land: pd.DataFrame) -> pd.Series:

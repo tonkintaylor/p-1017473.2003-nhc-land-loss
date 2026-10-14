@@ -175,8 +175,10 @@ def test_each_outcome_sets_the_flag_the_contract_says():
     )
     flags = outcome_flags(table, id_column="rw_id")
     assert list(flags.columns) == ["rw_id", "slope_id", "outcome", *WALL_FLAG_COLUMNS]
-    assert flags["is_damaged_by_shaking"].tolist() == [True, False, False, False, False]
-    assert flags["is_evacuated"].tolist() == [False, True, True, False, False]
+    # An older run's absorbed and superseded walls had failed with their
+    # polygon too (the lead, 2026-10-14).
+    assert flags["is_damaged_by_shaking"].tolist() == [True, True, True, False, False]
+    assert flags["is_evacuated"].tolist() == [False] * 5
     # No outcome sets the inundated flag; that is geometry's alone.
     assert flags["is_inundated"].tolist() == [False] * 5
     assert flags["slope_id"].tolist()[:4] == [f"SP000000{n}" for n in range(1, 5)]
@@ -241,7 +243,7 @@ def test_the_outcome_and_the_geometry_are_or_ed():
         *WALL_DAMAGE_COLUMNS,
     ]
     assert flags["rw_id"].tolist() == ["A-RW01", "A-RW02", "A-RW03", "A-RW04"]
-    assert flags["is_damaged_by_shaking"].tolist() == [True, False, False, False]
+    assert flags["is_damaged_by_shaking"].tolist() == [True, False, True, False]
     assert flags["is_evacuated"].tolist() == [False, False, True, False]
     assert flags["is_inundated"].tolist() == [False, True, False, False]
     assert flags["slope_id"].tolist() == ["SP0000001", "SP0000002", "SP0000003", None]
@@ -255,12 +257,12 @@ def test_the_outcome_and_the_geometry_are_or_ed():
         assert flags[column].dtype == bool
 
 
-def test_a_superseded_wall_is_evacuated_even_off_every_polygon():
+def test_an_older_runs_superseded_wall_failed_with_its_polygon():
     walls = assets(("A-RW01", LineString([(40, 50), (60, 50)])))
     table = outcomes(("A-RW01", "SP0000001", SUPERSEDED))
     flags = wall_flags(walls, slides(), table, id_column="rw_id")
-    assert flags["is_evacuated"].tolist() == [True]
-    assert flags["is_damaged_by_shaking"].tolist() == [False]
+    assert flags["is_damaged_by_shaking"].tolist() == [True]
+    assert flags["is_evacuated"].tolist() == [False]
 
 
 def test_an_outcome_for_a_wall_not_in_the_population_is_refused():
@@ -493,13 +495,15 @@ def test_the_walls_own_polygon_is_not_measured():
     assert row[DAMAGED_LENGTH_COLUMN] == 0.0
 
 
-def test_an_absorbed_wall_is_measured_from_the_absorbing_failures_ground():
+def test_an_older_runs_absorbed_wall_is_damaged_over_its_whole_line():
+    # Its polygon failed; only its ground was credited to a larger failure,
+    # which reaches 3 m of the line here and usually none of it (2026-10-14).
     walls = assets(("A-RW01", LineString([(-6, 5), (3, 5)])))
     hazard = slides_with_slopes((EVACUATED, "SP0000001", NEIGHBOUR))
     table = outcomes(("A-RW01", "SP0000002", ABSORBED))
     row = damage(walls, hazard, table).loc["A-RW01"]
-    assert row["is_evacuated"]
-    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(3.0, abs=0.02)
+    assert row["is_damaged_by_shaking"]
+    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(9.0)
 
 
 def test_a_large_model_landslide_with_no_slope_id_is_measured():

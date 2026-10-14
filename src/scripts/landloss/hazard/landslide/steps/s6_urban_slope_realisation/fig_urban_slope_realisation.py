@@ -1,4 +1,4 @@
-"""Draw what one pair's urban draw wrote: survivors, absorbed and superseded walls.
+"""Draw what one pair's urban draw wrote: the failed urban polygons.
 
     uv run --frozen python src/scripts/landloss/hazard/landslide/steps/s6_urban_slope_realisation/fig_urban_slope_realisation.py
 
@@ -6,20 +6,14 @@ Reads the two files ``gen_urban_slope_realisation.py`` wrote for the pair,
 through its ``combined_realisation_path`` and ``urban_wall_outcome_path``, so
 the figure shows the draw the run wrote and nothing drawn again. The model file
 of the world (landslide step 5's ``urban_slope_model_path``) supplies only the faces
-behind the map and the evacuated polygons of the walls' polygons the outcome
-table names; every ``slope_id`` the run wrote has to be in it, or the script
+behind the map; every ``slope_id`` the run wrote has to be in it, or the script
 stops and asks for landslide step 6 to be rerun. It reads ``config.py`` beside it, the
 same file the run reads, and draws the first world and earthquake listed there.
 
 One map over the extent: every model polygon's face, faint; the evacuated
-polygons of the surviving urban failures, from the combined realisation; the
-evacuated polygons of the walls' polygons the outcome table records as absorbed
-by a larger failure or superseded by a large-model landslide; and the
-large-model evacuated polygons outlined over the top so a superseded polygon
-can be seen inside the landslide that took it. The run writes no per-polygon
-outcome, so an absorbed or superseded polygon that carries no wall is not
-coloured; it lies under the survivor or the large landslide that took it, both
-of which are drawn.
+polygons of the failed urban polygons, from the combined realisation (every
+failure is written, overlapping ones included); and the large-model evacuated
+polygons outlined over the top.
 
 Needs network access for the basemap tiles. The figure goes under
 ``report/hazard/landslide/urban-slope-realisation/fig/``, which is gitignored;
@@ -60,22 +54,14 @@ FIG_DIR = REPORT_DIR / "hazard" / "landslide" / "urban-slope-realisation" / "fig
 DPI = 200
 
 # One colour per layer, keyed by the outcome it shows. The model faces sit
-# under everything, faint, so the failures read against them; the three taken
-# kinds are told apart by hue because they are settled differently downstream.
+# under everything, faint, so the failures read against them.
 LAYER_COLOURS = {
     urban.STANDING: ("#bdbdbd", "Modelled polygon"),
-    urban.FAILED_WITH_POLYGON: ("#a50026", "Failed, surviving"),
-    urban.ABSORBED: ("#f46d43", "Wall's polygon absorbed by a larger failure"),
-    urban.SUPERSEDED: (
-        "#542788",
-        "Wall's polygon superseded by a large-model landslide",
-    ),
+    urban.FAILED_WITH_POLYGON: ("#a50026", "Failed"),
 }
 FILL_ALPHA = {
     urban.STANDING: 0.35,
     urban.FAILED_WITH_POLYGON: 0.9,
-    urban.ABSORBED: 0.8,
-    urban.SUPERSEDED: 0.8,
 }
 LARGE_EDGE_COLOUR = "#1a1a1a"
 
@@ -109,17 +95,15 @@ def outcome_layers(model, combined, outcomes):
     """Split what the run wrote into the layers the map draws.
 
     Args:
-        model: The world's model file, for the faces and the evacuated
-            polygons of the walls' polygons.
+        model: The world's model file, for the faces.
         combined: The combined realisation the run wrote.
         outcomes: The wall outcome table the run wrote.
 
     Returns:
         ``(layers, large_evacuated)``: one frame per key of
-        :data:`LAYER_COLOURS` -- the model faces under ``standing``, the
-        surviving urban evacuated polygons under ``failed_with_polygon``, and
-        the evacuated polygons of the walls' polygons recorded as ``absorbed``
-        or ``superseded`` -- and the large-model evacuated polygons.
+        :data:`LAYER_COLOURS` -- the model faces under ``standing`` and the
+        failed urban evacuated polygons under ``failed_with_polygon`` -- and
+        the large-model evacuated polygons.
 
     Raises:
         ValueError: If the run wrote a ``slope_id`` the model file does not
@@ -127,11 +111,11 @@ def outcome_layers(model, combined, outcomes):
     """
     evacuated = combined[combined[LAND_CLASS_COLUMN] == EVACUATED]
     population = evacuated[urban.POPULATION_COLUMN]
-    surviving = evacuated[population == urban.URBAN]
+    failed = evacuated[population == urban.URBAN]
     large_evacuated = evacuated[population == urban.LARGE]
 
     written = pd.concat(
-        [surviving[urban.SLOPE_ID_COLUMN], outcomes[urban.SLOPE_ID_COLUMN]]
+        [failed[urban.SLOPE_ID_COLUMN], outcomes[urban.SLOPE_ID_COLUMN]]
     ).dropna()
     missing = sorted(set(written) - set(model[urban.SLOPE_ID_COLUMN]))
     if missing:
@@ -142,22 +126,10 @@ def outcome_layers(model, combined, outcomes):
         )
         raise ValueError(msg)
 
-    polygon_evacuated = gpd.GeoDataFrame(
-        {urban.SLOPE_ID_COLUMN: model[urban.SLOPE_ID_COLUMN].to_numpy()},
-        geometry=gpd.GeoSeries(model[urban.EVACUATED_GEOMETRY_COLUMN]).to_numpy(),
-        crs=model.crs,
-    )
     layers = {
         urban.STANDING: model[["geometry"]],
-        urban.FAILED_WITH_POLYGON: surviving,
+        urban.FAILED_WITH_POLYGON: failed,
     }
-    for outcome in (urban.ABSORBED, urban.SUPERSEDED):
-        slope_ids = outcomes.loc[
-            outcomes[urban.OUTCOME_COLUMN] == outcome, urban.SLOPE_ID_COLUMN
-        ].dropna()
-        layers[outcome] = polygon_evacuated[
-            polygon_evacuated[urban.SLOPE_ID_COLUMN].isin(slope_ids)
-        ]
     return layers, large_evacuated
 
 

@@ -55,13 +55,15 @@ WALLS = [
         LineString([(300, 50), (320, 50)]),
         ("SP0000001", FAILED_WITH_POLYGON),
     ),
-    # Sloping, absorbed by a larger urban failure, clear of every polygon.
+    # Sloping, absorbed by a larger urban failure (an older run's outcome),
+    # clear of every polygon: failed with its polygon all the same.
     ("C02-RW02", False, LineString([(300, 80), (320, 80)]), ("SP0000002", ABSORBED)),
     # Sloping, its polygon not delineated (null slope_id), standing, but its
     # line crosses the urban failure's evacuated ground.
     ("C03-RW01", False, LineString([(190, 0), (210, 0)]), (None, STANDING)),
-    # Sloping, superseded by the large landslide, and crossing its evacuated
-    # ground as well: evacuated by both routes, counted once.
+    # Sloping, superseded by the large landslide (an older run's outcome), and
+    # crossing its evacuated ground as well: failed with its polygon, and
+    # evacuated by geometry.
     ("C03-RW02", False, LineString([(-10, 0), (10, 0)]), ("SP0000004", SUPERSEDED)),
     # Sloping, standing, under the urban failure's imminent ground only.
     ("C04-RW01", False, LineString([(190, 15), (210, 15)]), ("SP0000005", STANDING)),
@@ -140,11 +142,8 @@ def wall_outcomes(world_id=0, realisation_id=0):
             "claim_id": [row[2] for row in rows],
             "slope_id": [row[3] for row in rows],
             "outcome": [row[4] for row in rows],
-            "taken_by": ["SP0000009" if row[4] == ABSORBED else None for row in rows],
         }
     )
-    table["taken_by"] = table["taken_by"].where(table["outcome"] == ABSORBED, None)
-    table.loc[table["outcome"] == SUPERSEDED, "taken_by"] = "LS0000001"
     assert list(table.columns) == list(OUTCOME_COLUMNS)
     table.insert(0, "world_id", world_id)
     table.insert(1, "realisation_id", realisation_id)
@@ -178,7 +177,6 @@ def synthetic_run(tmp_path, monkeypatch):
         outcomes = wall_outcomes(0, realisation_id)
         if realisation_id == 1:
             outcomes["outcome"] = STANDING
-            outcomes["taken_by"] = None
         outcomes.to_parquet(
             gen_urban_slope_realisation.urban_wall_outcome_path(
                 0, realisation_id, extent="wlg-pilot"
@@ -252,9 +250,9 @@ def test_each_wall_takes_the_flags_of_section_5_2(synthetic_run):
         "C01-RW01": (False, False, False),
         "C01-RW02": (False, False, True),
         "C02-RW01": (True, False, False),
-        "C02-RW02": (False, True, False),
+        "C02-RW02": (True, False, False),
         "C03-RW01": (False, True, False),
-        "C03-RW02": (False, True, False),
+        "C03-RW02": (True, True, False),
         "C04-RW01": (False, False, False),
     }
     for rw_id, (shaking, evacuated, inundated) in expected.items():
@@ -278,12 +276,12 @@ def test_each_wall_takes_its_damaged_length_and_line(synthetic_run):
         "C01-RW02": (0.0, 20.0, 0.0),
         # Failed with its polygon: the whole line, measured or not.
         "C02-RW01": (0.0, 0.0, 20.0),
-        # Absorbed, but clear of the absorbing ground in this layout.
-        "C02-RW02": (0.0, 0.0, 0.0),
+        # Absorbed: failed with its polygon, so the whole line.
+        "C02-RW02": (0.0, 0.0, 20.0),
         # Ten metres across the urban failure's face.
         "C03-RW01": (10.0, 0.0, 10.0),
-        # Twenty metres across the large landslide's evacuated ground.
-        "C03-RW02": (20.0, 0.0, 20.0),
+        # Superseded: failed with its polygon, so the whole line, not measured.
+        "C03-RW02": (0.0, 0.0, 20.0),
         "C04-RW01": (0.0, 0.0, 0.0),
     }
     for rw_id, (evacuated, inundated, damaged) in expected.items():
@@ -325,7 +323,7 @@ def test_each_realisation_is_flagged_against_its_own_landslides(synthetic_run):
     assert (quiet.loc[quiet["outcome"].notna(), "outcome"] == STANDING).all()
 
     busy = read_flags(0, 0)
-    assert busy["is_evacuated"].sum() == 3
+    assert busy["is_evacuated"].sum() == 2
 
 
 def test_a_run_reproduces_exactly(synthetic_run):

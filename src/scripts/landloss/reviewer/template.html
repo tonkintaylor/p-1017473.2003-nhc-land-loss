@@ -945,7 +945,6 @@ function openTrace(unitId) {
   body.append("h4").html(`6 · Realisation ${R.build.realisation_id} <a href="#step-fragility">↗</a>`);
   const oc = w.outcome;
   body.append("div").attr("class", "verdict").style("background", OUTCOME_COLOUR[oc] || "#999").style("color", "#fff").text(oc ?? "no outcome row");
-  if (w.taken_by) body.append("div").style("font-size", "12.5px").text(`taken by ${w.taken_by}`);
 
   body.append("h4").html(`7 · Damage flags <a href="#step-damage">↗</a>`);
   const ff = body.append("div").attr("class", "flagrow");

@@ -55,50 +55,30 @@
   would fail through some polygon with probability 1 − Π(1 − p_i) rather
   than the published p (p = 0.3 on four scales gives about 0.76). With one
   shared uniform the wall's polygons fail or stand together where their
-  curves agree, and absorption keeps the largest. The key is the line, not
+  curves agree. The key is the line, not
   `rw_id`, because an uninsured wall has no `rw_id` and is still one wall.
 - **If any polygon on a wall fails, the wall has failed and every polygon on
   it fails** (the project lead's rule, 2026-10-02), by
   `realisation._fail_with_the_wall` on the groups `realisation._wall_groups`
   builds. The polygons on one wall differ only in the amplification their
   median is divided by, so with one uniform the wall fails exactly when its
-  weakest polygon, the one with the strongest amplification, would; absorption
-  then keeps the largest of them. `p_fail` and `uniform` stay each row's own,
+  weakest polygon, the one with the strongest amplification, would. `p_fail` and `uniform` stay each row's own,
   so a row failed through its wall can carry a uniform above its `p_fail`.
-- **Two polygons share ground** where their intersection has an area above
-  `realisation.SHARED_GROUND_TOLERANCE_M2` (0.01 m2, a numerical tolerance
-  against floating-point slivers). Polygons that only touch along an edge or
-  at a corner, as neighbouring candidates of one scale always do, share none,
-  so contact alone neither absorbs nor supersedes.
-- **Supersession is resolved first, on the failed polygons only** (contract
-  decision 35). Every failed polygon whose `evacuated` geometry shares ground
-  with an `evacuated land` row of the landslide step 3 realisation is superseded by
-  `realisation.supersede_by_large`; where several share ground with it, the
-  one sharing the most takes it. The result is mapped onto every model row,
-  none where the row did not fail. A polygon that did not fail is `standing`
-  whatever a large landslide does around it: a wall the large landslide
-  actually reaches is flagged `is_evacuated` by vul step 11's intersection of
-  the wall line with the combined realisation's `evacuated land`, so a wall is
-  replaced only where its line is reached, not where a large slide grazes its
-  polygon's headscarp band.
-- Landslide step 4's forced polygons (a wall's minimum polygon drawn from its line
-  where the label grid could not hold it, 2026-10-07) can overlap other
-  polygons; they go through the same rules, so one that fails sharing ground
-  with a larger failed polygon is absorbed into it, and the dissolved land
-  totals count the shared ground once.
-- **Nested failures are then absorbed largest first** by
-  `realisation.resolve_overlaps`, on the `evacuated` geometry of the failed
-  polygons that were not superseded: worked in descending area, stable on
-  ties, a failed polygon sharing ground with a larger surviving one is
-  absorbed, and an absorbed polygon absorbs nothing.
-  `gen_urban_slope_realisation.realise()` runs the two in that order and maps
-  the result back onto every model row. Because a superseded polygon absorbs
-  nothing, every absorber is a survivor written to the combined realisation,
-  and an absorbed polygon's `taken_by` always names a `landslide_id` that file
-  carries.
-- **The survivors** are the failed polygons neither absorbed nor superseded.
-  `realisation.to_landslide_rows` writes three rows per survivor from the
-  model file's fixed geometry, one per land class of
+- **Every failed polygon is kept** (the project lead, 2026-10-14). There is no
+  absorption between urban polygons and no supersession by a large-model
+  landslide: the large model's rules apply to urban polygons unchanged, so
+  ground two failures share is written twice and counted once downstream, where
+  vul landslide land step 3 measures areas on the union of the failures. Until
+  then the step absorbed 514 of 2,980 failed Wellington polygons into a larger
+  one they overlapped by a median of 4% of their area, and lost 94% of the
+  absorbed ground. A polygon that did not fail is `standing` whatever a large
+  landslide does around it (contract decision 35): a wall the large landslide
+  actually reaches is flagged by vul step 11's intersection of the wall line
+  with the combined realisation's `evacuated land`. Landslide step 4's forced
+  polygons, which can overlap others, go through the same rule.
+  `gen_urban_slope_realisation.realise()` is the draw and nothing more.
+- **`realisation.to_landslide_rows`** writes three rows per failed polygon from
+  the model file's fixed geometry, one per land class of
   `landloss.hazard.landslide.land_class`: `evacuated land` at
   `depth_evacuated_m`, `inundated land` at `depth_inundated_m` and
   `imminent land` with no depth. `landslide_id` is the `slope_id`,
@@ -111,36 +91,34 @@
   sorted by `landslide_id` then `land_class`, with `world_id` and
   `realisation_id` on every row. It is written to
   `temp/hazard/landslide/landslide-realisation-wNNN-rNNN[-pilot].geoparquet`
-  from `combined_realisation_path()`. Evacuated polygons never overlap across
-  the two populations; inundated and imminent polygons may.
+  from `combined_realisation_path()`. Evacuated polygons may overlap, within the urban population and across the
+  two; the run prints how much evacuated ground is covered more than once.
 - **The wall outcome table** is built by `realisation.wall_outcomes`, spined
   on the world's wall population filtered to `is_flatland` false and
   left-joined on `wall_line_id` to every model row carrying the wall's line
   in its `wall_line_ids`, so every line of a wall split at a property
   boundary takes the outcome of the polygon on whose edge it lies, and
-  `rw_id`, `claim_id` and `wall_line_id` come from the population. A wall whose polygon failed and was superseded by a
-  large-model landslide is `superseded`; whose polygon failed and survived is
-  `failed_with_polygon`;
-  whose polygon failed and was absorbed is `absorbed`; otherwise `standing`,
+  `rw_id`, `claim_id` and `wall_line_id` come from the population. A wall whose polygon failed is
+  `failed_with_polygon`; otherwise `standing`,
   including a wall whose line's polygon was not delineated, which has
-  `slope_id` null and is counted by the run. `taken_by` is the `landslide_id`
-  of the polygon that absorbed or superseded it. A wall whose line sits on
-  polygons at several scales takes the first of those outcomes any of its
-  polygons reached, in that order (`realisation.OUTCOME_RANK`). It is written to
+  `slope_id` null and is counted by the run. A wall whose line sits on
+  polygons at several scales is `failed_with_polygon` if any of its polygons
+  failed (`realisation.OUTCOME_RANK`). `absorbed` and `superseded` stay in
+  `realisation.OUTCOMES` so an outcome file from an older run still reads, and
+  the `taken_by` column went with them (2026-10-14). It is written to
   `temp/hazard/landslide/urban-wall-outcome-wNNN-rNNN[-pilot].parquet` from
   `urban_wall_outcome_path()`.
 - The run prints the world and earthquake ids, the rate setting, the polygons by wall state, the
   polygons not drawn split into those with no fragility median and those off
-  the PGA grid (`describe_draw()`), the failed, absorbed, superseded and
-  surviving counts, the summed and dissolved areas by population and land
-  class, and the wall outcome counts.
+  the PGA grid (`describe_draw()`), the failed count, the summed, dissolved and overlapping
+  areas by population and land class with the evacuated ground covered more
+  than once, and the wall outcome counts.
 - The draw of one pair is mapped by outcome in the figure produced by
   `fig_urban_slope_realisation.py`, which reads the two files the run wrote
   through `combined_realisation_path()` and `urban_wall_outcome_path()`
-  (`read_outputs()`, `outcome_layers()`): the surviving urban evacuated
+  (`read_outputs()`, `outcome_layers()`): the failed urban evacuated
   polygons and the large-model evacuated outlines from the combined
-  realisation, and the evacuated polygons of the walls' polygons recorded as
-  absorbed or superseded from the outcome table, over the model file's faces.
+  realisation, over the model file's faces.
   It stops if the run wrote a `slope_id` the model file no longer carries.
   It writes to `report/hazard/landslide/urban-slope-realisation/fig/`.
 - `hazard/gen_hazard.py` runs this step last in `main()`, after landslide
