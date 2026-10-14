@@ -197,6 +197,11 @@ report/loss/viewer/loss_viewer.html
 # gen_viewer_data.py rebuilds them from the loss outputs.
 report/loss/viewer/loss-viewer-*.csv
 
+# The wall age tables. Rewritten by every exposure run, so a tracked copy
+# leaves the tree dirty after a rebuild; table_rwt_age_by_suburb.py and
+# table_rwt_age_christchurch.py rebuild them.
+report/exposure/rw/rwt-age/tab/*.csv
+
 # Built reviewer pages. Each embeds claim ids and claim report wall counts, so
 # it stays inside T+T, and it is rebuilt from the current outputs by
 # src/scripts/landloss/reviewer/gen_reviewer_rw.py rather than kept.
