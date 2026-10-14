@@ -27,8 +27,11 @@ reason the two kinds are also measured together on their union, which is the
 loss contract's ``land_slide_total_insured_land_area``.
 
 The urban model also writes **imminent** ground, left standing behind a
-headscarp. It is ignored here until the register decides how it is settled
-(**T-45**).
+headscarp. It is measured apart from the damaged ground and added to none of it
+(**T-45**, 2026-10-14): the imminent ground less any ground evacuated on the
+polygon by any failure, and the ground of the failures with imminent land
+buried again, as an area, a volume and a depth. Loss settles neither; the
+viewer's page adds them.
 
 **No cost is attached.** The T+T landslip remediation schedule is not packaged,
 so the money is left to the loss module. What this writes is the quantity the
@@ -52,13 +55,15 @@ from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.landslide.land.damaged_area import (
     AREA_COLUMNS,
     FOOTPRINT_AREA_COLUMN,
-    IGNORED_LAND_CLASSES,
+    IMMINENT_GROUND_COLUMNS,
     UNION_AREA_COLUMN,
     check_within_insured_area,
     damaged_area_per_failure,
     damaged_area_per_property,
     failures_per_property,
     footprint_damaged_area,
+    imminent_ground_per_property,
+    with_imminent_ground,
 )
 from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
@@ -111,9 +116,6 @@ def describe_landslides(landslides):
     for keys, count in landslides.groupby(by, sort=True).size().items():
         label = keys if isinstance(keys, str) else ", ".join(map(str, keys))
         print(f"  {label}: {count:,}")
-    ignored = int(landslides[LAND_CLASS_COLUMN].isin(IGNORED_LAND_CLASSES).sum())
-    if ignored:
-        print(f"  {ignored:,} polygons are {IGNORED_LAND_CLASSES} and measure nothing")
 
 
 def describe_damage(damaged, insured):
@@ -140,6 +142,9 @@ def describe_damage(damaged, insured):
         under = damaged[FOOTPRINT_AREA_COLUMN].sum()
         share = under / union_total if union_total else 0.0
         print(f"  under a building footprint: {under:,.0f} m2 ({share:.0%})")
+    for column in IMMINENT_GROUND_COLUMNS:
+        if column in damaged.columns:
+            print(f"  {column}: {damaged[column].sum():,.0f} total")
     over = check_within_insured_area(damaged, insured, id_column=LAND_ID_COLUMN)
     if over.empty:
         print("  no polygon carries more damaged ground than it has insured land")
@@ -194,6 +199,15 @@ def main(*, extent, world_ids, realisation_ids):
 
             damaged = damaged_area_per_property(
                 insured, landslides, id_column=LAND_ID_COLUMN
+            )
+            # Imminent ground apart from the damaged ground, on its own rows
+            # where nothing else reached the polygon (T-45).
+            damaged = with_imminent_ground(
+                damaged,
+                imminent_ground_per_property(
+                    insured, landslides, id_column=LAND_ID_COLUMN
+                ),
+                id_column=LAND_ID_COLUMN,
             )
             damaged.insert(
                 1, CLAIM_ID_COLUMN, damaged[LAND_ID_COLUMN].map(claim_of_land)

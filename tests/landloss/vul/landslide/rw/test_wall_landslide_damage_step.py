@@ -228,6 +228,10 @@ def test_the_output_carries_the_contract_columns_for_every_wall(synthetic_run):
         "is_damaged_by_shaking",
         "is_evacuated",
         "is_inundated",
+        "evacuated_length_m",
+        "inundated_length_m",
+        "damaged_length_m",
+        "damaged_line",
     ]
     # One row per wall in the population, flat land and sloping alike, in
     # population order.
@@ -258,6 +262,37 @@ def test_each_wall_takes_the_flags_of_section_5_2(synthetic_run):
         assert bool(row["is_damaged_by_shaking"]) is shaking, rw_id
         assert bool(row["is_evacuated"]) is evacuated, rw_id
         assert bool(row["is_inundated"]) is inundated, rw_id
+
+
+def test_each_wall_takes_its_damaged_length_and_line(synthetic_run):
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
+    flags = gpd.read_parquet(
+        step.wall_landslide_damage_path(0, 0, extent="wlg-pilot")
+    ).set_index("rw_id")
+
+    expected = {
+        # Per wall, the evacuated, inundated and damaged lengths in metres.
+        "C01-RW01": (0.0, 0.0, 0.0),
+        # Buried by the large landslide's deposit only: kept for information,
+        # not damaged.
+        "C01-RW02": (0.0, 20.0, 0.0),
+        # Failed with its polygon: the whole line, measured or not.
+        "C02-RW01": (0.0, 0.0, 20.0),
+        # Absorbed, but clear of the absorbing ground in this layout.
+        "C02-RW02": (0.0, 0.0, 0.0),
+        # Ten metres across the urban failure's face.
+        "C03-RW01": (10.0, 0.0, 10.0),
+        # Twenty metres across the large landslide's evacuated ground.
+        "C03-RW02": (20.0, 0.0, 20.0),
+        "C04-RW01": (0.0, 0.0, 0.0),
+    }
+    for rw_id, (evacuated, inundated, damaged) in expected.items():
+        row = flags.loc[rw_id]
+        assert row["evacuated_length_m"] == pytest.approx(evacuated, abs=0.1), rw_id
+        assert row["inundated_length_m"] == pytest.approx(inundated, abs=0.1), rw_id
+        assert row["damaged_length_m"] == pytest.approx(damaged, abs=0.1), rw_id
+        assert row["damaged_line"].length == pytest.approx(damaged, abs=0.1), rw_id
+    assert flags.crs == CRS
 
 
 def test_slope_id_and_outcome_are_carried_and_null_for_flat_land_walls(

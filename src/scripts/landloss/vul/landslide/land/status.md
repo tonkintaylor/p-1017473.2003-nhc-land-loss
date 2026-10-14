@@ -2,10 +2,11 @@
 
 **Status:** Damaged area and depth per property now run end to end, and are
 moved onto the combined large and urban realisation per exposure world and
-earthquake, not yet rerun since. Nothing is priced: the repair schedule is not
-in the repository.
+earthquake, not yet rerun since. The urban model's imminent land is measured
+apart from the damaged ground (2026-10-14), not yet rerun. Nothing is priced:
+the repair schedule is not in the repository.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-14
 
 ## Approach
 
@@ -15,8 +16,11 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   an outcome per cause, because loss of support and runout are settled
   differently.
 - [x] Read the large and urban landslides alike, from landslide step 6's
-  combined realisation per exposure world and earthquake, and leave the urban
-  model's imminent land unmeasured until **T-45** is decided.
+  combined realisation per exposure world and earthquake, and measure the urban
+  model's imminent land apart from the damaged ground (**T-45**, 2026-10-14):
+  imminent evacuated ground less ground any failure evacuated, and the
+  re-inundated ground as an area, depth and volume, counted by the page and
+  not settled in loss.
 - [x] Work per property against the **insured land polygon**, the 8 m line from the
   dwelling, since that is the extent NHC settles on. The chain runs on
   `claim_id`, the LINZ property from exposure step 5, and each insured land
@@ -80,6 +84,16 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   checks that neither kind exceeds the property's own insured area. Rows are
   keyed on `land_id` with `claim_id`, and the union of the two kinds is written
   as `landslide_area_m2`.
+- **Imminent ground is measured (T-45, 2026-10-14).** Step 3 writes
+  `imminent_evacuated_area_m2`, `reinundated_area_m2`, `reinundated_depth_m` and
+  `reinundated_volume_m3` per polygon, and `landslide_imminent_areas` and
+  `landslide_reinundated_areas` per failure. A polygon only imminent ground
+  reaches gets a row with no damaged ground. Imminent ground sets no wall or
+  crossing flag and is not in `landslide_area_m2`. Vul step 10 carries all of it
+  on the land table outside `LAND_COLUMNS`, and the viewer CSV carries
+  `imminent_evacuated_m2`, `reinundated_m2` and `reinundated_m3`. Loss step 1
+  does not settle it; the page's switch does (**T-127**). Built and unit tested;
+  not yet rerun.
 - Vul step 10 writes the loss tables per exposure world and earthquake, and
   the loss module reads them the same way (**T-66**, done 2026-10-07).
 - Over the Wellington pilot 37 properties of 4,764 are reached. That number is
@@ -129,8 +143,9 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   upstream `claim_id` from exposure step 5, and `land_id` is per polygon.
 - **T-17**, **T-18** — NHC land damage claim costs, needed to validate modelled
   repair costs against settled ones.
-- **T-45** — imminent-risk land. The urban model writes it and this step does
-  not measure it until the decision is made.
+- **T-45** — imminent-risk land. Decided and measured 2026-10-14 as imminent
+  evacuated and re-inundated ground; the lead is content with the model's
+  imminent land as it stands, with no calibration to the claim reports.
 - Holding the cost model in `vul` departs from the module split in
   `.agents/context/code-structure.md`, which puts money in `loss`. This was
   agreed deliberately so the repair scheme stays with the geometry that sizes

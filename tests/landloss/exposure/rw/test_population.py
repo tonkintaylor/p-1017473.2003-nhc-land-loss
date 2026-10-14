@@ -11,6 +11,7 @@ from landloss.exposure.rw.age import AGE_BINS
 from landloss.exposure.rw.population import (
     POPULATION_COLUMNS,
     REQUIRED_COLUMNS,
+    attach_insured_lengths,
     attach_rw_ids,
     draw_wall_population,
 )
@@ -44,7 +45,21 @@ OUTPUT_COLUMNS = (
 )
 
 # The script's fixture lines carry a property, which the walls carry over.
-SCRIPT_OUTPUT_COLUMNS = (*OUTPUT_COLUMNS[:-1], "property_id", "geometry")
+SCRIPT_OUTPUT_COLUMNS = (
+    *OUTPUT_COLUMNS[:-1],
+    "property_id",
+    "insured_lengths_m",
+    "geometry",
+)
+
+STRETCH_COLUMNS = (
+    "wall_line_id",
+    "world_id",
+    "rw_id",
+    "claim_id",
+    "length_m",
+    "geometry",
+)
 
 
 def rng(world_id=0):
@@ -313,6 +328,85 @@ def test_attach_rw_ids_refuses_a_population_naming_an_undrawn_line():
         attach_rw_ids(repeated, walls.iloc[[]].assign(rw_id=None))
 
 
+# --- the insured stretches on each wall ----------------------------------------
+
+
+def stretch_rows(rows):
+    """A stretch table from (wall_line_id, claim_id, length_m) rows."""
+    return gpd.GeoDataFrame(
+        pd.DataFrame(rows, columns=["wall_line_id", "claim_id", "length_m"]),
+        geometry=[LineString([(X0, Y0), (X0 + length, Y0)]) for *_, length in rows],
+        crs=CRS,
+    )
+
+
+def test_attach_insured_lengths_lists_each_wall_longest_first():
+    walls = drawn(probabilities(n=3, p_wall=1.0, claim_id="A"))
+    stretches = stretch_rows(
+        [
+            ("WL0000001", "A", 2.0),
+            ("WL0000001", "B", 7.0),
+            ("WL0000003", "C", 3.0),
+            ("WL0000003", "B", 3.0),
+        ]
+    )
+    out = attach_insured_lengths(walls, stretches)
+    lists = out["insured_lengths_m"].tolist()
+    assert lists[0] == [
+        {"claim_id": "B", "length_m": 7.0},
+        {"claim_id": "A", "length_m": 2.0},
+    ]
+    assert lists[1] == []
+    # A tie goes to the lowest claim id.
+    assert [entry["claim_id"] for entry in lists[2]] == ["B", "C"]
+    assert out["insured_lengths_m"].dtype == object
+    assert out.crs == CRS
+    assert len(out) == len(walls)
+
+
+def test_attach_insured_lengths_moves_the_claim_to_the_longest_stretch():
+    walls = drawn(probabilities(n=2, p_wall=1.0, claim_id="A"))
+    out = attach_insured_lengths(walls, stretch_rows([("WL0000001", "B", 5.0)]))
+    assert out["claim_id"].tolist() == ["B", "A"]
+
+
+def test_attach_insured_lengths_keeps_a_missing_claim_on_an_unsupported_wall():
+    walls = drawn(probabilities(n=1, p_wall=1.0, claim_id=None))
+    out = attach_insured_lengths(walls, stretch_rows([]))
+    assert out["insured_lengths_m"].tolist() == [[]]
+    assert out["claim_id"].isna().all()
+
+
+def test_attach_insured_lengths_sits_before_the_geometry():
+    out = attach_insured_lengths(
+        drawn(probabilities(n=1, p_wall=1.0)), stretch_rows([])
+    )
+    assert out.columns.tolist() == [
+        *POPULATION_COLUMNS[:-1],
+        "insured_lengths_m",
+        "geometry",
+    ]
+
+
+def test_attach_insured_lengths_sits_after_the_property_lengths():
+    table = probabilities(n=1, p_wall=1.0)
+    table["property_id"] = "PA"
+    table["property_lengths_m"] = [[{"property_id": "PA", "length_m": 10.0}]]
+    table["n_properties"] = 1
+    out = attach_insured_lengths(drawn(table), stretch_rows([]))
+    columns = out.columns.tolist()
+    assert columns.index("insured_lengths_m") == columns.index("property_lengths_m") + 1
+    assert out["property_id"].tolist() == ["PA"]
+
+
+def test_attach_insured_lengths_refuses_a_stray_wall_or_repeated_walls():
+    walls = drawn(probabilities(n=2, p_wall=1.0))
+    with pytest.raises(ValueError, match="not in walls"):
+        attach_insured_lengths(walls, stretch_rows([("WL9999999", "A", 5.0)]))
+    with pytest.raises(ValueError, match="repeats wall_line_id"):
+        attach_insured_lengths(stacked(walls, walls), stretch_rows([]))
+
+
 # --- the script ---------------------------------------------------------------
 
 
@@ -330,24 +424,39 @@ def redirected_script(tmp_path, monkeypatch):
     """Point gen_wall_population.py at synthetic inputs.
 
     Claim A has two certain lines on its land and one 50 m away; claim B has
-    one certain line; a fifth line has no claim. The lines of claim A stand on
-    property PA, whose walls were all built from 2005, so its walls never
-    leave that bin; the others take the extent's shares, all before 1970.
-    The second line is on a road frontage.
+    one certain line on its land; a fifth line has no claim and is far from
+    any land. The lines of claim A stand on property PA, whose walls were all
+    built from 2005, so its walls never leave that bin; the others take the
+    extent's shares, all before 1970. The second line is on a road frontage.
+
+    Two more lines are the case of a wall holding up a neighbour: the sixth is
+    drawn on claim A but crosses from A's property onto B's, where only 5 m of
+    it is within 2 m of B's land (and 0.5 m on A, too little to count); the
+    seventh has no claim and lies on B's land.
     """
     table = stacked(
         probabilities(n=2, p_wall=1.0, claim_id="A"),
         probabilities(n=1, p_wall=1.0, claim_id="A", y=50.0, first_id=3),
         probabilities(n=1, p_wall=1.0, claim_id="B", first_id=4),
-        probabilities(n=1, p_wall=1.0, claim_id=None, first_id=5),
+        probabilities(n=1, p_wall=1.0, claim_id=None, y=100.0, first_id=5),
+        probabilities(n=1, p_wall=1.0, claim_id="A", first_id=6),
+        probabilities(n=1, p_wall=1.0, claim_id=None, y=22.0, first_id=7),
     )
-    table["property_id"] = ["PA", "PA", "PA", "PB", None]
-    insured = gpd.GeoDataFrame(
+    # B's line is on B's land; the crossing wall is a vertical line over both.
+    table.loc[3, "geometry"] = LineString([(X0, Y0 + 20), (X0 + 10, Y0 + 20)])
+    table.loc[5, "geometry"] = LineString([(X0 + 5, Y0 + 4.5), (X0 + 5, Y0 + 18)])
+    table["property_id"] = ["PA", "PA", "PA", "PB", None, "PA", None]
+    parcels = gpd.GeoDataFrame(
         {"claim_id": ["A", "B"]},
         geometry=[
             box(X0 - 5, Y0 - 5, X0 + 35, Y0 + 5),
-            box(X0 - 5, Y0 - 5, X0 + 15, Y0 + 5),
+            box(X0 - 5, Y0 + 10, X0 + 15, Y0 + 30),
         ],
+        crs=CRS,
+    )
+    insured = gpd.GeoDataFrame(
+        {"claim_id": ["A", "B"]},
+        geometry=[parcels.geometry[0], box(X0 - 5, Y0 + 15, X0 + 15, Y0 + 25)],
         crs=CRS,
     )
     ages = age_shares(
@@ -371,12 +480,18 @@ def redirected_script(tmp_path, monkeypatch):
     ages.to_parquet(ages_file)
     units.to_parquet(units_file)
     monkeypatch.setattr(script, "WORK_DIR", tmp_path / "exposure")
+    monkeypatch.setattr(script, "read_claim_parcels", lambda **_: parcels)
     monkeypatch.setattr(script, "wall_probability_path", lambda *, extent: table_file)
     monkeypatch.setattr(script, "insured_land_path", lambda *, extent: insured_file)
     monkeypatch.setattr(script, "wall_draws_path", lambda *, extent: draws_file)
     monkeypatch.setattr(script, "wall_age_path", lambda *, extent: ages_file)
     monkeypatch.setattr(script, "wall_units_path", lambda *, extent: units_file)
     return table
+
+
+def run(*, world_ids):
+    """Run the script's main over the synthetic pilot."""
+    script.main(extent="wlg-pilot", world_ids=world_ids, use_cached_layers=True)
 
 
 def every_wall_walled(table, *, world_ids, walled=True):
@@ -395,7 +510,7 @@ def every_wall_walled(table, *, world_ids, walled=True):
 def test_gen_wall_population_main_writes_one_file_per_world(
     tmp_path, redirected_script
 ):
-    script.main(extent="wlg-pilot", world_ids=[0, 1])
+    run(world_ids=[0, 1])
 
     for world_id in (0, 1):
         out_path = script.wall_population_path(world_id, extent="wlg-pilot")
@@ -407,8 +522,35 @@ def test_gen_wall_population_main_writes_one_file_per_world(
         )
         written = gpd.read_parquet(out_path)
         assert written.columns.tolist() == list(SCRIPT_OUTPUT_COLUMNS)
-        # The claimless line and the line off A's insured land are dropped.
-        assert written["rw_id"].tolist() == ["A-RW01", "A-RW02", "B-RW01"]
+        # The claimless line off any land and the line off A's insured land
+        # support nothing. The crossing wall drawn on A is B's, and the
+        # claimless line on B's land is B's (I-05 no longer drops it).
+        assert sorted(written["wall_line_id"]) == [
+            "WL0000001",
+            "WL0000002",
+            "WL0000004",
+            "WL0000006",
+            "WL0000007",
+        ]
+        assert sorted(written["rw_id"]) == [
+            "A-RW01",
+            "A-RW02",
+            "B-RW01",
+            "B-RW02",
+            "B-RW03",
+        ]
+        claim = written.set_index("wall_line_id")["claim_id"]
+        assert claim.to_dict() == {
+            "WL0000001": "A",
+            "WL0000002": "A",
+            "WL0000004": "B",
+            "WL0000006": "B",
+            "WL0000007": "B",
+        }
+        crossing = written.set_index("wall_line_id").loc["WL0000006"]
+        assert crossing["property_id"] == "PA"
+        assert [e["claim_id"] for e in crossing["insured_lengths_m"]] == ["B"]
+        assert crossing["insured_lengths_m"][0]["length_m"] == pytest.approx(5.0)
         assert (written["world_id"] == world_id).all()
         assert written["world_id"].dtype == np.int64
         assert written["wall_line_id"].isin(redirected_script["wall_line_id"]).all()
@@ -420,7 +562,7 @@ def test_gen_wall_population_main_writes_one_file_per_world(
 def test_the_walls_take_their_property_age_or_the_extent_default(
     redirected_script,
 ):
-    script.main(extent="wlg-pilot", world_ids=[0])
+    run(world_ids=[0])
 
     every_wall = gpd.read_parquet(script.drawn_walls_path(0, extent="wlg-pilot"))
     age_bin = every_wall.set_index("wall_line_id")["age_bin"]
@@ -432,9 +574,9 @@ def test_the_walls_take_their_property_age_or_the_extent_default(
 
 
 def test_gen_wall_population_main_reproduces_a_world(redirected_script):
-    script.main(extent="wlg-pilot", world_ids=[0])
+    run(world_ids=[0])
     one = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
-    script.main(extent="wlg-pilot", world_ids=[0])
+    run(world_ids=[0])
     again = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
     assert one["wall_type"].tolist() == again["wall_type"].tolist()
     assert one["age_bin"].tolist() == again["age_bin"].tolist()
@@ -444,15 +586,17 @@ def test_gen_wall_population_main_reproduces_a_world(redirected_script):
 def test_the_type_draw_does_not_depend_on_which_walls_are_walled(
     tmp_path, redirected_script, monkeypatch
 ):
-    script.main(extent="wlg-pilot", world_ids=[0])
+    run(world_ids=[0])
     every = gpd.read_parquet(script.drawn_walls_path(0, extent="wlg-pilot"))
     some_file = tmp_path / "some-walled.parquet"
     every_wall_walled(
-        redirected_script, world_ids=(0,), walled=[False, True, False, True, True]
+        redirected_script,
+        world_ids=(0,),
+        walled=[False, True, False, True, True, False, False],
     ).to_parquet(some_file)
     monkeypatch.setattr(script, "wall_draws_path", lambda *, extent: some_file)
 
-    script.main(extent="wlg-pilot", world_ids=[0])
+    run(world_ids=[0])
 
     some = gpd.read_parquet(script.drawn_walls_path(0, extent="wlg-pilot"))
     assert some["wall_line_id"].tolist() == ["WL0000002", "WL0000004", "WL0000005"]
@@ -463,7 +607,7 @@ def test_the_type_draw_does_not_depend_on_which_walls_are_walled(
 
 def test_a_world_the_wall_units_did_not_draw_is_refused(redirected_script):
     with pytest.raises(ValueError, match="world 2 not drawn"):
-        script.main(extent="wlg-pilot", world_ids=[2])
+        run(world_ids=[2])
 
 
 def test_missing_draws_say_to_run_exposure_rw_step_6(
@@ -475,7 +619,7 @@ def test_missing_draws_say_to_run_exposure_rw_step_6(
     with pytest.raises(
         FileNotFoundError, match=r"exposure rw step 6 \(gen_wall_units\.py\)"
     ):
-        script.main(extent="wlg-pilot", world_ids=[0])
+        run(world_ids=[0])
 
 
 def test_missing_age_shares_say_to_run_gen_wall_age(
@@ -485,7 +629,7 @@ def test_missing_age_shares_say_to_run_gen_wall_age(
         script, "wall_age_path", lambda *, extent: tmp_path / "missing.parquet"
     )
     with pytest.raises(FileNotFoundError, match=r"gen_wall_age\.py"):
-        script.main(extent="wlg-pilot", world_ids=[0])
+        run(world_ids=[0])
 
 
 def test_missing_wall_units_say_to_run_exposure_rw_step_6(
@@ -497,7 +641,7 @@ def test_missing_wall_units_say_to_run_exposure_rw_step_6(
     with pytest.raises(
         FileNotFoundError, match=r"exposure rw step 6 \(gen_wall_units\.py\)"
     ):
-        script.main(extent="wlg-pilot", world_ids=[0])
+        run(world_ids=[0])
 
 
 def test_drawn_walls_path_names_the_world_and_the_extent():
@@ -512,7 +656,7 @@ def test_drawn_walls_path_names_the_world_and_the_extent():
 def test_gen_wall_population_main_writes_every_drawn_wall_before_the_filters(
     tmp_path, redirected_script
 ):
-    script.main(extent="wlg-pilot", world_ids=[0, 1])
+    run(world_ids=[0, 1])
 
     for world_id in (0, 1):
         drawn_path = script.drawn_walls_path(world_id, extent="wlg-pilot")
@@ -531,10 +675,40 @@ def test_gen_wall_population_main_writes_every_drawn_wall_before_the_filters(
         )
         assert every_wall["wall_line_id"].is_unique
         # The claimless line and the line off A's insured land carry no rw_id.
-        assert every_wall["rw_id"].isna().tolist() == [False, False, True, False, True]
-        assert every_wall["rw_id"].dropna().tolist() == ["A-RW01", "A-RW02", "B-RW01"]
-        assert every_wall["claim_id"].isna().tolist() == [False] * 4 + [True]
-        assert every_wall["claim_id"].dropna().tolist() == ["A", "A", "A", "B"]
+        assert every_wall["rw_id"].isna().tolist() == [
+            False,
+            False,
+            True,
+            False,
+            True,
+            False,
+            False,
+        ]
+        assert sorted(every_wall["rw_id"].dropna()) == [
+            "A-RW01",
+            "A-RW02",
+            "B-RW01",
+            "B-RW02",
+            "B-RW03",
+        ]
+        # The claimless line off any land stays claimless; the claim is the
+        # longest stretch's where there is one.
+        assert every_wall["claim_id"].isna().tolist() == [False] * 4 + [
+            True,
+            False,
+            False,
+        ]
+        assert every_wall["claim_id"].dropna().tolist() == [
+            "A",
+            "A",
+            "A",
+            "B",
+            "B",
+            "B",
+        ]
+        # A wall supporting no insured land is drawn, uninsured, with no stretch.
+        unsupported = every_wall[every_wall["rw_id"].isna()]
+        assert [len(found) for found in unsupported["insured_lengths_m"]] == [0, 0]
         assert (every_wall["world_id"] == world_id).all()
         assert every_wall["world_id"].dtype == np.int64
         assert every_wall.crs == CRS
@@ -601,3 +775,169 @@ def test_the_extent_default_is_the_extent_rows_where_there_are_any():
     mean = script.extent_default_shares(ages.assign(age_basis="qv"))
     assert mean.tolist() == pytest.approx([0.5, 0.25, 0.25, 0.0])
     assert mean.sum() == pytest.approx(1.0)
+
+
+def test_insured_stretches_path_names_the_world_and_the_extent():
+    assert script.insured_stretches_path(3, extent="wlg-pilot").name == (
+        "wall-insured-stretches-w003-pilot.geoparquet"
+    )
+    assert script.insured_stretches_path(12, extent="full").name == (
+        "wall-insured-stretches-w012.geoparquet"
+    )
+
+
+def test_the_stretch_file_has_one_row_per_insured_wall_and_claim(redirected_script):
+    run(world_ids=[0, 1])
+
+    for world_id in (0, 1):
+        stretches = gpd.read_parquet(
+            script.insured_stretches_path(world_id, extent="wlg-pilot")
+        )
+        population = gpd.read_parquet(
+            script.wall_population_path(world_id, extent="wlg-pilot")
+        )
+        assert stretches.columns.tolist() == list(STRETCH_COLUMNS)
+        assert (stretches["world_id"] == world_id).all()
+        assert stretches["world_id"].dtype == np.int64
+        assert stretches.crs == CRS
+        assert not stretches.duplicated(["wall_line_id", "claim_id"]).any()
+        # Each stretch's rw_id is its wall's, and its lengths are the wall's.
+        wall_rw = population.set_index("wall_line_id")["rw_id"]
+        assert (
+            stretches["rw_id"].tolist()
+            == wall_rw.reindex(stretches["wall_line_id"]).tolist()
+        )
+        for wall, lists in population.set_index("wall_line_id")[
+            "insured_lengths_m"
+        ].items():
+            rows = stretches[stretches["wall_line_id"] == wall]
+            assert rows["claim_id"].tolist() == [e["claim_id"] for e in lists]
+            assert rows["length_m"].tolist() == pytest.approx(
+                [e["length_m"] for e in lists]
+            )
+        assert stretches["length_m"].tolist() == pytest.approx(
+            stretches.geometry.length.tolist()
+        )
+
+
+def test_a_world_with_nothing_insured_still_writes_all_three_files(
+    tmp_path, redirected_script, monkeypatch
+):
+    nothing = redirected_script.copy()
+    nothing["geometry"] = [
+        LineString([(X0, Y0 + 500 + i), (X0 + 10, Y0 + 500 + i)])
+        for i in range(len(nothing))
+    ]
+    far_file = tmp_path / "far-probability.geoparquet"
+    nothing.to_parquet(far_file)
+    monkeypatch.setattr(script, "wall_probability_path", lambda *, extent: far_file)
+
+    run(world_ids=[0])
+
+    for path in (
+        script.wall_population_path(0, extent="wlg-pilot"),
+        script.insured_stretches_path(0, extent="wlg-pilot"),
+        script.drawn_walls_path(0, extent="wlg-pilot"),
+    ):
+        assert path.exists()
+    assert gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot")).empty
+    assert gpd.read_parquet(script.insured_stretches_path(0, extent="wlg-pilot")).empty
+    every_wall = gpd.read_parquet(script.drawn_walls_path(0, extent="wlg-pilot"))
+    assert len(every_wall) == len(nothing)
+    assert every_wall["rw_id"].isna().all()
+
+
+def shared_stretch_rows(lengths):
+    """One wall with a stretch row per claim: ``lengths`` is (claim, line, share)."""
+    return gpd.GeoDataFrame(
+        {
+            "wall_line_id": "WL1",
+            "claim_id": [claim for claim, _, _ in lengths],
+            "length_m": [share for _, _, share in lengths],
+        },
+        geometry=[LineString([(0, 0), (line, 0)]) for _, line, _ in lengths],
+        crs=CRS,
+    )
+
+
+def describe_one_wall(stretches, wall_length=10.0):
+    drawn = pd.DataFrame(
+        {
+            "wall_line_id": ["WL1"],
+            "claim_id": ["A"],
+            "length_m": [wall_length],
+            "insured_lengths_m": [[{"claim_id": "A", "length_m": 1.0}]],
+        }
+    )
+    script.describe_stretches(drawn, drawn, stretches, 1)
+
+
+def test_describe_stretches_counts_the_ground_a_wall_shares(capsys):
+    describe_one_wall(shared_stretch_rows([("A", 10.0, 5.0), ("B", 10.0, 5.0)]))
+    out = capsys.readouterr().out
+    assert "walls sharing a boundary stretch between claims: 1, 10 m" in out
+
+
+def test_describe_stretches_raises_when_a_wall_has_more_stretch_than_line():
+    with pytest.raises(ValueError, match="more stretch than line"):
+        describe_one_wall(shared_stretch_rows([("A", 10.0, 10.0), ("B", 10.0, 10.0)]))
+
+
+CANDIDATE_STRETCH_COLUMNS = ("wall_line_id", "claim_id", "length_m", "geometry")
+
+
+def test_candidate_stretches_path_names_the_extent_only():
+    assert script.candidate_stretches_path(extent="wlg-pilot").name == (
+        "wall-candidate-stretches-pilot.geoparquet"
+    )
+    assert script.candidate_stretches_path(extent="full").name == (
+        "wall-candidate-stretches.geoparquet"
+    )
+
+
+def test_every_candidates_stretches_are_written_once_per_extent(redirected_script):
+    run(world_ids=[0, 1])
+
+    candidates = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+    assert candidates.columns.tolist() == list(CANDIDATE_STRETCH_COLUMNS)
+    assert candidates.crs == CRS
+    assert not candidates.duplicated(["wall_line_id", "claim_id"]).any()
+    assert candidates["length_m"].tolist() == pytest.approx(
+        candidates.geometry.length.tolist()
+    )
+    # A candidate with a stretch on a claim's insured land is in it, and the
+    # drawn walls' stretches are a part of it.
+    for world_id in (0, 1):
+        drawn = gpd.read_parquet(
+            script.insured_stretches_path(world_id, extent="wlg-pilot")
+        )
+        keys = set(zip(candidates["wall_line_id"], candidates["claim_id"], strict=True))
+        assert set(zip(drawn["wall_line_id"], drawn["claim_id"], strict=True)) <= keys
+
+
+def test_candidates_no_world_drew_still_have_their_stretches(
+    redirected_script, monkeypatch
+):
+    draws = script.wall_draws_path(extent="wlg-pilot")
+    every_wall_walled(redirected_script, world_ids=(0,), walled=False).to_parquet(draws)
+
+    run(world_ids=[0])
+
+    population = gpd.read_parquet(script.wall_population_path(0, extent="wlg-pilot"))
+    candidates = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+    assert population.empty
+    assert not candidates.empty
+    # The insured stretches of the world are empty, the candidates' are not.
+    assert gpd.read_parquet(script.insured_stretches_path(0, extent="wlg-pilot")).empty
+
+
+def test_the_candidate_stretches_are_the_same_whatever_the_worlds_run(
+    redirected_script,
+):
+    run(world_ids=[0])
+    first = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+    run(world_ids=[0, 1])
+    second = gpd.read_parquet(script.candidate_stretches_path(extent="wlg-pilot"))
+
+    assert first["wall_line_id"].tolist() == second["wall_line_id"].tolist()
+    assert first["length_m"].tolist() == pytest.approx(second["length_m"].tolist())

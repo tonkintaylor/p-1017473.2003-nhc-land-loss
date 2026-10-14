@@ -8,7 +8,8 @@ coordinates:
 - **land**, one row per insured land polygon, with its liquefaction land
   damage state, its landslide damaged areas and what loss values the land
   from: the footprint, property area and suburb;
-- **rw**, one row per insured retaining wall, with its size, length, shaking
+- **rw**, one row per insured retaining wall for each claim whose insured land
+  it supports, at the length of the wall that does, with its size, shaking
   damage and landslide flags;
 - **culverts** and **bridges**, split from the detected crossings by structure
   kind, with their shaking damage and landslide flags.
@@ -25,7 +26,18 @@ in EPSG:2193, supplies the coordinates, and each table carries a
 The retaining wall table is spined on the world's wall population, so a wall on
 sloping ground, which the shaking step never sees, appears beside the flat-land
 walls it does; its shaking flag comes from the wall landslide step's reading of
-the urban slope outcome.
+the urban slope outcome. A wall is then split onto the claims whose insured land
+it supports, at each one's insured stretch from exposure rw step 6; length that
+supports no insured land is not priced.
+
+**Each piece also carries how much of it is damaged** (T-158), in
+``rw_damaged_length``, an extra column outside the contract. A wall damaged by
+shaking is damaged over its whole length. A wall damaged by landslide ground is
+damaged over the part of its line inside evacuated ground (the wall landslide
+step's ``damaged_line``), cut by each claim's insured stretch, so a claim takes
+only the damaged length on its own stretch, and a damaged part on a boundary two
+claims share is shared between them. A piece with 0.1 m or less of damage is
+undamaged and loses its flags. Inundated ground does not damage a wall.
 
 The run also prints the overlap four tables hide: how many claims carry both a
 liquefaction land damage state and a retaining wall damaged by shaking. Both
@@ -33,6 +45,18 @@ are priced: the project lead ruled on 2026-10-02 that a wall replaced by
 shaking on flat land and the liquefaction land damage on the same claim are not
 a double count (**T-27**, retaining walls; culverts and bridges are still to be
 confirmed).
+
+**A slip's new wall is the mapped wall where there is one** (section 4 of the
+property damage tweaks). For each failure no damaged wall holds, the land table
+also lists, in the order of ``landslide_ids``, the height, length and source of
+the wall loss builds for it (``landslide_wall_heights``,
+``landslide_wall_lengths``, ``landslide_wall_sources``): the face height of the
+wall unit its polygon stands on, the length of that unit's stretch on the claim
+alongside the failure's evacuated ground, and ``mapped wall``; or ``slip`` where
+no mapped wall can be used, and loss sizes the wall from the slip. The unit is
+reached through the failure's ``slope_id`` in the realisation and the urban
+slope model's ``wall_line_id``, so the wall need not have been drawn in the
+world; the stretches are exposure rw step 6's ``wall-candidate-stretches``.
 
 **Nothing is settled.** Caps, excesses, GST and pricing belong to the loss
 module, which this step does not touch.
@@ -50,18 +74,31 @@ from landloss.domain.constants import DEFAULT_CRS
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
     EVACUATED_AREA_COLUMN,
+    IMMINENT_EVACUATED_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,
     IS_DAMAGED_BY_SHAKING_COLUMN,
     IS_DAMAGED_COLUMN,
     IS_EVACUATED_COLUMN,
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_WALL_SOURCES_COLUMN,
     LIQ_LD_STATE_COLUMN,
+    MAPPED_WALL,
     REALISATION_ID_COLUMN,
+    REINUNDATED_AREA_COLUMN,
+    REINUNDATED_VOLUME_COLUMN,
+    RW_DAMAGED_LENGTH_COLUMN,
     RW_ID_COLUMN,
+    RW_LENGTH_COLUMN,
 )
 from landloss.exposure.land.extent import DWELLING_COUNT_COLUMN
+from landloss.exposure.rw.population import HEIGHT_SOURCE_COLUMN, WALL_LINE_ID_COLUMN
+from landloss.hazard.landslide.urban.geometry import SLOPE_ID_COLUMN
 from landloss.io.area_of_interest import extent_suffix
+from landloss.vul.landslide.land.damaged_area import (
+    LANDSLIDE_ID_COLUMN,
+    evacuated_ground_per_failure,
+)
 from landloss.vul.loss_input import (
     LOSS_TABLES,
     PARENT_RW_ID_COLUMN,
@@ -70,12 +107,24 @@ from landloss.vul.loss_input import (
     build_land_table,
     build_rw_table,
 )
+from landloss.vul.mapped_walls import attach_mapped_walls
 from landloss.vul.shaking.fragility import DAMAGE_STATE_COLUMN
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
+    candidate_stretches_path,
+    insured_stretches_path,
     wall_population_path,
+)
+from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_probability import (
+    wall_probability_path,
+)
+from scripts.landloss.hazard.landslide.steps.s5_urban_slope_fragility.gen_urban_slope_fragility import (
+    urban_slope_model_path,
+)
+from scripts.landloss.hazard.landslide.steps.s6_urban_slope_realisation.gen_urban_slope_realisation import (
+    combined_realisation_path,
 )
 from scripts.landloss.paths import TEMP_DIR
 from scripts.landloss.vul.landslide.culverts_bridges.steps.s11_crossing_landslide_damage.gen_crossing_landslide_damage import (
@@ -178,6 +227,28 @@ def describe_land(land):
         f"against {added:,.0f} m2 if evacuated and inundated were added "
         f"({added - union:,.0f} m2 not double counted)"
     )
+    if IMMINENT_EVACUATED_AREA_COLUMN in land.columns:
+        # Carried for the viewer; loss settles none of it.
+        print(
+            f"  Imminent evacuated ground: "
+            f"{land[IMMINENT_EVACUATED_AREA_COLUMN].sum():,.0f} m2; re-inundated "
+            f"ground: {land[REINUNDATED_AREA_COLUMN].sum():,.0f} m2, "
+            f"{land[REINUNDATED_VOLUME_COLUMN].sum():,.0f} m3 (not settled)"
+        )
+
+
+def describe_mapped_walls(land):
+    """Print how many failures get a new wall on a mapped wall, and how many a slip."""
+    if LANDSLIDE_WALL_SOURCES_COLUMN not in land.columns:
+        return
+    sources = [
+        source for listed in land[LANDSLIDE_WALL_SOURCES_COLUMN] for source in listed
+    ]
+    mapped = sum(source == MAPPED_WALL for source in sources)
+    print(
+        f"  {mapped:,} of {len(sources):,} landslide entries have a mapped wall to "
+        "build on (the rest are held by a damaged wall or sized from the slip)"
+    )
 
 
 def describe_structures(name, table, flags):
@@ -191,8 +262,16 @@ def describe_structures(name, table, flags):
     )
 
 
-def describe_walls(rw, states):
-    """Print how the wall table splits between the two shaking routes."""
+def describe_walls(rw, states, walls):
+    """Print how the wall table splits between the two shaking routes.
+
+    Args:
+        rw: The rw table, one row per piece.
+        states: The shaking step's damage states.
+        walls: The world's wall population, to count the walls that give no piece.
+    """
+    gave_no_piece = int((~walls[RW_ID_COLUMN].isin(rw[PARENT_RW_ID_COLUMN])).sum())
+    print(f"  {gave_no_piece:,} population walls give no piece (no insured stretch)")
     if rw.empty:
         return
     walls = rw.drop_duplicates(PARENT_RW_ID_COLUMN)
@@ -205,9 +284,20 @@ def describe_walls(rw, states):
     pieces = rw.groupby(PARENT_RW_ID_COLUMN).size()
     split = pieces[pieces > 1]
     print(
-        f"  {len(split):,} of {len(walls):,} walls cross property boundaries and "
-        f"are split into {int(split.sum()):,} rows, one per insured property"
+        f"  {len(split):,} of {len(walls):,} walls support more than one claim's "
+        f"insured land and are split into {int(split.sum()):,} rows, one per claim"
     )
+    if RW_DAMAGED_LENGTH_COLUMN in rw.columns:
+        damaged = rw[RW_DAMAGED_LENGTH_COLUMN] > 0
+        shaken = rw[IS_DAMAGED_BY_SHAKING_COLUMN]
+        print(
+            f"  {int(damaged.sum()):,} pieces are damaged, over "
+            f"{rw.loc[damaged, RW_DAMAGED_LENGTH_COLUMN].sum():,.0f} m of "
+            f"{rw.loc[damaged, RW_LENGTH_COLUMN].sum():,.0f} m; "
+            f"{int((damaged & ~shaken).sum()):,} by landslide ground alone, over "
+            f"{rw.loc[damaged & ~shaken, RW_DAMAGED_LENGTH_COLUMN].sum():,.0f} m "
+            f"of {rw.loc[damaged & ~shaken, RW_LENGTH_COLUMN].sum():,.0f} m"
+        )
 
 
 def describe_overlap(land, rw):
@@ -243,9 +333,21 @@ def main(*, extent, world_ids, realisation_ids):
         realisation_ids: The earthquake realisations to run in every world.
     """
     insured = gpd.read_parquet(insured_land_path(extent=extent))
+    candidate_stretches = gpd.read_parquet(candidate_stretches_path(extent=extent))
+    wall_heights = pd.read_parquet(
+        wall_probability_path(extent=extent),
+        columns=[WALL_LINE_ID_COLUMN, HEIGHT_SOURCE_COLUMN],
+    ).set_index(WALL_LINE_ID_COLUMN)[HEIGHT_SOURCE_COLUMN]
 
     for world_id in world_ids:
         walls = gpd.read_parquet(wall_population_path(world_id, extent=extent))
+        # The unit each polygon of the urban slope model stands on, drawn or not.
+        model = pd.read_parquet(
+            urban_slope_model_path(world_id, extent=extent),
+            columns=[SLOPE_ID_COLUMN, WALL_LINE_ID_COLUMN],
+        )
+        wall_line_of_slope = model.set_index(SLOPE_ID_COLUMN)[WALL_LINE_ID_COLUMN]
+        stretches = gpd.read_parquet(insured_stretches_path(world_id, extent=extent))
         for realisation_id in realisation_ids:
             print(RULE)
             print(f"Assembling world {world_id}, realisation {realisation_id} ...")
@@ -264,8 +366,8 @@ def main(*, extent, world_ids, realisation_ids):
                 wall_damage_state_path(world_id, realisation_id, extent=extent),
                 columns=[RW_ID_COLUMN, DAMAGE_STATE_COLUMN],
             )
-            # A wall crossing property boundaries is split onto each insured
-            # property it stands on, so each settles its own share.
+            # A wall is split onto each claim whose insured land it supports, at
+            # its insured stretch there, so each settles its own share.
             rw = build_rw_table(
                 walls,
                 states,
@@ -273,6 +375,26 @@ def main(*, extent, world_ids, realisation_ids):
                     wall_landslide_damage_path(world_id, realisation_id, extent=extent)
                 ),
                 claims=set(insured[CLAIM_ID_COLUMN]),
+                # Each claim's damaged length is its own stretch's.
+                stretches=stretches,
+            )
+            # What each failure no damaged wall holds is built with: the mapped
+            # wall where there is one, else the slip (section 4).
+            landslides = gpd.read_parquet(
+                combined_realisation_path(world_id, realisation_id, extent=extent)
+            )
+            land = attach_mapped_walls(
+                land,
+                rw,
+                slope_ids=landslides.drop_duplicates(LANDSLIDE_ID_COLUMN).set_index(
+                    LANDSLIDE_ID_COLUMN
+                )[SLOPE_ID_COLUMN],
+                wall_line_of_slope=wall_line_of_slope,
+                height_of_wall_line=wall_heights,
+                candidate_stretches=candidate_stretches,
+                evacuated_ground=evacuated_ground_per_failure(
+                    insured, landslides, id_column=CLAIM_ID_COLUMN
+                ),
             )
             culverts, bridges = build_crossing_tables(
                 gpd.read_parquet(
@@ -287,6 +409,7 @@ def main(*, extent, world_ids, realisation_ids):
             tables = dict(zip(LOSS_TABLES, (land, rw, culverts, bridges), strict=True))
 
             describe_land(land)
+            describe_mapped_walls(land)
             print(RULE)
             describe_structures(
                 "Retaining walls",
@@ -297,7 +420,7 @@ def main(*, extent, world_ids, realisation_ids):
                     IS_INUNDATED_COLUMN,
                 ),
             )
-            describe_walls(rw, states)
+            describe_walls(rw, states, walls)
             describe_structures(
                 "Culverts",
                 culverts,

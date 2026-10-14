@@ -1103,6 +1103,54 @@
       "Phase": "Future",
       "Source": "Maxim Millen 2026-10-13, exec report map review (vul/landslide/rw status)",
       "Status": "Open"
+    },
+    {
+      "ID": "T-159",
+      "Task": "Remove the thin slivers that hazard landslide step 4's wall trim and fill leaves where a polygon's old outline meets the end of its wall line (for example SP0024301 in Upper Hutt world 0).",
+      "Owner": "Unassigned",
+      "Phase": "Future",
+      "Source": "Maxim Millen 2026-10-14, Upper Hutt e2e QGIS review (vul/landslide/rw status)",
+      "Status": "Open"
+    },
+    {
+      "ID": "T-160",
+      "Task": "Carry imminent evacuated and re-inundated ground from vul landslide land s3 to the viewer CSV without settling it in loss, as the Python side of T-127 (the page's switch is Perrie Gilbert's), and check it after the rerun.",
+      "Owner": "Maxim Millen",
+      "Phase": "4",
+      "Source": "Tweaks to property damage plan, Maxim Millen 2026-10-14 (sections 2, 3, 4 and 6 built, not yet rerun)",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-161",
+      "Task": "Size every replaced wall from its own height and type over its damaged length plus 1 m at each end and at least 3 m, in loss s0 and s1, as the Python side of T-122 (the page side is Perrie Gilbert's), and check it after the rerun.",
+      "Owner": "Maxim Millen",
+      "Phase": "4",
+      "Source": "Tweaks to property damage plan, Maxim Millen 2026-10-14 (sections 2, 3, 4 and 6 built, not yet rerun)",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-162",
+      "Task": "Build a slip's new wall on the mapped wall of its polygon's unit, over the stretch alongside the failure's evacuated ground, and give a slip that only buried a claim no new wall, then measure the cost against the slip-sized wall after the rerun.",
+      "Owner": "Maxim Millen",
+      "Phase": "4",
+      "Source": "Tweaks to property damage plan, Maxim Millen 2026-10-14 (sections 2, 3, 4 and 6 built, not yet rerun)",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-163",
+      "Task": "Replace a wall clipped by another polygon's landslide over its damaged length only (T-158), and after the rerun check for a double count against the slip's own new wall.",
+      "Owner": "Maxim Millen",
+      "Phase": "4",
+      "Source": "Tweaks to property damage plan, Maxim Millen 2026-10-14 (sections 2, 3, 4 and 6 built, not yet rerun)",
+      "Status": "In progress"
+    },
+    {
+      "ID": "T-164",
+      "Task": "Add a HAZUS PGA fragility for bridges at vul/shaking/culverts_bridges step 9, evaluated on the pga_g already sampled at each structure, so a bridge can fail from shaking and not only from its property's liquefaction land damage state (T-36), including on hill land off the liquefaction grid.",
+      "Owner": "Unassigned",
+      "Phase": "Unassigned",
+      "Source": "Maxim Millen 2026-10-14",
+      "Status": "Open"
     }
   ],
   "Limitations": [

@@ -48,20 +48,48 @@
   null where the wall has no outcome row (a flat-land wall) and `slope_id`
   null where the sloping wall's line drew no polygon (an outcome of
   `standing`). An outcome naming a wall not in the population stops the run.
-- The damage measure is a flag, not an area or a damage state. **No cost is
-  attached.** Any flag true means one replacement in the loss module; which
-  flag is set only attributes the cause.
+- **How much of the wall is damaged is measured as well** (T-158, the lead,
+  2026-10-14), by `measure_wall_damage()` in `landloss.vul.landslide.flags`,
+  called at the end of `wall_flags()`. A wall damaged by shaking (here, by its
+  urban outcome) is damaged over its whole line: `damaged_line` is the wall's
+  line. A wall carrying `is_evacuated` or `is_inundated` and not that is
+  measured: the length of its line inside the **merged** evacuated ground and
+  inside the **merged** inundated ground of every failure **other than its own
+  polygon** (overlapping failures count a stretch once), with the same
+  `WALL_INSIDE_TOLERANCE_M` as the flag (the merged ground is shrunk by 0.01 m,
+  so a line along an edge is not damaged and 1 cm or less inside is nothing).
+  The damaged line is the part inside evacuated ground alone; **inundated
+  ground does not damage a wall**, so a wall only inundated has an empty
+  `damaged_line` and 0, and `is_inundated` stays on it for information. An
+  `absorbed` or `superseded` wall is measured the same way, from the absorbing
+  failure's ground (another polygon); one whose outcome set `is_evacuated` but
+  whose line lies in no such ground has 0. A wall damaged in shaking in the
+  later shaking step (a flat-land wall) is not known here and vul step 10 takes
+  its whole length. A wall carrying no flag is not measured.
+- The damage measure is a flag, and a damaged length for a landslide-damaged
+  wall. **No cost is attached.** Either damaging flag true means one
+  replacement in the loss module; the length is how much of the wall it
+  replaces, plus its margin.
 - Output is `temp/vul/wall-landslide-damage-w<NNN>-r<NNN>[-pilot].parquet`,
   built by `wall_landslide_damage_path(world_id, realisation_id, extent=...)`,
   one row per wall in population order with the columns `realisation_id`,
   `world_id`, `rw_id`, `claim_id`, `slope_id`, `outcome`,
-  `is_damaged_by_shaking`, `is_evacuated` and `is_inundated`. `claim_id` is
-  mapped from the wall population on `rw_id`.
+  `is_damaged_by_shaking`, `is_evacuated`, `is_inundated`,
+  `evacuated_length_m`, `inundated_length_m` (information only),
+  `damaged_length_m` (the evacuated length, or the whole line for a wall
+  damaged by shaking) and `damaged_line` (the geometry that length is of, empty
+  where none; the file is a geoparquet in the wall population's CRS with
+  `damaged_line` as its geometry). `claim_id` is mapped from the wall
+  population on `rw_id`.
 - The run prints, per world and earthquake, the realisation's polygons by
   population and land class, the walls on flat and sloping ground, the walls
   with and without an outcome row, the outcome counts, the walls whose polygon
   was not delineated, the count carrying each flag and the count carrying any
-  (`describe_landslides()`, `describe_flags()`).
+  (`describe_landslides()`, `describe_flags()`), then the walls damaged over
+  their whole line and over part of it, with the damaged metres, then the walls
+  flagged by an absorbed or superseded outcome and how many of those have no
+  more than 0.1 m of line inside the ground, which vul s10 clears as undamaged
+  (`describe_damage()`).
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/landslide/rw/test_wall_landslide_damage_step.py`.
 

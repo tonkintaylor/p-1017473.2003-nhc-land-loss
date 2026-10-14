@@ -18,8 +18,9 @@ dollar attached to a land structure is worked out here, in
 each carrying ``claim_id`` and coordinates, so this module aggregates onto a key
 it is given rather than minting one. Land arrives as an area and a market rate
 per non-overlapping polygon; structures arrive as a damage flag per cause, and
-since a damaged structure is replaced rather than repaired, any flag being true
-means one replacement. The full contract is
+since a damaged structure is replaced rather than repaired, any damaging flag
+being true means one replacement (a wall is damaged by shaking or evacuation, and
+inundated ground alone does not damage it). The full contract is
 ``.agents/plans/asset-pricing-approach.md`` section 1, which also lists what it
 does not carry. See ``.agents/context/nhi-act-land-cover-explainer.md`` for the
 settlement mechanics the arithmetic follows.

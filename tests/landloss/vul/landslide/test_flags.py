@@ -12,7 +12,12 @@ from landloss.hazard.landslide.urban.realisation import (
     SUPERSEDED,
 )
 from landloss.vul.landslide.flags import (
+    DAMAGED_LENGTH_COLUMN,
+    DAMAGED_LINE_COLUMN,
+    EVACUATED_LENGTH_COLUMN,
+    INUNDATED_LENGTH_COLUMN,
     OUTCOME_FLAGS,
+    WALL_DAMAGE_COLUMNS,
     WALL_FLAG_COLUMNS,
     landslide_flags,
     outcome_flags,
@@ -228,7 +233,13 @@ def test_the_outcome_and_the_geometry_are_or_ed():
         ("A-RW03", "SP0000003", ABSORBED),
     )
     flags = wall_flags(walls, hazard, table, id_column="rw_id")
-    assert list(flags.columns) == ["rw_id", "slope_id", "outcome", *WALL_FLAG_COLUMNS]
+    assert list(flags.columns) == [
+        "rw_id",
+        "slope_id",
+        "outcome",
+        *WALL_FLAG_COLUMNS,
+        *WALL_DAMAGE_COLUMNS,
+    ]
     assert flags["rw_id"].tolist() == ["A-RW01", "A-RW02", "A-RW03", "A-RW04"]
     assert flags["is_damaged_by_shaking"].tolist() == [True, False, False, False]
     assert flags["is_evacuated"].tolist() == [False, False, True, False]
@@ -395,3 +406,119 @@ def test_a_wall_with_no_outcome_is_evacuated_by_any_polygon():
     hazard = slides_with_slopes((EVACUATED, "SP0000002", OWN_POLYGON))
     flags = wall_flags(walls, hazard, outcomes(), id_column="rw_id")
     assert flags["is_evacuated"].tolist() == [True]
+
+
+# How much of a wall a landslide damages (T-158).
+
+
+def damage(walls, hazard, table):
+    """Return the flags and damaged lengths of ``walls``, by wall id."""
+    return wall_flags(walls, hazard, table, id_column="rw_id").set_index("rw_id")
+
+
+def test_a_wall_clipped_by_a_neighbour_is_damaged_over_the_clipped_length_only():
+    # 4 m of a 10 m wall lies inside the neighbour's evacuated ground.
+    walls = assets(("A-RW01", LineString([(-6, 5), (4, 5)])))
+    hazard = slides_with_slopes((EVACUATED, "SP0000001", NEIGHBOUR))
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row["is_evacuated"]
+    assert row[EVACUATED_LENGTH_COLUMN] == pytest.approx(4.0, abs=0.02)
+    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(4.0, abs=0.02)
+    assert row[DAMAGED_LINE_COLUMN].length == pytest.approx(4.0, abs=0.02)
+    assert row[DAMAGED_LINE_COLUMN].bounds[0] == pytest.approx(0.0, abs=0.02)
+
+
+def test_a_wall_damaged_by_shaking_is_damaged_over_its_whole_line_even_when_clipped():
+    line = LineString([(-6, 5), (4, 5)])
+    walls = assets(("A-RW01", line))
+    hazard = slides_with_slopes((EVACUATED, "SP0000001", NEIGHBOUR))
+    table = outcomes(("A-RW01", "SP0000002", FAILED_WITH_POLYGON))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(10.0)
+    assert row[DAMAGED_LINE_COLUMN].equals(line)
+
+
+def test_a_wall_in_inundated_ground_only_keeps_the_flag_but_is_not_damaged():
+    walls = assets(("A-RW01", LineString([(-6, 5), (4, 5)])))
+    hazard = slides_with_slopes((INUNDATED, "SP0000001", NEIGHBOUR))
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row["is_inundated"]
+    assert not row["is_evacuated"]
+    assert row[INUNDATED_LENGTH_COLUMN] == pytest.approx(4.0, abs=0.02)
+    assert row[EVACUATED_LENGTH_COLUMN] == 0.0
+    assert row[DAMAGED_LENGTH_COLUMN] == 0.0
+    assert row[DAMAGED_LINE_COLUMN].is_empty
+
+
+def test_evacuated_and_inundated_lengths_are_measured_apart():
+    walls = assets(("A-RW01", LineString([(-6, 5), (4, 5)])))
+    hazard = slides_with_slopes(
+        (EVACUATED, "SP0000001", box(0, 0, 10, 10)),
+        (INUNDATED, "SP0000003", box(-3, 0, 2, 10)),
+    )
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row[EVACUATED_LENGTH_COLUMN] == pytest.approx(4.0, abs=0.02)
+    assert row[INUNDATED_LENGTH_COLUMN] == pytest.approx(5.0, abs=0.02)
+    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(4.0, abs=0.02)
+
+
+def test_a_line_along_a_failures_edge_is_not_damaged():
+    walls = assets(("A-RW01", SHARED_EDGE))
+    hazard = slides_with_slopes((EVACUATED, "SP0000001", NEIGHBOUR))
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row[DAMAGED_LENGTH_COLUMN] == 0.0
+    assert row[DAMAGED_LINE_COLUMN].is_empty
+
+
+def test_overlapping_failures_count_a_stretch_once():
+    walls = assets(("A-RW01", LineString([(-6, 5), (10, 5)])))
+    hazard = slides_with_slopes(
+        (EVACUATED, "SP0000001", box(0, 0, 6, 10)),
+        (EVACUATED, "SP0000003", box(4, 0, 8, 10)),
+    )
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(8.0, abs=0.03)
+
+
+def test_the_walls_own_polygon_is_not_measured():
+    walls = assets(("A-RW01", LineString([(12, 5), (18, 5)])))
+    hazard = slides_with_slopes((EVACUATED, "SP0000002", OWN_POLYGON))
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row[DAMAGED_LENGTH_COLUMN] == 0.0
+
+
+def test_an_absorbed_wall_is_measured_from_the_absorbing_failures_ground():
+    walls = assets(("A-RW01", LineString([(-6, 5), (3, 5)])))
+    hazard = slides_with_slopes((EVACUATED, "SP0000001", NEIGHBOUR))
+    table = outcomes(("A-RW01", "SP0000002", ABSORBED))
+    row = damage(walls, hazard, table).loc["A-RW01"]
+    assert row["is_evacuated"]
+    assert row[DAMAGED_LENGTH_COLUMN] == pytest.approx(3.0, abs=0.02)
+
+
+def test_a_large_model_landslide_with_no_slope_id_is_measured():
+    # The realisation holds slope_id as a string column, so a large-model
+    # landslide's is pandas' NA (Wellington pilot, 2026-10-14).
+    walls = assets(
+        ("A-RW01", LineString([(-6, 5), (4, 5)])),
+        ("B-RW01", LineString([(-6, 2), (2, 2)])),
+    )
+    hazard = slides_with_slopes((EVACUATED, None, NEIGHBOUR))
+    hazard["slope_id"] = hazard["slope_id"].astype("string")
+    table = outcomes(("A-RW01", "SP0000002", STANDING))
+    rows = damage(walls, hazard, table)
+    assert rows.loc["A-RW01", DAMAGED_LENGTH_COLUMN] == pytest.approx(4.0, abs=0.02)
+    assert rows.loc["B-RW01", DAMAGED_LENGTH_COLUMN] == pytest.approx(2.0, abs=0.02)
+
+
+def test_a_wall_no_landslide_reached_has_no_damaged_length():
+    walls = assets(("A-RW01", LineString([(40, 50), (60, 50)])))
+    row = damage(walls, slides(EVACUATED_CIRCLE), outcomes()).loc["A-RW01"]
+    assert row[DAMAGED_LENGTH_COLUMN] == 0.0
+    assert row[DAMAGED_LINE_COLUMN].is_empty

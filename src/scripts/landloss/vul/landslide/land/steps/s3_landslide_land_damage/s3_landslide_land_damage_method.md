@@ -30,10 +30,27 @@
   **inundated** ground is where the debris came to rest, which may have started
   on somebody else's property.
 - The urban model also writes a third class, **imminent** ground left standing
-  behind a headscarp. It is in `damaged_area.IGNORED_LAND_CLASSES` and measures
-  nothing here: a polygon only imminent ground reaches is absent from the
-  output, until the register decides how it is settled (**T-45**). The run
-  prints how many such polygons the realisation carries.
+  behind a headscarp. It is not in `AREA_COLUMNS`, so none of the damaged
+  ground above includes it, and loss settles none of it. It is measured apart
+  (**T-45**, 2026-10-14) by `imminent_ground_per_property`, joined on by
+  `with_imminent_ground`, on each insured land polygon:
+  - `imminent_evacuated_area_m2`: the imminent polygons' union on the polygon
+    less the ground **any** failure evacuated on it, counted once. Ground only
+    inundated is not subtracted, because buried ground can still be imminent
+    for evacuation. It does not enter `landslide_area_m2` and sets no wall or
+    crossing flag;
+  - `reinundated_area_m2`: the union of the inundated ground of the failures
+    that have an imminent polygon anywhere in the realisation, the same
+    footprint as their inundated ground and only for those failures;
+  - `reinundated_volume_m3`: summed over those failures, each one's
+    re-inundated area on the polygon times its own inundated depth;
+  - `reinundated_depth_m`: the volume over the area, 0 where the area is 0, so
+    area times depth is always the volume.
+
+  A polygon only imminent ground reaches has a row of its own, with no damaged
+  ground. The inundated depth comes from the hazard realisation's `depth_m` on
+  the inundated polygons. Nothing is calibrated to the claim reports, which
+  show little imminent risk from earthquakes (the lead, 2026-10-14).
 - **Inundated area is measured on the union** of the landslides that reached a
   property, not summed across them. Evacuated polygons are pairwise disjoint by
   construction across both populations; inundated ones are not, because two
@@ -66,8 +83,9 @@
   built by `landslide_land_damage_path(world_id, realisation_id, extent=...)`,
   with columns `realisation_id`, `world_id`, `land_id`, `claim_id`,
   `evacuated_area_m2`, `inundated_area_m2`, `landslide_area_m2`,
-  `evacuated_depth_m`, `inundated_depth_m`, `landslide_footprint_area_m2`,
-  the five failure lists below, `cause_evacuated` and `cause_inundated`.
+  `evacuated_depth_m`, `inundated_depth_m`, the four imminent columns above,
+  `landslide_footprint_area_m2`, the failure lists below,
+  `cause_evacuated` and `cause_inundated`.
   Outputs named on the realisation alone are from before the combined
   realisation existed and are stale.
 - **Each failure apart** (**T-124**, 2026-10-13). The areas above pool every
@@ -81,6 +99,15 @@
   its own wall; the pooled union does not. Built by `damaged_area_per_failure`
   and `failures_per_property`, carried into the loss contract by vul step 10,
   and read by loss step 1 to give each slip its own wall.
+- Beside them are three lists in the same order, kept out of the five
+  (`LANDSLIDE_FAILURE_COLUMNS`) so an older table still lists its failures:
+  `landslide_evacuated_areas` (the failure's evacuated ground, which sizes a
+  slip's wall), `landslide_imminent_areas` (the failure's own imminent ground
+  less any ground evacuated on the polygon by any failure) and
+  `landslide_reinundated_areas` (its inundated ground when it has imminent
+  land, else 0). A failure only imminent ground reaches on the polygon is not
+  listed, so the lists stay aligned; its imminent ground is in the scalar
+  total only.
 - The step is exercised end to end on synthetic inputs by
   `tests/landloss/vul/landslide/land/test_landslide_land_damage_step.py`.
 

@@ -38,6 +38,17 @@ on below it; its own failure is the outcome route's (``failed_with_polygon``,
 the shaking flag). Polygons of other slopes still flag it, as do the
 ``absorbed`` and ``superseded`` outcomes.
 
+**How much of a wall is damaged** is measured as well (T-158, the lead,
+2026-10-14), because a wall clipped by a neighbour's failure is replaced over
+the clipped length, not over its whole length. A wall that fails in shaking is
+damaged over its whole line. A wall damaged by landslide ground is damaged only
+over the length of its line inside **evacuated** ground; inundated ground
+buries a wall without damaging it, and its length is kept for information.
+:func:`measure_wall_damage` measures each kind of ground merged first, so
+overlapping failures count a stretch once, with the same
+:data:`WALL_INSIDE_TOLERANCE_M` as the flag, and over every failure other than
+the wall's own polygon.
+
 This sits at the landslide level rather than under an asset submodule because it
 reads no asset-specific attribute: it needs only an identifier and a geometry,
 whatever the structure is.
@@ -87,6 +98,20 @@ OUTCOME_FLAGS = {
     SUPERSEDED: IS_EVACUATED_COLUMN,
 }
 
+# What :func:`measure_wall_damage` writes beside the flags. The lengths are in
+# metres; the damaged line is the stretch of the wall that is damaged (empty
+# where none is), for vul step 10 to place on each claim's insured stretch.
+EVACUATED_LENGTH_COLUMN = "evacuated_length_m"
+INUNDATED_LENGTH_COLUMN = "inundated_length_m"
+DAMAGED_LENGTH_COLUMN = "damaged_length_m"
+DAMAGED_LINE_COLUMN = "damaged_line"
+WALL_DAMAGE_COLUMNS = (
+    EVACUATED_LENGTH_COLUMN,
+    INUNDATED_LENGTH_COLUMN,
+    DAMAGED_LENGTH_COLUMN,
+    DAMAGED_LINE_COLUMN,
+)
+
 # The three contract flags a wall carries, in output order.
 WALL_FLAG_COLUMNS = (
     IS_DAMAGED_BY_SHAKING_COLUMN,
@@ -119,6 +144,22 @@ def _caught_ids(
         how="inner",
     )
     return pd.Index(joined[id_column].unique())
+
+
+def _same_slope(polygon_slope: np.ndarray, wall_slope: np.ndarray) -> np.ndarray:
+    """Return where a landslide's polygon is the wall's own, pair by pair.
+
+    A large-model landslide has no ``slope_id`` and a wall with no outcome has
+    no own polygon. The realisation holds ``slope_id`` as a string column, so a
+    missing one is pandas' NA, which cannot be compared to give a bool; only
+    ids present on both sides are compared, and a missing one is never own.
+    """
+    polygon_slope = np.asarray(polygon_slope, dtype=object)
+    wall_slope = np.asarray(wall_slope, dtype=object)
+    known = pd.notna(polygon_slope) & pd.notna(wall_slope)
+    same = np.zeros(len(polygon_slope), dtype=bool)
+    same[known] = (polygon_slope[known] == wall_slope[known]).astype(bool)
+    return same
 
 
 def _lines_inside_ids(
@@ -164,9 +205,129 @@ def _lines_inside_ids(
     if own is not None:
         polygon_slope = joined[SLOPE_ID_COLUMN].to_numpy()
         wall_slope = joined[id_column].map(own).to_numpy()
-        is_own = pd.notna(polygon_slope) & (polygon_slope == wall_slope)
-        reached &= ~is_own
+        reached &= ~_same_slope(polygon_slope, wall_slope)
     return pd.Index(joined.loc[reached, id_column].unique())
+
+
+def _inside_lines(
+    walls: gpd.GeoDataFrame,
+    landslides: gpd.GeoDataFrame,
+    land_class: str,
+    own: np.ndarray,
+) -> list:
+    """Return each wall's line inside one kind of other failures' merged ground.
+
+    The polygons of the kind that touch a wall, bar the wall's own polygon, are
+    merged, then shrunk by :data:`WALL_INSIDE_TOLERANCE_M`, so a line along the
+    edge of the ground is not inside it and ground that overlaps is counted
+    once. A line with no more than the tolerance inside is not inside, as the
+    flag has it.
+
+    Args:
+        walls: The walls to measure, one per row, in line geometry.
+        landslides: The combined realisation, carrying
+            :data:`~landloss.hazard.landslide.land_class.LAND_CLASS_COLUMN`.
+        land_class: The kind of ground to measure inside.
+        own: Each wall's own ``slope_id``, in the order of ``walls``, ``None``
+            where it has no polygon.
+
+    Returns:
+        One entry per wall in order: the line inside the ground as a (multi)
+        line, or an empty line where none is.
+    """
+    lines = walls.geometry.to_numpy()
+    inside = np.full(len(lines), None, dtype=object)
+    inside[:] = [shapely.LineString() for _ in lines]
+    slides = landslides[landslides[LAND_CLASS_COLUMN] == land_class]
+    if slides.empty or len(lines) == 0:
+        return list(inside)
+    ground = slides.geometry.to_numpy()
+    slope_ids = (
+        slides[SLOPE_ID_COLUMN].to_numpy(dtype=object)
+        if SLOPE_ID_COLUMN in slides.columns
+        else np.full(len(slides), None, dtype=object)
+    )
+    wall_at, slide_at = shapely.STRtree(ground).query(lines, predicate="intersects")
+    own_slope = np.asarray(own, dtype=object)
+    is_own = _same_slope(slope_ids[slide_at], own_slope[wall_at])
+    wall_at, slide_at = wall_at[~is_own], slide_at[~is_own]
+    for wall in np.unique(wall_at):
+        merged = shapely.union_all(ground[slide_at[wall_at == wall]])
+        shrunk = shapely.buffer(merged, -WALL_INSIDE_TOLERANCE_M)
+        parts = shapely.get_parts(shapely.intersection(lines[wall], shrunk))
+        parts = parts[shapely.get_type_id(parts) == 1]
+        if shapely.length(parts).sum() > WALL_INSIDE_TOLERANCE_M:
+            inside[wall] = shapely.line_merge(shapely.multilinestrings(parts))
+    return list(inside)
+
+
+def measure_wall_damage(
+    walls: gpd.GeoDataFrame,
+    flags: pd.DataFrame,
+    landslides: gpd.GeoDataFrame,
+    *,
+    id_column: str,
+) -> pd.DataFrame:
+    """Return how much of each wall's line a landslide damages.
+
+    A wall damaged by shaking (``is_damaged_by_shaking`` in ``flags``, the
+    urban outcome's) is damaged over its whole line. A wall carrying
+    ``is_evacuated`` or ``is_inundated`` and not that is measured: the length
+    of its line inside the evacuated ground and inside the inundated ground of
+    every failure other than its own polygon, each kind merged first
+    (:func:`_inside_lines`). Its **damaged** line is the part inside evacuated
+    ground alone, because inundated ground does not damage a wall. A wall that
+    is only inundated has an empty damaged line and length 0. An ``absorbed``
+    or ``superseded`` wall is measured the same way, from the absorbing
+    failure's ground, which is another polygon. A wall carrying no flag is not
+    measured.
+
+    A wall damaged by shaking in the later shaking step (a flat-land wall) is
+    not known here; vul step 10 takes its whole length.
+
+    Args:
+        walls: The world's wall population, carrying ``id_column`` and the line
+            geometry.
+        flags: :func:`wall_flags`' flags, one row per wall in the order of
+            ``walls``, carrying :data:`SLOPE_ID_COLUMN`.
+        landslides: The combined realisation, as :func:`wall_flags` takes it.
+        id_column: The wall identifier.
+
+    Returns:
+        One row per wall in the order of ``walls``: ``id_column``, then
+        :data:`EVACUATED_LENGTH_COLUMN` and :data:`INUNDATED_LENGTH_COLUMN`
+        (information only; 0 for a wall not measured),
+        :data:`DAMAGED_LENGTH_COLUMN` (the evacuated length, or the whole line
+        for a shaking-damaged wall) and :data:`DAMAGED_LINE_COLUMN` (the line
+        that length is of, empty where none).
+    """
+    lines = walls.geometry.to_numpy()
+    shaken = flags[IS_DAMAGED_BY_SHAKING_COLUMN].to_numpy(dtype=bool)
+    caught = (
+        flags[IS_EVACUATED_COLUMN].to_numpy(dtype=bool)
+        | flags[IS_INUNDATED_COLUMN].to_numpy(dtype=bool)
+    ) & ~shaken
+    measured = walls[caught]
+    own = flags[SLOPE_ID_COLUMN].to_numpy(dtype=object)[caught]
+
+    def measure(land_class: str) -> np.ndarray:
+        found = np.full(len(walls), None, dtype=object)
+        found[:] = [shapely.LineString() for _ in lines]
+        found[caught] = _inside_lines(measured, landslides, land_class, own)
+        return found
+
+    evacuated = measure(EVACUATED)
+    inundated = measure(INUNDATED)
+    damaged_line = np.where(shaken, lines, evacuated)
+    return pd.DataFrame(
+        {
+            id_column: walls[id_column].to_numpy(),
+            EVACUATED_LENGTH_COLUMN: shapely.length(evacuated),
+            INUNDATED_LENGTH_COLUMN: shapely.length(inundated),
+            DAMAGED_LENGTH_COLUMN: shapely.length(damaged_line),
+            DAMAGED_LINE_COLUMN: pd.Series(damaged_line, dtype=object),
+        }
+    )
 
 
 def _check_unique_ids(frame: pd.DataFrame, id_column: str, *, what: str) -> None:
@@ -354,7 +515,9 @@ def wall_flags(
     Returns:
         One row per wall in the order of ``walls``: ``id_column``,
         :data:`SLOPE_ID_COLUMN` and :data:`OUTCOME_COLUMN` (``None`` where the
-        wall has no outcome row), then the boolean :data:`WALL_FLAG_COLUMNS`.
+        wall has no outcome row), then the boolean :data:`WALL_FLAG_COLUMNS`,
+        then the damaged lengths and line of :func:`measure_wall_damage`
+        (:data:`WALL_DAMAGE_COLUMNS`).
 
     Raises:
         ValueError: If an outcome names a wall not in ``walls``, or on anything
@@ -400,4 +563,5 @@ def wall_flags(
             else np.zeros(len(flags), dtype=bool)
         )
         flags[column] = set_by_outcome | set_by_geometry
-    return flags
+    damage = measure_wall_damage(walls, flags, landslides, id_column=id_column)
+    return flags.merge(damage, on=id_column, how="left", validate="one_to_one")

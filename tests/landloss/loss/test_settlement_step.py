@@ -8,9 +8,10 @@ of its own, even beside a wall that failed elsewhere. Ground of unknown origin,
 from a land table that lists no failures, is pooled as one slip and held as
 before: by the claim's largest damaged wall, or one new wall.
 
-**A replacement is never smaller than the wall it replaces, but a landslide can
-make it larger.** `replacement_wall_shape` sizes the wall the slip would need and
-takes the larger of that and the existing wall, in each dimension.
+**A replacement keeps the wall's own height, type and size class, and takes its
+length from the margin rule** (2026-10-14): the damaged length plus 1 m at each
+end, at least 3 m, worked once per wall and shared over its pieces. A slip does
+not enlarge it.
 """
 
 import numpy as np
@@ -19,6 +20,7 @@ import pytest
 
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    EVACUATED_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
     IS_DAMAGED_BY_SHAKING_COLUMN,
@@ -26,11 +28,16 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_EVACUATED_AREAS_COLUMN,
     LANDSLIDE_IDS_COLUMN,
     LANDSLIDE_INUNDATED_AREAS_COLUMN,
     LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
     LANDSLIDE_RW_IDS_COLUMN,
+    LANDSLIDE_WALL_HEIGHTS_COLUMN,
+    LANDSLIDE_WALL_LENGTHS_COLUMN,
+    LANDSLIDE_WALL_SOURCES_COLUMN,
     LIQ_LD_COST_COLUMN,
+    RW_DAMAGED_LENGTH_COLUMN,
     RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
@@ -39,10 +46,13 @@ from landloss.domain.loss_contract import (
 )
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
+    LANDSLIDE_WALL_MARGIN_M,
     LIQ_COST_ESCALATION,
+    MIN_LANDSLIDE_WALL_LENGTH_M,
     beta_wall_height_m,
-    classify_landslide_wall_size,
     landslide_wall_length_m,
+    margin_rule_length_m,
+    timber_pole_rate_excl_gst_nzd_per_m2,
     wall_type_rate_excl_gst_nzd_per_m2,
 )
 from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
@@ -53,19 +63,22 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     LANDSLIDE_REPAIR_AREA_COLUMN,
     NEW_WALL_COUNT_COLUMN,
     NEW_WALL_FACE_COLUMN,
+    NEW_WALL_FROM_MAPPED_COLUMN,
     NEW_WALL_LENGTH_COLUMN,
     NEW_WALL_SIZE_COLUMN,
+    REPLACEMENT_WALL_FACE_COLUMN,
     REPLACEMENT_WALL_LENGTH_COLUMN,
     REPLACEMENT_WALL_RATE_COLUMN,
     REPLACEMENT_WALL_SIZE_COLUMN,
     SYNTHETIC_WALL_COLUMN,
-    WALL_ENLARGED_COLUMN,
     WALL_REPAIR_COLUMN,
     attach_failures_to_walls,
+    describe_failures,
     land_repair_by_claim,
     landslide_failures,
     liquefaction_repair_by_claim,
     replacement_wall_shape,
+    spoil_by_claim,
     wall_repair_by_claim,
 )
 
@@ -200,95 +213,132 @@ def walls(
     )
 
 
-def slip(area_m2: float) -> pd.DataFrame:
-    """Return the claim's ground as one pooled slip, with no inundated deposit."""
-    return landslide_failures(
-        pd.DataFrame(
-            {
-                CLAIM_ID_COLUMN: [CLAIM],
-                LANDSLIDE_AREA_COLUMN: [area_m2],
-                INUNDATED_AREA_COLUMN: [0.0],
-                INUNDATED_MEAN_DEPTH_COLUMN: [0.0],
-            }
-        )
-    )
+MARGIN = 2.0 * LANDSLIDE_WALL_MARGIN_M
 
 
-def test_a_wall_with_no_slip_is_replaced_as_it_was():
-    size, height, length = replacement_wall_shape(walls(("medium", 7.0)), slip(0.0))
+def test_the_margin_rule_numbers_are_the_leads():
+    assert LANDSLIDE_WALL_MARGIN_M == 1.0
+    assert MIN_LANDSLIDE_WALL_LENGTH_M == 3.0
+
+
+def test_a_wall_that_failed_whole_keeps_its_shape_and_gains_the_margin():
+    size, height, length = replacement_wall_shape(walls(("medium", 7.0)))
     assert list(size) == ["medium"]
     assert height == pytest.approx([1.75])
-    assert length == pytest.approx([7.0])
+    assert length == pytest.approx([7.0 + MARGIN])
 
 
-def test_a_replacement_is_never_smaller_than_the_wall_it_replaces():
-    # A 1.4 m2 slip wants a small wall 5.7 m long; the 18.7 m medium wall
-    # beside it is replaced as it was.
-    size, _height, length = replacement_wall_shape(walls(("medium", 18.7)), slip(1.4))
-    assert list(size) == ["medium"]
-    assert length == pytest.approx([18.7])
-
-
-def test_a_large_slip_enlarges_the_replacement_in_both_dimensions():
-    area = 208.8
-    size, height, length = replacement_wall_shape(walls(("medium", 9.6)), slip(area))
-    assert list(size) == list(classify_landslide_wall_size([area], [0.0])) == ["large"]
-    assert height == pytest.approx([beta_wall_height_m("large")])
-    assert length == pytest.approx(landslide_wall_length_m(area))
-    assert length[0] > 9.6
-
-
-def test_each_dimension_takes_the_larger_on_its_own():
-    # The slip wants a medium wall 8.8 m long; the large wall there is 8.2 m.
-    # The replacement keeps the larger class and takes the longer length.
-    size, _height, length = replacement_wall_shape(walls(("large", 8.2)), slip(11.6))
-    assert list(size) == ["large"]
-    assert length == pytest.approx(landslide_wall_length_m(11.6))
-
-
-def test_pooled_ground_is_sized_against_only_the_largest_of_several_walls():
-    # Ground of unknown origin is one piece of ground and wants one wall.
-    size, _height, length = replacement_wall_shape(
-        walls(("small", 4.0), ("medium", 6.0)), slip(208.8)
-    )
-    assert list(size) == ["small", "large"]
-    assert length[0] == pytest.approx(4.0)
-    assert length[1] == pytest.approx(landslide_wall_length_m(208.8))
-
-
-def test_an_enlarged_wall_costs_more_and_is_priced_on_its_new_height(ratings):
-    policy = PolicySettings()
-    kept = wall_repair_by_claim(
-        walls(("medium", 9.6)), ratings, failures=slip(0.0), policy=policy
+def test_a_slip_does_not_enlarge_the_wall_it_came_with(ratings):
+    # The wall's own height and size class stand whatever the slip was: the
+    # replacement is the 9.6 m medium wall plus the margin, not a large one.
+    out = wall_repair_by_claim(
+        walls(("medium", 9.6)), ratings, policy=PolicySettings()
     ).loc[CLAIM]
-    grown = wall_repair_by_claim(
-        walls(("medium", 9.6)), ratings, failures=slip(208.8), policy=policy
+    assert out[REPLACEMENT_WALL_SIZE_COLUMN] == "medium"
+    assert out[REPLACEMENT_WALL_LENGTH_COLUMN] == pytest.approx(9.6 + MARGIN)
+    assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(
+        wall_type_rate_excl_gst_nzd_per_m2(WALL_TYPE, beta_wall_height_m("medium"))
+    )
+
+
+def test_a_wall_only_buried_by_inundated_ground_costs_nothing(ratings):
+    buried = walls(("medium", 20.0)).assign(
+        **{IS_DAMAGED_BY_SHAKING_COLUMN: [False], IS_INUNDATED_COLUMN: [True]}
+    )
+    assert wall_repair_by_claim(buried, ratings, policy=PolicySettings()).empty
+
+
+def test_a_wall_keeps_its_own_height():
+    shaped = walls(("large", 8.0)).assign(**{RW_HEIGHT_COLUMN: 1.4})
+    _, height, _ = replacement_wall_shape(shaped)
+    assert height == pytest.approx([1.4])
+
+
+def test_a_clipped_wall_is_replaced_over_its_damaged_length_plus_the_margin():
+    # 46 m long, clipped for 3.96 m by a neighbour: 3.96 + 2 m, not 46 m.
+    clipped = walls(("medium", 46.0)).assign(
+        **{RW_DAMAGED_LENGTH_COLUMN: [3.96], IS_DAMAGED_BY_SHAKING_COLUMN: [False]}
+    )
+    _, _, length = replacement_wall_shape(clipped)
+    assert length == pytest.approx([3.96 + MARGIN])
+
+
+def test_a_short_damaged_length_is_replaced_at_the_minimum():
+    clipped = walls(("medium", 46.0)).assign(
+        **{RW_DAMAGED_LENGTH_COLUMN: [0.5], IS_DAMAGED_BY_SHAKING_COLUMN: [False]}
+    )
+    _, _, length = replacement_wall_shape(clipped)
+    assert length == pytest.approx([MIN_LANDSLIDE_WALL_LENGTH_M])
+
+
+def test_a_wall_damaged_by_shaking_is_replaced_whole_whatever_its_damaged_length():
+    shaken = walls(("medium", 20.0)).assign(
+        **{RW_DAMAGED_LENGTH_COLUMN: [3.0], IS_DAMAGED_BY_SHAKING_COLUMN: [True]}
+    )
+    _, _, length = replacement_wall_shape(shaken)
+    assert length == pytest.approx([20.0 + MARGIN])
+
+
+def test_a_table_without_damaged_lengths_settles_at_the_whole_length():
+    assert RW_DAMAGED_LENGTH_COLUMN not in walls(("medium", 10.0)).columns
+    _, _, length = replacement_wall_shape(walls(("medium", 10.0)))
+    assert length == pytest.approx([10.0 + MARGIN])
+
+
+def pieces_of_one_wall(*damaged: float, lengths: tuple[float, ...]) -> pd.DataFrame:
+    """Return one wall's pieces, each on its own claim, with damaged lengths."""
+    shaped = walls(*[("medium", length) for length in lengths])
+    return shaped.assign(
+        **{
+            CLAIM_ID_COLUMN: [f"claim-{i}" for i in range(len(lengths))],
+            RW_ID_COLUMN: [f"rwA-P{i}" for i in range(len(lengths))],
+            "parent_rw_id": ["rwA"] * len(lengths),
+            RW_DAMAGED_LENGTH_COLUMN: list(damaged),
+            IS_DAMAGED_BY_SHAKING_COLUMN: [False] * len(lengths),
+            IS_EVACUATED_COLUMN: [True] * len(lengths),
+        }
+    )
+
+
+def test_a_wall_shared_by_two_claims_gets_the_margin_once():
+    shared = pieces_of_one_wall(4.0, 6.0, lengths=(20.0, 20.0))
+    _, _, length = replacement_wall_shape(shared)
+    # 4 + 6 + 2 m once, shared in proportion to the damaged length.
+    assert length.sum() == pytest.approx(4.0 + 6.0 + MARGIN)
+    assert length.tolist() == pytest.approx([12.0 * 0.4, 12.0 * 0.6])
+
+
+def test_a_wall_damaged_at_two_places_gets_one_margin():
+    # Two pieces of one wall, 2 m damaged in each: one margin, not two.
+    shared = pieces_of_one_wall(2.0, 2.0, lengths=(10.0, 10.0))
+    _, _, length = replacement_wall_shape(shared)
+    assert length.sum() == pytest.approx(4.0 + MARGIN)
+
+
+def test_a_wall_is_replaced_at_the_minimum_once_not_per_piece():
+    shared = pieces_of_one_wall(0.2, 0.2, lengths=(10.0, 10.0))
+    _, _, length = replacement_wall_shape(shared)
+    assert length.sum() == pytest.approx(MIN_LANDSLIDE_WALL_LENGTH_M)
+
+
+def test_two_walls_on_one_claim_are_each_worked_on_their_own():
+    two = walls(("medium", 10.0), ("medium", 20.0))
+    _, _, length = replacement_wall_shape(two)
+    assert length.tolist() == pytest.approx([10.0 + MARGIN, 20.0 + MARGIN])
+
+
+def test_a_replacement_costs_the_wall_face_at_its_own_height(ratings):
+    out = wall_repair_by_claim(
+        walls(("medium", 9.6)), ratings, policy=PolicySettings()
     ).loc[CLAIM]
-    assert not kept[WALL_ENLARGED_COLUMN]
-    assert grown[WALL_ENLARGED_COLUMN]
-    assert grown[WALL_REPAIR_COLUMN] > kept[WALL_REPAIR_COLUMN]
-    assert grown[REPLACEMENT_WALL_SIZE_COLUMN] == "large"
-    assert grown[REPLACEMENT_WALL_LENGTH_COLUMN] == pytest.approx(
-        landslide_wall_length_m(208.8)
-    )
-    # A timber pole wall takes the pile its new height calls for.
-    assert grown[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(
-        wall_type_rate_excl_gst_nzd_per_m2(WALL_TYPE, beta_wall_height_m("large"))
-    )
-    assert grown[REPLACEMENT_WALL_RATE_COLUMN] > kept[REPLACEMENT_WALL_RATE_COLUMN]
-
-
-def test_a_wall_keeps_its_own_height_when_the_slip_needs_less():
-    shaped = walls(("large", 8.0)).assign(**{RW_HEIGHT_COLUMN: 3.2})
-    _, height, _ = replacement_wall_shape(shaped, slip(11.6))
-    assert height == pytest.approx([3.2])
+    assert out[REPLACEMENT_WALL_FACE_COLUMN] == pytest.approx(1.75 * (9.6 + MARGIN))
+    assert out[WALL_REPAIR_COLUMN] > 0
 
 
 def test_a_concrete_block_wall_is_rebuilt_in_kind(ratings):
     out = wall_repair_by_claim(
         walls(("medium", 9.6), wall_type="concrete_block"),
         ratings,
-        failures=slip(0.0),
         policy=PolicySettings(),
     ).loc[CLAIM]
     assert out[REPLACEMENT_WALL_RATE_COLUMN] == pytest.approx(1_010.58)
@@ -298,7 +348,6 @@ def test_a_brick_wall_is_rebuilt_as_timber_pole(ratings):
     out = wall_repair_by_claim(
         walls(("medium", 9.6), wall_type="brick_rock"),
         ratings,
-        failures=slip(0.0),
         policy=PolicySettings(),
     ).loc[CLAIM]
     # 1.75 m takes the 250 mm pile, not the mortar bed rock rate.
@@ -309,10 +358,9 @@ def test_a_claim_with_several_walls_reports_a_face_weighted_rate(ratings):
     out = wall_repair_by_claim(
         walls(("small", 4.0), ("large", 6.0)),
         ratings,
-        failures=slip(0.0),
         policy=PolicySettings(),
     ).loc[CLAIM]
-    faces = np.array([0.75 * 4.0, 2.75 * 6.0])
+    faces = np.array([0.75 * (4.0 + MARGIN), 2.75 * (6.0 + MARGIN)])
     rates = wall_type_rate_excl_gst_nzd_per_m2(
         np.array([WALL_TYPE, WALL_TYPE]), np.array([0.75, 2.75])
     )
@@ -407,13 +455,68 @@ def test_a_slip_whose_wall_stood_on_another_property_gets_a_new_wall(ratings):
     assert out[NEW_WALL_COUNT_COLUMN] == 1
 
 
+def with_evacuated(land: pd.DataFrame, *evacuated: list[float]) -> pd.DataFrame:
+    """Return the land listing each failure's evacuated ground, polygon by polygon."""
+    return land.assign(**{LANDSLIDE_EVACUATED_AREAS_COLUMN: list(evacuated)})
+
+
+def test_a_new_wall_is_as_long_as_its_evacuated_ground_calls_for(ratings):
+    # 40 m2 of ground, of which 10 m2 is the scar and 30 m2 the deposit below it.
+    land = with_evacuated(failure_land((CLAIM, [("LS1", None, 40.0, 30.0)])), [10.0])
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(10.0))
+
+
+def test_a_deposit_with_no_scar_on_the_claim_gets_no_wall_but_keeps_its_clearing(
+    ratings,
+):
+    # The slip started next door: the claim was only buried. Inundated ground
+    # alone needs clearing, not a wall (2026-10-14).
+    land = with_evacuated(failure_land((CLAIM, [("LS1", None, 40.0, 40.0)])), [0.0])
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_COUNT_COLUMN] == 0
+    assert out[LAND_REPAIR_COLUMN] == 0.0
+    assert not out[SYNTHETIC_WALL_COLUMN]
+    # The land is still repaired: its deposit is cleared as spoil.
+    assert spoil_by_claim(land).loc[CLAIM] == pytest.approx(40.0 * 0.3)
+    assert out[LANDSLIDE_REPAIR_AREA_COLUMN] == pytest.approx(40.0)
+
+
+def test_a_buried_only_failure_beside_a_scarred_one_leaves_just_one_wall(ratings):
+    land = with_evacuated(
+        failure_land((CLAIM, [("LS1", None, 40.0, 40.0), ("LS2", None, 30.0, 0.0)])),
+        [0.0, 30.0],
+    )
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(30.0))
+
+
+def test_a_pooled_older_table_with_no_evacuated_ground_builds_no_wall(ratings):
+    land = land_with(40.0).assign(**{EVACUATED_AREA_COLUMN: [0.0]})
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_COUNT_COLUMN] == 0
+
+
+def test_pooled_ground_measures_its_wall_off_the_evacuated_area():
+    land = land_with(40.0).assign(**{EVACUATED_AREA_COLUMN: [12.0]})
+    failures = landslide_failures(land)
+    assert failures["evacuated"].tolist() == pytest.approx([12.0])
+
+
+def test_a_table_without_evacuated_lists_measures_off_the_whole_ground():
+    failures = landslide_failures(failure_land((CLAIM, [("LS1", None, 40.0, 30.0)])))
+    assert failures["evacuated"].tolist() == pytest.approx([40.0])
+
+
 def test_a_slip_across_two_of_a_claims_polygons_is_one_failure():
     land = failure_land(
         (CLAIM, [("LS1", None, 25.0, 5.0)]), (CLAIM, [("LS1", None, 15.0, 5.0)])
     )
-    failures = landslide_failures(land)
+    failures = landslide_failures(with_evacuated(land, [20.0], [5.0]))
     assert len(failures) == 1
     assert failures["area"].iloc[0] == pytest.approx(40.0)
+    assert failures["evacuated"].iloc[0] == pytest.approx(25.0)
     assert failures["volume"].iloc[0] == pytest.approx(10.0 * 0.3)
 
 
@@ -426,12 +529,180 @@ def test_a_split_walls_piece_holds_the_slip_its_whole_wall_failed_with():
     assert list(attach_failures_to_walls(failures, pieces)) == [0]
 
 
-def test_each_wall_is_sized_against_its_own_slip_only():
-    # Each wall failed with its own slip; the large slip enlarges only its own.
-    land = failure_land((CLAIM, [("S0", "rw0", 1.4, 0.0), ("S1", "rw1", 208.8, 0.0)]))
-    size, _height, length = replacement_wall_shape(
-        walls(("medium", 9.6), ("medium", 6.0)), landslide_failures(land)
+# ---------------------------------------------------------------------------
+# A new wall on the mapped wall where there is one (section 4).
+# ---------------------------------------------------------------------------
+
+
+def with_mapped(land: pd.DataFrame, heights, lengths, sources) -> pd.DataFrame:
+    """Return the land listing each failure's mapped wall, polygon by polygon."""
+    return land.assign(
+        **{
+            LANDSLIDE_WALL_HEIGHTS_COLUMN: list(heights),
+            LANDSLIDE_WALL_LENGTHS_COLUMN: list(lengths),
+            LANDSLIDE_WALL_SOURCES_COLUMN: list(sources),
+        }
     )
-    assert list(size) == ["medium", "large"]
-    assert length[0] == pytest.approx(9.6)
-    assert length[1] == pytest.approx(landslide_wall_length_m(208.8))
+
+
+def mapped_land(height, length, *, area=40.0, evacuated=12.0) -> pd.DataFrame:
+    """One failure whose mapped wall is ``height`` m high, ``length`` m alongside."""
+    land = with_evacuated(
+        failure_land((CLAIM, [("LS1", None, area, 0.0)])), [evacuated]
+    )
+    return with_mapped(land, [[height]], [[length]], [["mapped wall"]])
+
+
+def test_a_mapped_wall_is_built_at_its_height_over_its_length_plus_the_margin(
+    ratings,
+):
+    out = hold(mapped_land(1.6, 8.0), ratings, walls())
+
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+    assert out[NEW_WALL_FROM_MAPPED_COLUMN] == 1
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(
+        8.0 + 2 * LANDSLIDE_WALL_MARGIN_M
+    )
+    assert out[NEW_WALL_FACE_COLUMN] == pytest.approx(1.6 * 10.0)
+    assert out["new_wall_height_m"] == pytest.approx(1.6)
+
+
+def test_a_mapped_wall_is_priced_as_timber_pole_on_the_pile_its_height_calls_for(
+    ratings,
+):
+    low = hold(mapped_land(1.0, 8.0), ratings, walls())
+    tall = hold(mapped_land(2.6, 8.0), ratings, walls())
+
+    for out, height in ((low, 1.0), (tall, 2.6)):
+        assert out["new_wall_rate_excl_gst_nzd_per_m2"] == pytest.approx(
+            float(timber_pole_rate_excl_gst_nzd_per_m2(height))
+        )
+    assert (
+        tall["new_wall_rate_excl_gst_nzd_per_m2"]
+        > low["new_wall_rate_excl_gst_nzd_per_m2"]
+    )
+
+
+def test_a_mapped_wall_alongside_less_than_the_minimum_is_built_at_the_minimum(
+    ratings,
+):
+    out = hold(mapped_land(1.6, 1.0), ratings, walls())
+
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(
+        float(margin_rule_length_m(1.0))
+    )
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(MIN_LANDSLIDE_WALL_LENGTH_M)
+
+
+def test_a_mapped_wall_ignores_the_slips_size(ratings):
+    small = hold(mapped_land(1.6, 8.0, area=5.0), ratings, walls())
+    large = hold(mapped_land(1.6, 8.0, area=900.0, evacuated=300.0), ratings, walls())
+
+    assert small[NEW_WALL_FACE_COLUMN] == pytest.approx(large[NEW_WALL_FACE_COLUMN])
+    assert small[LAND_REPAIR_COLUMN] == pytest.approx(large[LAND_REPAIR_COLUMN])
+
+
+def test_a_slip_failure_is_sized_from_the_slip_with_the_one_and_three_metre_numbers(
+    ratings,
+):
+    land = with_evacuated(failure_land((CLAIM, [("LS1", None, 40.0, 0.0)])), [12.0])
+    listed = with_mapped(land, [[None]], [[None]], [["slip"]])
+    out = hold(listed, ratings, walls())
+    plain = hold(land, ratings, walls())
+
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+    assert out[NEW_WALL_FROM_MAPPED_COLUMN] == 0
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(12.0))
+    assert out[LAND_REPAIR_COLUMN] == pytest.approx(plain[LAND_REPAIR_COLUMN])
+
+
+def test_a_table_without_the_wall_lists_sizes_every_new_wall_from_the_slip(ratings):
+    land = with_evacuated(failure_land((CLAIM, [("LS1", None, 40.0, 0.0)])), [12.0])
+    failures = landslide_failures(land)
+
+    assert failures["wall_source"].tolist() == ["slip"]
+    assert failures["wall_height"].isna().all()
+    assert failures["wall_length"].isna().all()
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(12.0))
+
+
+def test_a_failure_sharing_a_mapped_wall_builds_none_of_its_own(ratings):
+    land = with_evacuated(
+        failure_land((CLAIM, [("LS1", None, 40.0, 0.0), ("LS2", None, 30.0, 0.0)])),
+        [12.0, 9.0],
+    )
+    land = with_mapped(
+        land, [[1.6, 1.6]], [[11.0, 0.0]], [["mapped wall", "mapped wall"]]
+    )
+    out = hold(land, ratings, walls())
+
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+    assert out[NEW_WALL_FROM_MAPPED_COLUMN] == 1
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(
+        11.0 + 2 * LANDSLIDE_WALL_MARGIN_M
+    )
+
+
+def test_a_mapped_and_a_slip_failure_each_get_their_own_wall(ratings):
+    land = with_evacuated(
+        failure_land((CLAIM, [("LS1", None, 40.0, 0.0), ("LS2", None, 30.0, 0.0)])),
+        [12.0, 9.0],
+    )
+    land = with_mapped(land, [[1.6, None]], [[8.0, None]], [["mapped wall", "slip"]])
+    out = hold(land, ratings, walls())
+
+    assert out[NEW_WALL_COUNT_COLUMN] == 2
+    assert out[NEW_WALL_FROM_MAPPED_COLUMN] == 1
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(
+        8.0 + 2 * LANDSLIDE_WALL_MARGIN_M + landslide_wall_length_m(9.0)
+    )
+
+
+def test_a_mapped_failure_a_damaged_wall_holds_builds_nothing(ratings):
+    land = with_evacuated(failure_land((CLAIM, [("S1", "rw0", 40.0, 0.0)])), [12.0])
+    land = with_mapped(land, [[1.6]], [[8.0]], [["mapped wall"]])
+    out = hold(land, ratings, walls(("medium", 9.6)))
+
+    assert out[NEW_WALL_COUNT_COLUMN] == 0
+
+
+def test_a_mapped_failure_with_no_evacuated_ground_builds_no_wall(ratings):
+    out = hold(mapped_land(1.6, 8.0, evacuated=0.0), ratings, walls())
+
+    assert out[NEW_WALL_COUNT_COLUMN] == 0
+    assert out[LAND_REPAIR_COLUMN] == 0.0
+
+
+def test_a_failure_on_two_polygons_adds_its_mapped_entries_once():
+    land = with_evacuated(
+        failure_land(
+            (CLAIM, [("LS1", None, 25.0, 5.0)]), (CLAIM, [("LS1", None, 15.0, 5.0)])
+        ),
+        [20.0],
+        [5.0],
+    )
+    land = with_mapped(
+        land, [[1.6], [1.6]], [[8.0], [0.0]], [["mapped wall"], ["mapped wall"]]
+    )
+    failures = landslide_failures(land)
+
+    assert len(failures) == 1
+    assert failures["wall_source"].tolist() == ["mapped wall"]
+    assert failures["wall_height"].tolist() == pytest.approx([1.6])
+    assert failures["wall_length"].tolist() == pytest.approx([8.0])
+
+
+def test_a_failure_sharing_a_mapped_wall_is_not_counted_as_a_new_wall(capsys):
+    land = failure_land((CLAIM, [("LS1", None, 40.0, 0.0), ("LS2", None, 30.0, 0.0)]))
+    land = with_evacuated(land, [12.0, 9.0])
+    land = with_mapped(
+        land,
+        [[1.5, 1.5]],
+        [[8.0, 0.0]],
+        [["mapped wall", "mapped wall"]],
+    )
+
+    describe_failures(landslide_failures(land), walls())
+
+    assert "1 get a new wall" in capsys.readouterr().out

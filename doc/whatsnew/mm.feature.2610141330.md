@@ -1,0 +1,1 @@
+A damaged retaining wall is now replaced at its own height and type, over its damaged length plus 1 m at each end and at least 3 m, worked once per wall; a slip no longer enlarges it. Step 0 values the wall over the same length but never more than the wall itself, and a slip's new wall takes the same 1 m margin and 3 m minimum.

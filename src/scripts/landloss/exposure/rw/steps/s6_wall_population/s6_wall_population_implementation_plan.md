@@ -24,6 +24,10 @@ part kept; its initial conditions were retired for the wall type (phase 3).
 
 ## Phase 1b — Coverage filter and wall id for the loss contract (complete)
 
+The coverage filter below is superseded by the insured stretches phase of
+2026-10-14: a wall is insured by its stretches, not by touching its drawn
+claim's land.
+
 - [x] Keep only the walls that intersect their own claim's insured land
       buffered by 2 m (`keep_walls_on_insured_land`), and print the counts kept
       and dropped (`describe_coverage`).
@@ -478,6 +482,38 @@ The plan is `.agents/plans/assigning-retaining-wall-types.md`.
       minimum-length rule applies to GNS-only members only.
 - [ ] Rerun on the wlg-pilot; check units under 3 m (about 154 expected) in the
       loss and landslide steps.
+
+## Phase: insured stretches (the lead, 2026-10-14)
+
+A stretch of wall belongs to a claim when it is inside the claim's property and
+within `RW_COVERAGE_BUFFER_M` of its insured land
+(`.agents/plans/tweaks-to-property-damage.md`, section 1).
+
+- [x] Cut each wall into insured stretches per claim
+      (`coverage.insured_support_regions`, `cut_walls_to_insured_stretches`),
+      reading the LINZ properties once (`read_claim_parcels`).
+- [x] Write `insured_lengths_m` on each wall and mint `rw_id` on the claim with
+      the longest stretch (`population.attach_insured_lengths`); a wall is
+      insured when any stretch is 1 m or more.
+- [x] Write one row per wall and claim with the stretch line to
+      `wall-insured-stretches-wNNN[-pilot].geoparquet`
+      (`insured_stretches_path`).
+- [x] Vul step 10 splits on `insured_lengths_m`, each piece at its stretch,
+      with no remainder; a population without `insured_lengths_m` raises.
+- [ ] Rerun over the pilot and record the insured counts against the old
+      touch rule (the run prints both).
+- [x] A wall lying on a shared boundary has its metres split equally between
+      the claims whose stretches hold them (the lead, 2026-10-14):
+      `length_m` is the claim's share, the 1 m minimum applies to the share,
+      and `describe_stretches` raises if a wall has more stretch than line.
+- [ ] Section 6 of `.agents/plans/tweaks-to-property-damage.md` cuts damaged
+      lines by the stretches and must share a boundary the same way.
+
+- [x] Write the stretches of every candidate wall, drawn or not, once per
+      extent, to `wall-candidate-stretches[-pilot].geoparquet`
+      (`candidate_stretches_path`), for vul step 10 to place a slip's new wall
+      on the mapped wall (section 4, 2026-10-14).
+- [ ] Rerun over the pilot to write `wall-candidate-stretches`.
 
 ## Potential future improvements
 

@@ -48,7 +48,6 @@ from landloss.domain.loss_contract import (
     LIQ_LD_AREA_COLUMN,
     LIQ_LD_STATE_COLUMN,
     RW_HEIGHT_COLUMN,
-    RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
     RW_TYPE_COLUMN,
     TOTAL_INSURED_LAND_AREA_COLUMN,
@@ -925,7 +924,7 @@ BLOCKS = [
             ),
             (
                 "rw_new_size",
-                "Replacement RTW size, enlarged for a slip",
+                "Replacement RTW size",
                 REPLACEMENT_WALL_SIZE_COLUMN,
                 None,
                 14,
@@ -1237,7 +1236,7 @@ REPAIR_NOTES = [
         "A2. An invented wall is sized on the total damaged land -- the union "
         "of the evacuated and inundated footprints -- and on the deposit "
         "volume where an inundated depth gives one. Its length is twice the "
-        "failure's depth plus 2 m at each end, never under 5 m. It is a "
+        "failure's depth plus 1 m at each end, never under 3 m. It is a "
         "remediation cost, not an asset, so it never reaches the cap: a wall "
         "that did not exist has no undepreciated value to contribute."
     ),
@@ -1542,18 +1541,23 @@ def wall_shape(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFra
         damaged[RW_SIZE_COLUMN], categories=list(BETA_SIZE_CLASS_HEIGHT_M), ordered=True
     )
     height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)
-    face = height * damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float)
+    # The length the cap values the wall over, which is what step 0 priced.
+    valued = loss_claims.wall_lengths_by_piece(damaged)[
+        loss_claims.VALUED_LENGTH_COLUMN
+    ]
+    face = height * valued.to_numpy(dtype=float)
     rate = wall_type_rate_excl_gst_nzd_per_m2(
         damaged[RW_TYPE_COLUMN].to_numpy(), height
     )
     damaged = damaged.assign(
+        _valued=valued,
         _order=order,
         _face=face,
         _bare=face * rate,
         _cause=wall_damage_cause(damaged),
     )
     grouped = damaged.groupby(CLAIM_ID_COLUMN)
-    length = grouped[RW_LENGTH_COLUMN].sum()
+    length = grouped["_valued"].sum()
     face_total = grouped["_face"].sum()
     # A claim's walls on one row: the height is length-weighted and the rate
     # face-weighted, so height x length x rate is still the claim's bare wall

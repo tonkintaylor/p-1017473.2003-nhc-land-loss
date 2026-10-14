@@ -33,7 +33,8 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
 - [x] Take the land classes from `landloss.hazard.landslide.land_class`
       through `damaged_area`, and ignore the urban model's third class,
       `imminent land`, until **T-45** decides how it is settled
-      (`IGNORED_LAND_CLASSES`).
+      (`IGNORED_LAND_CLASSES`, since removed: imminent ground is now measured
+      apart, Phase 1c).
 - [x] Loop over `WORLD_IDS` as well as `REALISATION_IDS`, and name the output
       on both, `landslide-land-damage-w<NNN>-r<NNN>[-pilot].parquet`, with
       `world_id` after `realisation_id`.
@@ -41,6 +42,20 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
       `tests/landloss/vul/landslide/land/test_landslide_land_damage_step.py`.
 - [ ] Rerun the pilot once exposure step 5 and landslide steps 1 to 6 have
       been run for world 0, and record the counts in the method document.
+
+## Phase 1c — Imminent evacuated and re-inundated ground (complete)
+
+Plan `.agents/plans/tweaks-to-property-damage.md` section 2.
+
+- [x] Measure on each insured land polygon the imminent ground less any ground
+      evacuated by any failure (`imminent_evacuated_area_m2`), keeping ground
+      only inundated.
+- [x] Measure the re-inundated area (union over failures with imminent land),
+      volume (area by each failure's own depth) and depth (volume over area).
+- [x] List each failure's imminent and re-inundated ground in the order of
+      `landslide_ids`.
+- [x] Add no wall or crossing flag, and add nothing to the damaged ground.
+- [ ] Rerun, and record the counts in the method document.
 
 ## Phase 2 — Pricing
 
@@ -50,8 +65,9 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.13 and 7.13.
 - [ ] Decide whether evacuated and inundated ground are priced by the same
       schedule. Reinstating support and clearing debris are different works.
 - [ ] Settle how a property carrying both kinds is settled, given they overlap.
-- [ ] Settle **T-45**: whether imminent ground behind an urban headscarp is a
-      claimable loss, and if so what this step measures for it.
+- [x] Settle **T-45**: imminent ground is measured apart from the damaged
+      ground (Phase 1c); loss does not settle it and the viewer's page adds it
+      (the lead, 2026-10-14).
 
 ## Phase 3 — Once the hazard is calibrated
 

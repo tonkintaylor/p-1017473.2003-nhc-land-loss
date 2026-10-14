@@ -300,6 +300,11 @@ MEDIUM_LANDSLIDE_MAX_VOLUME_M3 = 50.0
 # end, because a wall is not stopped at the edge of the ground that moved; and
 # the minimum is what it is worth mobilising for at all. **All three invented.**
 #
+# **The margin and the minimum are one rule for every wall that is built**
+# (2026-10-14): a wall that failed whole, a wall damaged over part of its length
+# and a slip's new wall each get the margin at both ends and the minimum length
+# (:func:`margin_rule_length_m`).
+#
 # **The land and the wall are priced independently.** Repairing a damaged wall
 # was once taken to reinstate a metre of ground behind it, which the land then
 # paid nothing for. That allowance is gone, decided on 2026-09-29: a retaining
@@ -307,8 +312,8 @@ MEDIUM_LANDSLIDE_MAX_VOLUME_M3 = 50.0
 # discharge the other's repair made the land's cost depend on whether the site
 # happened to own a wall.
 LANDSLIDE_WALL_ASPECT_RATIO = 2.0
-LANDSLIDE_WALL_MARGIN_M = 2.0
-MIN_LANDSLIDE_WALL_LENGTH_M = 5.0
+LANDSLIDE_WALL_MARGIN_M = 1.0
+MIN_LANDSLIDE_WALL_LENGTH_M = 3.0
 
 # What it costs to clear a cubic metre of slip debris off a section.
 #
@@ -917,12 +922,34 @@ def classify_landslide_wall_size(
     return np.asarray(SIZE_CLASSES)[np.maximum(by_area, by_volume)]
 
 
-def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
+def margin_rule_length_m(damaged_length_m: np.ndarray | float) -> np.ndarray:
+    """Return the length a wall is built at over a damaged length.
+
+    The one margin rule for every wall that is built (2026-10-14): the damaged
+    length plus :data:`LANDSLIDE_WALL_MARGIN_M` at each end, because a wall is
+    not stopped at the edge of the damage, and never less than
+    :data:`MIN_LANDSLIDE_WALL_LENGTH_M`. **Both numbers are invented.**
+
+    Args:
+        damaged_length_m: The length that has to be built over, in metres.
+
+    Returns:
+        The length in metres.
+    """
+    return np.maximum(
+        np.asarray(damaged_length_m, dtype=float) + 2.0 * LANDSLIDE_WALL_MARGIN_M,
+        MIN_LANDSLIDE_WALL_LENGTH_M,
+    )
+
+
+def landslide_wall_length_m(evacuated_area_m2: np.ndarray | float) -> np.ndarray:
     """Return the length of the wall a landslide-damaged area is remediated with.
 
-    The wall follows the **width of the failure**, not a side of it. Ground lost
-    off a residential slope goes as a strip that is wider along the face than it
-    is deep into the section, taken here as
+    The wall follows the **width of the failure**, not a side of it, and is
+    measured off the **evacuated** insured ground alone: the wall goes across
+    the scar, and the deposit below it is cleared, not retained (2026-10-14).
+    Ground lost off a residential slope goes as a strip that is wider along the
+    face than it is deep into the section, taken here as
     :data:`LANDSLIDE_WALL_ASPECT_RATIO` to one, so a slip of area ``A`` is
     ``sqrt(A / 2)`` deep and twice that wide. To the width is added
     :data:`LANDSLIDE_WALL_MARGIN_M` at each end, because a wall is not stopped
@@ -936,7 +963,7 @@ def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
     landslide side of the repair cost.
 
     Args:
-        damaged_area_m2: Insured area taken by the landslide.
+        evacuated_area_m2: Insured area the landslide evacuated.
 
     Returns:
         The length in metres.
@@ -944,14 +971,12 @@ def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
     Raises:
         ValueError: If any area is negative or not finite.
     """
-    areas = np.asarray(damaged_area_m2, dtype=float)
+    areas = np.asarray(evacuated_area_m2, dtype=float)
     if not np.all(np.isfinite(areas)) or np.any(areas < 0):
-        msg = "damaged_area_m2 must be finite and not negative"
+        msg = "evacuated_area_m2 must be finite and not negative"
         raise ValueError(msg)
     across = LANDSLIDE_WALL_ASPECT_RATIO * np.sqrt(areas / LANDSLIDE_WALL_ASPECT_RATIO)
-    return np.maximum(
-        across + 2.0 * LANDSLIDE_WALL_MARGIN_M, MIN_LANDSLIDE_WALL_LENGTH_M
-    )
+    return margin_rule_length_m(across)
 
 
 def timber_pole_wall_type(height_m: np.ndarray | float) -> np.ndarray:

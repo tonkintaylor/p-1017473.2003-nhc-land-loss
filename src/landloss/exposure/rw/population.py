@@ -14,12 +14,13 @@ come straight off the line, nothing is placed or sized here. Its age bin and
 wall type are drawn by the caller on their own stream
 (:func:`landloss.exposure.rw.wall_type.draw_wall_types`) and attached here by
 ``wall_line_id``. ``gen_wall_population.py`` in exposure
-rw step 6 drops the walls with no claim, applies the coverage filter and mints
-``rw_id`` after the draw, so the stream is the same whatever those keep.
-Those two filters decide what is insured, not whether a wall stands: a road
+rw step 6 cuts each wall into the stretches that support a claim's insured land
+(:func:`attach_insured_lengths`) and mints ``rw_id`` on the claim with the
+longest one after the draw, so the stream is the same whatever that keeps.
+That rule decides what is insured, not whether a wall stands: a road
 wall above a property still holds the slope. So the script also writes every
 wall the world drew, with the minted ``rw_id`` joined back on
-``wall_line_id`` where the wall survived both filters and null where it did
+``wall_line_id`` where the wall supports insured land and null where it does
 not (:func:`attach_rw_ids`); landslide step 5 builds the urban slope model on
 that table (decision 36 of the build contract).
 
@@ -61,7 +62,13 @@ POPULATION_COLUMNS = (
 # in every property it enters (exposure rw step 6's wall units, 2026-10-06),
 # for the loss side to count a wall on each property it crosses, and the
 # primary property it is drawn on.
-OPTIONAL_COLUMNS = ("property_id", "property_lengths_m", "n_properties")
+PROPERTY_LENGTHS_COLUMN = "property_lengths_m"
+OPTIONAL_COLUMNS = ("property_id", PROPERTY_LENGTHS_COLUMN, "n_properties")
+
+# Each claim a wall supports the insured land of, and the length of the wall
+# that does (exposure rw step 6): a list of {"claim_id", "length_m"}, longest
+# first. Written by the script, not copied from the probability table.
+INSURED_LENGTHS_COLUMN = "insured_lengths_m"
 
 # What a drawn wall's height is on the line: the DEM face height.
 HEIGHT_SOURCE_COLUMN = "face_height_m"
@@ -188,19 +195,18 @@ def attach_rw_ids(
 ) -> gpd.GeoDataFrame:
     """Give every drawn wall the ``rw_id`` it was minted, null where none was.
 
-    The claim filter and the insured land coverage filter decide which drawn
-    walls are insured; they do not decide whether a wall stands. A council or
-    road-reserve wall with no claim, or a wall at the back of a section beyond
-    the coverage buffer, still holds its slope in the world, so the urban slope
-    model must see it (decision 36 of the build contract). This keeps every
-    drawn wall and joins the insured population's ``rw_id`` back onto it by
-    ``wall_line_id``.
+    The insured stretch rule decides which drawn walls are insured; it does not
+    decide whether a wall stands. A council or road-reserve wall, or a wall at
+    the back of a section beyond the coverage buffer, still holds its slope in
+    the world, so the urban slope model must see it (decision 36 of the build
+    contract). This keeps every drawn wall and joins the insured population's
+    ``rw_id`` back onto it by ``wall_line_id``.
 
     Args:
         drawn: :func:`draw_wall_population`'s output for one world, one row
             per line that drew a wall, carrying :data:`POPULATION_COLUMNS`.
-        population: The insured subset of ``drawn`` after the claim and
-            coverage filters, carrying ``rw_id`` and ``wall_line_id``.
+        population: The insured subset of ``drawn``, carrying ``rw_id`` and
+            ``wall_line_id``.
 
     Returns:
         A copy of ``drawn`` in its own order, on a fresh index, with ``rw_id``
@@ -234,4 +240,76 @@ def attach_rw_ids(
             dtype=object,
         ),
     )
+    return out
+
+
+def attach_insured_lengths(
+    walls: gpd.GeoDataFrame,
+    stretches: pd.DataFrame,
+    *,
+    wall_id_column: str = WALL_LINE_ID_COLUMN,
+) -> gpd.GeoDataFrame:
+    """Write each wall's insured stretches on it, and give it its longest claim.
+
+    Args:
+        walls: The drawn walls, one row per ``wall_id_column``.
+        stretches: One row per wall and claim, carrying ``wall_id_column``,
+            ``claim_id`` and ``length_m``, for these walls only
+            (:func:`landloss.exposure.coverage.cut_walls_to_insured_stretches`).
+        wall_id_column: The column naming each wall in both frames.
+
+    Returns:
+        A copy of ``walls`` with :data:`INSURED_LENGTHS_COLUMN` after
+        :data:`PROPERTY_LENGTHS_COLUMN` where the walls have it, else before the
+        geometry: a list of ``{"claim_id", "length_m"}``, longest first (ties by
+        lowest claim id), empty where the wall supports no insured land. A wall
+        with a stretch has its ``claim_id`` set to the longest stretch's claim;
+        the others keep theirs. ``property_id`` and the property lengths are
+        untouched.
+
+    Raises:
+        ValueError: If ``walls`` repeats a wall id, or ``stretches`` names a
+            wall not in ``walls``.
+    """
+    repeated = walls[wall_id_column].duplicated()
+    if repeated.any():
+        ids = walls.loc[repeated, wall_id_column].unique().tolist()
+        msg = f"walls repeats {wall_id_column} {ids[:5]}"
+        raise ValueError(msg)
+    strangers = ~stretches[wall_id_column].isin(walls[wall_id_column])
+    if strangers.any():
+        ids = stretches.loc[strangers, wall_id_column].unique().tolist()
+        msg = f"stretches name walls that are not in walls: {ids[:5]}"
+        raise ValueError(msg)
+
+    ordered = stretches.sort_values(
+        ["length_m", CLAIM_ID_COLUMN], ascending=[False, True], kind="stable"
+    )
+    entries: dict = {}
+    for wall, claim, length in zip(
+        ordered[wall_id_column],
+        ordered[CLAIM_ID_COLUMN],
+        ordered["length_m"],
+        strict=True,
+    ):
+        entries.setdefault(wall, []).append(
+            {CLAIM_ID_COLUMN: claim, "length_m": float(length)}
+        )
+    lists = pd.Series(
+        [entries.get(wall, []) for wall in walls[wall_id_column]],
+        index=walls.index,
+        dtype=object,
+    )
+    out = walls.copy()
+    if PROPERTY_LENGTHS_COLUMN in out.columns:
+        position = out.columns.get_loc(PROPERTY_LENGTHS_COLUMN) + 1
+    else:
+        position = out.columns.get_loc(out.geometry.name)
+    out.insert(position, INSURED_LENGTHS_COLUMN, lists)
+    longest = pd.Series(
+        [found[0][CLAIM_ID_COLUMN] if found else None for found in lists],
+        index=walls.index,
+        dtype=object,
+    )
+    out[CLAIM_ID_COLUMN] = longest.where(longest.notna(), out[CLAIM_ID_COLUMN])
     return out

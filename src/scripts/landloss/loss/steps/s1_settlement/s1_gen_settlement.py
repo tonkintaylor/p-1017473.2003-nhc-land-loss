@@ -11,21 +11,31 @@ assumption named here:
 
 - **A damaged retaining wall** is replaced, priced on its face area at the beta
   wall rate -- concrete for a share of walls, otherwise the timber pole rate its
-  height calls for -- with the site multiplier on top.
+  height calls for -- with the site multiplier on top. It keeps its own height
+  and type, and is replaced over its damaged length plus 1 m at each end, at
+  least 3 m, worked once per wall (2026-10-14).
 - **Each landslide is held by its own wall** (T-124, 2026-10-13). `vul`
   lists the landslides that reached each polygon, and the retaining wall each
   failed with, if any:
 
-  - **A slip that came with a wall** is held by that wall's replacement,
-    **sized against that slip** (2026-09-30): never smaller than the wall that
-    was there, but larger in size class, length or both where the ground needs
-    more wall.
-  - **Every other slip gets a new wall** that was never there, sized by how
-    much ground it took -- by area, and by volume where an inundated depth
-    makes one available -- even on a claim whose own wall failed elsewhere:
-    two separate failures want two walls. It is a remediation cost, not an
-    asset, so it reaches the repair cost and **never the cap**: a wall that
-    did not exist has no undepreciated value to contribute.
+  - **A slip that came with a wall** is held by that wall's replacement, at
+    the wall's own height and type. A slip no longer enlarges it (2026-10-14).
+  - **Every other slip that evacuated ground on the claim gets a new wall**
+    that was never there, even on a claim whose own wall failed elsewhere: two
+    separate failures want two walls. A slip that only buried the claim gets
+    none: its deposit is cleared as land, and inundated ground alone needs no
+    wall (2026-10-14). The new wall is **the mapped wall where there is one**
+    (section 4 of the property damage tweaks): `vul` hands the face height of the
+    wall unit the slip's polygon stands on and the length of that unit's stretch
+    on the claim alongside the failure's evacuated ground, and the wall is built
+    at that height over the length plus the margin, priced as timber pole on the
+    pile its height calls for (the unit's own wall type is not used). Where no
+    mapped wall can be used, or the land table does not list one, the wall is
+    sized by how much ground the slip took -- by area, and by volume where an
+    inundated depth makes one available -- with the same margin. It is a
+    remediation cost, not an asset, so it reaches the repair cost and **never
+    the cap**: a wall that did not exist has no undepreciated value to
+    contribute.
 
   A land table from before the lists were written pools each claim's ground
   as one slip of unknown origin, held as before: by the claim's largest
@@ -83,18 +93,26 @@ import pandas as pd
 from landloss.domain.gst import add_gst
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    EVACUATED_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_EVACUATED_AREAS_COLUMN,
     LANDSLIDE_FAILURE_COLUMNS,
+    LANDSLIDE_WALL_HEIGHTS_COLUMN,
+    LANDSLIDE_WALL_LENGTHS_COLUMN,
+    LANDSLIDE_WALL_SOURCES_COLUMN,
     LIQ_LD_COST_COLUMN,
+    MAPPED_WALL,
     REALISATION_ID_COLUMN,
     RW_HEIGHT_COLUMN,
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
     RW_SIZE_COLUMN,
     RW_TYPE_COLUMN,
+    SLIP_WALL,
 )
+from landloss.exposure.rw.beta_population import classify_wall_size
 from landloss.io.area_of_interest import extent_suffix
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
@@ -102,7 +120,6 @@ from landloss.loss.pricing import (
     LIQ_COST_ESCALATION,
     SIZE_CLASSES,
     SiteRatings,
-    beta_wall_face_area_m2,
     beta_wall_height_m,
     beta_wall_repair_cost_incl_gst_nzd,
     classify_constructability,
@@ -113,6 +130,7 @@ from landloss.loss.pricing import (
     inundation_removal_cost_incl_gst_nzd,
     inundation_volume_m3,
     landslide_wall_length_m,
+    margin_rule_length_m,
     on_costs_incl_gst_nzd,
     professional_fees_incl_gst_nzd,
     replacement_rate_excl_gst_nzd_per_m2,
@@ -190,17 +208,19 @@ NEW_WALL_LENGTH_COLUMN = "new_wall_length_m"
 # square metre rate face-weighted over them, so face by rate is the claim's bare
 # new wall cost, as for the replacement walls.
 NEW_WALL_COUNT_COLUMN = "new_wall_count"
+# How many of them stand on a mapped wall rather than being sized from the slip
+# (section 4), for the viewer to say.
+NEW_WALL_FROM_MAPPED_COLUMN = "new_wall_from_mapped_count"
 NEW_WALL_FACE_COLUMN = "new_wall_face_m2"
 NEW_WALL_RATE_COLUMN = "new_wall_rate_excl_gst_nzd_per_m2"
-# The shape a damaged wall is replaced at, which a landslide on the claim can
-# make larger than the wall that was there -- never smaller. The rate is the
-# one it was priced at, face-weighted over a claim's walls, so face by rate is
-# the claim's bare wall cost.
+# The shape a damaged wall is replaced at: its own height and type, over its
+# damaged length plus the margin. The rate is the one it was priced at,
+# face-weighted over a claim's walls, so face by rate is the claim's bare wall
+# cost.
 REPLACEMENT_WALL_SIZE_COLUMN = "replacement_wall_size"
 REPLACEMENT_WALL_LENGTH_COLUMN = "replacement_wall_length_m"
 REPLACEMENT_WALL_FACE_COLUMN = "replacement_wall_face_m2"
 REPLACEMENT_WALL_RATE_COLUMN = "replacement_wall_rate_excl_gst_nzd_per_m2"
-WALL_ENLARGED_COLUMN = "wall_enlarged_for_landslide"
 
 
 def settlement_path(world_id: int, realisation_id: int, *, extent: str) -> Path:
@@ -311,28 +331,39 @@ def landslide_ground_by_claim(land: pd.DataFrame) -> pd.DataFrame:
     outside the boundary, leaving no insured evacuated area, still has what was
     inundated inside it.
 
+    The evacuated ground is the insured ground the slip removed, which the
+    length of its wall is taken from. A land table without it measures the wall
+    off the whole landslide ground, as before.
+
     Args:
         land: The contract's land table.
 
     Returns:
-        A frame indexed by ``claim_id`` with ``area`` in square metres and
-        ``volume`` in cubic metres.
+        A frame indexed by ``claim_id`` with ``area`` and ``evacuated`` in
+        square metres and ``volume`` in cubic metres.
     """
+    area = land[LANDSLIDE_AREA_COLUMN].fillna(0.0).to_numpy()
+    evacuated = (
+        land[EVACUATED_AREA_COLUMN].fillna(0.0).to_numpy()
+        if EVACUATED_AREA_COLUMN in land.columns
+        else area
+    )
     per_claim = (
         pd.DataFrame(
             {
                 CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
-                "area": land[LANDSLIDE_AREA_COLUMN].fillna(0.0).to_numpy(),
+                "area": area,
+                "evacuated": evacuated,
                 "volume": inundation_volume_m3(
                     land[INUNDATED_AREA_COLUMN].fillna(0.0).to_numpy(),
                     land[INUNDATED_MEAN_DEPTH_COLUMN].fillna(0.0).to_numpy(),
                 ),
             }
         )
-        .groupby(CLAIM_ID_COLUMN)[["area", "volume"]]
+        .groupby(CLAIM_ID_COLUMN)[["area", "evacuated", "volume"]]
         .sum()
     )
-    per_claim["area"] = per_claim["area"].clip(lower=0.0)
+    per_claim[["area", "evacuated"]] = per_claim[["area", "evacuated"]].clip(lower=0.0)
     return per_claim
 
 
@@ -342,7 +373,12 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
     `vul` lists the landslides that reached each insured land polygon
     (:data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`). A
     failure on two of a claim's polygons is one failure, its ground and spoil
-    added. Its spoil volume is its own inundated area at its own depth.
+    added. Its spoil volume is its own inundated area at its own depth, and its
+    evacuated ground is what its wall's length is taken from. A land table
+    without the evacuated list takes each failure's whole ground instead. The
+    mapped wall each failure is built on, where `vul` listed one, is carried
+    too: its height and length (a failure's entries on a claim's polygons
+    added, the shared failure's 0 included) and its source.
 
     A land table from before the lists were written has one failure per claim,
     the claim's pooled ground, **unattributed**: no landslide id, no wall, held
@@ -354,16 +390,22 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
     Returns:
         One row per claim and failure with landslide ground: ``claim_id``,
         ``landslide_id``, ``rw_id`` (missing where no wall failed with it),
-        ``area`` in m2, ``volume`` in m3, and ``attributed``, false for the
-        pooled ground of an older table.
+        ``area`` and ``evacuated`` in m2, ``volume`` in m3, and
+        ``attributed``, false for the pooled ground of an older table, and
+        ``wall_height``, ``wall_length`` and ``wall_source`` (``mapped wall`` or
+        ``slip``; ``slip`` and no height or length where the table lists none).
     """
     columns = [
         CLAIM_ID_COLUMN,
         "landslide_id",
         RW_ID_COLUMN,
         "area",
+        "evacuated",
         "volume",
         "attributed",
+        "wall_height",
+        "wall_length",
+        "wall_source",
     ]
     if not all(column in land.columns for column in LANDSLIDE_FAILURE_COLUMNS):
         pooled = landslide_ground_by_claim(land).reset_index()
@@ -374,28 +416,67 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
                 "landslide_id": None,
                 RW_ID_COLUMN: None,
                 "area": pooled["area"].to_numpy(dtype=float),
+                "evacuated": pooled["evacuated"].to_numpy(dtype=float),
                 "volume": pooled["volume"].to_numpy(dtype=float),
                 "attributed": False,
+                "wall_height": np.nan,
+                "wall_length": np.nan,
+                "wall_source": SLIP_WALL,
             },
             columns=columns,
         )
 
+    has_evacuated = LANDSLIDE_EVACUATED_AREAS_COLUMN in land.columns
+    mapped_columns = [
+        LANDSLIDE_WALL_HEIGHTS_COLUMN,
+        LANDSLIDE_WALL_LENGTHS_COLUMN,
+        LANDSLIDE_WALL_SOURCES_COLUMN,
+    ]
+    has_mapped = all(column in land.columns for column in mapped_columns)
+    lists = [*LANDSLIDE_FAILURE_COLUMNS]
+    if has_evacuated:
+        lists.append(LANDSLIDE_EVACUATED_AREAS_COLUMN)
+    if has_mapped:
+        lists += mapped_columns
     rows = []
-    for record in land[[CLAIM_ID_COLUMN, *LANDSLIDE_FAILURE_COLUMNS]].itertuples(
-        index=False
-    ):
-        claim, ids, walls, areas, inundated, depths = record
+    for record in land[[CLAIM_ID_COLUMN, *lists]].itertuples(index=False):
+        claim, ids, walls, areas, inundated, depths, *rest = record
+        # An older table has no evacuated list: each failure's whole ground.
+        evacuated = rest.pop(0) if has_evacuated else areas
+        # A table without the mapped walls sizes every new wall from the slip.
+        heights, lengths, sources = (
+            rest
+            if has_mapped
+            else ([None] * len(ids), [None] * len(ids), [SLIP_WALL] * len(ids))
+        )
         rows.extend(
             {
                 CLAIM_ID_COLUMN: claim,
                 "landslide_id": failure,
                 RW_ID_COLUMN: wall,
                 "area": area,
+                "evacuated": evac,
                 "inundated": wet,
                 "depth": depth,
+                "wall_height": height,
+                "wall_length": length,
+                "wall_source": source,
             }
-            for failure, wall, area, wet, depth in zip(
-                *(list(values) for values in (ids, walls, areas, inundated, depths)),
+            for failure, wall, area, evac, wet, depth, height, length, source in zip(
+                *(
+                    list(values)
+                    for values in (
+                        ids,
+                        walls,
+                        areas,
+                        evacuated,
+                        inundated,
+                        depths,
+                        heights,
+                        lengths,
+                        sources,
+                    )
+                ),
                 strict=True,
             )
         )
@@ -403,6 +484,12 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
     pieces = pd.DataFrame(rows)
     pieces["area"] = pd.to_numeric(pieces["area"]).fillna(0.0)
+    pieces["evacuated"] = pd.to_numeric(pieces["evacuated"]).fillna(0.0)
+    pieces["wall_height"] = pd.to_numeric(pieces["wall_height"])
+    pieces["wall_length"] = pd.to_numeric(pieces["wall_length"])
+    pieces["wall_source"] = pieces["wall_source"].where(
+        pieces["wall_source"] == MAPPED_WALL, SLIP_WALL
+    )
     pieces["volume"] = inundation_volume_m3(
         pd.to_numeric(pieces["inundated"]).fillna(0.0).to_numpy(),
         pd.to_numeric(pieces["depth"]).fillna(0.0).to_numpy(),
@@ -414,7 +501,11 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
     grouped = pieces.groupby([CLAIM_ID_COLUMN, "landslide_id"], sort=True)
     failures = grouped.agg(
         area=("area", "sum"),
+        evacuated=("evacuated", "sum"),
         volume=("volume", "sum"),
+        wall_height=("wall_height", "max"),
+        wall_length=("wall_length", lambda lengths: lengths.sum(min_count=1)),
+        wall_source=("wall_source", "first"),
         **{RW_ID_COLUMN: (RW_ID_COLUMN, "first")},
     ).reset_index()
     failures[RW_ID_COLUMN] = (
@@ -482,27 +573,25 @@ def attach_failures_to_walls(
 
 
 def replacement_wall_shape(
-    damaged: pd.DataFrame, failures: pd.DataFrame
+    damaged: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return the size class, height and length each wall is replaced at.
 
-    **A replacement is never smaller than the wall it replaces, but its slip
-    can make it larger.** Where a wall holds a slip
-    (:func:`attach_failures_to_walls`), the wall that slip would need is worked
-    out exactly as for a slip with no wall -- :func:`classify_landslide_wall_size`
-    and :func:`landslide_wall_length_m` -- and the replacement takes the
-    **larger of the two in each dimension**: the larger size class, the taller
-    height and the longer length. The wall keeps its own height unless the
-    slip's size class sets a taller one (:func:`beta_wall_height_m`). Ground
-    that needed a two-metre wall still does, and a slip wider than the wall it
-    broke needs a wall that spans it.
-
-    Each wall is sized against its own slips only; a slip elsewhere on the
-    claim has its own wall. A wall that holds no slip is replaced as it was.
+    **A replacement keeps the wall's own size class, height and type, and takes
+    its length from the margin rule** (2026-10-14), not from the slip it came
+    with. The length is worked **per wall, not per piece**
+    (:func:`~landloss.loss.claims.wall_lengths_by_piece`): the sum of the
+    wall's damaged lengths plus 1 m at each end, at least 3 m, shared over its
+    pieces in proportion to their damaged length. So a wall shared by two
+    claims gets the margin once, a wall that failed whole is replaced over its
+    length plus the margin, and a wall clipped by a neighbour's slip is
+    replaced over the clipped length plus the margin. A replacement can be
+    narrower than the slip it came with: the wall sits where the ground needs
+    it. The damaged length of a piece is ``rw_damaged_length`` where the table
+    carries one, else its whole length.
 
     Args:
         damaged: The damaged rows of the contract's retaining wall table.
-        failures: :func:`landslide_failures`.
 
     Returns:
         The replacement size class, height and length, one each per row of
@@ -510,27 +599,9 @@ def replacement_wall_shape(
     """
     size = damaged[RW_SIZE_COLUMN].str.lower().to_numpy(dtype=object)
     height = damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float).copy()
-    length = damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float).copy()
-
-    position = attach_failures_to_walls(failures, damaged)
-    held_by = failures.assign(_wall=position)
-    held_by = held_by[held_by["_wall"] >= 0]
-    slips = held_by.groupby("_wall")[["area", "volume"]].sum()
-    area = slips["area"].reindex(range(len(damaged))).fillna(0.0).to_numpy()
-    volume = slips["volume"].reindex(range(len(damaged))).fillna(0.0).to_numpy()
-    held = area > 0
-    if not held.any():
-        return size, height, length
-
-    rank = {name: order for order, name in enumerate(SIZE_CLASSES)}
-    slip_size = classify_landslide_wall_size(area[held], volume[held])
-    slip_length = landslide_wall_length_m(area[held])
-    size[held] = [
-        max(existing, slip, key=rank.__getitem__)
-        for existing, slip in zip(size[held], slip_size, strict=True)
-    ]
-    height[held] = np.maximum(height[held], beta_wall_height_m(slip_size))
-    length[held] = np.maximum(length[held], slip_length)
+    length = loss_claims.wall_lengths_by_piece(damaged)[
+        loss_claims.REPLACED_LENGTH_COLUMN
+    ].to_numpy()
     return size, height, length
 
 
@@ -538,34 +609,31 @@ def wall_repair_by_claim(
     rw: pd.DataFrame,
     ratings: pd.DataFrame,
     *,
-    failures: pd.DataFrame,
     policy: PolicySettings,
 ) -> pd.DataFrame:
     """Return each claim's cost of replacing the retaining walls that failed.
 
-    Each wall is replaced at :func:`replacement_wall_shape` -- as it was, or
-    larger where the slip it came with calls for more wall.
+    Each wall is replaced at :func:`replacement_wall_shape` -- at its own
+    height and type, over its damaged length plus the margin.
 
-    A failed wall is rebuilt as a timber pole wall, on the pile its
-    **replacement** height calls for, unless its type is rebuilt in kind
+    A failed wall is rebuilt as a timber pole wall, on the pile its height calls
+    for, unless its type is rebuilt in kind
     (:data:`~landloss.loss.pricing.REPLACED_IN_KIND`, T-122): a brick wall goes
-    back as timber pole, a concrete block wall as concrete block. So a 1.8 m
-    wall enlarged to 2.75 m goes from the 250 mm to the 300 mm pile.
-    Undepreciated value stays on the wall as it was, at its own type, in step 0,
-    because that is what the property had.
+    back as timber pole, a concrete block wall as concrete block. Undepreciated
+    value stays on the wall as it was, at its own type, in step 0, because that
+    is what the property had.
 
     Args:
         rw: The contract's retaining wall table.
         ratings: The site ratings per claim.
-        failures: :func:`landslide_failures`.
         policy: The settings this scenario runs under.
 
     Returns:
         A frame indexed by ``claim_id`` with the cost, the replacement's size
-        class, length and face area, the square metre rate it was priced at
+        class, length and face area, and the square metre rate it was priced at
         (face-weighted where a claim has several walls, so face by rate is the
-        claim's bare wall cost), and whether a slip enlarged it. A claim with no
-        damaged wall does not appear.
+        claim's bare wall cost). A claim with no damaged wall does not
+        appear.
     """
     damaged = loss_claims.damaged_walls(rw)
     if damaged.empty:
@@ -576,10 +644,9 @@ def wall_repair_by_claim(
                 REPLACEMENT_WALL_LENGTH_COLUMN,
                 REPLACEMENT_WALL_FACE_COLUMN,
                 REPLACEMENT_WALL_RATE_COLUMN,
-                WALL_ENLARGED_COLUMN,
             ]
         )
-    size, height, length = replacement_wall_shape(damaged, failures)
+    size, height, length = replacement_wall_shape(damaged)
     face_area = wall_face_area_m2(height, length)
     rate = replacement_rate_excl_gst_nzd_per_m2(
         damaged[RW_TYPE_COLUMN].to_numpy(), height
@@ -590,9 +657,6 @@ def wall_repair_by_claim(
         rate_excl_gst_nzd_per_m2=rate,
         policy=policy,
     )
-    enlarged = (height > damaged[RW_HEIGHT_COLUMN].to_numpy(dtype=float)) | (
-        length > damaged[RW_LENGTH_COLUMN].to_numpy(dtype=float)
-    )
     rank = {name: order for order, name in enumerate(SIZE_CLASSES)}
     walls = pd.DataFrame(
         {
@@ -602,7 +666,6 @@ def wall_repair_by_claim(
             "length": length,
             "face": face_area,
             "bare": face_area * rate,
-            "enlarged": enlarged,
         }
     )
     grouped = walls.groupby(CLAIM_ID_COLUMN)
@@ -618,7 +681,6 @@ def wall_repair_by_claim(
             REPLACEMENT_WALL_RATE_COLUMN: (grouped["bare"].sum() / face).where(
                 face > 0, 0.0
             ),
-            WALL_ENLARGED_COLUMN: grouped["enlarged"].any(),
         }
     )
 
@@ -626,8 +688,7 @@ def wall_repair_by_claim(
 def filled_wall_repair(wall_repair: pd.DataFrame, index: pd.Index) -> pd.DataFrame:
     """Return :func:`wall_repair_by_claim` over every claim, blanks filled.
 
-    A claim with no damaged wall costs nothing, has no replacement, and was not
-    enlarged.
+    A claim with no damaged wall costs nothing and has no replacement.
 
     Args:
         wall_repair: :func:`wall_repair_by_claim`.
@@ -646,9 +707,6 @@ def filled_wall_repair(wall_repair: pd.DataFrame, index: pd.Index) -> pd.DataFra
     ):
         out[column] = aligned[column].astype(float).fillna(0.0)
     out[REPLACEMENT_WALL_SIZE_COLUMN] = aligned[REPLACEMENT_WALL_SIZE_COLUMN].fillna("")
-    out[WALL_ENLARGED_COLUMN] = (
-        aligned[WALL_ENLARGED_COLUMN].fillna(value=False).astype(bool)
-    )
     return out
 
 
@@ -663,13 +721,27 @@ def land_repair_by_claim(
     """Return the cost of holding the land landslides took, by claim.
 
     **Each slip no damaged wall holds gets a new wall of its own**
-    (:func:`attach_failures_to_walls`), sized on its own ground: two separate
-    slips on one property want two walls, and a slip at the back of a section
-    is not held by the wall that failed at the front (T-124). A slip that came
-    with a wall is held by that wall's replacement instead, sized against it in
+    (:func:`attach_failures_to_walls`): two separate slips on one property want
+    two walls, and a slip at the back of a section is not held by the wall that
+    failed at the front (T-124). A slip that came with a wall is held by that
+    wall's replacement instead, sized by the margin rule in
     :func:`replacement_wall_shape`, and costs nothing here -- pricing both
     charged twice for one structure, once at $74,302 against a slip of 1.4
     square metres.
+
+    **A slip that evacuated no ground on the claim gets no wall**
+    (2026-10-14): buried ground needs clearing, which the spoil line prices, and
+    no wall. A land table without the evacuated list measures each failure's
+    whole ground as its evacuated ground, so an older table still builds one.
+
+    **A new wall is built on the mapped wall where `vul` listed one**: at the
+    mapped unit's height, over the length alongside the failure's evacuated
+    ground and the margin rule's 1 m at each end, at least 3 m, as timber pole on
+    the pile that height calls for (the unit's own type is not used). A
+    mapped failure with no length of its own shares the wall another failure on
+    its unit and claim has, and builds none. Any other failure, or a table
+    without the lists, is sized on the slip's own ground, by its size class
+    and the same margin rule.
 
     Args:
         land: The contract's land table.
@@ -680,9 +752,9 @@ def land_repair_by_claim(
 
     Returns:
         A frame indexed by ``claim_id``: the cost, whether a wall was invented,
-        the claim's landslide ground, and its new walls -- how many, the
-        largest size class, the tallest height, the length and face summed and
-        the face-weighted bare rate.
+        the claim's landslide ground, and its new walls -- how many, how many of
+        them stand on a mapped wall, the largest size class, the tallest
+        height, the length and face summed and the face-weighted bare rate.
     """
     index = pd.Index(land[CLAIM_ID_COLUMN].unique(), name=CLAIM_ID_COLUMN)
     ground = landslide_ground_by_claim(land).reindex(index).fillna(0.0)
@@ -692,6 +764,7 @@ def land_repair_by_claim(
             SYNTHETIC_WALL_COLUMN: False,
             LANDSLIDE_REPAIR_AREA_COLUMN: ground["area"],
             NEW_WALL_COUNT_COLUMN: 0,
+            NEW_WALL_FROM_MAPPED_COLUMN: 0,
             NEW_WALL_SIZE_COLUMN: "",
             NEW_WALL_HEIGHT_COLUMN: 0.0,
             NEW_WALL_LENGTH_COLUMN: 0.0,
@@ -701,16 +774,27 @@ def land_repair_by_claim(
         index=index,
     )
     position = attach_failures_to_walls(failures, loss_claims.damaged_walls(rw))
-    building = failures[position < 0].reset_index(drop=True)
+    mapped = (failures["wall_source"] == MAPPED_WALL).to_numpy()
+    # A mapped failure with no length of its own is built on another failure's
+    # wall, on the same unit and claim.
+    shares = mapped & (failures["wall_length"].fillna(0.0) <= 0.0).to_numpy()
+    wanted = (position < 0) & (failures["evacuated"] > 0).to_numpy() & ~shares
+    building = failures[wanted].reset_index(drop=True)
     if building.empty:
         return out
 
-    size = classify_landslide_wall_size(
+    from_mapped = (building["wall_source"] == MAPPED_WALL).to_numpy()
+    slip_size = classify_landslide_wall_size(
         building["area"].to_numpy(), building["volume"].to_numpy()
     )
-    length = landslide_wall_length_m(building["area"].to_numpy())
-    height = beta_wall_height_m(size)
-    face = beta_wall_face_area_m2(size, length)
+    slip_height = beta_wall_height_m(slip_size)
+    slip_length = landslide_wall_length_m(building["evacuated"].to_numpy())
+    mapped_height = building["wall_height"].fillna(0.0).to_numpy(dtype=float)
+    mapped_length = margin_rule_length_m(building["wall_length"].fillna(0.0).to_numpy())
+    height = np.where(from_mapped, mapped_height, slip_height)
+    length = np.where(from_mapped, mapped_length, slip_length)
+    size = np.where(from_mapped, classify_wall_size(mapped_height), slip_size)
+    face = wall_face_area_m2(height, length)
     # An invented wall has no id of its own to take a construction from, so
     # it is always timber pole, on the pile its height calls for.
     rate = timber_pole_rate_excl_gst_nzd_per_m2(height)
@@ -730,6 +814,7 @@ def land_repair_by_claim(
             "length": length,
             "face": face,
             "bare": face * rate,
+            "mapped": from_mapped,
         }
     )
     grouped = walls.groupby(CLAIM_ID_COLUMN)
@@ -738,6 +823,7 @@ def land_repair_by_claim(
     out.loc[claims, LAND_REPAIR_COLUMN] = grouped["cost"].sum()
     out.loc[claims, SYNTHETIC_WALL_COLUMN] = True
     out.loc[claims, NEW_WALL_COUNT_COLUMN] = grouped.size()
+    out.loc[claims, NEW_WALL_FROM_MAPPED_COLUMN] = grouped["mapped"].sum()
     out.loc[claims, NEW_WALL_SIZE_COLUMN] = (
         grouped["size_rank"].max().map(dict(enumerate(SIZE_CLASSES)))
     )
@@ -845,15 +931,12 @@ def describe_repair(claims):
         ((claims[WALL_REPAIR_COLUMN] > 0) & (claims[LAND_REPAIR_COLUMN] > 0)).sum()
     )
     several = int((claims[NEW_WALL_COUNT_COLUMN] > 1).sum())
-    enlarged = int(claims[WALL_ENLARGED_COLUMN].sum())
     print(
         f"  {int(claims[NEW_WALL_COUNT_COLUMN].sum()):,} new walls on {invented:,} "
-        f"claims, {several:,} of them with more than one; {both:,} claims also "
+        f"claims, {several:,} of them with more than one; "
+        f"{int(claims[NEW_WALL_FROM_MAPPED_COLUMN].sum()):,} stand on a mapped "
+        f"wall and the rest are sized from the slip; {both:,} claims also "
         "replace a wall of their own, for a separate slip"
-    )
-    print(
-        f"  {enlarged:,} replacements are built larger than the wall they "
-        "replace, because the slip it came with needs more wall than was there"
     )
 
 
@@ -871,11 +954,17 @@ def describe_failures(failures, rw):
         return
     held = attach_failures_to_walls(failures, loss_claims.damaged_walls(rw)) >= 0
     per_claim = failures.groupby(CLAIM_ID_COLUMN).size()
+    buried = ~held & ~(failures["evacuated"] > 0).to_numpy()
+    mapped = (failures["wall_source"] == MAPPED_WALL).to_numpy()
+    shares = mapped & (failures["wall_length"].fillna(0.0) <= 0.0).to_numpy()
+    builds = ~held & ~buried & ~shares
     print(
         f"Landslides: {len(failures):,} separate slips on {len(per_claim):,} "
         f"claims, {int((per_claim > 1).sum()):,} claims with more than one; "
-        f"{int(held.sum()):,} came with a damaged wall that holds them, and "
-        f"{int((~held).sum()):,} get a new wall"
+        f"{int(held.sum()):,} came with a damaged wall that holds them, "
+        f"{int(buried.sum()):,} only buried the claim (cleared, no wall), "
+        f"{int((~held & ~buried & shares).sum()):,} stand on a mapped wall "
+        f"another slip builds and {int(builds.sum()):,} get a new wall"
     )
 
 
@@ -960,14 +1049,14 @@ def main(*, extent, world_ids, realisation_ids):
             claims = claims.join(ratings)
 
             # Each separate slip, and the wall it came with. A slip that came
-            # with a wall is held by that wall's replacement, enlarged where the
-            # slip needs more; every other slip gets a new wall of its own.
+            # with a wall is held by that wall's replacement; every other slip
+            # gets a new wall of its own.
             failures = landslide_failures(land)
             describe_failures(failures, rw)
 
             claims = claims.join(
                 filled_wall_repair(
-                    wall_repair_by_claim(rw, ratings, failures=failures, policy=policy),
+                    wall_repair_by_claim(rw, ratings, policy=policy),
                     claims.index,
                 )
             )
@@ -992,9 +1081,8 @@ def main(*, extent, world_ids, realisation_ids):
             claims[NEW_WALL_LENGTH_COLUMN] = land_repair[NEW_WALL_LENGTH_COLUMN].fillna(
                 0.0
             )
-            claims[NEW_WALL_COUNT_COLUMN] = (
-                land_repair[NEW_WALL_COUNT_COLUMN].fillna(0).astype(int)
-            )
+            for column in (NEW_WALL_COUNT_COLUMN, NEW_WALL_FROM_MAPPED_COLUMN):
+                claims[column] = land_repair[column].fillna(0).astype(int)
             for column in (NEW_WALL_FACE_COLUMN, NEW_WALL_RATE_COLUMN):
                 claims[column] = land_repair[column].fillna(0.0)
             claims[LIQ_REPAIR_COLUMN] = (

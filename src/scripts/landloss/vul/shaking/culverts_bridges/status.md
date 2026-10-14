@@ -3,7 +3,7 @@
 **Status:** A damage state is drawn on every structure, but the pilot holds
 none, so nothing has run against real rows.
 
-**Updated:** 2026-10-02
+**Updated:** 2026-10-14
 
 ## Approach
 
@@ -61,6 +61,10 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
    over unnamed drains and gullies.
 3. A span per crossing, which the loss module's $15,000 a metre would use in
    place of its 5 m default.
+4. A HAZUS PGA fragility for bridges (**T-164**), on the `pga_g` step 9
+   already samples, so a bridge can fail from shaking and not only from its
+   land damage state -- including on hill land, where it now has a nought
+   chance.
 
 ## Validation
 

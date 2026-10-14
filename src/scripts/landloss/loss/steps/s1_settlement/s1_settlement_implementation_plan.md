@@ -34,12 +34,18 @@
       geotechnical report supplies all three for a real claim (**Q-10**).
 - [ ] Distinguish a claim with no driveway routed from one with a short
       driveway. Both rate easy today.
-- [ ] Confirm the invented wall's geometry. The two-to-one aspect, the 2 m
-      margin at each end and the 10 m minimum are all invented, and together
-      they set how large the invented walls are -- the largest single lever on
-      the landslide side of the repair cost. The damaged area still drives both
-      the height, through the size class, and the length, which is one signal
-      doing two jobs.
+
+- [x] Replace a damaged wall at its own height and type over its damaged length
+      plus 1 m at each end, at least 3 m, worked once per wall; a slip no longer
+      enlarges it, and the new-wall fallback takes the same margin and minimum
+      (2026-10-14).
+
+- [x] Build a slip's new wall on the mapped wall where `vul` lists one, at its
+      height and its length alongside the failure's evacuated ground plus the
+      margin, as timber pole; a `slip` failure, or a table without the lists,
+      is sized from the slip as before. Build no new wall for a failure with
+      no evacuated ground on the claim, which keeps its clearing; count the
+      mapped ones in `new_wall_from_mapped_count` (section 4, 2026-10-14).
 
 ## Phase 3 — What the settlement still cannot see
 

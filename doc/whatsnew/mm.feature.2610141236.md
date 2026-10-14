@@ -1,0 +1,1 @@
+The length of a wall built to hold a landslide is now measured off the failure's evacuated insured ground on the claim, not its evacuated and inundated ground together. Vul's landslide land step lists each failure's evacuated area as `landslide_evacuated_areas`; a land table without it is measured off the whole ground as before.

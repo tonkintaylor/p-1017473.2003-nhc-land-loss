@@ -42,6 +42,26 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.12, 5.2 and
       any evacuated polygon"); tested in
       `tests/landloss/vul/landslide/test_flags.py`.
 
+## Phase 2a — How much of the wall is damaged (complete)
+
+Plan `.agents/plans/tweaks-to-property-damage.md` section 6 (T-158).
+
+- [x] Measure, for each wall carrying `is_evacuated` or `is_inundated` and not
+      damaged by shaking, the line inside the merged evacuated and merged
+      inundated ground of every failure other than its own polygon
+      (`measure_wall_damage()`).
+- [x] Write `evacuated_length_m`, `inundated_length_m`, `damaged_length_m` and
+      `damaged_line`; a wall damaged by shaking takes its whole line, a wall
+      only inundated an empty line and 0.
+- [x] Measure `absorbed` and `superseded` walls from the absorbing failure's
+      ground, as any other.
+- [x] Print how many walls flagged by an absorbed or superseded outcome have no
+      more than 0.1 m of line inside the ground (`describe_damage()`), to read
+      against the walls replaced before, since vul s10 clears them as undamaged.
+- [ ] Check after the rerun that the double count against the slip's own new
+      wall is not significant (T-158, plan 6.4, a post-rerun check run with
+      `research/table_clipped_wall_double_count.py`).
+
 ## Phase 3 — Run on the pilot
 
 - [ ] Run over the pilot once exposure rw step 6 and landslide steps 4 to 6
@@ -50,8 +70,6 @@ Contract `.agents/plans/urban-slope-build-contract.md` sections 3.12, 5.2 and
 
 ## Potential future improvements
 
-- Flag a wall by the share of its length inside the landslide rather than by
-  any intersection, so a wall clipped at one end is not written off whole.
 - Record which polygon reached a flat-land wall (the `landslide_id` of the
   intersecting polygon), as the outcome table's `taken_by` does for sloping
   walls, so a flag can be traced to its cause on the map.

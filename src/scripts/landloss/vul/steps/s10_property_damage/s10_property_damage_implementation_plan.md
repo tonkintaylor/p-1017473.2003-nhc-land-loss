@@ -82,6 +82,39 @@ world signature of Phase 1b each call raised `TypeError`.
 - [x] Delete `loss_input_path()` once the loss owner moves the five calls to
       `world_loss_input_path()` with a `WORLD_IDS` setting (T-66, 2026-10-07).
 
+## Phase 1d — Imminent and re-inundated ground (complete)
+
+- [x] Carry `imminent_evacuated_area`, `reinundated_insured_area`,
+      `reinundated_mean_depth`, `reinundated_volume` and the lists
+      `landslide_imminent_areas` and `landslide_reinundated_areas` on the land
+      table as extra columns outside `LAND_COLUMNS`, where vul step 3 wrote them.
+- [x] Print their totals in `describe_land`.
+
+## Phase 1e — Damaged length per wall piece (complete)
+
+Plan `.agents/plans/tweaks-to-property-damage.md` section 6 (T-158).
+
+- [x] Read the world's insured stretches (`insured_stretches_path()`) and cut
+      each wall's `damaged_line` by the claim's stretch, writing
+      `rw_damaged_length` on each piece as an extra column outside `RW_COLUMNS`
+      (`damaged_piece_lengths()` in `landloss.vul.loss_input`).
+- [x] Take the whole `rw_length` for a piece damaged by shaking, 0 for an
+      undamaged piece, and share a damaged part on a boundary two claims hold
+      between them (`landloss.exposure.coverage.shared_lengths()`).
+- [x] Leave a piece with 0.1 m or less of landslide damage undamaged, with no
+      flags (`MIN_DAMAGED_PIECE_LENGTH_M`).
+- [ ] Run on the pilot after vul landslide rw step 11 and exposure rw step 6 are
+      rerun, and check the totals (the lead reruns the pipeline).
+
+- [x] Hand loss, for each failure no damaged wall holds, the height, length
+      and source of the wall to build, on the mapped wall of its polygon's unit
+      where there is one (`landslide_wall_heights`, `landslide_wall_lengths`,
+      `landslide_wall_sources`; `landloss.vul.mapped_walls`, section 4,
+      2026-10-14).
+- [ ] Run on the pilot after exposure rw step 6 is rerun for
+      `wall-candidate-stretches`, and measure the mapped walls against the slip
+      sized ones (the lead reruns the pipeline).
+
 ## Phase 2 — Resolve what the join exposed
 
 - [x] **T-27, retaining walls**: the project lead ruled on 2026-10-02 that a retaining wall replaced by shaking on flat land and the liquefaction land damage on the same claim are not a double count, so both are priced and the
