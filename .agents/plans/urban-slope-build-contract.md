@@ -1118,7 +1118,19 @@ not delineated still has a row; section 5 for the vocabulary:
 | `claim_id` | str | |
 | `slope_id` | str, nullable | The polygon the wall belongs to; null when the line's polygon was not delineated (should be rare; counted and printed) |
 | `outcome` | str | `standing`, `failed_with_polygon`, `absorbed`, `superseded`; `standing` where `slope_id` is null |
-| `taken_by` | str, nullable | The `landslide_id` of the polygon that absorbed or superseded it; null otherwise |
+| `taken_by` | str, nullable | Removed 2026-10-14 (see the note below); older files carry it, null unless the polygon was absorbed or superseded |
+
+> **Superseded 2026-10-14 (the project lead).** Landslide step 6 keeps every failed urban
+> polygon: no absorption between urban polygons and no supersession by a
+> large-model landslide, the same rules as the urban model. In the Wellington
+> pilot 514 of 2,980 failed polygons were absorbed by a larger one they overlapped
+> by a median of 4% of their area, and 94% of their ground vanished. Overlapping
+> ground is counted once downstream (vul landslide land step 3 measures areas on
+> the union of the failures). `resolve_overlaps`, `supersede_by_large`,
+> `SHARED_GROUND_TOLERANCE_M2`, `NONE` and the `taken_by` column are removed; a
+> wall on a failed polygon is `failed_with_polygon`. `absorbed` and `superseded`
+> stay in `OUTCOMES` so an older outcome file reads. The text below records the
+> earlier rule. Large-model overlap handling (`drop_overlapping`, landslide step 3) is unchanged.
 
 Prints: world and earthquake ids, polygons by wall state, failed, absorbed,
 superseded, summed and dissolved areas by `land_class` and population, the
@@ -1422,6 +1434,18 @@ others call it with no `by`. `landloss.exposure.asset_ids` is unchanged.
 ## 5. The wall outcome table and the contract flags
 
 ### 5.1 Outcomes
+
+> **Superseded 2026-10-14 (the project lead).** Landslide step 6 keeps every failed urban
+> polygon: no absorption between urban polygons and no supersession by a
+> large-model landslide, the same rules as the urban model. In the Wellington
+> pilot 514 of 2,980 failed polygons were absorbed by a larger one they overlapped
+> by a median of 4% of their area, and 94% of their ground vanished. Overlapping
+> ground is counted once downstream (vul landslide land step 3 measures areas on
+> the union of the failures). `resolve_overlaps`, `supersede_by_large`,
+> `SHARED_GROUND_TOLERANCE_M2`, `NONE` and the `taken_by` column are removed; a
+> wall on a failed polygon is `failed_with_polygon`. `absorbed` and `superseded`
+> stay in `OUTCOMES` so an older outcome file reads. The text below records the
+> earlier rule. Large-model overlap handling (`drop_overlapping`, landslide step 3) is unchanged.
 
 `landloss.hazard.landslide.urban.realisation.OUTCOMES = ("standing", "failed_with_polygon", "absorbed", "superseded")`.
 Schema in section 3.10. Flat-land walls never appear. A sloping wall whose
@@ -2166,6 +2190,18 @@ by generator.
 
 ### 7.11 `landloss.hazard.landslide.urban.realisation` (new)
 
+> **Superseded 2026-10-14 (the project lead).** Landslide step 6 keeps every failed urban
+> polygon: no absorption between urban polygons and no supersession by a
+> large-model landslide, the same rules as the urban model. In the Wellington
+> pilot 514 of 2,980 failed polygons were absorbed by a larger one they overlapped
+> by a median of 4% of their area, and 94% of their ground vanished. Overlapping
+> ground is counted once downstream (vul landslide land step 3 measures areas on
+> the union of the failures). `resolve_overlaps`, `supersede_by_large`,
+> `SHARED_GROUND_TOLERANCE_M2`, `NONE` and the `taken_by` column are removed; a
+> wall on a failed polygon is `failed_with_polygon`. `absorbed` and `superseded`
+> stay in `OUTCOMES` so an older outcome file reads. The text below records the
+> earlier rule. Large-model overlap handling (`drop_overlapping`, landslide step 3) is unchanged.
+
 ```python
 OUTCOMES = ("standing", "failed_with_polygon", "absorbed", "superseded")
 OUTCOME_RANK = {"superseded": 0, "failed_with_polygon": 1, "absorbed": 2, "standing": 3}   # lowest wins
@@ -2704,7 +2740,7 @@ the loss owner's.
     steps are untouched.
 18. `build_rw_table(walls, states, flags)` spines on the population.
 19. Implementers must make the pilot run; the full extent is the lead's.
-20. The wall outcome table carries `taken_by`.
+20. The wall outcome table carries `taken_by` (removed 2026-10-14).
 21. `ids.py` and `land_class.py` are written in phase 0; the end-to-end
     runners are rewired by G (`gen_exposure.py`), J (`gen_hazard.py`, with
     `main_urban`) and K (`gen_all.py`), and `gen_all.py` is not runnable
@@ -2762,7 +2798,9 @@ inputs and not run over the pilot:
     shares ground with a large evacuated polygon (intersection area above
     `SHARED_GROUND_TOLERANCE_M2`); a wall a large slide reaches is left to vul
     step 11's line test, a positive length of line inside the polygon
-    (sections 3.10, 5.1, 7.11). Built (J).
+    (sections 3.10, 5.1, 7.11). Built (J). **Superseded 2026-10-14**: the lead
+    decided every failed urban polygon is kept, none superseded or absorbed
+    (decision 40).
 36. `gen_wall_population.py` also writes `drawn_walls_path(w)`, every wall
     the world drew before the claim and coverage filters, and step 8 joins on
     it, so uninsured walls shape the hazard with `rw_id` null
@@ -2772,6 +2810,10 @@ inputs and not run over the pilot:
     pilot)` is kept, deprecated, resolving world 0, for the loss module until
     its owner moves to worlds (section 3.15). Built (K); the move is register
     task **T-66**.
+40. Step 9 (landslide step 6) keeps every failed urban polygon: no absorption
+    and no supersession by a large-model landslide (the lead, 2026-10-14).
+    Overlapping ground is counted once downstream. Replaces the absorption
+    rule of section 3.10 and decision 35's supersession (sections 3.10, 5.1, 7.11).
 
 ## As built, close-out review (2026-10-02)
 

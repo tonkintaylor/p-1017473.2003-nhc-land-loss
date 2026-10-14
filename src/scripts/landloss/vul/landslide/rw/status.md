@@ -60,11 +60,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
   `damaged_length_m` and the `damaged_line` geometry, so the file is now a
   geoparquet). It is tested end to end on synthetic inputs and has not been
   run on the pilot.
-- Landslide step 6 supersedes failed urban polygons only, and only where they
-  share more than `SHARED_GROUND_TOLERANCE_M2` of ground with a large slide
-  (`supersede_by_large`, contract decision 35, built). A sloping wall whose
-  polygon did not fail is not marked superseded; where a large slide reaches it,
-  this step's line flag catches it.
+- Landslide step 6 keeps every failed urban polygon (the lead, 2026-10-14):
+  none is absorbed by a larger urban failure or superseded by a large slide, so
+  a sloping wall whose polygon failed is `failed_with_polygon` and replaced
+  over its whole length. An older run's `absorbed` or `superseded` outcome is
+  read the same way. Where another failure, urban or large, reaches a wall,
+  this step's line flag catches it and measures the length inside.
 - Vul step 10 writes the loss tables per exposure world and earthquake, and
   the loss module reads them the same way (**T-66**, done 2026-10-07).
 

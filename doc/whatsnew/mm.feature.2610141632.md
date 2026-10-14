@@ -1,0 +1,1 @@
+Hazard landslide step 6 now keeps every failed urban polygon: none is absorbed by a larger urban failure or superseded by a large-model landslide, and a wall on a failed polygon is always `failed_with_polygon`; overlapping ground is counted once downstream. Hazard landslide step 6 onwards needs rerunning.

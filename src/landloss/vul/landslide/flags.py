@@ -12,8 +12,10 @@ A structure touching both kinds of ground carries both flags.
 Retaining walls on sloping ground have a second route to a flag. The urban slope
 model gives every such wall an **outcome** per world and earthquake
 (``.agents/plans/urban-slope-build-contract.md`` section 5): its own polygon
-failed through it, a larger urban failure absorbed it, a large-model landslide
-superseded it, or it is still standing. :data:`OUTCOME_FLAGS` maps each outcome
+failed through it, or it is still standing. An older run also wrote
+``absorbed`` (a larger urban failure took its polygon) and ``superseded`` (a
+large-model landslide did); step 6 keeps every failed polygon since
+2026-10-14, so a newer run writes neither. :data:`OUTCOME_FLAGS` maps each outcome
 onto one of the three contract flags, and :func:`wall_flags` ORs that mapping
 with the geometric intersections. Any flag true means one replacement in
 `loss`; the mapping only attributes the cause, so it lives in the one dict and
@@ -26,17 +28,15 @@ shrunk by the same distance). Urban polygons tile the ground and are
 reconciled so that wall lines are their edges, so a standing wall is very often
 the edge of a neighbouring polygon; one that only runs along the boundary of
 that neighbour's failure sits on no ground the failure took. This is the line
-analogue of the hazard side's rule that polygons touching only along an edge
-share no ground
-(:data:`~landloss.hazard.landslide.urban.realisation.SHARED_GROUND_TOLERANCE_M2`).
+analogue of the rule that polygons touching only along an edge share no
+ground.
 
 A wall's **own** polygon (its outcome's ``slope_id``) never sets the wall's
 ``is_evacuated`` or ``is_inundated`` flag by geometry (the lead, 2026-10-13).
 The wall's line is drawn at the toe of its own face and its evacuated polygon
 is cut at the line, so the wall is that polygon's edge and its own deposit runs
 on below it; its own failure is the outcome route's (``failed_with_polygon``,
-the shaking flag). Polygons of other slopes still flag it, as do the
-``absorbed`` and ``superseded`` outcomes.
+the shaking flag). Polygons of other slopes still flag it.
 
 **How much of a wall is damaged** is measured as well (T-158, the lead,
 2026-10-14), because a wall clipped by a neighbour's failure is replaced over
@@ -87,15 +87,19 @@ FLAG_COLUMNS = {
 }
 
 # Which contract flag each urban outcome sets, contract section 5.2. A wall
-# whose polygon failed through it is written off by the shaking; one whose
-# polygon was taken by a larger failure, urban or large, sits on evacuated
-# ground. A standing wall sets none, and no outcome sets the inundated flag:
+# whose polygon failed through it is written off by the shaking, over its whole
+# length. A standing wall sets none, and no outcome sets the inundated flag:
 # that comes from geometry alone. The vocabulary is landslide step 6's
-# (``landloss.hazard.landslide.urban.realisation.OUTCOMES``).
+# (``landloss.hazard.landslide.urban.realisation.OUTCOMES``). ``absorbed`` and
+# ``superseded`` come only from a run before step 6 kept every failed polygon
+# (the lead, 2026-10-14). Their polygon had failed too, its ground merely
+# credited to a larger failure, so they set the shaking flag as well; flagged
+# evacuated, they were measured against the larger failure's ground, which
+# rarely reaches the wall's line.
 OUTCOME_FLAGS = {
     FAILED_WITH_POLYGON: IS_DAMAGED_BY_SHAKING_COLUMN,
-    ABSORBED: IS_EVACUATED_COLUMN,
-    SUPERSEDED: IS_EVACUATED_COLUMN,
+    ABSORBED: IS_DAMAGED_BY_SHAKING_COLUMN,
+    SUPERSEDED: IS_DAMAGED_BY_SHAKING_COLUMN,
 }
 
 # What :func:`measure_wall_damage` writes beside the flags. The lengths are in
@@ -121,9 +125,8 @@ WALL_FLAG_COLUMNS = (
 
 # How far inside a landslide polygon a wall's line must lie, and for how long,
 # for the polygon to reach the wall, in m. A numerical tolerance, not a
-# parameter: a hundredth of a 1 m DEM cell side, the length analogue of
-# realisation.SHARED_GROUND_TOLERANCE_M2, so a line along a polygon's edge, or
-# within floating-point noise of it, is not inside the polygon.
+# parameter: a hundredth of a 1 m DEM cell side, so a line along a polygon's
+# edge, or within floating-point noise of it, is not inside the polygon.
 WALL_INSIDE_TOLERANCE_M = 0.01
 
 
@@ -277,10 +280,8 @@ def measure_wall_damage(
     every failure other than its own polygon, each kind merged first
     (:func:`_inside_lines`). Its **damaged** line is the part inside evacuated
     ground alone, because inundated ground does not damage a wall. A wall that
-    is only inundated has an empty damaged line and length 0. An ``absorbed``
-    or ``superseded`` wall is measured the same way, from the absorbing
-    failure's ground, which is another polygon. A wall carrying no flag is not
-    measured.
+    is only inundated has an empty damaged line and length 0. A wall carrying
+    no flag is not measured.
 
     A wall damaged by shaking in the later shaking step (a flat-land wall) is
     not known here; vul step 10 takes its whole length.

@@ -34,9 +34,8 @@
   the polygon shrunk by 0.01 m (`landloss.vul.landslide.flags`). Urban
   polygons tile the ground and wall lines are their edges, so a standing wall
   is often the edge of a neighbouring polygon; a line that only runs along a
-  failed neighbour's boundary, or touches it at a point, is not flagged. This
-  matches the hazard side, where polygons touching only along an edge share no
-  ground (`SHARED_GROUND_TOLERANCE_M2`). Culverts and bridges keep the plain
+  failed neighbour's boundary, or touches it at a point, is not flagged.
+  Culverts and bridges keep the plain
   intersection of `landslide_flags()`, boundary included.
 - A flat-land wall has no outcome row and takes `is_evacuated` and
   `is_inundated` from geometry alone; its `is_damaged_by_shaking` is written

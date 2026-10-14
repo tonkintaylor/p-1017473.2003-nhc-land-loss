@@ -639,12 +639,28 @@ The Porirua wall would be replaced over 3.96 + 2 × 1 = 5.96 m, not 46 m (3.2).
   replaced over its damaged length plus 1 m at each end, and at least 3 m,
   the same rule as a wall that failed whole and a slip's new wall. This
   replaces the earlier 6.1 (no margin, no minimum).
-- **6.2. `absorbed` and `superseded` walls are measured.** These are walls
-  taken by a larger urban failure, or by a large-model landslide. They set
-  `is_evacuated` through their outcome, not their geometry, but their damaged
-  length is still measured from the absorbing failure's ground, like any
-  other landslide-damaged wall. The absorbing failure is another polygon, so
-  step 1's "every failure other than its own polygon" already includes it.
+- **6.2. No wall is absorbed or superseded any more** (the lead, 2026-10-14,
+  replacing the earlier 6.2, which measured such a wall from the absorbing
+  failure's ground). The pilot showed those outcomes are walls whose own
+  polygon **failed**: hazard landslide s6 only credited the polygon's ground
+  to a larger failure it overlapped, often by a few percent of its area, and
+  dropped the rest of that ground. Measured from the larger failure's ground,
+  69 of 114 such walls came to 0.1 m or less and were cleared as undamaged.
+  Now:
+  - hazard landslide s6 keeps every failed urban polygon, with no absorption
+    between urban polygons and no supersession by a large-model landslide.
+    Overlapping evacuated ground is counted once by vul land s3's unions, and
+    each failed polygon gets its own new wall in loss s1 where it needs one;
+  - a wall on a failed polygon is `failed_with_polygon`, replaced over its
+    whole length;
+  - an older run's `absorbed` or `superseded` outcome is read the same way
+    (`OUTCOME_FLAGS` in `landloss.vul.landslide.flags`);
+  - spoil is summed per failure in loss s1 (`spoil_by_claim`), each failure's
+    inundated area at its own depth, so overlapping deposits are each cleared.
+    The damaged area stays the union.
+
+  The large-model step's own handling of overlapping large landslides
+  (hazard landslide s1, `drop_overlapping`) is unchanged.
 - **6.3. A piece needs more than 0.1 m of damage.** The wall is flagged when
   more than 1 cm of its whole line is inside the ground, but split onto
   claims (step 2) one claim's share can be a few millimetres, and with the
@@ -666,11 +682,8 @@ The Porirua wall would be replaced over 3.96 + 2 × 1 = 5.96 m, not 46 m (3.2).
    `inundated_length_m`, `damaged_length_m` and `damaged_line`
    (`WALL_DAMAGE_COLUMNS`), now as a geoparquet with `damaged_line` as geometry.
    A shaking-damaged wall gets its whole line, an inundated-only wall an empty
-   line and 0. Absorbed and superseded walls are measured like any other, so
-   one whose absorbing ground covers no more than 0.1 m of its line is cleared
-   as undamaged by vul s10's sliver rule. s11's `describe_damage` prints how
-   many outcome-flagged walls that leaves, to read against the walls replaced
-   before the change.
+   line and 0. An older run's absorbed or superseded wall counts as failed
+   with its polygon, its whole line (6.2 as revised).
 2. `damaged_walls` in `landloss.loss.claims` counts a wall as damaged only when
    `is_damaged_by_shaking` or `is_evacuated` is set. `is_inundated` stays on
    the wall.

@@ -1,11 +1,9 @@
 """One realisation of the urban slope failure model.
 
 What belongs here: sampling site PGA at each polygon's representative point, the
-failure draw against each polygon's fragility, resolving overlaps among the
-failed polygons (absorption), supersession by the large model's evacuated
-polygons, the rows the surviving failures write beside the large model's, and
-the wall outcome table. Used by landslide step 6
-(``s6_urban_slope_realisation``); contract sections 5 and 7.11 of
+failure draw against each polygon's fragility, the rows the failed polygons
+write beside the large model's, and the wall outcome table. Used by landslide
+step 6 (``s6_urban_slope_realisation``); contract sections 5 and 7.11 of
 ``.agents/plans/urban-slope-build-contract.md``.
 
 The draw is one uniform per polygon of the model file, in the file's own order
@@ -24,32 +22,21 @@ common random number, contract decision 34), and **if any polygon on a wall
 fails, the wall has failed and every polygon on it fails** (the project lead's
 rule, 2026-10-02). The polygons on one wall differ only in the amplification
 their median is divided by, so with one uniform the wall fails exactly when its
-weakest polygon does: it reads the strongest amplification along it, and the
-largest of its failed polygons then survives the overlap resolution below. A
+weakest polygon does: it reads the strongest amplification along it. A
 polygon's edge can carry several lines that drew a wall (``wall_line_ids``: one
 wall split at property boundaries), so polygons are grouped by any line they
 share, transitively. Polygons without a wall keep their own uniform and fail
 on their own.
 
-Three things can happen to a polygon that failed. It can survive and write its
-fixed geometry; it can be **superseded** by a large-model landslide whose
-evacuated polygon shares ground with its own, in which case its ground counts
-once, in the large polygon; or it can be **absorbed** by a larger surviving
-urban failure whose evacuated polygon shares ground with its own, resolved
-largest first exactly as the large model's ``drop_overlapping`` does. A polygon
-that did not fail is standing whatever a large landslide does around it
-(contract decision 35): a wall the large landslide actually reaches is flagged
-by vul step 11's intersection of the wall line with the combined realisation's
-``evacuated land``. Supersession is tested first, on the failed polygons;
-absorption is then resolved only among the failed polygons that were not
-superseded, so every absorber is a survivor written to the combined realisation
-and an absorbed polygon's ground is never lost with a superseded absorber.
-
-Two polygons **share ground** where their intersection has an area above
-:data:`SHARED_GROUND_TOLERANCE_M2`. Polygons that only touch along an edge or
-at a corner do not: the candidates tile the domain at each scale, so
-neighbouring failures always touch, and touching is neither nesting nor lying
-inside a large landslide.
+Every failed polygon survives and writes its fixed geometry (the project lead's
+decision, 2026-10-14). Failed urban polygons are not absorbed into one another
+and are not superseded by a large-model landslide, so ground that two failures
+share is written twice; it is counted once downstream, because vul landslide
+land step 3 measures areas on the union of the failures. A polygon that did not
+fail is standing whatever a large landslide does around it (contract decision
+35): a wall the large landslide actually reaches is flagged by vul step 11's
+intersection of the wall line with the combined realisation's ``evacuated
+land``.
 """
 
 from pathlib import Path
@@ -58,8 +45,6 @@ import geopandas as gpd
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import shapely
-from shapely import STRtree
 
 from landloss.common.utils.terrain import sample_at_points
 from landloss.hazard.landslide.land_class import (
@@ -86,22 +71,16 @@ POPULATIONS = (LARGE, URBAN)
 # scales resolves to one outcome by OUTCOME_RANK below, not by this order.
 STANDING = "standing"
 FAILED_WITH_POLYGON = "failed_with_polygon"
+# Step 6 no longer writes ABSORBED or SUPERSEDED (2026-10-14: every failed urban
+# polygon survives); they are kept so an outcome file from an older run still
+# reads.
 ABSORBED = "absorbed"
 SUPERSEDED = "superseded"
 OUTCOMES = (STANDING, FAILED_WITH_POLYGON, ABSORBED, SUPERSEDED)
 # The precedence a wall on polygons at several scales resolves by, lowest rank
-# wins: superseded, then failed with its polygon, then absorbed, then standing
-# (see :func:`wall_outcomes`; contract section 3.10).
+# wins: failed with its polygon, then standing (see :func:`wall_outcomes`;
+# contract section 3.10). The two retired outcomes keep their old ranks.
 OUTCOME_RANK = {SUPERSEDED: 0, FAILED_WITH_POLYGON: 1, ABSORBED: 2, STANDING: 3}
-
-# No absorber and no superseder, in the position arrays the resolvers return.
-NONE = -1
-
-# The intersection area above which two polygons share ground, in m2. A
-# numerical tolerance, not a parameter for the anchoring to set: a hundredth of
-# a 1 m DEM cell, so the floating-point
-# slivers left along an edge two polygons share do not count as shared ground.
-SHARED_GROUND_TOLERANCE_M2 = 0.01
 
 # The model file columns this module reads (contract section 3.8).
 SLOPE_ID_COLUMN = "slope_id"
@@ -157,14 +136,12 @@ COMBINED_COLUMNS = (
 # The wall outcome columns (contract section 3.10) that this module writes; the
 # step inserts ``world_id`` and ``realisation_id`` before them.
 OUTCOME_COLUMN = "outcome"
-TAKEN_BY_COLUMN = "taken_by"
 OUTCOME_COLUMNS = (
     RW_ID_COLUMN,
     WALL_LINE_ID_COLUMN,
     CLAIM_ID_COLUMN,
     SLOPE_ID_COLUMN,
     OUTCOME_COLUMN,
-    TAKEN_BY_COLUMN,
 )
 
 # The land class each state geometry column writes, with the depth column it
@@ -174,20 +151,6 @@ _STATE_ROWS = (
     (INUNDATED, INUNDATED_GEOMETRY_COLUMN, DEPTH_INUNDATED_COLUMN),
     (IMMINENT, IMMINENT_GEOMETRY_COLUMN, None),
 )
-
-
-def _check_projected(frame: gpd.GeoDataFrame | gpd.GeoSeries, role: str) -> None:
-    """Refuse a geographic frame: every area and intersection here is in metres."""
-    if frame.crs is None or frame.crs.is_geographic:
-        msg = f"{role} must be in a projected CRS, got {frame.crs}"
-        raise ValueError(msg)
-
-
-def _shared_area(
-    geometry: object, others: npt.NDArray[np.object_]
-) -> npt.NDArray[np.floating]:
-    """Return the area ``geometry`` shares with each of ``others``, in m2."""
-    return shapely.area(shapely.intersection(geometry, others))
 
 
 def sample_pga(points: gpd.GeoSeries, pga_path: Path) -> pd.Series:
@@ -325,8 +288,8 @@ def draw_failures(
     at several scales, each with the same wall curve, so with a uniform each
     the wall would fail through some polygon far more often than the
     published curve says; with one shared uniform the wall's polygons fail
-    together where their curves agree, and :func:`resolve_overlaps` keeps the
-    largest. The key is the line, not ``rw_id``, because an uninsured wall has
+    together where their curves agree. The key is the line, not ``rw_id``,
+    because an uninsured wall has
     no ``rw_id`` and is still one wall. Rows without a wall, or with no line,
     keep their own uniform.
 
@@ -369,153 +332,21 @@ def draw_failures(
     )
 
 
-def resolve_overlaps(
-    polygons: gpd.GeoSeries, areas: npt.NDArray[np.floating]
-) -> npt.NDArray[np.int64]:
-    """Absorb each failed polygon into the largest failed polygon sharing its ground.
-
-    ``s1_simulate_landslides.drop_overlapping`` generalised: worked largest
-    first, stable on ties, and a polygon that has been absorbed absorbs
-    nothing, so one large failure cannot clear a hole wider than itself
-    through a chain of failures none of which happened. Two polygons that only
-    touch along an edge or at a corner share no ground and neither absorbs the
-    other (see :data:`SHARED_GROUND_TOLERANCE_M2`). Run on the evacuated
-    geometry of the failed polygons that no large-model landslide superseded,
-    so every absorber is a survivor.
-
-    Args:
-        polygons: The evacuated geometry of the failed, unsuperseded polygons.
-        areas: The area ranking the polygons by, one per polygon.
-
-    Returns:
-        For each polygon, the position in ``polygons`` of the one that absorbed
-        it, or :data:`NONE` where it survived.
-    """
-    areas = np.asarray(areas, dtype=float)
-    if len(polygons) != areas.size:
-        msg = f"{len(polygons)} polygons against {areas.size} areas"
-        raise ValueError(msg)
-    absorbed_by = np.full(areas.size, NONE, dtype=np.int64)
-    if areas.size == 0:
-        return absorbed_by
-    _check_projected(polygons, "polygons")
-
-    geometries = polygons.to_numpy()
-    tree = STRtree(geometries)
-    for index in np.argsort(-areas, kind="stable"):
-        if absorbed_by[index] != NONE:
-            continue
-        candidates = tree.query(geometries[index], predicate="intersects")
-        candidates = candidates[
-            (candidates != index) & (absorbed_by[candidates] == NONE)
-        ]
-        if candidates.size == 0:
-            continue
-        shared = _shared_area(geometries[index], geometries[candidates])
-        absorbed_by[candidates[shared > SHARED_GROUND_TOLERANCE_M2]] = index
-    return absorbed_by
-
-
-def supersede_by_large(
-    evacuated: gpd.GeoSeries, large_evacuated: gpd.GeoSeries
-) -> npt.NDArray[np.int64]:
-    """Find the large-model evacuated polygon that takes each failed urban polygon.
-
-    A failed urban polygon whose evacuated polygon shares ground with a
-    large-model evacuated polygon is superseded: its ground counts once, in the
-    large polygon. Only failed polygons are passed in (contract decision 35);
-    the caller maps the result onto every model row, :data:`NONE` where the row
-    did not fail. One that only touches a large polygon along an edge or at a
-    corner shares no ground and is not superseded (see
-    :data:`SHARED_GROUND_TOLERANCE_M2`). Where several large polygons share
-    ground with it, the one sharing the most takes it, ties to the earlier
-    row.
-
-    Args:
-        evacuated: The evacuated geometry of the failed urban polygons.
-        large_evacuated: The ``evacuated land`` rows of the large-model
-            realisation.
-
-    Returns:
-        For each urban polygon, the position in ``large_evacuated`` of the
-        polygon that supersedes it, or :data:`NONE`.
-    """
-    superseded_by = np.full(len(evacuated), NONE, dtype=np.int64)
-    if len(evacuated) == 0 or len(large_evacuated) == 0:
-        return superseded_by
-    _check_projected(evacuated, "evacuated")
-    _check_projected(large_evacuated, "large_evacuated")
-
-    urban = evacuated.to_numpy()
-    large = large_evacuated.to_numpy()
-    tree = STRtree(large)
-    urban_positions, large_positions = tree.query(urban, predicate="intersects")
-    if urban_positions.size == 0:
-        return superseded_by
-
-    shared = shapely.area(
-        shapely.intersection(urban[urban_positions], large[large_positions])
-    )
-    # Pairs that only touch share no ground and supersede nothing.
-    sharing = shared > SHARED_GROUND_TOLERANCE_M2
-    urban_positions = urban_positions[sharing]
-    large_positions = large_positions[sharing]
-    shared = shared[sharing]
-    # Largest shared ground first, ties to the earlier large row; the first
-    # entry seen per urban polygon wins.
-    order = np.lexsort((large_positions, -shared))
-    for pair in order:
-        u = urban_positions[pair]
-        if superseded_by[u] == NONE:
-            superseded_by[u] = large_positions[pair]
-    return superseded_by
-
-
-def _polygon_outcomes(
-    model: gpd.GeoDataFrame,
-    draws: pd.DataFrame,
-    absorbed_by: npt.NDArray[np.int64],
-    superseded_by: npt.NDArray[np.int64],
-    large_ids: pd.Series,
-) -> pd.DataFrame:
-    """Name what happened to each model polygon, with who took it.
-
-    Only a failed polygon can be absorbed or superseded (contract decision 35),
-    so a position set on a row that did not fail is ignored and that polygon is
-    ``standing``.
-    """
-    slope_ids = model[SLOPE_ID_COLUMN].to_numpy(dtype=object)
+def _polygon_outcomes(model: gpd.GeoDataFrame, draws: pd.DataFrame) -> pd.DataFrame:
+    """Name what happened to each model polygon: it failed, or it stands."""
     failed = draws[FAILED_COLUMN].reindex(model.index).to_numpy(dtype=bool)
-    outcome = np.full(len(model), STANDING, dtype=object)
-    taken_by = np.full(len(model), None, dtype=object)
-
-    outcome[failed] = FAILED_WITH_POLYGON
-
-    absorbed = failed & (absorbed_by != NONE)
-    outcome[absorbed] = ABSORBED
-    taken_by[absorbed] = slope_ids[absorbed_by[absorbed]]
-
-    superseded = failed & (superseded_by != NONE)
-    outcome[superseded] = SUPERSEDED
-    taken_by[superseded] = large_ids.to_numpy(dtype=object)[superseded_by[superseded]]
-
+    outcome = np.where(failed, FAILED_WITH_POLYGON, STANDING).astype(object)
     return pd.DataFrame(
         {
             WALL_LINE_IDS_COLUMN: _row_lines(model, walled_only=False),
-            SLOPE_ID_COLUMN: slope_ids,
+            SLOPE_ID_COLUMN: model[SLOPE_ID_COLUMN].to_numpy(dtype=object),
             OUTCOME_COLUMN: outcome,
-            TAKEN_BY_COLUMN: taken_by,
         }
     )
 
 
 def wall_outcomes(
-    model: gpd.GeoDataFrame,
-    walls: gpd.GeoDataFrame,
-    draws: pd.DataFrame,
-    absorbed_by: npt.NDArray[np.int64],
-    superseded_by: npt.NDArray[np.int64],
-    large_ids: pd.Series,
+    model: gpd.GeoDataFrame, walls: gpd.GeoDataFrame, draws: pd.DataFrame
 ) -> pd.DataFrame:
     """Write what happened to every wall of the world on sloping land.
 
@@ -526,15 +357,12 @@ def wall_outcomes(
     edge takes that polygon's outcome on every line. ``rw_id``, ``claim_id``
     and ``wall_line_id`` come from the population, and a wall whose line is on
     no model row still has a row: ``standing`` with ``slope_id`` null.
-    A wall whose polygon failed and shares ground with a large-model evacuated
-    polygon is ``superseded``; whose polygon failed and survived is
-    ``failed_with_polygon``; whose polygon failed but was absorbed by a larger
-    surviving urban failure is ``absorbed``; otherwise ``standing``, whatever a
-    large landslide does around a polygon that did not fail (contract decision
-    35; vul step 11 flags a wall whose line a large landslide reaches). Where a
-    wall's line sits on polygons at several scales the outcomes rank in that
-    order, ``superseded`` first, and the row that reached it supplies
-    ``slope_id`` and ``taken_by``; ties keep the model's order.
+    A wall whose polygon failed is ``failed_with_polygon``; otherwise
+    ``standing``, whatever a large landslide does around a polygon that did not
+    fail (contract decision 35; vul step 11 flags a wall whose line a large
+    landslide reaches). Where a wall's line sits on polygons at several scales
+    a failed one wins, and the row that reached it supplies ``slope_id``; ties
+    keep the model's order.
 
     Args:
         model: The world's model file, in its own order, carrying
@@ -542,14 +370,6 @@ def wall_outcomes(
         walls: The world's wall population, carrying ``rw_id``,
             ``wall_line_id``, ``claim_id`` and ``is_flatland``.
         draws: :func:`draw_failures` on ``model``.
-        absorbed_by: :func:`resolve_overlaps` mapped onto every model row,
-            :data:`NONE` where the row did not fail, was superseded, or
-            survived.
-        superseded_by: :func:`supersede_by_large` on the failed rows, mapped
-            onto every model row, :data:`NONE` where the row did not fail or
-            no large polygon took it.
-        large_ids: The ``landslide_id`` of each large evacuated polygon, in
-            the order ``superseded_by`` indexes.
 
     Returns:
         One row per sloping-land wall with the columns of
@@ -564,7 +384,7 @@ def wall_outcomes(
         }
     )
 
-    per_polygon = _polygon_outcomes(model, draws, absorbed_by, superseded_by, large_ids)
+    per_polygon = _polygon_outcomes(model, draws)
     per_line = (
         per_polygon.explode(WALL_LINE_IDS_COLUMN)
         .rename(columns={WALL_LINE_IDS_COLUMN: WALL_LINE_ID_COLUMN})
@@ -581,19 +401,19 @@ def wall_outcomes(
         per_wall, on=WALL_LINE_ID_COLUMN, how="left", validate="many_to_one"
     )
     outcomes[OUTCOME_COLUMN] = outcomes[OUTCOME_COLUMN].fillna(STANDING)
-    for column in (SLOPE_ID_COLUMN, TAKEN_BY_COLUMN):
-        outcomes[column] = (
-            outcomes[column].astype(object).where(outcomes[column].notna(), None)
-        )
+    outcomes[SLOPE_ID_COLUMN] = (
+        outcomes[SLOPE_ID_COLUMN]
+        .astype(object)
+        .where(outcomes[SLOPE_ID_COLUMN].notna(), None)
+    )
     return outcomes[list(OUTCOME_COLUMNS)].reset_index(drop=True)
 
 
-def to_landslide_rows(
-    model: gpd.GeoDataFrame, draws: pd.DataFrame, survivors: npt.NDArray[np.bool_]
-) -> gpd.GeoDataFrame:
-    """Write the fixed geometry of the surviving failures as landslide rows.
+def to_landslide_rows(model: gpd.GeoDataFrame, draws: pd.DataFrame) -> gpd.GeoDataFrame:
+    """Write the fixed geometry of every failed polygon as landslide rows.
 
-    Three rows per survivor, one per land class: the evacuated polygon at its
+    Overlapping failures are all written; downstream counts shared ground once.
+    Three rows per failed polygon, one per land class: the evacuated polygon at its
     evacuated depth, the inundated polygon at its inundated depth, and the
     imminent polygon with no depth. ``landslide_id`` is the ``slope_id``;
     ``volume_m3`` is the evacuated depth times the evacuated area, and
@@ -603,18 +423,13 @@ def to_landslide_rows(
     Args:
         model: The world's model file.
         draws: :func:`draw_failures` on ``model``.
-        survivors: One flag per model row, true where the failure survived
-            absorption and supersession.
 
     Returns:
         The urban rows with the columns of :data:`COMBINED_COLUMNS` less the
         two ids, in the model's order then by land class.
     """
-    survivors = np.asarray(survivors, dtype=bool)
-    if survivors.size != len(model):
-        msg = f"{survivors.size} survivor flags against {len(model)} model rows"
-        raise ValueError(msg)
-    kept = model.loc[survivors]
+    failed = draws[FAILED_COLUMN].reindex(model.index).to_numpy(dtype=bool)
+    kept = model.loc[failed]
     kept_draws = draws.loc[kept.index]
     evacuated_area = gpd.GeoSeries(kept[EVACUATED_GEOMETRY_COLUMN]).area.to_numpy(
         dtype=float

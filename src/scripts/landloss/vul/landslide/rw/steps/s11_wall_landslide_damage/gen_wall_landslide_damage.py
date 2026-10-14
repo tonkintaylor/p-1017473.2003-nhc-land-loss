@@ -11,8 +11,8 @@ under inundated ground.
 A wall is not measured by how much ground a landslide took from it, as land is,
 but by whether a landslide reached it at all, so this step writes flags rather
 than areas. A sloping wall has two routes to a flag: the urban slope model's
-outcome for its polygon (failed through the wall, absorbed by a larger urban
-failure, superseded by a large landslide, or standing), mapped onto a flag by
+outcome for its polygon (failed through the wall, or standing; an older run's
+``absorbed`` and ``superseded`` read as failed through it), mapped onto a flag by
 ``landloss.vul.landslide.flags.OUTCOME_FLAGS``, and the geometric intersection
 of its line with any evacuated or inundated polygon of either population. The
 two are OR-ed. A flat-land wall has no outcome row and takes its flags from
@@ -48,7 +48,6 @@ from landloss.domain.loss_contract import (
     RW_ID_COLUMN,
 )
 from landloss.hazard.landslide.land_class import LAND_CLASS_COLUMN
-from landloss.hazard.landslide.urban.realisation import ABSORBED, SUPERSEDED
 from landloss.io.area_of_interest import extent_suffix
 from landloss.vul.landslide.flags import (
     DAMAGED_LENGTH_COLUMN,
@@ -58,7 +57,7 @@ from landloss.vul.landslide.flags import (
     WALL_FLAG_COLUMNS,
     wall_flags,
 )
-from landloss.vul.loss_input import MIN_DAMAGED_PIECE_LENGTH_M, WORLD_ID_COLUMN
+from landloss.vul.loss_input import WORLD_ID_COLUMN
 from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_population import (
     wall_population_path,
 )
@@ -154,20 +153,6 @@ def describe_damage(flags):
         & (flags[DAMAGED_LENGTH_COLUMN] == 0)
     )
     print(f"  {int(buried.sum()):,} walls only buried by inundated ground: not damaged")
-    # A wall flagged by its outcome alone (absorbed into, or superseded by,
-    # another failure) is damaged only where that ground covers its line. One
-    # the ground does not cover is cleared by vul s10's sliver rule and goes
-    # unreplaced, so the count is read against the walls replaced before.
-    by_outcome = flags[OUTCOME_COLUMN].isin([ABSORBED, SUPERSEDED]) & ~shaken
-    uncovered = by_outcome & (
-        flags[DAMAGED_LENGTH_COLUMN] <= MIN_DAMAGED_PIECE_LENGTH_M
-    )
-    print(
-        f"  {int(by_outcome.sum()):,} walls flagged by an absorbed or superseded "
-        f"outcome; {int(uncovered.sum()):,} of them have no more than "
-        f"{MIN_DAMAGED_PIECE_LENGTH_M:g} m of line inside the ground and are "
-        "cleared as undamaged in vul s10"
-    )
 
 
 def main(*, extent, world_ids, realisation_ids):
