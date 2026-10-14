@@ -1,0 +1,1 @@
+Exposure rw step 6 no longer stops on a wall whose claims' stretches add up to a micrometre more than the wall: the check allows a millimetre, above the noise from noding the stretches on a micrometre grid. Three Wellington City walls tripped it. Rerun exposure rw step 6.
