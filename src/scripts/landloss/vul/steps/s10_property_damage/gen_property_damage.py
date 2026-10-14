@@ -8,7 +8,8 @@ coordinates:
 - **land**, one row per insured land polygon, with its liquefaction land
   damage state, its landslide damaged areas and what loss values the land
   from: the footprint, property area and suburb;
-- **rw**, one row per insured retaining wall, with its size, length, shaking
+- **rw**, one row per insured retaining wall for each claim whose insured land
+  it supports, at the length of the wall that does, with its size, shaking
   damage and landslide flags;
 - **culverts** and **bridges**, split from the detected crossings by structure
   kind, with their shaking damage and landslide flags.
@@ -25,7 +26,9 @@ in EPSG:2193, supplies the coordinates, and each table carries a
 The retaining wall table is spined on the world's wall population, so a wall on
 sloping ground, which the shaking step never sees, appears beside the flat-land
 walls it does; its shaking flag comes from the wall landslide step's reading of
-the urban slope outcome.
+the urban slope outcome. A wall is then split onto the claims whose insured land
+it supports, at each one's insured stretch from exposure rw step 6; length that
+supports no insured land is not priced.
 
 The run also prints the overlap four tables hide: how many claims carry both a
 liquefaction land damage state and a retaining wall damaged by shaking. Both
@@ -191,8 +194,16 @@ def describe_structures(name, table, flags):
     )
 
 
-def describe_walls(rw, states):
-    """Print how the wall table splits between the two shaking routes."""
+def describe_walls(rw, states, walls):
+    """Print how the wall table splits between the two shaking routes.
+
+    Args:
+        rw: The rw table, one row per piece.
+        states: The shaking step's damage states.
+        walls: The world's wall population, to count the walls that give no piece.
+    """
+    gave_no_piece = int((~walls[RW_ID_COLUMN].isin(rw[PARENT_RW_ID_COLUMN])).sum())
+    print(f"  {gave_no_piece:,} population walls give no piece (no insured stretch)")
     if rw.empty:
         return
     walls = rw.drop_duplicates(PARENT_RW_ID_COLUMN)
@@ -205,8 +216,8 @@ def describe_walls(rw, states):
     pieces = rw.groupby(PARENT_RW_ID_COLUMN).size()
     split = pieces[pieces > 1]
     print(
-        f"  {len(split):,} of {len(walls):,} walls cross property boundaries and "
-        f"are split into {int(split.sum()):,} rows, one per insured property"
+        f"  {len(split):,} of {len(walls):,} walls support more than one claim's "
+        f"insured land and are split into {int(split.sum()):,} rows, one per claim"
     )
 
 
@@ -264,8 +275,8 @@ def main(*, extent, world_ids, realisation_ids):
                 wall_damage_state_path(world_id, realisation_id, extent=extent),
                 columns=[RW_ID_COLUMN, DAMAGE_STATE_COLUMN],
             )
-            # A wall crossing property boundaries is split onto each insured
-            # property it stands on, so each settles its own share.
+            # A wall is split onto each claim whose insured land it supports, at
+            # its insured stretch there, so each settles its own share.
             rw = build_rw_table(
                 walls,
                 states,
@@ -297,7 +308,7 @@ def main(*, extent, world_ids, realisation_ids):
                     IS_INUNDATED_COLUMN,
                 ),
             )
-            describe_walls(rw, states)
+            describe_walls(rw, states, walls)
             describe_structures(
                 "Culverts",
                 culverts,

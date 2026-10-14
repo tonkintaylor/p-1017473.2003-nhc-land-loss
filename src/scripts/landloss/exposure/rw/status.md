@@ -12,7 +12,7 @@ judgement until the claim report extraction (**T-50**) calibrates it. A second
 part of the review, the same day, read how a wall fails with its ground (faces
 plan, phase 3); see "Where it is now".
 
-**Updated:** 2026-10-12
+**Updated:** 2026-10-14
 
 For a reviewer: read this page, then
 `.agents/plans/building-face-based-urban-slope-polygons.md`, then the method
@@ -272,14 +272,20 @@ How each can be used:
 What this module owes the retaining wall table `loss` reads
 (`.agents/plans/asset-pricing-approach.md`, section 1).
 
-- [x] Give every wall an `rw_id`, `<claim_id>-RW<nn>`, after the coverage
-  filter.
-- [x] Pass on only the walls touching their claim's insured land buffered by
-  2 m.
+- [x] Give every wall an `rw_id`, `<claim_id>-RW<nn>`, minted on the claim
+  with its longest insured stretch.
+- [x] Pass on only the walls with an insured stretch of 1 m or more: the line
+  inside a claim's property and within 2 m of its insured land (2026-10-14).
 - [x] Carry `claim_id`, `size_class` and `length_m`, and the wall line.
 
 ## Where it is now
 
+- **Insured stretches (the lead, 2026-10-14).** A wall is cut into the stretches
+  inside each claim's property and within 2 m of its insured land, written as
+  `insured_lengths_m` and to a stretch file, and is insured on the claim with
+  the longest stretch. Built and unit tested; not yet run on real data. A wall
+  on a shared boundary is shared equally between the neighbours, half the length
+  each (the lead, 2026-10-14); the 1 m minimum applies to the share.
 - **The wall units moved into step 6 (2026-10-08).** The wall units, their
   probability and the draw per world, built in landslide step 12 until now, are
   built by `gen_wall_units.py` in this step, after `gen_wall_age.py`, and write
@@ -376,8 +382,9 @@ What this module owes the retaining wall table `loss` reads
   wall's line is its unit's simplified line (at most 3 bends, no section
   under 3 m) and `length_m` is that line's length; a unit can cross property
   boundaries and is drawn once on its primary property, carrying
-  `property_lengths_m` and `n_properties`, which vul step 10 splits it on, so
-  each property it enters by 1 m carries its own length (2026-10-12). Pilot world 0:
+  `property_lengths_m` and `n_properties`; vul step 10 splits it on
+  `insured_lengths_m`, so each claim whose land it supports carries its own
+  stretch (2026-10-14; on `property_lengths_m` from 2026-10-12). Pilot world 0:
   1,940 walls drawn, 1,141 insured.
 - **Wall line placement, research (2026-10-12).** A pif unit's line is its
   pif's spine, on the crest or mid-face. Redraws from the downslope edge of

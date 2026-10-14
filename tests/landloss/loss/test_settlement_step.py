@@ -19,6 +19,7 @@ import pytest
 
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    EVACUATED_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
     IS_DAMAGED_BY_SHAKING_COLUMN,
@@ -26,6 +27,7 @@ from landloss.domain.loss_contract import (
     IS_INUNDATED_COLUMN,
     LANDSLIDE_AREA_COLUMN,
     LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_EVACUATED_AREAS_COLUMN,
     LANDSLIDE_IDS_COLUMN,
     LANDSLIDE_INUNDATED_AREAS_COLUMN,
     LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
@@ -407,13 +409,53 @@ def test_a_slip_whose_wall_stood_on_another_property_gets_a_new_wall(ratings):
     assert out[NEW_WALL_COUNT_COLUMN] == 1
 
 
+def with_evacuated(land: pd.DataFrame, *evacuated: list[float]) -> pd.DataFrame:
+    """Return the land listing each failure's evacuated ground, polygon by polygon."""
+    return land.assign(**{LANDSLIDE_EVACUATED_AREAS_COLUMN: list(evacuated)})
+
+
+def test_a_new_wall_is_as_long_as_its_evacuated_ground_calls_for(ratings):
+    # 40 m2 of ground, of which 10 m2 is the scar and 30 m2 the deposit below it.
+    land = with_evacuated(failure_land((CLAIM, [("LS1", None, 40.0, 30.0)])), [10.0])
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(10.0))
+
+
+def test_a_deposit_with_no_scar_on_the_claim_gets_the_shortest_wall(ratings):
+    # The slip started next door: the claim was only buried.
+    land = with_evacuated(failure_land((CLAIM, [("LS1", None, 40.0, 40.0)])), [0.0])
+    out = hold(land, ratings, walls())
+    assert out[NEW_WALL_COUNT_COLUMN] == 1
+    assert out[NEW_WALL_LENGTH_COLUMN] == pytest.approx(landslide_wall_length_m(0.0))
+
+
+def test_a_slip_enlarges_its_walls_replacement_by_its_evacuated_ground():
+    land = with_evacuated(failure_land((CLAIM, [("S1", "rw0", 208.8, 0.0)])), [50.0])
+    _size, _height, length = replacement_wall_shape(
+        walls(("medium", 2.0)), landslide_failures(land)
+    )
+    assert length == pytest.approx(landslide_wall_length_m(50.0))
+
+
+def test_pooled_ground_measures_its_wall_off_the_evacuated_area():
+    land = land_with(40.0).assign(**{EVACUATED_AREA_COLUMN: [12.0]})
+    failures = landslide_failures(land)
+    assert failures["evacuated"].tolist() == pytest.approx([12.0])
+
+
+def test_a_table_without_evacuated_lists_measures_off_the_whole_ground():
+    failures = landslide_failures(failure_land((CLAIM, [("LS1", None, 40.0, 30.0)])))
+    assert failures["evacuated"].tolist() == pytest.approx([40.0])
+
+
 def test_a_slip_across_two_of_a_claims_polygons_is_one_failure():
     land = failure_land(
         (CLAIM, [("LS1", None, 25.0, 5.0)]), (CLAIM, [("LS1", None, 15.0, 5.0)])
     )
-    failures = landslide_failures(land)
+    failures = landslide_failures(with_evacuated(land, [20.0], [5.0]))
     assert len(failures) == 1
     assert failures["area"].iloc[0] == pytest.approx(40.0)
+    assert failures["evacuated"].iloc[0] == pytest.approx(25.0)
     assert failures["volume"].iloc[0] == pytest.approx(10.0 * 0.3)
 
 

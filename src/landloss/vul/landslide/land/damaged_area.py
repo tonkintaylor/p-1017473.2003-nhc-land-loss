@@ -42,6 +42,7 @@ import pandas as pd
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
     LANDSLIDE_AREAS_COLUMN,
+    LANDSLIDE_EVACUATED_AREAS_COLUMN,
     LANDSLIDE_IDS_COLUMN,
     LANDSLIDE_INUNDATED_AREAS_COLUMN,
     LANDSLIDE_INUNDATED_DEPTHS_COLUMN,
@@ -242,7 +243,9 @@ def damaged_area_per_failure(
     (T-124). A failure's ground is its evacuated and inundated pieces on the
     property, unioned, so its own deposit over its own scar counts once; two
     failures that buried the same ground each count it, because each wall holds
-    its own slip. The per-property union is unaffected.
+    its own slip. The per-property union is unaffected. Its evacuated ground is
+    kept as well, because the wall a slip needs runs across the scar, not the
+    deposit.
 
     Args:
         insured: The insured land polygons, carrying ``id_column``.
@@ -255,8 +258,9 @@ def damaged_area_per_failure(
     Returns:
         One row per property and landslide: ``id_column``,
         :data:`LANDSLIDE_ID_COLUMN`, the wall's :data:`RW_ID_COLUMN` or
-        missing, ``area_m2``, ``inundated_area_m2`` and ``inundated_depth_m``
-        (missing with no inundated ground). Ordered by property and landslide.
+        missing, ``area_m2``, ``evacuated_area_m2``, ``inundated_area_m2`` and
+        ``inundated_depth_m`` (missing with no inundated ground). Ordered by
+        property and landslide.
 
     Raises:
         ValueError: If the landslides carry no landslide id.
@@ -266,6 +270,7 @@ def damaged_area_per_failure(
         LANDSLIDE_ID_COLUMN,
         RW_ID_COLUMN,
         "area_m2",
+        "evacuated_area_m2",
         "inundated_area_m2",
         "inundated_depth_m",
     ]
@@ -292,6 +297,7 @@ def damaged_area_per_failure(
     for (address, failure), group in pieces.groupby(
         [id_column, LANDSLIDE_ID_COLUMN], sort=True
     ):
+        evacuated = group[group[LAND_CLASS_COLUMN] == EVACUATED]
         inundated = group[group[LAND_CLASS_COLUMN] == INUNDATED]
         depths = inundated[DEPTH_COLUMN].to_numpy(dtype=float)
         depths = depths[np.isfinite(depths)]
@@ -302,6 +308,9 @@ def damaged_area_per_failure(
                 LANDSLIDE_ID_COLUMN: failure,
                 RW_ID_COLUMN: walls.iloc[0] if len(walls) else None,
                 "area_m2": group.geometry.union_all().area,
+                "evacuated_area_m2": (
+                    evacuated.geometry.union_all().area if len(evacuated) else 0.0
+                ),
                 "inundated_area_m2": (
                     inundated.geometry.union_all().area if len(inundated) else 0.0
                 ),
@@ -322,13 +331,15 @@ def failures_per_property(
 
     Returns:
         Indexed by ``id_column``: the five
-        :data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`, each a
-        list with one entry per failure, in the same order.
+        :data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS` and
+        :data:`~landloss.domain.loss_contract.LANDSLIDE_EVACUATED_AREAS_COLUMN`,
+        each a list with one entry per failure, in the same order.
     """
     sources = {
         LANDSLIDE_IDS_COLUMN: LANDSLIDE_ID_COLUMN,
         LANDSLIDE_RW_IDS_COLUMN: RW_ID_COLUMN,
         LANDSLIDE_AREAS_COLUMN: "area_m2",
+        LANDSLIDE_EVACUATED_AREAS_COLUMN: "evacuated_area_m2",
         LANDSLIDE_INUNDATED_AREAS_COLUMN: "inundated_area_m2",
         LANDSLIDE_INUNDATED_DEPTHS_COLUMN: "inundated_depth_m",
     }

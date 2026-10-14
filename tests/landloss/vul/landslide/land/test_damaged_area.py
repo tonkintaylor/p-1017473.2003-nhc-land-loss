@@ -254,6 +254,7 @@ def test_a_failures_own_deposit_over_its_scar_counts_once():
     )
     row = damaged_area_per_failure(land, hazard).iloc[0]
     assert row["area_m2"] == pytest.approx(300.0)
+    assert row["evacuated_area_m2"] == pytest.approx(200.0)
     assert row["inundated_area_m2"] == pytest.approx(200.0)
     assert row["inundated_depth_m"] == pytest.approx(0.4)
     assert row["rw_id"] == "RW1"
@@ -290,6 +291,8 @@ def test_the_failures_are_listed_per_property_in_one_order():
     assert first["landslide_ids"] == ["LS2", "S1"]
     assert first["landslide_rw_ids"] == [None, "RW1"]
     assert first["landslide_areas"] == pytest.approx([100.0, 100.0])
+    assert first["landslide_evacuated_areas"] == pytest.approx([100.0, 100.0])
+    assert lists.loc["A-002", "landslide_evacuated_areas"] == [0.0]
     assert first["landslide_inundated_depths"] == [None, None]
     assert lists.loc["A-002", "landslide_inundated_depths"] == [0.5]
 

@@ -185,6 +185,7 @@ def test_the_output_carries_the_columns_with_the_world_after_the_realisation(
         "landslide_ids",
         "landslide_rw_ids",
         "landslide_areas",
+        "landslide_evacuated_areas",
         "landslide_inundated_areas",
         "landslide_inundated_depths",
         "cause_evacuated",

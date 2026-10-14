@@ -40,9 +40,21 @@ from datetime import UTC, datetime
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 from landloss.domain.gst import GST_RATE
-from landloss.domain.loss_contract import CLAIM_ID_COLUMN, LIQ_LD_STATE_COLUMN
+from landloss.domain.loss_contract import (
+    CLAIM_ID_COLUMN,
+    IS_DAMAGED_BY_SHAKING_COLUMN,
+    IS_EVACUATED_COLUMN,
+    IS_INUNDATED_COLUMN,
+    LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_FAILURE_COLUMNS,
+    LIQ_LD_STATE_COLUMN,
+    RW_HEIGHT_COLUMN,
+    RW_ID_COLUMN,
+    RW_LENGTH_COLUMN,
+)
 from landloss.hazard.landslide.urban.realisation import FAILED_WITH_POLYGON
 from landloss.hazard.liquefaction.land_damage import LD_STATES
 from landloss.io.area_of_interest import (
@@ -61,6 +73,7 @@ from landloss.loss.pricing import (
     contingency_incl_gst_nzd,
     on_costs_incl_gst_nzd,
 )
+from landloss.vul.loss_input import PARENT_RW_ID_COLUMN
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     wall_udv_by_claim,
 )
@@ -80,6 +93,8 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     REPLACEMENT_WALL_RATE_COLUMN,
     SPOIL_VOLUME_COLUMN,
     WALL_REPAIR_COLUMN,
+    attach_failures_to_walls,
+    landslide_failures,
     settlement_path,
 )
 from scripts.landloss.paths import REPO_ROOT, REPORT_DIR
@@ -219,6 +234,74 @@ def liquefaction_states(
     )
 
 
+def read_loss_input(path, columns: list[str]) -> pd.DataFrame:
+    """Read the given columns of a loss input table, geometry aside.
+
+    Args:
+        path: The loss input parquet file.
+        columns: The columns to read, all required.
+
+    Returns:
+        The table with just those columns.
+
+    Raises:
+        ValueError: If the file lacks any of the columns.
+    """
+    missing = [c for c in columns if c not in pq.read_schema(path).names]
+    if missing:
+        msg = f"{path} has no columns {missing}: rerun vul step 10 (gen_property_damage.py)"
+        raise ValueError(msg)
+    return pd.read_parquet(path, columns=columns)
+
+
+def landslide_by_origin(land: pd.DataFrame, rw: pd.DataFrame) -> pd.DataFrame:
+    """Split each claim's landslide ground by whether its own wall brought it down.
+
+    A failure is the claim's own wall's when one of the claim's damaged walls
+    holds it (:func:`attach_failures_to_walls`, the rule settlement uses to
+    decide which slips get a new wall); otherwise it is another's, a
+    neighbour's wall or a slope with no wall.
+
+    Args:
+        land: The loss input's land table, with the per-failure lists (T-124).
+        rw: The loss input's retaining wall table: claim, wall and parent wall
+            ids, height, length and the damage flags.
+
+    Returns:
+        ``wall_landslide_m2`` and ``other_landslide_m2`` per claim with any
+        landslide ground. The wall ground is capped at the claim's pooled
+        landslide ground, because two failures that buried the same ground each
+        count it.
+
+    Raises:
+        ValueError: If the land table lacks any of the per-failure lists.
+    """
+    missing = [c for c in LANDSLIDE_FAILURE_COLUMNS if c not in land.columns]
+    if missing:
+        msg = (
+            f"The land table has no per-failure lists {missing}: rerun vul "
+            "step 10 (gen_property_damage.py)"
+        )
+        raise ValueError(msg)
+    failures = landslide_failures(land)
+    damaged = loss_claims.damaged_walls(rw).reset_index(drop=True)
+    held = attach_failures_to_walls(failures, damaged) >= 0
+    wall = failures[held].groupby(CLAIM_ID_COLUMN)["area"].sum()
+    other = failures[~held].groupby(CLAIM_ID_COLUMN)["area"].sum()
+    pooled = land.groupby(CLAIM_ID_COLUMN)[LANDSLIDE_AREA_COLUMN].sum()
+    claims = wall.index.union(other.index)
+    origin = pd.DataFrame(
+        {
+            "wall_landslide_m2": wall.reindex(claims, fill_value=0.0),
+            "other_landslide_m2": other.reindex(claims, fill_value=0.0),
+        }
+    ).astype(float)
+    origin["wall_landslide_m2"] = np.minimum(
+        origin["wall_landslide_m2"], pooled.reindex(claims).fillna(0.0)
+    )
+    return origin
+
+
 def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataFrame:
     """Return each claim's evacuated and inundated land, and what caused it.
 
@@ -229,9 +312,10 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
 
     The cause names liquefaction, landslide, retaining wall failure, or a
     combination, without areas per cause. A claim's wall failure is a wall on it
-    that failed and brought ground down with it; whether a given landslide came
-    from that wall or from the slope is not yet passed down (T-124), so a claim
-    with both reads as both.
+    that failed and brought ground down with it, or any landslide ground that
+    came down with one of its own damaged walls (T-124). Landslide is ground
+    from a failure none of its own damaged walls came with, whether a
+    neighbour's wall or a slope with no wall.
 
     Args:
         world_id: The exposure world.
@@ -240,8 +324,15 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
             landloss.io.area_of_interest.EXTENTS or "full".
 
     Returns:
-        ``evacuated_m2``, ``inundated_m2``, ``cause`` and ``has_landslide`` per
-        claim that has any.
+        ``evacuated_m2``, ``inundated_m2``, ``cause``, ``has_landslide`` and
+        ``wall_landslide_m2`` per claim that has any. The last is the ground
+        that came down with the claim's own walls, summed over failures and
+        capped at the claim's landslide ground; it is not additive with
+        ``evacuated_m2`` or ``inundated_m2``.
+
+    Raises:
+        ValueError: If the loss input's land or wall table lacks a column read
+            here, such as the per-failure lists (rerun vul step 10).
     """
     areas = ["evacuated_area_m2", "inundated_area_m2"]
     liq = pd.read_parquet(
@@ -262,6 +353,24 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
         ),
         columns=[CLAIM_ID_COLUMN, "outcome"],
     )
+    land_in = read_loss_input(
+        world_loss_input_path("land", world_id, realisation_id, extent=extent),
+        [CLAIM_ID_COLUMN, LANDSLIDE_AREA_COLUMN, *LANDSLIDE_FAILURE_COLUMNS],
+    )
+    rw_in = read_loss_input(
+        world_loss_input_path("rw", world_id, realisation_id, extent=extent),
+        [
+            CLAIM_ID_COLUMN,
+            RW_ID_COLUMN,
+            PARENT_RW_ID_COLUMN,
+            RW_HEIGHT_COLUMN,
+            RW_LENGTH_COLUMN,
+            IS_DAMAGED_BY_SHAKING_COLUMN,
+            IS_EVACUATED_COLUMN,
+            IS_INUNDATED_COLUMN,
+        ],
+    )
+    origin = landslide_by_origin(land_in, rw_in)
     totals = pd.concat([liq[[CLAIM_ID_COLUMN, *areas]], slid])
     land = totals.groupby(CLAIM_ID_COLUMN)[areas].sum()
     land.columns = ["evacuated_m2", "inundated_m2"]
@@ -270,9 +379,12 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
         return set(table.loc[table[areas].sum(axis=1) > 0, CLAIM_ID_COLUMN])
 
     by_liquefaction = damaged(liq)
-    by_landslide = damaged(slid)
+    with_ground = damaged(slid)
     by_wall = set(walls.loc[walls["outcome"] == FAILED_WITH_POLYGON, CLAIM_ID_COLUMN])
-    land = land.reindex(sorted(by_liquefaction | by_landslide | by_wall), fill_value=0)
+    by_landslide = set(origin.index[origin["other_landslide_m2"] > 0])
+    by_wall |= set(origin.index[origin["wall_landslide_m2"] > 0])
+    # A claim with any ground stays in the table, whatever typed it.
+    land = land.reindex(sorted(by_liquefaction | with_ground | by_wall), fill_value=0)
     land["cause"] = [
         cause_label(
             liquefaction=claim in by_liquefaction,
@@ -283,6 +395,9 @@ def damaged_land(world_id: int, realisation_id: int, *, extent: str) -> pd.DataF
     ]
     # Landslide ground as a flag too, so the page can type the claim by it.
     land["has_landslide"] = land.index.isin(by_landslide).astype(int)
+    land["wall_landslide_m2"] = (
+        origin["wall_landslide_m2"].reindex(land.index).fillna(0.0)
+    )
     return land.round(4)
 
 
@@ -659,8 +774,8 @@ def main(*, extent, world_ids, realisation_ids):
     )
     land = damaged_land(world_id, realisation_id, extent=extent)
     rows = rows.join(land)
-    rows[["evacuated_m2", "inundated_m2"]] = rows[
-        ["evacuated_m2", "inundated_m2"]
+    rows[["evacuated_m2", "inundated_m2", "wall_landslide_m2"]] = rows[
+        ["evacuated_m2", "inundated_m2", "wall_landslide_m2"]
     ].fillna(0.0)
     rows["cause"] = rows["cause"].fillna("")
     ejecta = liquefaction_ejecta(realisation_id, extent=extent)

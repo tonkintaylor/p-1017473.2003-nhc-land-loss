@@ -59,16 +59,12 @@ Marks: `[x]` done, `[~]` partly done, `[>]` next, `[ ]` planned.
 
 1. Run the step over the pilot after exposure step 6 and landslide steps 5, 3
    and 6.
-2. In the loss calculation, a wall that crosses property boundaries counts
-   as a wall on each property it enters by at least 1 m, with the length of
-   wall inside that property (2 m of wall in a property means that property
-   has a wall 2 m long), not once on its primary property at its whole
-   length (the lead, 2026-10-06). Exposure rw step 6's drawn walls and wall
-   population carry `property_lengths_m` (each property's id and length,
-   from exposure rw step 6's wall units, `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M`)
-   and `n_properties` for this; today each wall is one row on its primary
-   property with `length_m` its whole simplified line. The loss module is
-   not changed yet.
+2. ~~In the loss calculation, a wall that crosses property boundaries counts
+   as a wall on each property it enters by at least 1 m.~~ Superseded
+   2026-10-14: a wall counts on each claim over its insured stretch, the line
+   inside the claim's property and within 2 m of its insured land, shared
+   equally on a boundary (exposure rw step 6's `insured_lengths_m`; vul
+   step 10 splits on it).
 3. ~~Pass the loss module which landslide polygons are retaining wall
    failures, and which polygons on one property are separate failures
    needing separate walls (**T-124**, 2026-10-07).~~ Done 2026-10-13: land
@@ -113,8 +109,9 @@ Not yet defined.
   **Planned, 2026-10-14:** section 6 of
   `.agents/plans/tweaks-to-property-damage.md`. A wall failed in shaking is
   damaged over its whole length. One damaged by landslide ground is damaged
-  only over the measured stretch inside it, and each claim takes the part on
-  its own insured stretch. The loss side is now ours to change.
+  only over the measured stretch inside it, replaced with 1 m at each end and
+  at least 3 m, and each claim takes the part on its own insured stretch. The
+  loss side is now ours to change.
 
   Storing the lengths in the existing flag columns does not work: loss reads
   those columns as true or false, so any length above zero would still count

@@ -280,7 +280,7 @@ step = "damage"
 title = "A boundary wall counts on each property"
 text = "A wall crossing property boundaries is counted on each property it enters by 1 m or more."
 status = "pending"
-note = "Decided, and in vul step 10 since 2026-10-12: one row per insured property at the length on it (split_walls_by_property); owner's sign-off needed."
+note = "Decided, and in vul step 10 since 2026-10-12: one row per claim at the length of wall that is on its property and within 2 m of its insured land (insured_lengths_m, split_walls_by_property); owner's sign-off needed."
 source = "exposure/rw/status.md"
 
 [[assumptions]]

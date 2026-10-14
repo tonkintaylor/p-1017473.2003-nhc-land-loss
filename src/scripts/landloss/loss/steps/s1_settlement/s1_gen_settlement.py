@@ -83,9 +83,11 @@ import pandas as pd
 from landloss.domain.gst import add_gst
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
+    EVACUATED_AREA_COLUMN,
     INUNDATED_AREA_COLUMN,
     INUNDATED_MEAN_DEPTH_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_EVACUATED_AREAS_COLUMN,
     LANDSLIDE_FAILURE_COLUMNS,
     LIQ_LD_COST_COLUMN,
     REALISATION_ID_COLUMN,
@@ -311,28 +313,39 @@ def landslide_ground_by_claim(land: pd.DataFrame) -> pd.DataFrame:
     outside the boundary, leaving no insured evacuated area, still has what was
     inundated inside it.
 
+    The evacuated ground is the insured ground the slip removed, which the
+    length of its wall is taken from. A land table without it measures the wall
+    off the whole landslide ground, as before.
+
     Args:
         land: The contract's land table.
 
     Returns:
-        A frame indexed by ``claim_id`` with ``area`` in square metres and
-        ``volume`` in cubic metres.
+        A frame indexed by ``claim_id`` with ``area`` and ``evacuated`` in
+        square metres and ``volume`` in cubic metres.
     """
+    area = land[LANDSLIDE_AREA_COLUMN].fillna(0.0).to_numpy()
+    evacuated = (
+        land[EVACUATED_AREA_COLUMN].fillna(0.0).to_numpy()
+        if EVACUATED_AREA_COLUMN in land.columns
+        else area
+    )
     per_claim = (
         pd.DataFrame(
             {
                 CLAIM_ID_COLUMN: land[CLAIM_ID_COLUMN].to_numpy(),
-                "area": land[LANDSLIDE_AREA_COLUMN].fillna(0.0).to_numpy(),
+                "area": area,
+                "evacuated": evacuated,
                 "volume": inundation_volume_m3(
                     land[INUNDATED_AREA_COLUMN].fillna(0.0).to_numpy(),
                     land[INUNDATED_MEAN_DEPTH_COLUMN].fillna(0.0).to_numpy(),
                 ),
             }
         )
-        .groupby(CLAIM_ID_COLUMN)[["area", "volume"]]
+        .groupby(CLAIM_ID_COLUMN)[["area", "evacuated", "volume"]]
         .sum()
     )
-    per_claim["area"] = per_claim["area"].clip(lower=0.0)
+    per_claim[["area", "evacuated"]] = per_claim[["area", "evacuated"]].clip(lower=0.0)
     return per_claim
 
 
@@ -342,7 +355,9 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
     `vul` lists the landslides that reached each insured land polygon
     (:data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`). A
     failure on two of a claim's polygons is one failure, its ground and spoil
-    added. Its spoil volume is its own inundated area at its own depth.
+    added. Its spoil volume is its own inundated area at its own depth, and its
+    evacuated ground is what its wall's length is taken from. A land table
+    without the evacuated list takes each failure's whole ground instead.
 
     A land table from before the lists were written has one failure per claim,
     the claim's pooled ground, **unattributed**: no landslide id, no wall, held
@@ -354,14 +369,15 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
     Returns:
         One row per claim and failure with landslide ground: ``claim_id``,
         ``landslide_id``, ``rw_id`` (missing where no wall failed with it),
-        ``area`` in m2, ``volume`` in m3, and ``attributed``, false for the
-        pooled ground of an older table.
+        ``area`` and ``evacuated`` in m2, ``volume`` in m3, and
+        ``attributed``, false for the pooled ground of an older table.
     """
     columns = [
         CLAIM_ID_COLUMN,
         "landslide_id",
         RW_ID_COLUMN,
         "area",
+        "evacuated",
         "volume",
         "attributed",
     ]
@@ -374,28 +390,37 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
                 "landslide_id": None,
                 RW_ID_COLUMN: None,
                 "area": pooled["area"].to_numpy(dtype=float),
+                "evacuated": pooled["evacuated"].to_numpy(dtype=float),
                 "volume": pooled["volume"].to_numpy(dtype=float),
                 "attributed": False,
             },
             columns=columns,
         )
 
+    has_evacuated = LANDSLIDE_EVACUATED_AREAS_COLUMN in land.columns
+    lists = [*LANDSLIDE_FAILURE_COLUMNS]
+    if has_evacuated:
+        lists.append(LANDSLIDE_EVACUATED_AREAS_COLUMN)
     rows = []
-    for record in land[[CLAIM_ID_COLUMN, *LANDSLIDE_FAILURE_COLUMNS]].itertuples(
-        index=False
-    ):
-        claim, ids, walls, areas, inundated, depths = record
+    for record in land[[CLAIM_ID_COLUMN, *lists]].itertuples(index=False):
+        claim, ids, walls, areas, inundated, depths, *rest = record
+        # An older table has no evacuated list: each failure's whole ground.
+        evacuated = rest[0] if has_evacuated else areas
         rows.extend(
             {
                 CLAIM_ID_COLUMN: claim,
                 "landslide_id": failure,
                 RW_ID_COLUMN: wall,
                 "area": area,
+                "evacuated": evac,
                 "inundated": wet,
                 "depth": depth,
             }
-            for failure, wall, area, wet, depth in zip(
-                *(list(values) for values in (ids, walls, areas, inundated, depths)),
+            for failure, wall, area, evac, wet, depth in zip(
+                *(
+                    list(values)
+                    for values in (ids, walls, areas, evacuated, inundated, depths)
+                ),
                 strict=True,
             )
         )
@@ -403,6 +428,7 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
     pieces = pd.DataFrame(rows)
     pieces["area"] = pd.to_numeric(pieces["area"]).fillna(0.0)
+    pieces["evacuated"] = pd.to_numeric(pieces["evacuated"]).fillna(0.0)
     pieces["volume"] = inundation_volume_m3(
         pd.to_numeric(pieces["inundated"]).fillna(0.0).to_numpy(),
         pd.to_numeric(pieces["depth"]).fillna(0.0).to_numpy(),
@@ -414,6 +440,7 @@ def landslide_failures(land: pd.DataFrame) -> pd.DataFrame:
     grouped = pieces.groupby([CLAIM_ID_COLUMN, "landslide_id"], sort=True)
     failures = grouped.agg(
         area=("area", "sum"),
+        evacuated=("evacuated", "sum"),
         volume=("volume", "sum"),
         **{RW_ID_COLUMN: (RW_ID_COLUMN, "first")},
     ).reset_index()
@@ -490,9 +517,9 @@ def replacement_wall_shape(
     can make it larger.** Where a wall holds a slip
     (:func:`attach_failures_to_walls`), the wall that slip would need is worked
     out exactly as for a slip with no wall -- :func:`classify_landslide_wall_size`
-    and :func:`landslide_wall_length_m` -- and the replacement takes the
-    **larger of the two in each dimension**: the larger size class, the taller
-    height and the longer length. The wall keeps its own height unless the
+    and :func:`landslide_wall_length_m`, on its evacuated ground -- and the
+    replacement takes the **larger of the two in each dimension**: the larger
+    size class, the taller height and the longer length. The wall keeps its own height unless the
     slip's size class sets a taller one (:func:`beta_wall_height_m`). Ground
     that needed a two-metre wall still does, and a slip wider than the wall it
     broke needs a wall that spans it.
@@ -515,8 +542,9 @@ def replacement_wall_shape(
     position = attach_failures_to_walls(failures, damaged)
     held_by = failures.assign(_wall=position)
     held_by = held_by[held_by["_wall"] >= 0]
-    slips = held_by.groupby("_wall")[["area", "volume"]].sum()
+    slips = held_by.groupby("_wall")[["area", "evacuated", "volume"]].sum()
     area = slips["area"].reindex(range(len(damaged))).fillna(0.0).to_numpy()
+    evacuated = slips["evacuated"].reindex(range(len(damaged))).fillna(0.0).to_numpy()
     volume = slips["volume"].reindex(range(len(damaged))).fillna(0.0).to_numpy()
     held = area > 0
     if not held.any():
@@ -524,7 +552,7 @@ def replacement_wall_shape(
 
     rank = {name: order for order, name in enumerate(SIZE_CLASSES)}
     slip_size = classify_landslide_wall_size(area[held], volume[held])
-    slip_length = landslide_wall_length_m(area[held])
+    slip_length = landslide_wall_length_m(evacuated[held])
     size[held] = [
         max(existing, slip, key=rank.__getitem__)
         for existing, slip in zip(size[held], slip_size, strict=True)
@@ -708,7 +736,7 @@ def land_repair_by_claim(
     size = classify_landslide_wall_size(
         building["area"].to_numpy(), building["volume"].to_numpy()
     )
-    length = landslide_wall_length_m(building["area"].to_numpy())
+    length = landslide_wall_length_m(building["evacuated"].to_numpy())
     height = beta_wall_height_m(size)
     face = beta_wall_face_area_m2(size, length)
     # An invented wall has no id of its own to take a construction from, so

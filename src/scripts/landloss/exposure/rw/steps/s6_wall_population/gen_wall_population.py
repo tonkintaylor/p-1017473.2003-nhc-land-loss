@@ -8,17 +8,21 @@ drawn here, from its property's age shares (``gen_wall_age.py``), its height
 and whether its unit stands on a road frontage. A wall is the unit that drew
 it, carrying the unit's id (as ``wall_line_id``), its DEM face height and size
 class, its wall type and age bin, its length, whether it holds fill or a cut
-face, and the claim it belongs to. Walls with no claim are
-dropped, because
-council and road-reserve walls are out of scope (**I-05**); the walls that
-touch their own claim's insured land, buffered by 2 m, are kept; and each kept
-wall is given an ``rw_id``. That insured population is what vul and loss read.
+face, and the claim it belongs to. Each drawn wall is cut into insured
+stretches: the line inside a claim's property (LINZ parcel) and within 2 m of
+that claim's insured land. A wall is insured when any stretch is 1 m or more,
+and is given an ``rw_id`` on the claim with its longest stretch, so a wall that
+holds up a neighbour's land is insured on the neighbour (this replaces the
+primary-claim test and the claimless drop, **I-05**, for such a wall). The
+stretches are written on the wall as ``insured_lengths_m``, and one row per
+wall and claim with its line goes to a stretch file. That insured population
+is what vul and loss read.
 
-The two filters decide what is insured, not whether a wall stands: a road
+The stretch rule decides what is insured, not whether a wall stands: a road
 retaining wall above a property, or a wall at the back of a section beyond
 the buffer, still holds its slope. So the script also writes every wall the
-world drew, before either filter, with the minted ``rw_id`` where the wall was
-kept and null where it was not. Landslide step 5 builds the urban slope model
+world drew, with the minted ``rw_id`` where the wall supports insured land and
+null where it does not. Landslide step 5 builds the urban slope model
 on that file, so an uninsured wall shapes the hazard without entering the
 loss tables (decision 36 of the build contract).
 
@@ -27,7 +31,8 @@ loss tables (decision 36 of the build contract).
 Run ``gen_wall_age.py``, ``gen_wall_units.py`` (for every world in
 ``WORLD_IDS``) and ``gen_wall_probability.py`` first, and
 land step 5 for the insured land. This script reads no elevation model and no GNS
-layer, so any number of worlds draw quickly.
+layer, and reads the LINZ property boundaries from the cache once, so any number
+of worlds draw quickly.
 
 A world is seeded on ``EXPOSURE_BASE_SEED`` and its own id, not on any
 earthquake: whether a wall exists is a fact we do not know, not something the
@@ -51,11 +56,19 @@ import pandas as pd
 from landloss.domain import constants
 from landloss.domain.loss_contract import CLAIM_ID_COLUMN, RW_ID_COLUMN
 from landloss.exposure.asset_ids import RW_ID_SUFFIX, mint_asset_ids, sort_by_location
-from landloss.exposure.coverage import RW_COVERAGE_BUFFER_M, keep_walls_on_insured_land
+from landloss.exposure.coverage import (
+    RW_COVERAGE_BUFFER_M,
+    cut_walls_to_insured_stretches,
+    insured_support_regions,
+    keep_walls_on_insured_land,
+)
+from landloss.exposure.land.extent import build_claim_properties
 from landloss.exposure.rw.beta_population import SIZE_CLASSES, describe_population
 from landloss.exposure.rw.population import (
     HEIGHT_SOURCE_COLUMN,
+    INSURED_LENGTHS_COLUMN,
     WALL_LINE_ID_COLUMN,
+    attach_insured_lengths,
     attach_rw_ids,
     draw_wall_population,
 )
@@ -71,8 +84,10 @@ from landloss.exposure.rw.wall_type import (
     load_beta_frontage_multipliers,
     load_beta_wall_type_shares,
 )
+from landloss.hazard.landslide.wall_units import BETA_MIN_WALL_LENGTH_IN_PROPERTY_M
 from landloss.hazard.realisation import realisation_seed
 from landloss.io.area_of_interest import extent_suffix
+from landloss.io.readers import get_nz_property_boundaries
 from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
     insured_land_path,
 )
@@ -88,6 +103,10 @@ from scripts.landloss.exposure.rw.steps.s6_wall_population.gen_wall_units import
     wall_draws_path,
     wall_units_path,
 )
+from scripts.landloss.ground.steps.s3_instability_zones.gen_instability_zones import (
+    CRS,
+    dem_bbox,
+)
 from scripts.landloss.paths import TEMP_DIR
 
 # Wellington suburb names are macronised, which the default cp1252 Windows
@@ -98,6 +117,7 @@ if hasattr(sys.stdout, "reconfigure"):
 WORK_DIR = TEMP_DIR / "exposure"
 OUT_STEM = "wall-population"
 DRAWN_STEM = "drawn-walls"
+STRETCH_STEM = "wall-insured-stretches"
 
 # The stream the world's draws come from, under EXPOSURE_BASE_SEED.
 RNG_STREAM = "exposure"
@@ -109,6 +129,9 @@ PROPERTY_ID_COLUMN = "property_id"
 RUN_GEN_WALL_AGE_FIRST = "run gen_wall_age.py in exposure rw step 6 first"
 
 RULE = "-" * 72
+# A wall's stretches may exceed its line by this much (metres) before it counts
+# as more stretch than line: floating-point noise from cutting the line.
+STRETCH_LENGTH_TOLERANCE_M = 1e-6
 
 
 def wall_population_path(world_id, *, extent):
@@ -129,9 +152,8 @@ def wall_population_path(world_id, *, extent):
 def drawn_walls_path(world_id, *, extent):
     """Return the file a run writes every wall one world drew to.
 
-    The walls before the claim and coverage filters, with ``rw_id`` null on
-    the ones those filters dropped. Landslide step 5 reads it; nothing else
-    does.
+    Every drawn wall, with ``rw_id`` null on the ones that support no insured
+    land. Landslide step 5 reads it; nothing else does.
 
     Args:
         world_id: Which exposure world this is.
@@ -143,6 +165,43 @@ def drawn_walls_path(world_id, *, extent):
     """
     suffix = extent_suffix(extent)
     return WORK_DIR / f"{DRAWN_STEM}-w{world_id:03d}{suffix}.geoparquet"
+
+
+def insured_stretches_path(world_id, *, extent):
+    """Return the file a run writes one world's insured stretches to.
+
+    One row per insured wall and claim, with the stretch line, for the damaged
+    length to be placed on it later.
+
+    Args:
+        world_id: Which exposure world this is.
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+
+    Returns:
+        The output path, under ``temp/exposure/``.
+    """
+    suffix = extent_suffix(extent)
+    return WORK_DIR / f"{STRETCH_STEM}-w{world_id:03d}{suffix}.geoparquet"
+
+
+def read_claim_parcels(*, extent, use_cached_layers):
+    """The LINZ property of each claim, one parcel per claim id.
+
+    Args:
+        extent: The extent to run over, a name from
+            landloss.io.area_of_interest.EXTENTS or "full".
+        use_cached_layers: Whether to reuse the cached LINZ property
+            boundaries.
+
+    Returns:
+        :func:`~landloss.exposure.land.extent.build_claim_properties` over the
+        extent's boundaries, the frame land step 5 built the insured land from.
+    """
+    boundaries = get_nz_property_boundaries(
+        bbox=dem_bbox(extent=extent), crs=CRS, use_cache=use_cached_layers
+    )
+    return build_claim_properties(boundaries)
 
 
 def insert_world_id(walls, world_id):
@@ -276,8 +335,8 @@ def describe_drawn_walls(drawn):
     insured = int(drawn[RW_ID_COLUMN].notna().sum())
     print(
         f"Drawn walls: {len(drawn):,} in the world, {insured:,} carrying an rw_id, "
-        f"{len(drawn) - insured:,} uninsured (they shape the urban slope model "
-        "and write no loss row)"
+        f"{len(drawn) - insured:,} with no insured stretch (they shape the urban "
+        "slope model and write no loss row)"
     )
 
 
@@ -292,26 +351,66 @@ def describe_draw(walls, probabilities):
     )
 
 
-def describe_claims(before, after):
-    """Print how many drawn walls had a claim to belong to."""
-    dropped = len(before) - len(after)
-    print(
-        f"Claims: {len(after):,} walls on a claim property, {dropped:,} dropped "
-        "on road reserve or outside every claim (I-05)"
-    )
+def describe_stretches(drawn, kept, stretches, n_touching):
+    """Print what the insured stretch rule did to the drawn walls.
 
+    Args:
+        drawn: The world's drawn walls after :func:`attach_insured_lengths`.
+        kept: The walls with a stretch.
+        stretches: The stretch rows of the drawn walls.
+        n_touching: How many walls the old rule, touching their drawn claim's
+            buffered insured land, would have insured.
 
-def describe_coverage(before, after):
-    """Print how many walls the insured land coverage filter kept."""
-    dropped = len(before) - len(after)
-    share = len(after) / len(before) if len(before) else 0.0
+    Raises:
+        ValueError: If a wall has more stretch than line.
+    """
     print(
-        f"Coverage: {len(before):,} walls with a claim, {len(after):,} kept, "
-        f"{dropped:,} dropped ({share:.1%} kept)"
+        f"Insured stretches: {len(kept):,} of {len(drawn):,} drawn walls support "
+        f"insured land ({len(drawn) - len(kept):,} do not)"
     )
     print(
-        "  a wall is kept if it touches its own claim's insured land buffered "
-        f"by {RW_COVERAGE_BUFFER_M:g} m"
+        f"  a stretch is a wall's line inside a claim's property and within "
+        f"{RW_COVERAGE_BUFFER_M:g} m of its insured land, "
+        f"{BETA_MIN_WALL_LENGTH_IN_PROPERTY_M:g} m or more"
+    )
+    print(f"  old touch rule would have insured {n_touching:,}")
+    if kept.empty:
+        return
+    print(
+        f"  on two or more claims: {int((kept[INSURED_LENGTHS_COLUMN].map(len) > 1).sum()):,}"
+    )
+    drawn_claim = drawn.set_index(WALL_LINE_ID_COLUMN)[CLAIM_ID_COLUMN]
+    was = drawn_claim.reindex(kept[WALL_LINE_ID_COLUMN]).to_numpy(dtype=object)
+    moved = kept[CLAIM_ID_COLUMN].to_numpy(dtype=object) != was
+    print(f"  claim moved off the one it was drawn on: {int(moved.sum()):,}")
+    per_wall = stretches.groupby(WALL_LINE_ID_COLUMN)["length_m"].sum()
+    wall_length = kept.set_index(WALL_LINE_ID_COLUMN)["length_m"].reindex(
+        per_wall.index
+    )
+    over = per_wall > wall_length + STRETCH_LENGTH_TOLERANCE_M
+    if over.any():
+        msg = (
+            f"{int(over.sum())} walls have more stretch than line, for example "
+            f"{over.index[over][0]}: a wall on a shared boundary should be shared "
+            "equally between its claims"
+        )
+        raise ValueError(msg)
+    # A stretch's line is the claim's whole stretch; length_m is its share, so
+    # the difference is the ground a wall shares with another claim.
+    full = (
+        stretches.assign(line_m=stretches.geometry.length)
+        .groupby(WALL_LINE_ID_COLUMN)["line_m"]
+        .sum()
+    )
+    metres_shared = full - per_wall
+    sharing = metres_shared > STRETCH_LENGTH_TOLERANCE_M
+    print(
+        f"  stretch length {per_wall.sum():,.0f} m of {wall_length.sum():,.0f} m "
+        f"in those walls; no wall has more stretch than line"
+    )
+    print(
+        f"  walls sharing a boundary stretch between claims: {int(sharing.sum()):,}, "
+        f"{metres_shared[sharing].sum():,.0f} m shared equally"
     )
 
 
@@ -341,13 +440,15 @@ def describe_walls(walls):
         print(f"  {size}: {low:.2f}  {mid:.2f}  {high:.2f}  ({height.size:,} walls)")
 
 
-def main(*, extent, world_ids):
+def main(*, extent, world_ids, use_cached_layers):
     """Draw a wall population per exposure world and write each one out.
 
     Args:
         extent: The extent to run over, a name from
             landloss.io.area_of_interest.EXTENTS or "full".
         world_ids: Which exposure worlds to draw.
+        use_cached_layers: Whether to reuse the cached LINZ property
+            boundaries.
     """
     probability_path = wall_probability_path(extent=extent)
     print(f"Reading the wall probabilities from {probability_path} ...")
@@ -361,6 +462,24 @@ def main(*, extent, world_ids):
     describe_type_candidates(candidates, n_unaged)
     type_shares = load_beta_wall_type_shares()
     multipliers = load_beta_frontage_multipliers()
+
+    # The cut depends on each candidate's line and not on the world, so it is
+    # done once for every candidate; a world takes the rows of its drawn walls.
+    regions = insured_support_regions(
+        read_claim_parcels(extent=extent, use_cached_layers=use_cached_layers),
+        insured,
+    )
+    n_no_parcel = int((~insured[CLAIM_ID_COLUMN].isin(regions[CLAIM_ID_COLUMN])).sum())
+    print(
+        f"Insured land with no support region: {n_no_parcel:,} claims (a wall "
+        "cannot be insured on them)"
+    )
+    candidate_stretches = cut_walls_to_insured_stretches(
+        probabilities,
+        regions,
+        wall_id_column=WALL_LINE_ID_COLUMN,
+        min_length_m=BETA_MIN_WALL_LENGTH_IN_PROPERTY_M,
+    )
 
     for world_id in world_ids:
         print(RULE)
@@ -387,11 +506,15 @@ def main(*, extent, world_ids):
         )
         describe_draw(drawn, probabilities)
 
-        # Filtered after the draw, so the stream is the same whatever is kept.
-        with_claim = drawn.loc[drawn[CLAIM_ID_COLUMN].notna()].reset_index(drop=True)
-        describe_claims(drawn, with_claim)
-        kept = keep_walls_on_insured_land(with_claim, insured)
-        describe_coverage(with_claim, kept)
+        # Cut after the draw, so the stream is the same whatever is kept.
+        stretches = candidate_stretches[
+            candidate_stretches[WALL_LINE_ID_COLUMN].isin(drawn[WALL_LINE_ID_COLUMN])
+        ]
+        with_claim = drawn.loc[drawn[CLAIM_ID_COLUMN].notna()]
+        n_touching = len(keep_walls_on_insured_land(with_claim, insured))
+        drawn = attach_insured_lengths(drawn, stretches)
+        kept = drawn.loc[drawn[INSURED_LENGTHS_COLUMN].map(len) > 0]
+        describe_stretches(drawn, kept, stretches, n_touching)
 
         kept = sort_by_location(kept)
         kept.insert(
@@ -404,6 +527,17 @@ def main(*, extent, world_ids):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         kept.to_parquet(out_path)
         print(f"Wrote {len(kept):,} walls to {out_path}")
+
+        stretch_rows = kept[[WALL_LINE_ID_COLUMN, RW_ID_COLUMN]].merge(
+            stretches, on=WALL_LINE_ID_COLUMN, how="inner"
+        )
+        stretch_rows = insert_world_id(
+            gpd.GeoDataFrame(stretch_rows, geometry="geometry", crs=drawn.crs),
+            world_id,
+        )
+        stretch_path = insured_stretches_path(world_id, extent=extent)
+        stretch_rows.to_parquet(stretch_path)
+        print(f"Wrote {len(stretch_rows):,} insured stretches to {stretch_path}")
 
         # Every drawn wall, insured or not, for the urban slope model.
         every_wall = insert_world_id(attach_rw_ids(drawn, kept), world_id)
@@ -421,4 +555,8 @@ def main(*, extent, world_ids):
 
 
 if __name__ == "__main__":
-    main(extent=config.EXTENT, world_ids=config.WORLD_IDS)
+    main(
+        extent=config.EXTENT,
+        world_ids=config.WORLD_IDS,
+        use_cached_layers=config.USE_CACHED_LAYERS,
+    )

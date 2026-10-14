@@ -197,7 +197,11 @@ def main(*, extent, realisation_ids, world_ids):
             ),
             (
                 "rw s6, wall population",
-                lambda: gen_wall_population.main(extent=extent, world_ids=world_ids),
+                lambda: gen_wall_population.main(
+                    extent=extent,
+                    world_ids=world_ids,
+                    use_cached_layers=wall_config.USE_CACHED_LAYERS,
+                ),
             ),
             (
                 "culverts and bridges s7, crossing population",

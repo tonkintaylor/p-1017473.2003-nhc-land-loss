@@ -249,8 +249,10 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   (`gen_wall_units.wall_draws_path()`), the property age shares from
   `gen_wall_age.wall_age_path()` (a missing file stops the run and names
   `gen_wall_age.py`), each unit's `on_road_frontage` from
-  `gen_wall_units.wall_units_path()` and the insured land from step 5's
-  `insured_land_path()`, and writes one file per world,
+  `gen_wall_units.wall_units_path()`, the insured land from step 5's
+  `insured_land_path()` and the LINZ properties, one per claim
+  (`build_claim_properties`, from the cached LINZ layer, `read_claim_parcels()`,
+  `config.USE_CACHED_LAYERS`), and writes one file per world,
   `temp/exposure/wall-population-wNNN[-pilot].geoparquet` from
   `wall_population_path(world_id, extent=...)`. The worlds come from
   `config.WORLD_IDS`.
@@ -297,15 +299,41 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   primary property (`property_id`, the non-road property holding most of
   its line), and the wall also carries `property_lengths_m` (each non-road
   property it enters by at least 1 m and its length there) and
-  `n_properties` (`population.OPTIONAL_COLUMNS`), which vul step 10 splits
-  the wall on, one row per insured property at its length there (2026-10-12).
-- After the draw, so the random stream is the same whatever is kept: lines
-  with no `claim_id` are dropped, because council and road-reserve walls are
-  out of scope (**I-05**); then
-  `landloss.exposure.coverage.keep_walls_on_insured_land` keeps a wall only
-  if its line intersects its own claim's insured land polygon buffered by
-  `RW_COVERAGE_BUFFER_M` (2 m). Lying on another claim's land does not count.
-- **Each kept wall gets an `rw_id`** of the form `<claim_id>-RW<nn>`, numbered
+  `n_properties` (`population.OPTIONAL_COLUMNS`). Until 2026-10-14 vul step 10
+  split the wall on `property_lengths_m`; it now splits on `insured_lengths_m`
+  (below), and `property_lengths_m` still feeds the claim update.
+- **Insured stretches (the lead, 2026-10-14).** After the draw, so the random
+  stream is the same whatever is kept, each drawn wall is cut into the stretches
+  that support a claim's insured land. A stretch is the wall's line inside the
+  claim's property (its LINZ parcel, `build_claim_properties`) **and** within
+  `RW_COVERAGE_BUFFER_M` (2 m) of the claim's insured land
+  (`landloss.exposure.coverage.insured_support_regions` and
+  `cut_walls_to_insured_stretches`). It is measured in EPSG:2193 on the parcel
+  clipped to the buffered land, so a neighbour's ground within 2 m does not
+  count. The cut depends on the line alone, so it is done once for every
+  candidate before the worlds, and a world takes the rows of the walls it drew.
+  A wall is insured when any stretch is at least
+  `BETA_MIN_WALL_LENGTH_IN_PROPERTY_M` (1 m). This replaces the primary-claim
+  test, `keep_walls_on_insured_land` and the claimless drop (**I-05**) for a
+  wall that supports insured land; a wall that supports none stays out of the
+  population. A wall lying on a shared parcel boundary is shared equally (the lead,
+  2026-10-14): a closed parcel holds its own boundary, so both neighbours'
+  regions hold the line, and `cut_walls_to_insured_stretches` nodes a wall's
+  stretches together and gives each piece lying in k claims' stretches to each
+  at 1/k of its length (a piece counts as in a stretch within
+  `SHARED_STRETCH_TOLERANCE_M`, 1 cm). `length_m` is the claim's share and the
+  1 m minimum applies to it; the stretch line stays the claim's full stretch, so
+  on a shared boundary the line is shared. A wall's shares never sum to more than
+  the wall: the run prints the walls sharing a boundary stretch and the metres
+  shared, and raises if any wall has more stretch than line. Section 6 of the
+  property damage plan will cut damaged lines by these stretches and must share a
+  boundary the same way.
+- **`insured_lengths_m`** (`population.attach_insured_lengths`) is written on
+  each wall, after `property_lengths_m`: a list of `{claim_id, length_m}`,
+  longest stretch first (ties to the lowest claim id), empty for a wall with
+  none. The wall's `claim_id` becomes the claim with the longest stretch.
+  `property_id`, the primary property it was drawn on, can differ from it.
+- **Each insured wall gets an `rw_id`** of the form `<claim_id>-RW<nn>`, numbered
   from 01 within its claim, by `landloss.exposure.asset_ids.mint_asset_ids`
   with `RW_ID_SUFFIX`, on walls ordered by `sort_by_location` (claim, then the
   x and y of the line's representative point), so it is stable within a world
@@ -315,14 +343,22 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
 - The output columns are `rw_id`, `claim_id`, `wall_line_id`, `world_id`,
   `size_class`, `wall_type`, `age_bin`, `height_m`, `length_m`, `wall_position`,
   `is_flatland`, `source`, `material`, `property_id`, `property_lengths_m`,
-  `n_properties` and the line geometry. `height_m` is the
+  `n_properties`, `insured_lengths_m` and the line geometry. `height_m` is the
   DEM face height from `MIN_WALL_HEIGHT_M` upward and unbounded above, so the
   size ranges are 0.5–1.0, 1.0–2.5 and 2.5+ m; the set heights the loss
   module prices at stand until the loss owner re-confirms them (**I-14**), and
   `height_m` is not handed to `loss` in this build.
-- **Every drawn wall is written too.** The claim and coverage filters decide
-  what is insured, not whether a wall stands: a council or road-reserve wall
-  above or below a property, or a wall at the back of a section more than
+- **The stretch file.** One row per insured wall and claim is written to
+  `temp/exposure/wall-insured-stretches-wNNN[-pilot].geoparquet` from
+  `insured_stretches_path(world_id, extent=...)`, with `wall_line_id`,
+  `world_id`, `rw_id`, `claim_id`, `length_m` and the stretch line (a
+  MultiLineString where the wall leaves and re-enters the ground). `rw_id` is
+  the wall's, the id vul calls `parent_rw_id`, so a later step joins on
+  `(rw_id, claim_id)` to place a damaged length on a claim's stretch. Nothing
+  reads it yet.
+- **Every drawn wall is written too.** The stretch rule decides what is
+  insured, not whether a wall stands: a council or road-reserve wall above or
+  below a property, or a wall at the back of a section more than
   `RW_COVERAGE_BUFFER_M` from the insured land, still holds its slope in the
   world. So in the same world loop, after `rw_id` is minted,
   `landloss.exposure.rw.population.attach_rw_ids` joins the minted `rw_id`
@@ -332,22 +368,28 @@ older than the siz table). `gen_all.py` runs the ground module before exposure.
   `drawn_walls_path(world_id, extent=...)`: one row per line that drew a wall,
   in line order, `wall_line_id` unique, with the population file's columns in
   the same order and `rw_id` and `claim_id` nullable. `rw_id` is null for a
-  claimless wall and for one off its claim's insured land. The draw and the
+  wall with no insured stretch, and its `insured_lengths_m` is empty. The draw and the
   stream are unchanged, and `wall_population_path()` stays the insured subset
   that vul and loss read; landslide step 5 reads the drawn walls and nothing
   else does (decision 36 of the build contract). The drawn walls carry wall unit
   ids, which landslide step 5 joins to landslide step 4's zones.
 - The run prints the candidates on a road frontage and on the extent's age
-  shares, then per world the world id and stream, the type count over every
-  candidate, the walls drawn over the lines
-  offered against the expected count, the claim and coverage counts kept and
-  dropped, `describe_population()` by size class and wall type, the count by
+  shares, the claims with no support region, then per world the world id and
+  stream, the type count over every candidate, the walls drawn over the lines
+  offered against the expected count, the insured stretch counts (walls
+  insured, on two or more claims, whose claim moved off the drawn one, the
+  stretch length against the line length, and how many the old touch rule
+  would have insured), `describe_population()` by size class and wall type, the
+  count by
   age bin, the share on
   flat land, the count by wall position and the height deciles by size class,
   the count of drawn walls and how many carry an `rw_id`
   (`describe_drawn_walls()`), and ends by saying plainly that the result is
   not evidence about Wellington.
-- Over the pilot on 2026-10-05, world 0, before the type draw: 3,466 walls
+- **The stretch rule has not been run on real data**, so no counts are
+  recorded for it. The next run prints the old and new counts together.
+- Over the pilot on 2026-10-05, world 0, before the type draw and before the
+  stretch rule (the old claim and touch filters): 3,466 walls
   drawn of the 7,248 units (3,458 expected), 3,213 on a claim and 2,019 kept
   on the insured land (277 small, 895 medium and 847 large; 1,896 cut and 123
   fill). The type draw has not been run on real data.

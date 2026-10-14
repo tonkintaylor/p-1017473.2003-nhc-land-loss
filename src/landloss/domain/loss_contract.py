@@ -60,6 +60,11 @@ LANDSLIDE_RW_IDS_COLUMN = "landslide_rw_ids"
 LANDSLIDE_AREAS_COLUMN = "landslide_areas"
 LANDSLIDE_INUNDATED_AREAS_COLUMN = "landslide_inundated_areas"
 LANDSLIDE_INUNDATED_DEPTHS_COLUMN = "landslide_inundated_depths"
+# Each failure's evacuated ground on the polygon, in the order of the lists
+# above, which the length of the wall a slip needs is taken from (2026-10-14).
+# Kept out of LANDSLIDE_FAILURE_COLUMNS so a land table written before it still
+# lists its failures; loss then measures the wall off the failure's whole ground.
+LANDSLIDE_EVACUATED_AREAS_COLUMN = "landslide_evacuated_areas"
 LANDSLIDE_FAILURE_COLUMNS = (
     LANDSLIDE_IDS_COLUMN,
     LANDSLIDE_RW_IDS_COLUMN,

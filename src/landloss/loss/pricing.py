@@ -917,12 +917,14 @@ def classify_landslide_wall_size(
     return np.asarray(SIZE_CLASSES)[np.maximum(by_area, by_volume)]
 
 
-def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
+def landslide_wall_length_m(evacuated_area_m2: np.ndarray | float) -> np.ndarray:
     """Return the length of the wall a landslide-damaged area is remediated with.
 
-    The wall follows the **width of the failure**, not a side of it. Ground lost
-    off a residential slope goes as a strip that is wider along the face than it
-    is deep into the section, taken here as
+    The wall follows the **width of the failure**, not a side of it, and is
+    measured off the **evacuated** insured ground alone: the wall goes across
+    the scar, and the deposit below it is cleared, not retained (2026-10-14).
+    Ground lost off a residential slope goes as a strip that is wider along the
+    face than it is deep into the section, taken here as
     :data:`LANDSLIDE_WALL_ASPECT_RATIO` to one, so a slip of area ``A`` is
     ``sqrt(A / 2)`` deep and twice that wide. To the width is added
     :data:`LANDSLIDE_WALL_MARGIN_M` at each end, because a wall is not stopped
@@ -936,7 +938,7 @@ def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
     landslide side of the repair cost.
 
     Args:
-        damaged_area_m2: Insured area taken by the landslide.
+        evacuated_area_m2: Insured area the landslide evacuated.
 
     Returns:
         The length in metres.
@@ -944,9 +946,9 @@ def landslide_wall_length_m(damaged_area_m2: np.ndarray | float) -> np.ndarray:
     Raises:
         ValueError: If any area is negative or not finite.
     """
-    areas = np.asarray(damaged_area_m2, dtype=float)
+    areas = np.asarray(evacuated_area_m2, dtype=float)
     if not np.all(np.isfinite(areas)) or np.any(areas < 0):
-        msg = "damaged_area_m2 must be finite and not negative"
+        msg = "evacuated_area_m2 must be finite and not negative"
         raise ValueError(msg)
     across = LANDSLIDE_WALL_ASPECT_RATIO * np.sqrt(areas / LANDSLIDE_WALL_ASPECT_RATIO)
     return np.maximum(

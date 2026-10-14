@@ -5,7 +5,7 @@ prices the repair and pays `min(repair, cap)` less the excess — $13.7 m over
 2,031 claims. Every repair cost rests on a named placeholder: the wall rate, the
 three site ratings, and the wall invented to reinstate landslide ground.
 
-**Updated:** 2026-10-08
+**Updated:** 2026-10-14
 
 ## Approach
 
@@ -128,6 +128,11 @@ The settlement core is built and is the only part that needed no upstream data.
   means. Both count a property as a claim only where it has damage -- a wall, a
   crossing, or liquefaction worse than None -- since a None state still carries
   the Canterbury average cost: on the pilot, 3,485 claims of 4,295 properties.
+- **The viewer types a claim by where its landslide ground came from**
+  (T-124). Ground that came down with a claim's own damaged wall reads as
+  retaining wall failure, not landslide, so such a claim is no longer typed
+  Combination. `wall_landslide_m2` carries that ground; costs do not move. A
+  land table without the per-failure lists raises (rerun vul step 10).
 
 ## Next
 
@@ -165,7 +170,7 @@ The settlement core is built and is the only part that needed no upstream data.
       is replaced in kind (**T-122**).
     - Split each claim's damaged land into inundated and evacuated in the
       viewer, and label its damage as liquefaction, wall failure, landslide or
-      a combination (**T-123**).
+      a combination (**T-123**); split by origin done in the CSV.
     - Show the wall repair cost apart from inundation removal (**T-125**), and
       retitle professional fees as including consents (**T-126**).
     - Carry imminent risk through to the outputs, with a switch to exclude it

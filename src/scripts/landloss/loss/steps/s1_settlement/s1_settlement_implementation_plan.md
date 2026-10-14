@@ -34,12 +34,6 @@
       geotechnical report supplies all three for a real claim (**Q-10**).
 - [ ] Distinguish a claim with no driveway routed from one with a short
       driveway. Both rate easy today.
-- [ ] Confirm the invented wall's geometry. The two-to-one aspect, the 2 m
-      margin at each end and the 10 m minimum are all invented, and together
-      they set how large the invented walls are -- the largest single lever on
-      the landslide side of the repair cost. The damaged area still drives both
-      the height, through the size class, and the length, which is one signal
-      doing two jobs.
 
 ## Phase 3 — What the settlement still cannot see
 

@@ -46,6 +46,7 @@ from landloss.domain.loss_contract import (
     LAND_PROPERTY_AREA_COLUMN,
     LAND_SUBURB_COLUMN,
     LANDSLIDE_AREA_COLUMN,
+    LANDSLIDE_EVACUATED_AREAS_COLUMN,
     LANDSLIDE_FAILURE_COLUMNS,
     LANDSLIDE_FOOTPRINT_AREA_COLUMN,
     LIQ_LD_AREA_COLUMN,
@@ -68,6 +69,8 @@ from landloss.exposure.land.extent import (
     PROPERTY_AREA_COLUMN,
     SUBURB_COLUMN,
 )
+from landloss.exposure.rw.population import INSURED_LENGTHS_COLUMN
+from landloss.hazard.landslide.wall_units import BETA_MIN_WALL_LENGTH_IN_PROPERTY_M
 from landloss.vul.landslide.land.damaged_area import (
     AREA_COLUMNS,
     DEPTH_COLUMNS,
@@ -89,9 +92,6 @@ WORLD_ID_COLUMN = "world_id"
 
 # Exposure's column names for what the contract renames.
 SIZE_CLASS_COLUMN = "size_class"
-# Each property a wall enters by at least 1 m and its length there, primary
-# first (exposure rw step 6): a list of {"property_id", "length_m"}.
-PROPERTY_LENGTHS_COLUMN = "property_lengths_m"
 WALL_TYPE_COLUMN = "wall_type"
 HEIGHT_COLUMN = "height_m"
 LENGTH_COLUMN = "length_m"
@@ -100,8 +100,9 @@ ASSET_COLUMN = "asset"
 FLAG_COLUMNS = (IS_EVACUATED_COLUMN, IS_INUNDATED_COLUMN)
 
 # The wall a row of the rw table is a piece of, written after the contract
-# columns. A wall on one property is its own piece; a wall crossing several is
-# one row per property (split_walls_by_property), each ``<rw_id>-P<n>``.
+# columns. A wall supporting one claim's land is its own piece; a wall
+# supporting several is one row per claim (split_walls_by_property), each
+# ``<rw_id>-P<n>``.
 PARENT_RW_ID_COLUMN = "parent_rw_id"
 PIECE_SUFFIX = "-P"
 
@@ -178,6 +179,8 @@ def build_land_table(
             damaged ground under the footprint per ``land_id``, and the
             landslides that reached it as the lists of
             :data:`~landloss.domain.loss_contract.LANDSLIDE_FAILURE_COLUMNS`
+            and
+            :data:`~landloss.domain.loss_contract.LANDSLIDE_EVACUATED_AREAS_COLUMN`
             where the step wrote them. Land without a row has no damaged area
             and empty lists.
         ld_state_column: The damage state's column in ``liquefaction``.
@@ -235,7 +238,11 @@ def build_land_table(
     # Each failure apart, for loss to give each its own wall (T-124). A step 3
     # run from before the lists were written has none, and loss then pools a
     # claim's ground as before.
-    failures = [column for column in LANDSLIDE_FAILURE_COLUMNS if column in slides]
+    failures = [
+        column
+        for column in (*LANDSLIDE_FAILURE_COLUMNS, LANDSLIDE_EVACUATED_AREAS_COLUMN)
+        if column in slides
+    ]
     for column in failures:
         table[column] = [_as_list(values) for values in land_ids.map(slides[column])]
     land = _geo(table, [*LAND_COLUMNS, DWELLING_COUNT_COLUMN, *failures], insured.crs)
@@ -255,73 +262,97 @@ def _as_list(values: object) -> list:
 
 def split_walls_by_property(
     rw: gpd.GeoDataFrame,
-    property_lengths: pd.Series,
+    stretches: pd.Series,
     claims: set | None = None,
 ) -> gpd.GeoDataFrame:
-    """Return the wall table with each wall split onto the properties it crosses.
+    """Return the wall table with each wall split onto the claims it supports.
 
-    A wall on one property is one row, as it was. A wall crossing several is one
-    row per property it enters by at least 1 m, each carrying that property's
-    claim and the length of wall on it, and everything else -- type, height,
-    damage -- from the wall, since the wall stands or fails as one. So each
-    property settles the wall on its own land against its own sub-cap and
-    excess, rather than the property holding most of it settling all of it.
+    A wall's pieces are its insured stretches: one row per claim whose insured
+    land the wall supports (exposure rw step 6), carrying that claim and the
+    length of the stretch, and everything else -- type, height, damage -- from
+    the wall, since the wall stands or fails as one. So each claim settles the
+    wall over the stretch that holds up its own land, against its own sub-cap
+    and excess.
 
-    The primary property takes the wall's length less the other pieces, so the
-    slivers under 1 m stay with it and the wall's length is conserved. A piece
-    on a property that is not a claim is dropped: that wall is not insured
-    there, and the primary keeps only its own share. Each piece keeps the whole
-    wall's line, since the population carries no line per property.
+    No piece takes a remainder: length that supports no claim's insured land is
+    not priced. A wall with no stretch gives no row. A stretch on a claim that
+    is not in ``claims`` is dropped. A wall left with one stretch keeps its own
+    id. Each piece keeps the whole wall's line, since the population carries no
+    line per claim.
 
     Args:
         rw: The retaining wall table, one row per wall, keyed on ``rw_id``.
-        property_lengths: Each wall's :data:`PROPERTY_LENGTHS_COLUMN` by
-            ``rw_id``; a wall with none, or an empty list, is not split.
+        stretches: Each wall's stretches by ``rw_id``, each a list of
+            ``{"claim_id", "length_m"}`` already cut to the minimum length and
+            ordered longest first; a wall with none, or an empty list, gives no
+            piece.
         claims: The claim ids a piece may land on; ``None`` keeps every piece.
 
     Returns:
         ``rw`` with :data:`PARENT_RW_ID_COLUMN` added, one row per piece, in the
-        order of ``rw`` and, within a wall, primary first.
+        order of ``rw`` and, within a wall, longest stretch first.
     """
     rows = []
     for record in rw.to_dict("records"):
         parent = record[RW_ID_COLUMN]
-        entries = property_lengths.get(parent)
+        entries = stretches.get(parent)
         entries = [] if entries is None else list(entries)
-        others = [
+        pieces = [
             entry
             for entry in entries
-            if entry["property_id"] != record[CLAIM_ID_COLUMN]
+            if claims is None or entry[CLAIM_ID_COLUMN] in claims
         ]
-        kept = [
-            entry
-            for entry in others
-            if claims is None or entry["property_id"] in claims
-        ]
-        if not others:
-            rows.append({**record, PARENT_RW_ID_COLUMN: parent})
-            continue
-        primary = record[RW_LENGTH_COLUMN] - sum(
-            float(entry["length_m"]) for entry in others
-        )
-        pieces = [(record[CLAIM_ID_COLUMN], max(primary, 0.0))] + [
-            (entry["property_id"], float(entry["length_m"])) for entry in kept
-        ]
-        for number, (claim, length) in enumerate(pieces, start=1):
-            # A wall left on its primary alone keeps its own id.
+        for number, entry in enumerate(pieces, start=1):
+            # A wall left on one stretch keeps its own id.
             piece_id = parent if len(pieces) == 1 else f"{parent}{PIECE_SUFFIX}{number}"
             rows.append(
                 {
                     **record,
                     RW_ID_COLUMN: piece_id,
-                    CLAIM_ID_COLUMN: claim,
-                    RW_LENGTH_COLUMN: length,
+                    CLAIM_ID_COLUMN: entry[CLAIM_ID_COLUMN],
+                    RW_LENGTH_COLUMN: float(entry["length_m"]),
                     PARENT_RW_ID_COLUMN: parent,
                 }
             )
     columns = [*rw.columns, PARENT_RW_ID_COLUMN]
     frame = pd.DataFrame(rows, columns=columns)
+    flags = [c for c in rw.columns if rw[c].dtype == bool]
+    frame = frame.astype(dict.fromkeys(flags, bool))
     return gpd.GeoDataFrame(frame, geometry=rw.geometry.name, crs=rw.crs)
+
+
+def _wall_stretches(
+    walls: pd.DataFrame,
+    min_length_m: float = BETA_MIN_WALL_LENGTH_IN_PROPERTY_M,
+) -> pd.Series:
+    """Return each wall's stretches, as exposure rw step 6 wrote them.
+
+    Args:
+        walls: The wall population, carrying ``rw_id`` and
+            :data:`INSURED_LENGTHS_COLUMN`.
+        min_length_m: The shortest stretch kept, in metres.
+
+    Returns:
+        A Series by ``rw_id`` of lists of ``{"claim_id", "length_m"}``.
+
+    Raises:
+        ValueError: If the population lacks :data:`INSURED_LENGTHS_COLUMN`.
+    """
+    if INSURED_LENGTHS_COLUMN not in walls.columns:
+        msg = (
+            f"The wall population has no {INSURED_LENGTHS_COLUMN!r} column: "
+            "rerun exposure rw step 6 (gen_wall_population.py)"
+        )
+        raise ValueError(msg)
+    listed = [
+        [
+            {CLAIM_ID_COLUMN: e[CLAIM_ID_COLUMN], "length_m": float(e["length_m"])}
+            for e in _as_list(found)
+            if float(e["length_m"]) >= min_length_m
+        ]
+        for found in walls[INSURED_LENGTHS_COLUMN]
+    ]
+    return pd.Series(listed, index=walls[RW_ID_COLUMN].to_numpy(), dtype=object)
 
 
 def build_rw_table(
@@ -335,13 +366,15 @@ def build_rw_table(
 
     The table is spined on the world's wall population, so a wall on sloping
     ground, which the shaking step never sees, appears beside the flat-land
-    walls it does (contract section 7.14). A wall crossing property boundaries
-    is then split onto each property (:func:`split_walls_by_property`).
+    walls it does (contract section 7.14). A wall is then split onto each claim
+    whose insured land it supports (:func:`split_walls_by_property`), at the
+    length of its insured stretch there, and a wall supporting none gives no
+    row.
 
     Args:
         walls: The world's wall population, carrying ``rw_id``, ``claim_id``,
-            ``size_class``, ``wall_type``, ``height_m``, ``length_m`` and the
-            line geometry.
+            ``size_class``, ``wall_type``, ``height_m``, ``length_m``, the
+            line geometry and ``insured_lengths_m`` (exposure rw step 6).
         states: The shaking step's ``damage_state`` per ``rw_id``, for the
             flat-land walls only. A wall with no row has no shaking damage
             from this source.
@@ -399,14 +432,7 @@ def build_rw_table(
         replaced | merged[IS_DAMAGED_BY_SHAKING_COLUMN].to_numpy()
     )
     rw = _geo(merged, list(RW_COLUMNS), walls.crs)
-    if PROPERTY_LENGTHS_COLUMN in walls.columns:
-        lengths = pd.Series(
-            walls[PROPERTY_LENGTHS_COLUMN].to_numpy(),
-            index=walls[RW_ID_COLUMN].to_numpy(),
-        )
-    else:
-        lengths = pd.Series(dtype=object)
-    rw = split_walls_by_property(rw, lengths, claims)
+    rw = split_walls_by_property(rw, _wall_stretches(walls), claims)
     rw = _geo(rw, [*RW_COLUMNS, PARENT_RW_ID_COLUMN], walls.crs)
     check_contract_columns(rw.columns, RW_COLUMNS, table="rw")
     return rw

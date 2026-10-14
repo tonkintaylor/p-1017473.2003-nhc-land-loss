@@ -526,6 +526,16 @@ def chain(tmp_path_factory):
     with pytest.MonkeyPatch.context() as patch:
         for module, folder in WORK_DIRS:
             patch.setattr(module, "WORK_DIR", root / folder)
+        # The properties the claims sit on, one per insured land polygon.
+        patch.setattr(
+            gen_wall_population,
+            "read_claim_parcels",
+            lambda **_: gpd.GeoDataFrame(
+                {CLAIM_ID_COLUMN: [CLAIM_1, CLAIM_2]},
+                geometry=[rect(-10, -10, 45, 40), rect(45, -35, 105, 20)],
+                crs=constants.DEFAULT_CRS,
+            ),
+        )
         patch.setattr(
             gen_terrain_derivatives, "TERRAIN_DIR", root / "landslide" / "terrain"
         )
@@ -601,7 +611,7 @@ def run_chain(root):
     forced["is_flatland"] = forced["wall_line_id"] == unit_ids["flat"]
     write(forced, gen_wall_probability.wall_probability_path(extent=extent))
     write(make_wall_ages(), gen_wall_age.wall_age_path(extent=extent))
-    gen_wall_population.main(extent=extent, world_ids=[WORLD])
+    gen_wall_population.main(extent=extent, world_ids=[WORLD], use_cached_layers=True)
     walls = gpd.read_parquet(
         gen_wall_population.wall_population_path(WORLD, extent=extent)
     )

@@ -42,7 +42,9 @@ Every line rests on an assumption, and each is named here rather than buried.
   never there. Its size comes from
   `classify_landslide_wall_size()`, on the damaged area and — where an
   inundated depth makes one available — the volume, taking the **larger** of
-  the two classes. Its length follows the **width of the failure**: ground goes
+  the two classes. Its length follows the **width of the failure's
+  evacuated insured ground** on the claim, not its deposit (2026-10-14; the
+  whole ground on a land table without `landslide_evacuated_areas`): ground goes
   as a strip twice as wide as it is deep, plus a 2 m margin at each end, floored
   at a 5 m minimum below which nobody mobilises
   (`MIN_LANDSLIDE_WALL_LENGTH_M`). That floor is what stops the

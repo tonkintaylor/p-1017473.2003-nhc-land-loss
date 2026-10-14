@@ -124,6 +124,10 @@ def wall_population(world_id=0):
             "is_flatland": [flat for _, flat in WALLS],
             "source": "property_boundary",
             "material": "alluvium",
+            "insured_lengths_m": [
+                [{"claim_id": rw_id.split("-")[0], "length_m": length}]
+                for (rw_id, _), length in zip(WALLS, [12.0, 30.0, 8.0], strict=True)
+            ],
         },
         geometry=[
             LineString([(0, 0), (12, 0)]),
@@ -377,3 +381,26 @@ def test_a_wall_without_landslide_flags_stops_the_run(synthetic_run):
     )
     with pytest.raises(ValueError, match="no landslide flags"):
         step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
+
+
+def test_a_wall_with_insured_stretches_is_split_at_their_lengths(
+    synthetic_run, monkeypatch
+):
+    walls = wall_population(0)
+    walls["insured_lengths_m"] = [
+        [{"claim_id": "C01", "length_m": 12.0}],
+        [
+            {"claim_id": "C01", "length_m": 20.0},
+            {"claim_id": "C02", "length_m": 5.0},
+        ],
+        [],
+    ]
+    walls.to_parquet(gen_wall_population.wall_population_path(0, extent="wlg-pilot"))
+
+    step.main(extent="wlg-pilot", world_ids=[0], realisation_ids=[0])
+
+    rw = read_table("rw", 0, 0)
+    assert rw["rw_id"].tolist() == ["C01-RW01", "C01-RW02-P1", "C01-RW02-P2"]
+    assert rw["claim_id"].tolist() == ["C01", "C01", "C02"]
+    assert rw["rw_length"].tolist() == pytest.approx([12.0, 20.0, 5.0])
+    assert rw["parent_rw_id"].tolist() == ["C01-RW01", "C01-RW02", "C01-RW02"]
