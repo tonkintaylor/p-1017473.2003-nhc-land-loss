@@ -822,11 +822,15 @@ function describeScenario(sc) {
 }
 
 // Totals, shortfall and who gains or loses against the baseline, for one set of
-// settlements over the baseline's claims, in order.
-function scoreAgainstBaseline(claims, paid, total, act) {
-  // What properties miss out on (T-132): the repair cost the settlement does
-  // not cover, the excess included, and how many claims are left short.
-  const gaps = claims.map((r, i) => Math.max(0, r.repair - paid[i]));
+// settlements over the baseline's claims, in order, and what each claim was
+// covered for before the excess.
+function scoreAgainstBaseline(claims, paid, payable, total, act) {
+  // What properties miss out on because of the caps and sub-caps (T-132): the
+  // repair cost the cap leaves unpaid, and how many claims it leaves short. The
+  // excess is left out: every claim pays one whatever the cap, so it would hide
+  // the effect of the caps behind a figure that barely moves between them.
+  const gaps = claims.map((r, i) => Math.max(0, r.repair - payable[i]));
+  const short = gaps.filter(g => g > UNCHANGED_NZD).length;
   // Who the cap leaves better or worse off than the Act, claim by claim. A
   // difference under a dollar is rounding, so it counts as unchanged.
   const moved = claims.map((r, i) => paid[i] - r.settlement);
@@ -834,7 +838,7 @@ function scoreAgainstBaseline(claims, paid, total, act) {
   const worse = moved.filter(d => d < -UNCHANGED_NZD).length;
   return {
     total, delta: total - act, deltaShare: act > 0 ? (total - act) / act : 0,
-    shortfall: d3.sum(gaps), short: gaps.filter(g => g > 0).length,
+    shortfall: d3.sum(gaps), short,
     claims: claims.length, better, worse, unchanged: claims.length - better - worse,
   };
 }
@@ -851,15 +855,17 @@ function capScenarios(rows, scRows, value, viewRows) {
   const above = capOf => shown.filter(r => value(r) > capOf(r)).length;
   const fixed = CAPS.map(k => {
     const paid = claims.map(r => settleUnderCap(r, k));
+    const payable = claims.map(r => Math.min(r.repair, k * dwellingsOf(r)));
     const n = above(r => k * dwellingsOf(r));
     return {k, above: n, share: n / Math.max(1, shown.length),
-            ...scoreAgainstBaseline(claims, paid, d3.sum(paid), act)};
+            ...scoreAgainstBaseline(claims, paid, payable, d3.sum(paid), act)};
   });
   const scClaims = scRows.filter(r => r.claimed);
   const n = shown.filter(r => scenarioCapped(r, SCEN)).length;
   const scenario = {
     k: SCEN.cap, scenario: true, above: n, share: n / Math.max(1, shown.length),
     ...scoreAgainstBaseline(claims, scClaims.map(r => r.settlement),
+                            scClaims.map(r => r.payable),
                             d3.sum(scRows, r => r.settlement), act),
   };
   return {fixed, scenario};
@@ -1028,8 +1034,9 @@ function actSummary(rows, scRows) {
     const total = d3.sum(all, r => r.settlement);
     return {
       total, paid: all.filter(r => r.settlement > 0).length,
-      notCovered: d3.sum(cl, r => Math.max(0, r.repair - r.settlement)),
-      short: cl.filter(r => r.repair - r.settlement > UNCHANGED_NZD).length,
+      // What the caps and sub-caps leave unpaid, the excess not included.
+      notCovered: d3.sum(cl, r => Math.max(0, r.repair - r.payable)),
+      short: cl.filter(r => r.repair - r.payable > UNCHANGED_NZD).length,
       average: total / Math.max(1, cl.length),
       wallCap: d3.sum(cl, r => r.wallCounted), crossingCap: d3.sum(cl, r => r.crossingCounted),
       // The scenario's: what each structure's sub-cap pays of its repair.
@@ -1094,8 +1101,8 @@ function actSummary(rows, scRows) {
        cost: ${!document.getElementById("liqOn").checked
          ? "<b>excluded</b> &mdash; liquefaction damage, claims and costs are all left out"
          : rows[0]?.liq_method ?? "how it was priced is not recorded in this CSV"}.
-       "Not covered" is the repair cost the settlement leaves unpaid, the excess
-       included.</div>
+       "Not covered" is the repair cost the cap and sub-caps leave unpaid, the
+       excess not included.</div>
      <h2 style="margin-top:14px">The scenario against the baseline</h2>
      <table>
        ${pair("Better off", of(better))}
@@ -1154,7 +1161,7 @@ function capSummary(scenarios) {
            <th class="n" title="What every claim is paid under the cap, after the excess, excluding GST">Total settlement</th>
            <th class="n" title="The total settlement less the baseline's (the NHI Act 2023)">vs baseline</th>
            <th class="n" title="The difference from the baseline as a share of the baseline's total">Change</th>
-           <th class="n" title="The repair cost the settlement leaves unpaid, the excess included. Hover over a figure for the number of claims left short.">Not covered</th></tr>
+           <th class="n" title="The repair cost the cap and sub-caps leave unpaid, the excess not included. Hover over a figure for the number of claims left short.">Not covered</th></tr>
        ${all.map(s => `
        <tr class="${s.scenario ? "scenrow" : ""}"><td>${name(s)}</td>
            <td class="n">${count(s.above)} (${pct(s.share)})</td>
