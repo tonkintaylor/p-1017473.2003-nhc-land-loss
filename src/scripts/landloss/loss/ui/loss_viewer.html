@@ -807,6 +807,33 @@ function settleScenario(r, sc) {
           change: settlement - r.settlement};
 }
 
+// The cost-neutral land cap: the land cap per dwelling at which the scenario's
+// total settlement equals the baseline's, its sub-caps and excess held as set.
+// The total never falls as the cap rises, so one cap does it, found by halving
+// the range. Null, with the reason, where no cap can: the scenario pays less
+// than the baseline even uncapped, or more with no land cap at all.
+function neutralCap(rows, scRows) {
+  const act = d3.sum(rows, r => r.settlement);
+  // Per claim: the part the land cap limits, the part it does not (what the
+  // sub-caps pay) and the excess, so a trial cap needs no full resettling.
+  const parts = scRows.filter(r => r.claimed).map(r => {
+    const c = scenarioCover(r, SCEN);
+    return SCEN.subOn
+      ? {d: dwellingsOf(r), capped: c.landRepair, fixed: c.paidWall + c.paidCrossing, ex: r.excessIf}
+      : {d: dwellingsOf(r), capped: r.repair, fixed: 0, ex: r.excessIf};
+  });
+  const total = k => d3.sum(parts, p => Math.max(0, Math.min(p.capped, k * p.d) + p.fixed - p.ex));
+  // Past the largest repair per dwelling the land cap no longer binds.
+  let lo = 0, hi = d3.max(parts, p => p.capped / p.d) ?? 0;
+  if (total(hi) < act) return {cap: null, why: "the scenario pays less than the baseline even with no land cap"};
+  if (total(lo) > act) return {cap: null, why: "the sub-caps alone pay more than the baseline"};
+  while (hi - lo > 100) {
+    const mid = (lo + hi) / 2;
+    if (total(mid) < act) lo = mid; else hi = mid;
+  }
+  return {cap: Math.round(hi / 1e3) * 1e3, why: null};
+}
+
 // The scenario in words, under the panel that sets it.
 function describeScenario(sc) {
   const structures = sc.subOn
@@ -1045,6 +1072,7 @@ function actSummary(rows, scRows) {
     };
   };
   const base = side(rows, claims), scen = side(scRows, scClaims);
+  const neutral = neutralCap(rows, scRows);
   const most = d3.max(base.byBasis.concat(scen.byBasis)) || 1;
   const delta = scen.total - base.total;
   const moved = scClaims.map(r => r.change);
@@ -1084,6 +1112,12 @@ function actSummary(rows, scRows) {
      </div>
      <div class="note" style="margin-top:2px">total settlement, excluding GST. The
        scenario's, as each land cap's, is shown to the nearest million.</div>
+     <div style="margin-top:6px" title="The land cap per dwelling at which the scenario's total settlement equals the baseline's, with the scenario's sub-caps and excess as set. Changing either moves it.">
+       Cost-neutral land cap: ${neutral.cap != null
+         ? `<b style="color:var(--scen)">${money(neutral.cap)}</b> per dwelling`
+         : `<span class="note">none &mdash; ${neutral.why}</span>`}
+       <div class="note" style="margin:0">with this scenario's sub-caps and excess, to the
+         nearest $1,000</div></div>
      <table style="margin-top:6px">
        <tr><td>Properties</td><td class="n">${count(rows.length)}</td></tr>
        <tr><td>&nbsp;&nbsp;with damage</td><td class="n">${count(damagedCount)}</td></tr>
@@ -1094,6 +1128,9 @@ function actSummary(rows, scRows) {
        ${pair("Total repair cost", thousands(d3.sum(claims, r => r.repair)))}
        ${pair("Repair cost not covered", thousands(base.notCovered), thousands(scen.notCovered))}
        ${pair("Claims left short", count(base.short), count(scen.short))}
+       ${pair("Average shortfall per claim left short",
+              thousands(base.notCovered / Math.max(1, base.short)),
+              thousands(scen.notCovered / Math.max(1, scen.short)))}
        ${pair("Average settlement per claim", thousands(base.average), thousands(scen.average))}
        ${pair("Claims paid something after the excess", count(base.paid), count(scen.paid))}
      </table>
@@ -1161,14 +1198,16 @@ function capSummary(scenarios) {
            <th class="n" title="What every claim is paid under the cap, after the excess, excluding GST">Total settlement</th>
            <th class="n" title="The total settlement less the baseline's (the NHI Act 2023)">vs baseline</th>
            <th class="n" title="The difference from the baseline as a share of the baseline's total">Change</th>
-           <th class="n" title="The repair cost the cap and sub-caps leave unpaid, the excess not included. Hover over a figure for the number of claims left short.">Not covered</th></tr>
+           <th class="n" title="The repair cost the cap and sub-caps leave unpaid, the excess not included. Hover over a figure for the number of claims left short.">Not covered</th>
+           <th class="n" title="The repair cost not covered, averaged over the claims left short">Avg shortfall</th></tr>
        ${all.map(s => `
        <tr class="${s.scenario ? "scenrow" : ""}"><td>${name(s)}</td>
            <td class="n">${count(s.above)} (${pct(s.share)})</td>
            <td class="n">${millionsOrBillions(s.total)}</td>
            <td class="n ${s.delta > 0 ? "up" : "down"}">${s.delta > 0 ? "+" : ""}${millionsOrBillions(s.delta)}</td>
            <td class="n ${s.delta > 0 ? "up" : "down"}">${change(s.deltaShare)}</td>
-           <td class="n" title="${count(s.short)} claims left short">${millionsOrBillions(s.shortfall)}</td></tr>`).join("")}
+           <td class="n" title="${count(s.short)} claims left short">${millionsOrBillions(s.shortfall)}</td>
+           <td class="n" title="${money(s.shortfall / Math.max(1, s.short))}">${s.short ? short(s.shortfall / s.short) : "&ndash;"}</td></tr>`).join("")}
      </table>
      <div class="note">${CAPS.length ? `The fixed caps are the quick comparisons, set at
        the bottom of the scenario panel. ` : ""}Hover over a column heading for what it
