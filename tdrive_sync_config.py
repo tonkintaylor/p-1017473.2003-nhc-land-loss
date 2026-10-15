@@ -18,7 +18,7 @@ per-developer settings (those live in ``.env`` instead — see
 from pathlib import Path
 
 BASE_DIR = Path(
-    r"T:\Auckland\Projects\1017473\1017473.2003\WorkingMaterial\versioned_data"
+    r"\\ttgroup.local\corporate\Auckland\Projects\1017473\1017473.2003\WorkingMaterial\versioned_data"
 )
 
 # Bump this whenever the shared data needs to move on from what is already
@@ -30,4 +30,6 @@ DATA_VERSION = "v1"
 # Data supplied by someone else -- NHC, another team -- read via
 # tdrive_sync.get_source_mat. Unversioned: this is read-only, and never
 # written to by tdrive_sync.
-SOURCE_MATERIAL_DIR = Path(r"T:\Auckland\Projects\1017473\1017473.2003\SourceMaterial")
+SOURCE_MATERIAL_DIR = Path(
+    r"\\ttgroup.local\corporate\Auckland\Projects\1017473\1017473.2003\SourceMaterial"
+)

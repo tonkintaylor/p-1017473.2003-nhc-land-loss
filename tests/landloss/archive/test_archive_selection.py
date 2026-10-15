@@ -1,3 +1,5 @@
+import sqlite3
+from contextlib import closing
 from pathlib import Path, PurePath
 
 import pytest
@@ -146,3 +148,29 @@ def test_a_file_cut_short_in_copying_is_damaged(tmp_path) -> None:
     short.write_bytes(whole.read_bytes()[:-100])
     assert damage(whole) is None
     assert damage(short) is not None
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_geopackage_integrity_accepts_absolute_and_relative_paths(
+    tmp_path, monkeypatch, relative
+) -> None:
+    whole = tmp_path / "whole #1.gpkg"
+    with closing(sqlite3.connect(whole)) as db:
+        db.execute("CREATE TABLE features (id INTEGER PRIMARY KEY)")
+    monkeypatch.chdir(tmp_path)
+    path = Path(whole.name) if relative else whole
+    assert damage(path) is None
+
+
+def test_corrupt_geopackage_is_damaged(tmp_path, monkeypatch) -> None:
+    corrupt = tmp_path / "corrupt.gpkg"
+    corrupt.write_bytes(b"not a SQLite database")
+    monkeypatch.chdir(tmp_path)
+    assert "DatabaseError" in damage(Path(corrupt.name))
+
+
+def test_missing_geopackage_is_not_created(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    missing = Path("missing.gpkg")
+    assert "OperationalError" in damage(missing)
+    assert not missing.exists()

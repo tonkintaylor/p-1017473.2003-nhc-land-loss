@@ -14,6 +14,7 @@ import pickle
 import shutil
 import sqlite3
 import subprocess
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -66,7 +67,9 @@ def damage(path: Path) -> str | None:
             with rasterio.open(path) as raster:
                 raster.read(1, window=Window(0, raster.height - 1, raster.width, 1))
         elif path.suffix == ".gpkg":
-            with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as db:
+            with closing(
+                sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+            ) as db:
                 result = db.execute("pragma quick_check").fetchone()[0]
             if result != "ok":
                 return f"GeoPackage check: {result}"
