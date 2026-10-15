@@ -22,7 +22,7 @@ CV_BAND_EDGES_NZD = [500_000, 750_000, 1_000_000, 1_500_000]
 # The fixed land cap the Act's cover is compared against, excluding GST: it
 # replaces the land cover cap -- land value and the sub-caps -- so a claim is
 # paid its repair cost up to it, less the excess. The loss viewer's "replace"
-# mode, per claim. The settlement, coverage, unpaid and limits figures are drawn
+# mode, per dwelling. The settlement, coverage, unpaid and limits figures are drawn
 # against it.
 FIXED_CAP_NZD = 100_000.0
 
