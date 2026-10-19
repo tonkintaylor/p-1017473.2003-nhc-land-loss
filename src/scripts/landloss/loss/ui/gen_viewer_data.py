@@ -130,6 +130,9 @@ HERE = __import__("pathlib").Path(__file__).resolve().parent
 # Where the page shows its version; the copy written beside the CSVs has it
 # replaced (write_viewer).
 VERSION_PLACEHOLDER = "__VIEWER_VERSION__"
+# Where the page takes its default liquefaction escalation; write_viewer puts
+# LIQ_COST_ESCALATION in its place, so the page opens on the module's figure.
+LIQ_ESCALATION_PLACEHOLDER = "__LIQ_ESCALATION__"
 # The liquefaction land damage state that is no damage at all: "None", the
 # first of LD_STATES, numbered from one. A property drawn in it still carries
 # the Canterbury cost for it -- an average with non-claimants in at $0 -- but
@@ -566,10 +569,15 @@ def viewer_version() -> str:
 
 
 def write_viewer(out_dir, version: str):
-    """Write the page beside the CSVs, with its version in place."""
-    page = (HERE / VIEWER).read_text(encoding="utf-8")
+    """Write the page beside the CSVs, with its version and escalation in place."""
+    page = (
+        (HERE / VIEWER)
+        .read_text(encoding="utf-8")
+        .replace(VERSION_PLACEHOLDER, version)
+        .replace(LIQ_ESCALATION_PLACEHOLDER, f"{LIQ_COST_ESCALATION:g}")
+    )
     path = out_dir / VIEWER
-    path.write_text(page.replace(VERSION_PLACEHOLDER, version), encoding="utf-8")
+    path.write_text(page, encoding="utf-8")
     return path
 
 
@@ -829,6 +837,40 @@ def settled_in_python(
     )
 
 
+def check_damaged_walls_are_priced(rows: pd.DataFrame) -> None:
+    """Refuse a CSV whose damaged wall count and wall repair cost disagree.
+
+    ``has_damaged_wall`` is whether the settlement priced a wall repair, and
+    ``damaged_wall_count`` how many walls loss counts as damaged, so on every
+    claim one is above zero exactly when the other is. The page can then work
+    the flag out from the count, and the CSV can drop it. Before the 2026-10-14
+    rerun, five claims counted a damaged wall that cost nothing: zero-length
+    pieces from the old split, and walls only buried. A run that still makes
+    one stops here rather than reaching the page.
+
+    Args:
+        rows: The viewer rows, carrying both columns.
+
+    Raises:
+        ValueError: If any claim has one and not the other, naming them.
+    """
+    priced = rows["has_damaged_wall"] > 0
+    counted = rows["damaged_wall_count"] > 0
+    differ = rows.loc[priced != counted]
+    if differ.empty:
+        return
+    unpriced = differ.loc[differ["damaged_wall_count"] > 0, CLAIM_ID_COLUMN].tolist()
+    uncounted = differ.loc[differ["damaged_wall_count"] == 0, CLAIM_ID_COLUMN].tolist()
+    msg = (
+        f"{len(differ)} claims disagree on whether they have a damaged wall: "
+        f"{len(unpriced)} count one with no wall repair cost {unpriced[:5]}, "
+        f"{len(uncounted)} have a wall repair cost with none counted "
+        f"{uncounted[:5]}. Rerun vul step 10 and loss; if they remain, find why "
+        "before the page works has_damaged_wall out from damaged_wall_count."
+    )
+    raise ValueError(msg)
+
+
 def check_viewer_against_the_model(rows, claims, policy) -> float:
     """Print whether the viewer's arithmetic still matches what was settled."""
     mine = settled_in_python(rows, policy)
@@ -894,6 +936,7 @@ def main(*, extent, world_ids, realisation_ids):
     rows = rows.join(points).reset_index()
     rows = within_territorial_authority(rows, extent)
 
+    check_damaged_walls_are_priced(rows)
     check_viewer_against_the_model(rows.set_index(CLAIM_ID_COLUMN), claims, policy)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)

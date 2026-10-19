@@ -1,0 +1,1 @@
+The loss viewer's quick comparisons -- the fixed land caps drawn as red lines -- have their own box under the scenario panel, the same width, with an Update button of their own. A change to them waits for Update, or Enter in the list, and the box says so meanwhile; Apply takes up only the scenario. The scenario's description under the panel no longer ends "Nothing is valued."

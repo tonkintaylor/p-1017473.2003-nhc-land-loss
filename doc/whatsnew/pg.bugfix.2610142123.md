@@ -1,0 +1,1 @@
+The loss equity figures (gen_equity_by_value.py) apply each fixed land cap per dwelling, as the loss viewer does and as NHC's scenarios state it, rather than once per claim, so a block of flats no longer shares one cap. Rerun gen_equity_by_value.py.

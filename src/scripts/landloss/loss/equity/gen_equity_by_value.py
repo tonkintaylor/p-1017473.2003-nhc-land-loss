@@ -28,9 +28,9 @@ than the two side by side in one; the scenarios take a panel per cap.
 
 The fixed cap is NHC's "replace" scheme as the loss viewer runs it: it stands
 in for the land cover cap -- land value and the sub-caps -- so a claim is paid
-its repair cost up to the cap, less the excess. Per claim, as the viewer
-applies it, so a block's dwellings share one cap; that is the reading to
-confirm with NHC before the figures are relied on for flats.
+its repair cost up to the cap, less the excess. Per dwelling, as the viewer
+applies it (2026-10-14) and as NHC's scenarios state it: a claim's cap is the
+fixed cap times its dwellings.
 
 Per dwelling, both in banding and in what is drawn, so a block of flats is
 read as its households rather than as one dear property.
@@ -263,9 +263,10 @@ def settled_per_dwelling(claims, cap_nzd, policy):
     Returns:
         The settlement per dwelling, never below zero.
     """
-    cap = claims[ACT_CAP] if cap_nzd is None else cap_nzd
-    payable = np.minimum(claims[REPAIR], cap).to_numpy(float)
     dwellings = claims[DWELLINGS_COLUMN].to_numpy(float)
+    # A fixed cap is per dwelling; the Act's cap is the claim's own.
+    cap = claims[ACT_CAP].to_numpy(float) if cap_nzd is None else cap_nzd * dwellings
+    payable = np.minimum(claims[REPAIR].to_numpy(float), cap)
     excess = policy.excess_nzd(payable, dwellings)
     return np.maximum(payable - excess, 0.0) / dwellings
 
@@ -296,7 +297,10 @@ def settle_both_ways(claims, fixed_cap_nzd, policy):
         default=CAPPED_VALUE,
     )
     fixed_limit = np.select(
-        [fixed <= 0, (claims[REPAIR] <= fixed_cap_nzd).to_numpy()],
+        [
+            fixed <= 0,
+            (claims[REPAIR] <= fixed_cap_nzd * claims[DWELLINGS_COLUMN]).to_numpy(),
+        ],
         [EXCESS, PAID],
         default=CAPPED_FIXED,
     )
@@ -434,7 +438,7 @@ def basis_note(claims, fixed_cap_nzd):
         f"Every claim with a repair cost in {places}, one modelled event.\n"
         "A fixed cap replaces the land cover cap (land value and sub-caps): a claim "
         f"is paid its repair cost up to the cap ({cap_label(fixed_cap_nzd)} here), "
-        "less the excess,\nper claim, so a block of flats shares one cap. Capital "
+        "less the excess,\nthe cap per dwelling. Capital "
         "value from the QV roll, per dwelling; dollars excluding GST."
     )
 
@@ -755,7 +759,7 @@ def plot_scenarios(claims, grouped, labels, caps_nzd, policy, out):
         "Change in the total settled under each fixed land cap, by property value",
         "Each bar: the total a band's claims are settled under the cap, against the "
         "total under the Act. Each cap replaces the land cover cap (land value and "
-        "sub-caps),\nper claim, less the excess. Every claim with a repair cost in "
+        "sub-caps),\nper dwelling, less the excess. Every claim with a repair cost in "
         f"{places}, one modelled event. Capital value from the QV roll, per "
         "dwelling; dollars excluding GST.",
         out,
