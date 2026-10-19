@@ -55,12 +55,23 @@ The spec is the QGIS one, with these differences:
 - `out_dir` — folder to write to. Optional; see section 1.
 - `combined` — a filename stem. Put every layer in **one** KML as separate folders, rather
   than one file per layer. Use it when the user wants one thing to send.
+- `kmz: true` — zip each file as a `.kmz` (the KML as `doc.kml`), which Google Earth
+  opens directly. Lossless, and about a sixth of the size. Use it for anything big.
 - `source` and `extent` are ignored. `basemap` layers are skipped: Google Earth has its own
   imagery.
 - Per layer, `kml_width` (pixels, lines and outlines) and `kml_scale` (points) replace the
   millimetre `width` and `size`, which mean nothing on a globe. `name_field` picks the
   column a placemark is named from (default: the first column ending `_id`) and `fields`
   limits which columns go into each placemark's ExtendedData (default: all of them).
+- `simplify_m` drops vertices that move an outline by less than that many metres,
+  in the source CRS before reprojecting. Buffered model polygons carry far more
+  vertices than they need (the Porirua landslide realisation had a median of 113 for
+  48 m²), and coordinates are most of a KML's size. Keep it well under the feature
+  size and measure the area change: on the landslide realisation 0.1 m cut vertices
+  to a third for a median area change of 0.4%, while 0.5 m moved the worst 1% by 29%,
+  which redraws the result rather than simplifying it.
+- `kml_decimals` sets the decimal places of longitude and latitude (default 7, about
+  1 cm). 6 is about 10 cm, well under any model's accuracy, and saves about a tenth.
 - `checked: false` leaves the layer switched off when it opens, but **only in a `combined`
   file**. A file of one layer is always on: it was made to look at that layer.
 - `fill: false` draws polygons as outlines only, which is right for property boundaries
