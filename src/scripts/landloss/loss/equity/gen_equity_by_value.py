@@ -1,30 +1,35 @@
-"""Draw how land settlements fall across properties of different value.
+"""Draw whether the Act pays some owners in full more often than others.
 
     uv run --frozen python src/scripts/landloss/loss/equity/gen_equity_by_value.py
 
-Equity here means who the land cover is generous to. The Act's land cover cap
-is built from the value of the damaged land, so the same damage can be settled
-differently on a dear section and a cheap one; a fixed land cap pays every
-claim its repair cost up to one figure, whatever the land is worth. These group
-claims by the capital value of their property and draw, per band:
+Equity here means who the land cover is generous to, and the question the
+figures answer is whether the Act pays wealthier owners their full repair cost
+more often than others. The Act's land cover cap is built from the value of the
+damaged land, so the same damage can be settled differently on a dear section
+and a cheap one; a fixed land cap pays every claim its repair cost up to one
+figure, whatever the land is worth. Claims are grouped by the capital value of
+their property, a stand-in for the owner's wealth, and drawn in this order:
 
-1. **Settlement** per dwelling.
-2. **The change** in it under a fixed cap (``config.FIXED_CAP_NZD``). Most
-   claims do not change at all -- the repair cost is under both caps -- so a
-   box over every claim sits flat on zero; the claims paid more and those paid
-   less are drawn in a panel each.
-3. **Share of the repair cost covered**: what the owner is left to pay, as a
-   share of the bill.
-4. **Unpaid cost as a share of capital value**: the same shortfall against
-   what the property is worth, so the burden reads against the owner's means.
+1. **Paid in full**: the share of each band's claims whose whole repair cost is
+   within the cap, before the excess, with the average shortfall per dwelling
+   of the claims left short.
+2. **Paid in full by damage type**: the same, one panel per kind of damage.
+   Landslides fall on hill suburbs and liquefaction on the flats, so a trend
+   by value can be a trend by ground; within one kind of damage it cannot.
+3. **Unpaid cost as a share of capital value**: the shortfall against what the
+   property is worth, so the burden reads against the owner's means.
+4. **Damage mix**: the kinds of damage in each band, the context for 1 and 2.
 5. **What limits the settlement**: whether a claim is paid its repair cost,
    capped, or taken wholly by the excess.
-6. **Every cap scenario** (``config.CAP_SCENARIOS_NZD``): the change in the
+6. **The change** in each claim's settlement under a fixed cap
+   (``config.FIXED_CAP_NZD``), the claims paid more and those paid less in a
+   panel each.
+7. **Every cap scenario** (``config.CAP_SCENARIOS_NZD``): the change in the
    total each band is paid against the Act.
 
-One simple chart per panel: where the Act and a fixed cap are compared, the
-Act is the top panel and the cap the one below it, on the same scale, rather
-than the two side by side in one; the scenarios take a panel per cap.
+The files are numbered in that order. Where the Act and a fixed cap are
+compared, the Act is the top panel or the left bar and the cap below it or to
+its right, on the same scale.
 
 The fixed cap is NHC's "replace" scheme as the loss viewer runs it: it stands
 in for the land cover cap -- land value and the sub-caps -- so a claim is paid
@@ -41,17 +46,22 @@ and the excess is applied after, as on the page. Capital value is the QV
 roll's, summed over the claim property's rating units and indexed to the
 common valuation date, as land value is (:func:`qv_capital_value_by_claim`).
 
-A claim is a property with a repair cost: damage, whether or not the excess
-then takes all of it.
+**The claims are the loss viewer's** (:func:`load_claims`): each authority's
+claims are the rows of its viewer CSV, so a claim is a property with damage
+inside its own authority -- not one in a neighbour's box, and not one whose
+only cost is the Canterbury average for liquefaction state None -- and its
+damage type is the viewer's (:func:`damage_type`), ground that came down with
+the claim's own wall counting as wall damage. Insurance penetration is not
+applied: every damaged property is drawn.
 
 Sensitive:
     Capital value comes from the QV roll. The figures draw summaries over
     thousands of claims and nothing per property, and nothing per property is
     written.
 
-Needs loss step 1 over each extent in ``config.EXTENTS``, exposure step 5's
-valuation links for each, and the QV roll from T:, or from the local cache with
-``TTDRIVE_SYNC_LOCAL_MODE=True``.
+Needs loss step 1 and the viewer CSV (``gen_viewer_data.py``) over each extent
+in ``config.EXTENTS``, exposure step 5's valuation links for each, and the QV
+roll from T:, or from the local cache with ``TTDRIVE_SYNC_LOCAL_MODE=True``.
 """
 
 import sys
@@ -86,6 +96,7 @@ from scripts.landloss.loss.steps.s1_settlement.s1_gen_settlement import (
     REPAIR_COST_COLUMN,
     settlement_path,
 )
+from scripts.landloss.loss.ui.gen_viewer_region import viewer_csv_path
 from scripts.landloss.paths import REPORT_DIR
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -109,6 +120,14 @@ CHANGE = "change_per_dwelling_nzd"
 # What decided each claim's settlement, under the Act and the fixed cap.
 ACT_LIMIT = "act_limit"
 FIXED_LIMIT = "fixed_cap_limit"
+# Whether the cap covers the whole repair cost, before the excess, and what it
+# leaves unpaid per dwelling when it does not.
+ACT_FULL = "act_paid_in_full"
+FIXED_FULL = "fixed_cap_paid_in_full"
+ACT_SHORT = "act_shortfall_per_dwelling_nzd"
+FIXED_SHORT = "fixed_cap_shortfall_per_dwelling_nzd"
+# The kind of damage, as the loss viewer types it.
+DAMAGE_TYPE = "damage_type"
 # A change smaller than this is a rounding difference, not a gain or a loss.
 UNCHANGED_NZD = 1.0
 # The whiskers run between these percentiles, not to 1.5 interquartile ranges:
@@ -150,6 +169,35 @@ LIMIT_COLOURS = {
 }
 # A stacked segment narrower than this share is left unlabelled.
 MIN_LABELLED_SHARE = 0.05
+
+# The kinds of damage, as the loss viewer names them, in the order drawn, with
+# the categorical slots the viewer gives them. A claim with more than one kind
+# is a combination. Crossing-only claims are too few to read by band, so they
+# are counted in the damage mix but given no panel of their own.
+LIQUEFACTION = "Liquefaction only"
+WALL = "Retaining wall only"
+LANDSLIDE = "Landslide only"
+CROSSING = "Culvert or bridge only"
+COMBINATION = "Combination"
+DAMAGE_COLOURS = {
+    LIQUEFACTION: "#2a78d6",
+    WALL: "#eb6834",
+    LANDSLIDE: "#1baf7a",
+    CROSSING: "#e87ba4",
+    COMBINATION: "#eda100",
+}
+DAMAGE_PANELS = [LIQUEFACTION, LANDSLIDE, WALL, COMBINATION]
+# A band with fewer claims than this in a damage panel is drawn, but marked as
+# too few to read much into.
+FEW_CLAIMS = 30
+# The viewer CSV columns a claim's damage type is read from.
+VIEWER_COLUMNS = [
+    "claim_id",
+    "has_liquefaction",
+    "has_damaged_wall",
+    "has_landslide",
+    "crossing_repair_excl_gst",
+]
 
 # The councils' extents as a reader names them, for the figures' notes.
 EXTENT_NAMES = {
@@ -225,12 +273,47 @@ def cap_label(cap_nzd):
     return f"${cap_nzd / 1e3:,.0f}k"
 
 
+def damage_type(viewer: pd.DataFrame) -> pd.Series:
+    """Return each claim's kind of damage, as the loss viewer types it.
+
+    Liquefaction is a land damage state worse than None, a wall a damaged
+    existing wall (ground that came down with the claim's own wall counts as
+    wall damage, not landslide), a landslide landslide ground, and a crossing a
+    culvert or bridge with a repair cost. More than one kind is a combination.
+
+    Args:
+        viewer: Viewer CSV rows, carrying :data:`VIEWER_COLUMNS`.
+
+    Returns:
+        The kind per row, None where a row has no damage.
+    """
+    kinds = {
+        LIQUEFACTION: viewer["has_liquefaction"].fillna(0) > 0,
+        WALL: viewer["has_damaged_wall"].fillna(0) > 0,
+        LANDSLIDE: viewer["has_landslide"].fillna(0) > 0,
+        CROSSING: viewer["crossing_repair_excl_gst"].fillna(0) > 0,
+    }
+    count = sum(flag.astype(int) for flag in kinds.values())
+    return pd.Series(
+        np.select(
+            [count > 1, *kinds.values()],
+            [COMBINATION, *kinds.keys()],
+            default=None,
+        ),
+        index=viewer.index,
+    )
+
+
 def load_claims(extents, world_id, realisation_id):
     """Return every claim over the extents with its capital value per dwelling.
 
+    The claims are each authority's viewer CSV rows that carry damage, joined
+    to their settlement: a claim in a neighbour's box, or one whose only cost
+    is the liquefaction None average, is not one.
+
     Returns:
-        One row per claim with a repair cost: the settlement columns, the
-        extent it came from, and its capital value per dwelling.
+        One row per claim: the settlement columns, the extent it came from,
+        its damage type and its capital value per dwelling.
     """
     print("Reading the QV rating roll (sensitive) ...", flush=True)
     roll = get_qv_rating_roll()
@@ -243,6 +326,15 @@ def load_claims(extents, world_id, realisation_id):
         capital = qv_capital_value_by_claim(
             roll, pd.read_parquet(valuation_links_path(extent=extent)), base_rates
         )[QV_CAPITAL_VALUE_COLUMN]
+        viewer = pd.read_csv(
+            viewer_csv_path(extent, world_id=world_id, realisation_id=realisation_id),
+            usecols=VIEWER_COLUMNS,
+        )
+        viewer[DAMAGE_TYPE] = damage_type(viewer)
+        viewer = viewer.dropna(subset=[DAMAGE_TYPE])
+        settled = settled.merge(
+            viewer[["claim_id", DAMAGE_TYPE]], on="claim_id", how="inner"
+        )
         settled = settled.loc[settled[REPAIR_COST_COLUMN] > 0].copy()
         settled["extent"] = extent
         settled[CV_PER_DWELLING] = (
@@ -304,6 +396,10 @@ def settle_both_ways(claims, fixed_cap_nzd, policy):
         [EXCESS, PAID],
         default=CAPPED_FIXED,
     )
+    dwellings = claims[DWELLINGS_COLUMN].to_numpy(float)
+    repair = claims[REPAIR].to_numpy(float)
+    act_cap = claims[ACT_CAP].to_numpy(float)
+    fixed_cap = fixed_cap_nzd * dwellings
     return claims.assign(
         **{
             ACT: act,
@@ -311,6 +407,10 @@ def settle_both_ways(claims, fixed_cap_nzd, policy):
             CHANGE: fixed - act,
             ACT_LIMIT: act_limit,
             FIXED_LIMIT: fixed_limit,
+            ACT_FULL: ~act_capped,
+            FIXED_FULL: repair <= fixed_cap,
+            ACT_SHORT: np.maximum(repair - act_cap, 0.0) / dwellings,
+            FIXED_SHORT: np.maximum(repair - fixed_cap, 0.0) / dwellings,
         }
     )
 
@@ -320,14 +420,15 @@ def describe(claims, labels):
     print(RULE)
     print("Per dwelling, excluding GST:")
     print(
-        f"  {'band':<18}{'claims':>8}{'Act median':>13}{'cap median':>13}"
-        f"{'gain':>7}{'lose':>7}"
+        f"  {'band':<18}{'claims':>8}{'Act full':>10}{'cap full':>10}"
+        f"{'Act median':>13}{'cap median':>13}{'gain':>7}{'lose':>7}"
     )
     for label, group in claims.groupby(BAND, observed=True):
         gain = (group[CHANGE] > UNCHANGED_NZD).mean()
         lose = (group[CHANGE] < -UNCHANGED_NZD).mean()
         print(
-            f"  {label:<18}{len(group):>8,}{group[ACT].median():>13,.0f}"
+            f"  {label:<18}{len(group):>8,}{group[ACT_FULL].mean():>10.0%}"
+            f"{group[FIXED_FULL].mean():>10.0%}{group[ACT].median():>13,.0f}"
             f"{group[FIXED].median():>13,.0f}{gain:>7.0%}{lose:>7.0%}"
         )
     print(f"  {len(claims):,} claims across {len(labels)} bands")
@@ -368,22 +469,6 @@ def label_boxes(ax, groups, fmt, *, stat=np.median):
             textcoords="offset points",
             va="center",
             color=INK_SECONDARY,
-            fontsize=7.5,
-        )
-
-
-def note_under_boxes(ax, texts):
-    """Write a short note per band along the bottom of a panel, in muted ink."""
-    for i, text in enumerate(texts):
-        ax.annotate(
-            text,
-            (i, 0),
-            xycoords=("data", "axes fraction"),
-            xytext=(0, 3),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-            color=INK_MUTED,
             fontsize=7.5,
         )
 
@@ -435,7 +520,7 @@ def basis_note(claims, fixed_cap_nzd):
     """Return the lines every figure's note ends with: what was run, on what."""
     places = ", ".join(EXTENT_NAMES.get(e, e) for e in claims["extent"].unique())
     return (
-        f"Every claim with a repair cost in {places}, one modelled event.\n"
+        f"Every damaged property in {places}, one modelled event.\n"
         "A fixed cap replaces the land cover cap (land value and sub-caps): a claim "
         f"is paid its repair cost up to the cap ({cap_label(fixed_cap_nzd)} here), "
         "less the excess,\nthe cap per dwelling. Capital "
@@ -454,36 +539,6 @@ def scenarios(fixed_cap_nzd):
     return (
         (ACT, "Under the Act", ACT_COLOUR),
         (FIXED, f"Under a fixed {cap_label(fixed_cap_nzd)} land cap", FIXED_COLOUR),
-    )
-
-
-def plot_settlement(claims, grouped, labels, fixed_cap_nzd, out):
-    """Draw the settlement per band, the Act above and the fixed cap below."""
-    fig, axes = stacked_panels(2)
-    for ax, (column, title, colour) in zip(axes, scenarios(fixed_cap_nzd), strict=True):
-        # A log scale: settlements run from a few hundred dollars to hundreds of
-        # thousands, and a linear one flattens every box but the last. A claim
-        # the excess takes all of settles at nothing, which a log scale cannot
-        # place, so it is counted along the bottom rather than drawn.
-        paid = [g.loc[g[column] > 0, column].to_numpy() for g in grouped]
-        draw_boxes(ax, paid, colour)
-        label_boxes(ax, paid, lambda v: f"${v:,.0f}")
-        note_under_boxes(
-            ax, [f"{(g[column] <= 0).mean():.0%} settle at $0" for g in grouped]
-        )
-        ax.set_yscale("log")
-        ax.yaxis.set_major_formatter(DOLLARS)
-        ax.yaxis.set_minor_formatter(NullFormatter())
-        ax.set_yticks([100, 1_000, 10_000, 100_000, 1_000_000])
-        ax.set_ylim(40, 1_500_000)
-        ax.set_ylabel("Settlement per dwelling")
-        panel_title(ax, title)
-    band_axis(axes[-1], labels, grouped)
-    finish(
-        fig,
-        "Land settlement per dwelling, by property value",
-        BOX_NOTE + basis_note(claims, fixed_cap_nzd),
-        out,
     )
 
 
@@ -547,39 +602,188 @@ def plot_change(claims, grouped, labels, fixed_cap_nzd, out):
     )
 
 
-def plot_coverage(claims, grouped, labels, fixed_cap_nzd, out):
-    """Draw the share of each claim's repair cost settled, Act above, cap below."""
-    fig, axes = stacked_panels(2)
-    for ax, (column, title, colour) in zip(axes, scenarios(fixed_cap_nzd), strict=True):
-        covered = [
-            (g[column] * g[DWELLINGS_COLUMN] / g[REPAIR]).to_numpy() for g in grouped
-        ]
-        draw_boxes(ax, covered, colour)
-        # The mean as well as the median: the median sits near 100% in most
-        # bands, and the mean is what the claims that fall short pull down.
-        means = [float(np.mean(c)) if len(c) else np.nan for c in covered]
-        ax.scatter(
-            np.arange(len(labels)),
-            means,
-            marker="D",
-            s=26,
-            color=SURFACE,
-            edgecolor=colour,
-            linewidth=1.5,
-            zorder=4,
+def paid_in_full(grouped, column):
+    """Return each band's share of claims the cap pays in full."""
+    return np.array([g[column].mean() if len(g) else np.nan for g in grouped])
+
+
+def label_bars(ax, x, values, *, below=None):
+    """Write each bar's share above it, and a note beneath that if given."""
+    for i, (position, value) in enumerate(zip(x, values, strict=True)):
+        if np.isnan(value):
+            continue
+        note = below[i] if below else ""
+        ax.annotate(
+            f"{value:.0%}" + (f"\n{note}" if note else ""),
+            (position, value),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            color=INK_SECONDARY,
+            fontsize=7.5,
+            linespacing=1.1,
         )
-        label_boxes(ax, covered, lambda v: f"mean {v:.0%}", stat=np.mean)
-        ax.set_ylim(0, 1.04)
+
+
+def shortfall_note(group, full, short):
+    """Return the average shortfall per dwelling of a band's claims left short."""
+    left_short = group.loc[~group[full], short]
+    return f"average short ${left_short.mean() / 1e3:,.0f}k" if len(left_short) else ""
+
+
+def plot_paid_in_full(claims, grouped, labels, fixed_cap_nzd, out):
+    """Draw the share of each band's claims paid in full, the Act above."""
+    fig, axes = stacked_panels(2)
+    x = np.arange(len(labels))
+    panels = (
+        (ACT_FULL, ACT_SHORT, "Under the Act", ACT_COLOUR),
+        (
+            FIXED_FULL,
+            FIXED_SHORT,
+            f"Under a fixed {cap_label(fixed_cap_nzd)} land cap",
+            FIXED_COLOUR,
+        ),
+    )
+    for ax, (full, short, title, colour) in zip(axes, panels, strict=True):
+        shares = paid_in_full(grouped, full)
+        ax.bar(x, shares, 0.55, color=colour, edgecolor=SURFACE, linewidth=1.0)
+        label_bars(
+            ax, x, shares, below=[shortfall_note(g, full, short) for g in grouped]
+        )
+        ax.set_ylim(0, 1.2)
+        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
         ax.yaxis.set_major_formatter(PercentFormatter(1.0))
-        ax.set_ylabel("Share of repair cost")
+        ax.set_ylabel("Claims paid in full")
         panel_title(ax, title)
     band_axis(axes[-1], labels, grouped)
     finish(
         fig,
-        "Share of the repair cost settled, by property value",
-        BOX_NOTE.replace("median;", "median, the diamond at the mean;")
-        + "The rest is the owner's: the excess, and whatever the cap leaves "
-        "unpaid.\n" + basis_note(claims, fixed_cap_nzd),
+        "Claims paid their full repair cost, by property value",
+        "Paid in full: the cap covers the whole repair cost; every claim still pays "
+        "the excess, which is left out here. Beneath each share: the average repair "
+        "cost\nper dwelling the cap leaves unpaid on the band's claims it does not "
+        "pay in full.\n" + basis_note(claims, fixed_cap_nzd),
+        out,
+    )
+
+
+def plot_paid_in_full_by_type(claims, grouped, labels, fixed_cap_nzd, out):
+    """Draw the share paid in full, one panel per kind of damage, Act beside cap."""
+    fig, axes = stacked_panels(len(DAMAGE_PANELS), height=2.2)
+    x = np.arange(len(labels))
+    width = 0.36
+    for ax, kind in zip(axes, DAMAGE_PANELS, strict=True):
+        within = [g[g[DAMAGE_TYPE] == kind] for g in grouped]
+        for offset, full, colour in (
+            (-width / 2, ACT_FULL, ACT_COLOUR),
+            (width / 2, FIXED_FULL, FIXED_COLOUR),
+        ):
+            shares = paid_in_full(within, full)
+            ax.bar(
+                x + offset,
+                np.nan_to_num(shares),
+                width,
+                color=colour,
+                edgecolor=SURFACE,
+                linewidth=1.0,
+            )
+            label_bars(ax, x + offset, shares)
+        for i, w in enumerate(within):
+            ax.annotate(
+                f"{len(w):,} claims" + (" (few)" if 0 < len(w) < FEW_CLAIMS else ""),
+                (i, 1.0),
+                xycoords=("data", "axes fraction"),
+                xytext=(0, -2),
+                textcoords="offset points",
+                ha="center",
+                va="top",
+                color=INK_MUTED,
+                fontsize=7,
+            )
+        ax.set_ylim(0, 1.35)
+        ax.set_yticks([0, 0.5, 1.0])
+        ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+        ax.set_ylabel("Paid in full")
+        panel_title(ax, kind)
+    axes[0].legend(
+        handles=[
+            Patch(facecolor=ACT_COLOUR, label="Under the Act"),
+            Patch(
+                facecolor=FIXED_COLOUR,
+                label=f"Under a fixed {cap_label(fixed_cap_nzd)} land cap",
+            ),
+        ],
+        loc="lower right",
+        bbox_to_anchor=(1.0, 1.0),
+        ncol=2,
+        fontsize=8,
+    )
+    band_axis(axes[-1], labels, grouped)
+    finish(
+        fig,
+        "Claims paid their full repair cost, by property value and kind of damage",
+        "Within one kind of damage, a difference between bands is the cap's doing, "
+        "not the ground's. Paid in full: the cap covers the whole repair cost, the "
+        "excess left out.\nKinds of damage as the loss viewer types them: ground that "
+        "came down with the claim's own wall counts as wall damage. A band with "
+        f"fewer than {FEW_CLAIMS} claims is marked few.\n"
+        + basis_note(claims, fixed_cap_nzd),
+        out,
+    )
+
+
+def plot_damage_mix(claims, grouped, labels, fixed_cap_nzd, out):
+    """Draw the kinds of damage in each band, as 100% bars."""
+    fig, axes = stacked_panels(1, height=3.2, width=12.0)
+    ax = axes[0]
+    x = np.arange(len(labels))
+    bottom = np.zeros(len(labels))
+    for kind, colour in DAMAGE_COLOURS.items():
+        share = np.array(
+            [(g[DAMAGE_TYPE] == kind).mean() if len(g) else 0.0 for g in grouped]
+        )
+        ax.bar(
+            x,
+            share,
+            0.62,
+            bottom=bottom,
+            color=colour,
+            edgecolor=SURFACE,
+            linewidth=1.5,
+            label=kind,
+        )
+        for i, s in enumerate(share):
+            if s >= MIN_LABELLED_SHARE:
+                ax.annotate(
+                    f"{s:.0%}",
+                    (i, bottom[i] + s / 2),
+                    ha="center",
+                    va="center",
+                    color=SURFACE,
+                    fontsize=7.5,
+                )
+        bottom += share
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    ax.set_ylabel("Share of claims")
+    panel_title(ax, "Kind of damage")
+    handles, names = ax.get_legend_handles_labels()
+    ax.legend(
+        handles[::-1],
+        names[::-1],
+        loc="center left",
+        bbox_to_anchor=(1.01, 0.5),
+        fontsize=8,
+    )
+    band_axis(ax, labels, grouped)
+    finish(
+        fig,
+        "What kind of damage each band's claims have, by property value",
+        "The context for the paid-in-full figures: landslides fall on hill suburbs "
+        "and liquefaction on the flats, and the mix differs between bands.\n"
+        "Kinds of damage as the loss viewer types them.\n"
+        + basis_note(claims, fixed_cap_nzd),
         out,
     )
 
@@ -759,7 +963,7 @@ def plot_scenarios(claims, grouped, labels, caps_nzd, policy, out):
         "Change in the total settled under each fixed land cap, by property value",
         "Each bar: the total a band's claims are settled under the cap, against the "
         "total under the Act. Each cap replaces the land cover cap (land value and "
-        "sub-caps),\nper dwelling, less the excess. Every claim with a repair cost in "
+        "sub-caps),\nper dwelling, less the excess. Every damaged property in "
         f"{places}, one modelled event. Capital value from the QV roll, per "
         "dwelling; dollars excluding GST.",
         out,
@@ -767,7 +971,7 @@ def plot_scenarios(claims, grouped, labels, caps_nzd, policy, out):
 
 
 def main(*, extents, world_id, realisation_id, band_edges, fixed_cap_nzd, caps_nzd):
-    """Band the claims by capital value and draw the six figures."""
+    """Band the claims by capital value and draw the seven figures."""
     claims = load_claims(extents, world_id, realisation_id)
     missing = claims[CV_PER_DWELLING].isna()
     print(f"  {missing.sum():,} of {len(claims):,} claims have no capital value")
@@ -784,27 +988,29 @@ def main(*, extents, world_id, realisation_id, band_edges, fixed_cap_nzd, caps_n
     describe(claims, labels)
     grouped = [g for _, g in claims.groupby(BAND, observed=False)]
     cap = cap_label(fixed_cap_nzd).strip("$")
+    # The damage mix is the same under any cap, so its name carries none.
     for name, draw in (
-        ("settlement", plot_settlement),
-        ("settlement-change", plot_change),
-        ("repair-cost-covered", plot_coverage),
-        ("unpaid-share-of-capital-value", plot_burden),
-        ("settlement-limits", plot_limits),
+        (f"1-paid-in-full-by-capital-value-fixed-cap-{cap}", plot_paid_in_full),
+        (
+            f"2-paid-in-full-by-damage-type-by-capital-value-fixed-cap-{cap}",
+            plot_paid_in_full_by_type,
+        ),
+        (
+            f"3-unpaid-share-of-capital-value-by-capital-value-fixed-cap-{cap}",
+            plot_burden,
+        ),
+        ("4-damage-mix-by-capital-value", plot_damage_mix),
+        (f"5-settlement-limits-by-capital-value-fixed-cap-{cap}", plot_limits),
+        (f"6-settlement-change-by-capital-value-fixed-cap-{cap}", plot_change),
     ):
-        draw(
-            claims,
-            grouped,
-            labels,
-            fixed_cap_nzd,
-            FIG_DIR / f"{name}-by-capital-value-fixed-cap-{cap}.png",
-        )
+        draw(claims, grouped, labels, fixed_cap_nzd, FIG_DIR / f"{name}.png")
     plot_scenarios(
         claims,
         grouped,
         labels,
         caps_nzd,
         policy,
-        FIG_DIR / "cap-scenarios-by-capital-value.png",
+        FIG_DIR / "7-cap-scenarios-by-capital-value.png",
     )
 
 

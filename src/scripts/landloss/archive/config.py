@@ -42,5 +42,11 @@ REPORT_ROOT = REPORT_DIR
 WEB_INPUTS_SUBDIR = "web-downloaded-inputs"
 
 # The territorial authorities whose DEMs are described in the inputs snapshot,
-# with the folder holding each one's ``ground/dem-1m-<extent>.tif``.
-DEM_SOURCES = RESULT_SOURCES
+# with the folder holding each one's ``ground/dem-1m-<extent>.tif``. Every
+# authority the run covered, whichever of them RESULT_SOURCES archives this time.
+DEM_SOURCES = {
+    "wellington-city": TEMP_DIR,
+    "lower-hutt": REMOTE_TEMP_DIR,
+    "upper-hutt": REMOTE_TEMP_DIR,
+    "porirua": REMOTE_TEMP_DIR,
+}
