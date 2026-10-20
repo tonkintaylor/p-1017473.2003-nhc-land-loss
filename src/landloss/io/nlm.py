@@ -28,7 +28,11 @@ import rioxarray
 import xarray as xr
 
 import tdrive_sync
-from landloss.domain.constants import CORE_NLM_VERSION, FLATLAND_NLM_VERSION
+from landloss.domain.constants import (
+    CORE_NLM_VERSION,
+    FLATLAND_NLM_VERSION,
+    NlmRelease,
+)
 
 # The root of the NLM's own release tree, shared across every subproject under
 # 1017473. Not to be confused with this project's own versioned data store
@@ -208,6 +212,33 @@ def get_nlm_scenario_pga_2500yr_site_class_5() -> xr.DataArray:
         The PGA grid, as delivered.
     """
     return get_nlm_scenario_pga_2500yr(5)
+
+
+def nlm_gwd_median_path() -> str:
+    """Return the NLM's median groundwater depth grid's path below the release tree.
+
+    The groundwater model is published under ``gwm`` in the NLM's release tree,
+    beside ``core`` and cut on its own schedule, so it is read at the release
+    named here rather than at ``CORE_NLM_VERSION``: ``v2026p0rc4`` is the
+    groundwater release in hand, and ``core`` has since moved on.
+
+    Returns:
+        The path relative to ``NLM_RELEASES_DIR``.
+    """
+    return f"gwm/{NlmRelease.V2026P0_RC4}/NLM_gwd.tif"
+
+
+def get_nlm_gwd_median() -> xr.DataArray:
+    """Read the NLM's median groundwater depth grid.
+
+    Source:
+        National Liquefaction Model groundwater model release ``v2026p0rc4``,
+        under ``gwm`` in the NLM's release tree on T:.
+
+    Returns:
+        The depth to groundwater in metres, as delivered.
+    """
+    return get_nlm_scenario_raster(nlm_gwd_median_path())
 
 
 def get_nlm_flatland(*, copy_to_local: bool = True) -> gpd.GeoDataFrame:
