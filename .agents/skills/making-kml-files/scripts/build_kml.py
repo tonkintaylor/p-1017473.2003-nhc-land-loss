@@ -20,6 +20,7 @@ import json
 import math
 import os
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape, quoteattr
@@ -58,6 +59,10 @@ POINT_SCALE = 0.6
 # dropping features silently would put a layer on the globe that does not match the
 # model output it is named after.
 SLOW_FEATURE_COUNT = 50_000
+
+# Decimal places of longitude and latitude: 7 is about a centimetre, 6 about 10 cm.
+# A layer's ``kml_decimals`` overrides it.
+DEFAULT_DECIMALS = 7
 
 # Columns that name a feature, in the order they are tried.
 NAME_FIELD_SUFFIXES = ("_id", "id")
@@ -228,42 +233,45 @@ def _class_styles(
 # -------------------------------------------------------------------------------------
 
 
-def _coords(coords: Any) -> str:
-    """Format a coordinate sequence as KML ``lon,lat`` text, to about a centimetre."""
-    return " ".join(f"{x:.7f},{y:.7f}" for x, y, *_ in coords)
+def _coords(coords: Any, decimals: int) -> str:
+    """Format a coordinate sequence as KML ``lon,lat`` text to ``decimals`` places."""
+    return " ".join(f"{x:.{decimals}f},{y:.{decimals}f}" for x, y, *_ in coords)
 
 
-def _polygon_xml(polygon: Any) -> str:
+def _polygon_xml(polygon: Any, decimals: int) -> str:
     """Build a ``<Polygon>``, wound the way KML expects (outer ring anticlockwise)."""
     from shapely.geometry.polygon import orient
 
     polygon = orient(polygon)
     inner = "".join(
-        f"<innerBoundaryIs><LinearRing><coordinates>{_coords(ring.coords)}"
+        f"<innerBoundaryIs><LinearRing><coordinates>{_coords(ring.coords, decimals)}"
         f"</coordinates></LinearRing></innerBoundaryIs>"
         for ring in polygon.interiors
     )
     return (
         f"<Polygon><outerBoundaryIs><LinearRing><coordinates>"
-        f"{_coords(polygon.exterior.coords)}</coordinates></LinearRing>"
+        f"{_coords(polygon.exterior.coords, decimals)}</coordinates></LinearRing>"
         f"</outerBoundaryIs>{inner}</Polygon>"
     )
 
 
-def _geometry_xml(geom: Any) -> str:
+def _geometry_xml(geom: Any, decimals: int) -> str:
     """Build the KML geometry for a shapely geometry, multi-part ones included."""
     kind = geom.geom_type
     if kind == "Point":
-        return f"<Point><coordinates>{_coords(geom.coords)}</coordinates></Point>"
+        return (
+            f"<Point><coordinates>{_coords(geom.coords, decimals)}</coordinates>"
+            f"</Point>"
+        )
     if kind == "LineString":
         return (
             f"<LineString><tessellate>1</tessellate><coordinates>"
-            f"{_coords(geom.coords)}</coordinates></LineString>"
+            f"{_coords(geom.coords, decimals)}</coordinates></LineString>"
         )
     if kind == "Polygon":
-        return _polygon_xml(geom)
+        return _polygon_xml(geom, decimals)
     if kind in {"MultiPoint", "MultiLineString", "MultiPolygon", "GeometryCollection"}:
-        parts = "".join(_geometry_xml(part) for part in geom.geoms)
+        parts = "".join(_geometry_xml(part, decimals) for part in geom.geoms)
         return f"<MultiGeometry>{parts}</MultiGeometry>"
     msg = f"Cannot write a {kind} to KML."
     raise ValueError(msg)
@@ -304,7 +312,11 @@ def _value_text(value: Any) -> str | None:
 
 
 def _placemarks(
-    gdf: Any, ids: list[str], columns: list[str], name_field: str | None
+    gdf: Any,
+    ids: list[str],
+    columns: list[str],
+    name_field: str | None,
+    decimals: int,
 ) -> str:
     """Build every ``<Placemark>`` of a layer."""
     rows = []
@@ -322,7 +334,7 @@ def _placemarks(
         rows.append(
             f"<Placemark>{name}<styleUrl>#{style_id}</styleUrl>"
             f"<ExtendedData>{data}</ExtendedData>"
-            f"{_geometry_xml(record[geometry_name])}</Placemark>"
+            f"{_geometry_xml(record[geometry_name], decimals)}</Placemark>"
         )
     return "\n".join(rows)
 
@@ -355,12 +367,14 @@ def read_layer(layer: dict[str, Any]) -> Any:
         layer: The layer spec, with ``source`` already resolved.
 
     Returns:
-        The GeoDataFrame in ``EPSG:4326``.
+        The GeoDataFrame in ``EPSG:4326``, its outlines simplified to the layer's
+        ``simplify_m`` (metres, in the source CRS) when it gives one.
 
     Raises:
         FileNotFoundError: If the file is not on this machine. A KML embeds the data,
             so unlike a QGIS project it cannot point at a path it has not read.
-        ValueError: If the layer has no CRS to reproject from.
+        ValueError: If the layer has no CRS to reproject from, or gives
+            ``simplify_m`` on a CRS that is not in metres.
     """
     import geopandas as gpd
 
@@ -382,7 +396,38 @@ def read_layer(layer: dict[str, Any]) -> Any:
     if gdf.crs is None:
         msg = f"{path.name} has no CRS, so it cannot be placed on the globe."
         raise ValueError(msg)
+    if layer.get("simplify_m"):
+        gdf = _simplify(gdf, float(layer["simplify_m"]), path.name)
     return gdf.to_crs(KML_CRS)
+
+
+def _simplify(gdf: Any, tolerance_m: float, label: str) -> Any:
+    """Drop vertices that move an outline by less than ``tolerance_m``.
+
+    Done in the source CRS, before reprojecting, so the tolerance is in metres. Each
+    feature keeps its own outline: a tolerance well under the feature size leaves
+    its area and shape, unlike swapping it for a symbol.
+
+    Args:
+        gdf: The layer in its source CRS.
+        tolerance_m: The largest distance a dropped vertex can lie off the new
+            outline, in metres.
+        label: The file name, for the error message.
+
+    Returns:
+        The layer with simplified geometry. A feature that would simplify to
+        nothing keeps its original geometry rather than being lost.
+
+    Raises:
+        ValueError: If the CRS is not projected, so the tolerance has no unit.
+    """
+    if not gdf.crs.is_projected:
+        msg = f"{label} is in {gdf.crs}, so simplify_m has no metres to work in."
+        raise ValueError(msg)
+    simple = gdf.geometry.simplify(tolerance_m, preserve_topology=True)
+    gdf = gdf.copy()
+    gdf[gdf.geometry.name] = simple.where(~simple.is_empty, gdf.geometry)
+    return gdf
 
 
 def layer_folder_xml(layer: dict[str, Any], gdf: Any) -> str:
@@ -418,7 +463,9 @@ def layer_folder_xml(layer: dict[str, Any], gdf: Any) -> str:
         f"<description>{description}</description>\n"
         + "\n".join(styles)
         + "\n"
-        + _placemarks(gdf, ids, columns, name_field)
+        + _placemarks(
+            gdf, ids, columns, name_field, layer.get("kml_decimals", DEFAULT_DECIMALS)
+        )
         + "</Folder>"
     )
 
@@ -457,6 +504,29 @@ def _document(title: str, folders: list[str], bounds: Any) -> str:
     )
 
 
+def _write(path: Path, text: str, *, kmz: bool) -> Path:
+    """Write a KML document, or zip it as a KMZ in its place.
+
+    A KMZ is the KML zipped as ``doc.kml``, which Google Earth opens directly. It
+    loses nothing and the text compresses to about a sixth of its size.
+
+    Args:
+        path: The ``.kml`` path.
+        text: The document.
+        kmz: Write ``<stem>.kmz`` instead.
+
+    Returns:
+        The file written.
+    """
+    if not kmz:
+        path.write_text(text, encoding="utf-8")
+        return path
+    path = path.with_suffix(".kmz")
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("doc.kml", text.encode("utf-8"))
+    return path
+
+
 def _safe_name(name: str) -> str:
     """Make a layer name safe as a filename."""
     # Punctuation is dropped rather than replaced: "state, realisation" reads better
@@ -470,8 +540,9 @@ def run(spec: dict[str, Any]) -> list[Path]:
 
     Args:
         spec: The parsed spec. Beyond the layer keys the QGIS builder reads, it takes
-            ``title``, ``out_dir`` (default :func:`default_out_dir`) and ``combined``
-            (a filename stem: put every layer in one file rather than one each).
+            ``title``, ``out_dir`` (default :func:`default_out_dir`), ``combined``
+            (a filename stem: put every layer in one file rather than one each) and
+            ``kmz`` (zip each file as a KMZ).
 
     Returns:
         The files written.
@@ -483,6 +554,7 @@ def run(spec: dict[str, Any]) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     title = spec.get("title", "Layers")
+    kmz = bool(spec.get("kmz", False))
     written: list[Path] = []
     combined: list[tuple[dict[str, Any], Any]] = []
     skipped: list[str] = []
@@ -521,18 +593,14 @@ def run(spec: dict[str, Any]) -> list[Path]:
         layer["checked"] = True
         path = out_dir / f"{_safe_name(layer['name'])}.kml"
         bounds = gdf.total_bounds
-        path.write_text(
-            _document(layer["name"], [layer_folder_xml(layer, gdf)], bounds),
-            encoding="utf-8",
-        )
-        written.append(path)
+        text = _document(layer["name"], [layer_folder_xml(layer, gdf)], bounds)
+        written.append(_write(path, text, kmz=kmz))
 
     if combined:
         folders = [layer_folder_xml(layer, gdf) for layer, gdf in combined]
         bounds = pd.concat([g.geometry for _, g in combined]).total_bounds
         path = out_dir / f"{_safe_name(spec['combined'])}.kml"
-        path.write_text(_document(title, folders, bounds), encoding="utf-8")
-        written.append(path)
+        written.append(_write(path, _document(title, folders, bounds), kmz=kmz))
 
     for path in written:
         print(f"Wrote {path}")

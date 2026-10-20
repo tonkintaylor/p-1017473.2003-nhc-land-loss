@@ -370,6 +370,21 @@ def test_a_pieces_damaged_length_never_exceeds_its_length():
     assert lengths[DAMAGED_LENGTH_COLUMN].tolist() == [5.0]
 
 
+@pytest.mark.skip(
+    reason="Cap still sees only the damaged pieces, so 12 m is cut to 10 m"
+)
+def test_the_valued_length_is_capped_at_the_whole_wall_not_its_damaged_pieces():
+    # A 20 m wall split into two 10 m pieces across claims; only one piece is
+    # on evacuated ground, over its whole length. The callers pass the
+    # damaged_walls output, which drops the undamaged sibling, so the wall the
+    # cap sees is 10 m, not 20 m, and the 12 m valued length is cut to 10 m.
+    table = wall_pieces([10.0, 10.0], damaged=[10.0, 0.0])
+    table[loss_contract.IS_DAMAGED_BY_SHAKING_COLUMN] = [False, False]
+    table[loss_contract.IS_EVACUATED_COLUMN] = [True, False]
+    lengths = wall_lengths_by_piece(damaged_walls(table))
+    assert lengths[VALUED_LENGTH_COLUMN].tolist() == pytest.approx([10.0 + MARGIN_M])
+
+
 def test_a_piece_with_no_parent_raises():
     table = wall_pieces([10.0, 10.0], damaged=[2.0, 5.0])
     table[PARENT_RW_ID_COLUMN] = None

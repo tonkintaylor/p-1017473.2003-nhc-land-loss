@@ -167,6 +167,7 @@ src/**/_version.py
 
 .idea/
 temp/
+.scratch/
 .koopcache/
 .tdrivecache/
 

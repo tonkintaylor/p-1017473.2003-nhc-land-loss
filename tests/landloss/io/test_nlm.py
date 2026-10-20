@@ -147,6 +147,25 @@ def test_the_pga_2500yr_site_class_5_helper_reads_its_hardcoded_path(
     assert raster.to_numpy() == pytest.approx(0.35)
 
 
+def test_the_gwd_median_helper_reads_the_groundwater_release(
+    tmp_path, monkeypatch
+) -> None:
+    """The groundwater grid is read from the gwm tree, not the core release."""
+    path = write_raster(tmp_path / "gwd.tif", np.full((4, 4), 1.5))
+    asked_for = []
+
+    def record(relative_path, **_):
+        asked_for.append(relative_path)
+        return path
+
+    monkeypatch.setattr(nlm, "nlm_release_path", record)
+
+    raster = nlm.get_nlm_gwd_median()
+
+    assert asked_for == ["gwm/v2026p0rc4/NLM_gwd.tif"]
+    assert raster.to_numpy() == pytest.approx(1.5)
+
+
 def test_nlm_release_path_appends_the_relative_path_and_caches(
     tmp_path, monkeypatch
 ) -> None:

@@ -185,6 +185,53 @@ UPPER_HUTT = AreaOfInterest(
     north=-40.944,
 )
 
+# The Hutt Valley floor in Lower Hutt, from Petone and the harbour north to
+# Taita, for the exec report's liquefaction map (``post_processing/exec_report``).
+# It sits inside LOWER_HUTT, whose outputs the map reads; corners as the lead
+# gave them on 2026-10-20.
+LOWER_HUTT_MAIN_VALLEY = AreaOfInterest(
+    name="Lower Hutt main valley",
+    west=174.8579105095699,
+    south=-41.252031608709956,
+    east=175.0011765638795,
+    north=-41.14889977169014,
+)
+
+# The Hutt Valley floor in Upper Hutt, from Silverstream north to Te Marua, for
+# the same map. It sits inside UPPER_HUTT, whose outputs the map reads; corners
+# as the lead gave them on 2026-10-20.
+UPPER_HUTT_MAIN_VALLEY = AreaOfInterest(
+    name="Upper Hutt main valley",
+    west=174.99872762751872,
+    south=-41.16362135082592,
+    east=175.12642928115957,
+    north=-41.08724544701897,
+)
+
+# Alicetown, Lower Hutt: about 1,255 by 625 m from the Hutt Road to the Hutt
+# River at Ewen Bridge and south to Montague Street, for the exec report's
+# liquefaction map. Fitted to the LINZ road centrelines from a map the lead
+# supplied on 2026-10-20. Inside LOWER_HUTT, whose outputs the map reads.
+LOWER_HUTT_ALICETOWN = AreaOfInterest(
+    name="Alicetown, Lower Hutt",
+    west=174.88444,
+    south=-41.21842,
+    east=174.89940,
+    north=-41.21279,
+)
+
+# Trentham, Upper Hutt: about 1,590 by 890 m around Shakespeare Avenue, from
+# State Highway 2 east to Whakatiki Street, for the same map. Fitted the same
+# way from the lead's map of 2026-10-20. Inside UPPER_HUTT, whose outputs the
+# map reads.
+UPPER_HUTT_TRENTHAM = AreaOfInterest(
+    name="Trentham, Upper Hutt",
+    west=175.03543,
+    south=-41.12814,
+    east=175.05436,
+    north=-41.12012,
+)
+
 # The Canterbury earthquake sequence study area, covering Christchurch city and
 # the flat land around it. This is the extent the observed land damage evidence
 # is drawn from -- the only New Zealand dataset holding both settled land claims
@@ -221,6 +268,10 @@ EXTENTS = {
     "porirua": PORIRUA,
     "lower-hutt": LOWER_HUTT,
     "upper-hutt": UPPER_HUTT,
+    "lower-hutt-main-valley": LOWER_HUTT_MAIN_VALLEY,
+    "upper-hutt-main-valley": UPPER_HUTT_MAIN_VALLEY,
+    "lower-hutt-alicetown": LOWER_HUTT_ALICETOWN,
+    "upper-hutt-trentham": UPPER_HUTT_TRENTHAM,
 }
 
 # The file name suffix of an extent whose outputs predate the extent names. The
