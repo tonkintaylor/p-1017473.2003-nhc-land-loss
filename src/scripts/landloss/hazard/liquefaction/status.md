@@ -79,6 +79,11 @@ No river buffers, no LS zone modifier. Output is a raster of `ld_state` values
 
 ## Next
 
+0. **Lower Hutt free faces** (**T-167**, **L-88**, 2026-10-21): step 1 reads
+   `"lower-hutt"` as the old Lower Hutt Valley pilot box, so the 2026-10-14
+   Lower Hutt build has free faces over that box only and understates its
+   liquefaction. Held back because that build has been issued: rename the
+   pilot extent, then rerun Lower Hutt from step 1 through loss.
 1. Run step 2 with the lateral spreading correction over the pilot box, then
    the study area, and check the per-zone shift it prints against Ryan's figure
    (**T-47**). Step 1 has to be run for the same extent first; `gen_hazard.py`

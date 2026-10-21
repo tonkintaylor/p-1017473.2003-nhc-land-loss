@@ -1151,6 +1151,14 @@
       "Phase": "Unassigned",
       "Source": "Maxim Millen 2026-10-14",
       "Status": "Open"
+    },
+    {
+      "ID": "T-167",
+      "Task": "Rename s1_free_faces' Lower Hutt Valley pilot extent from \"lower-hutt\" to \"lower-hutt-pilot\" (also in fig_lateral_spreading.py), so the Lower Hutt City build reads its free faces over the whole city, then rerun Lower Hutt liquefaction hazard steps 1 to 3, vul liquefaction step 2 and the land and loss steps downstream, and both liquefaction report-numbers YAMLs; held back because the 2026-10-14 build has been issued.",
+      "Owner": "Perrie Gilbert",
+      "Phase": "Future",
+      "Source": "Liquefaction appendix numbers check, Perrie Gilbert 2026-10-21",
+      "Status": "Open"
     }
   ],
   "Limitations": [
@@ -1698,6 +1706,13 @@
       "Limitation": "Liquefaction damage has no location within the insured land, so it is valued at the insured land's average rate rather than by the tier it lies in; landslide damage is valued by how much lies under the footprint.",
       "Affects": "loss land cover cap",
       "Source": "QV land valuation in loss 2026-10-11",
+      "Status": "Open"
+    },
+    {
+      "ID": "L-88",
+      "Limitation": "In the 2026-10-14 build, Lower Hutt's lateral spreading free faces cover only the small Lower Hutt Valley pilot box (2 features, 14.6 km, against 310 features, 154.7 km, over the city), because s1_free_faces reads the extent name \"lower-hutt\" as that box. Most of Lower Hutt is treated as far from a free face, so its mean P(at least Major) is 11.2% rather than 15.1%, and its liquefaction damage and loss are understated.",
+      "Affects": "liquefaction hazard, vul and loss for Lower Hutt",
+      "Source": "Liquefaction appendix numbers check, Perrie Gilbert 2026-10-21",
       "Status": "Open"
     }
   ],
