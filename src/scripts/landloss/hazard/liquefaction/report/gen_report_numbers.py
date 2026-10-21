@@ -12,9 +12,11 @@ code or the run it came from rather than typed in. The YAML has four parts:
   four territorial authorities, computed the way
   ``fig_lateral_spreading.py`` computes them, from the local cache step 2
   keeps. This script never reads the T: drive.
-- ``draw``: the states drawn by step 3 for one realisation, over the extent
-  step 3 was last run for (the pilot until the full build, T-68). Left out if
-  step 3 has not been run.
+- ``draw``: the states drawn by step 3 for one realisation, over the four
+  territorial authorities, each from its own authority's run. Each run covers
+  its authority's bounding box, which takes in the edges of its neighbours, so
+  a cell is counted only in the run of the authority its centre lies in. Left
+  out if step 3 has not been run for all four.
 
 It also lists which of the section's figures exist, so the section can show a
 placeholder rather than fail when one has not been drawn. Written to
@@ -52,7 +54,11 @@ from landloss.hazard.liquefaction.lateral_spreading import (
     zone_grid,
 )
 from landloss.hazard.liquefaction.waterways import MIN_FREE_FACE_AREA_M2
-from landloss.io.area_of_interest import FULL_EXTENT
+from landloss.io.area_of_interest import (
+    FULL_EXTENT,
+    get_area_of_interest,
+    get_study_areas,
+)
 from scripts.landloss.hazard.liquefaction.report.fig_lateral_spreading import (
     extent_frame,
     mask_outside,
@@ -62,9 +68,6 @@ from scripts.landloss.hazard.liquefaction.report.fig_lateral_spreading import (
 from scripts.landloss.hazard.liquefaction.steps.s2_ld_probabilities.gen_liq_ld_probabilities import (
     beta_probability_path,
     clip_to_extent,
-)
-from scripts.landloss.hazard.liquefaction.steps.s3_ld_states import (
-    config as states_config,
 )
 from scripts.landloss.hazard.liquefaction.steps.s3_ld_states.gen_liq_ld_states import (
     ld_state_path,
@@ -83,6 +86,9 @@ FIGURES = {
     "correction": FIG_DIR / "lateral-spreading-correction.png",
 }
 HECTARE_M2 = 10_000
+# The four territorial authorities of the study, by extent name.
+AUTHORITY_EXTENTS = ("wellington-city", "porirua", "lower-hutt", "upper-hutt")
+REALISATION_ID = 0
 
 
 def git_commit():
@@ -180,38 +186,72 @@ def study_area():
 
 
 def read_grid(path):
-    """Return a single-band raster's values, NaN where it carries none."""
+    """Return a single-band raster, NaN where it carries no value."""
     with rioxarray.open_rasterio(path, masked=True) as raster:
-        return raster.squeeze(drop=True).to_numpy()
+        return raster.squeeze(drop=True).load()
 
 
-def draw(realisation_id, *, extent):
+def authority_frame(extent):
+    """Return the outline of the authority an extent is named for, as a frame."""
+    name = get_area_of_interest(extent).name
+    areas = get_study_areas(constants.DEFAULT_CRS)
+    return areas.loc[areas["name"] == name]
+
+
+def drawn_cells(realisation_id, extent):
+    """Return one authority's drawn states and their six probabilities, as arrays.
+
+    Only the cells whose centre lies in the authority and that carry a state.
+    """
+    area = authority_frame(extent)
+    states = mask_outside(read_grid(ld_state_path(realisation_id, extent=extent)), area)
+    values = states.to_numpy()
+    drawn = np.isfinite(values)
+    probabilities = {
+        state: read_grid(beta_probability_path(state, extent=extent)).to_numpy()[drawn]
+        for state in LD_STATES
+    }
+    return values[drawn], probabilities
+
+
+def draw(realisation_id, *, extents):
     """Return each state's share drawn beside its mean probability, or None.
 
-    Both over the cells step 3 drew, from the probability grids step 2 wrote
-    for the same extent, with the standard error a share drawn from that many
-    cells carries, so a reader can judge the gap.
+    Both over the cells step 3 drew in the four authorities, from the
+    probability grids step 2 wrote for the same runs, with the standard error a
+    share drawn from that many cells carries, so a reader can judge the gap.
     """
-    path = ld_state_path(realisation_id, extent=extent)
-    if not path.exists():
+    paths = {extent: ld_state_path(realisation_id, extent=extent) for extent in extents}
+    if not all(path.exists() for path in paths.values()):
         return None
-    states = read_grid(path)
-    drawn = np.isfinite(states)
-    cells = int(drawn.sum())
-    out = {"extent": extent, "realisation_id": realisation_id, "cells": cells}
+    runs = [drawn_cells(realisation_id, extent) for extent in extents]
+    states = np.concatenate([values for values, _ in runs])
+    cells = len(states)
+    out = {
+        "extents": list(extents),
+        "realisation_id": realisation_id,
+        "written": {
+            extent: dt.datetime.fromtimestamp(path.stat().st_mtime)
+            .astimezone()
+            .date()
+            .isoformat()
+            for extent, path in paths.items()
+        },
+        "cells": cells,
+    }
     for code, state in enumerate(LD_STATES, start=1):
         expected = float(
-            np.mean(read_grid(beta_probability_path(state, extent=extent))[drawn])
+            np.mean(np.concatenate([probabilities[state] for _, probabilities in runs]))
         )
         out[state] = {
-            "drawn": float(np.mean(states[drawn] == code)),
+            "drawn": float(np.mean(states == code)),
             "expected": expected,
             "standard_error": float(np.sqrt(expected * (1 - expected) / cells)),
         }
     return out
 
 
-def main(*, draw_extent, realisation_id):
+def main(*, draw_extents, realisation_id):
     """Compute the numbers and write the YAML."""
     numbers = {
         "meta": {
@@ -221,7 +261,7 @@ def main(*, draw_extent, realisation_id):
         },
         "settings": settings(),
         "study_area": study_area(),
-        "draw": draw(realisation_id, extent=draw_extent),
+        "draw": draw(realisation_id, extents=draw_extents),
         "figures": {
             key: path.relative_to(REPO_ROOT).as_posix() if path.exists() else None
             for key, path in FIGURES.items()
@@ -232,11 +272,9 @@ def main(*, draw_extent, realisation_id):
         yaml.safe_dump(numbers, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
     print(yaml.safe_dump(numbers["study_area"], sort_keys=False))
+    print(yaml.safe_dump(numbers["draw"], sort_keys=False))
     print(f"Wrote {OUT_PATH}")
 
 
 if __name__ == "__main__":
-    main(
-        draw_extent=states_config.EXTENT,
-        realisation_id=states_config.REALISATION_IDS[0],
-    )
+    main(draw_extents=AUTHORITY_EXTENTS, realisation_id=REALISATION_ID)

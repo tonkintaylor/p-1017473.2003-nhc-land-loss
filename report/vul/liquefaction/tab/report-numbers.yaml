@@ -1,0 +1,145 @@
+meta:
+  written: '2026-10-21'
+  commit: 965542d
+  realisation_id: 0
+  runs:
+    wellington-city:
+      file: temp/vul/liq-land-damage-r000-wellington-city.parquet
+      written: '2026-10-14'
+    porirua:
+      file: temp/vul/liq-land-damage-r000-porirua.parquet
+      written: '2026-10-14'
+    lower-hutt:
+      file: temp/vul/liq-land-damage-r000-lower-hutt.parquet
+      written: '2026-10-14'
+    upper-hutt:
+      file: temp/vul/liq-land-damage-r000-upper-hutt.parquet
+      written: '2026-10-14'
+settings:
+  evacuated_area_m2:
+    None:
+    - 0.0
+    - 0.0
+    Minor:
+    - 1.0
+    - 1.0
+    Moderate:
+    - 1.0
+    - 1.0
+    Major:
+    - 1.0
+    - 10.0
+    Severe:
+    - 10.0
+    - 40.0
+    Very Severe:
+    - 40.0
+    - 100.0
+  inundated_share:
+    None:
+    - 0.0
+    - 0.0
+    Minor:
+    - 0.0
+    - 0.0
+    Moderate:
+    - 0.25
+    - 0.7
+    Major:
+    - 0.3
+    - 1.0
+    Severe:
+    - 0.3
+    - 1.0
+    Very Severe:
+    - 0.3
+    - 1.0
+  evacuated_overlap_share: 0.3
+  drop_out_rates:
+    None: 0.95
+    Minor: 0.75
+    Moderate: 0.4
+    Major: 0.15
+    Severe: 0.0
+    Very Severe: 0.0
+study_area:
+  properties: 119248
+  on_grid: 52040
+  claims: 15818
+  damaged_area_ha: 424.2
+  by_state:
+    None:
+      properties: 28941
+      share_of_on_grid: 0.5561299000768639
+      claims: 1437
+      mean_insured_area_m2: 571.8311025550577
+      mean_evacuated_m2: 0.0
+      mean_inundated_m2: 0.0
+      mean_damaged_m2: 0.0
+      mean_damaged_share: 0.0
+    Minor:
+      properties: 3191
+      share_of_on_grid: 0.061318216756341276
+      claims: 759
+      mean_insured_area_m2: 565.3644429659046
+      mean_evacuated_m2: 1.0
+      mean_inundated_m2: 0.0
+      mean_damaged_m2: 1.0
+      mean_damaged_share: 0.0021988220433332276
+    Moderate:
+      properties: 15430
+      share_of_on_grid: 0.29650269023827824
+      claims: 9397
+      mean_insured_area_m2: 567.9939120257169
+      mean_evacuated_m2: 1.0
+      mean_inundated_m2: 268.4642068301234
+      mean_damaged_m2: 269.1642068301234
+      mean_damaged_share: 0.47494561683070385
+    Major:
+      properties: 1638
+      share_of_on_grid: 0.03147578785549577
+      claims: 1385
+      mean_insured_area_m2: 572.5049937810229
+      mean_evacuated_m2: 5.38582179707572
+      mean_inundated_m2: 373.0128767808279
+      mean_damaged_m2: 376.75966707285744
+      mean_damaged_share: 0.6664883375658731
+    Severe:
+      properties: 1856
+      share_of_on_grid: 0.035664873174481165
+      claims: 1856
+      mean_insured_area_m2: 627.869965592058
+      mean_evacuated_m2: 25.65786456454135
+      mean_inundated_m2: 402.0922968168418
+      mean_damaged_m2: 419.3897939518465
+      mean_damaged_share: 0.6872893495773943
+    Very Severe:
+      properties: 984
+      share_of_on_grid: 0.018908531898539586
+      claims: 984
+      mean_insured_area_m2: 575.8166164019005
+      mean_evacuated_m2: 69.79346482117774
+      mean_inundated_m2: 373.8032986652538
+      mean_damaged_m2: 418.6477692911156
+      mean_damaged_share: 0.7452967429354886
+by_authority:
+  Wellington City:
+    properties: 53504
+    on_grid: 11499
+    claims: 3113
+    damaged_area_ha: 63.8
+  Porirua City:
+    properties: 17750
+    on_grid: 6227
+    claims: 1594
+    damaged_area_ha: 41.7
+  Lower Hutt City:
+    properties: 33491
+    on_grid: 23240
+    claims: 7573
+    damaged_area_ha: 206.9
+  Upper Hutt City:
+    properties: 14503
+    on_grid: 11074
+    claims: 3538
+    damaged_area_ha: 111.9

@@ -1,6 +1,6 @@
 meta:
-  written: '2026-10-07'
-  commit: ed5a62d
+  written: '2026-10-21'
+  commit: 965542d
   nlm_release: v2026p0rc6
 settings:
   return_period_years: 2500
@@ -64,33 +64,42 @@ study_area:
     Severe: 0.055822448441281806
     Very Severe: 0.02392390647483506
 draw:
-  extent: wlg-pilot
+  extents:
+  - wellington-city
+  - porirua
+  - lower-hutt
+  - upper-hutt
   realisation_id: 0
-  cells: 239
+  written:
+    wellington-city: '2026-10-14'
+    porirua: '2026-10-14'
+    lower-hutt: '2026-10-14'
+    upper-hutt: '2026-10-14'
+  cells: 14320
   None:
-    drawn: 0.2384937238493724
-    expected: 0.28972119092941284
-    standard_error: 0.029343074030154792
+    drawn: 0.536731843575419
+    expected: 0.5360812544822693
+    standard_error: 0.004167395920982271
   Minor:
-    drawn: 0.3682008368200837
-    expected: 0.28972119092941284
-    standard_error: 0.029343074030154792
+    drawn: 0.058729050279329606
+    expected: 0.059564583003520966
+    standard_error: 0.001977821219825849
   Moderate:
-    drawn: 0.3263598326359833
-    expected: 0.31398117453077046
-    standard_error: 0.030020703913752417
+    drawn: 0.3005586592178771
+    expected: 0.29895486543275995
+    standard_error: 0.003825641709296343
   Major:
-    drawn: 0.02092050209205021
-    expected: 0.026644112825645657
-    standard_error: 0.010416876409523958
+    drawn: 0.03449720670391061
+    expected: 0.03513309488896461
+    standard_error: 0.0015385811258299994
   Severe:
-    drawn: 0.029288702928870293
-    expected: 0.053288225651291314
-    standard_error: 0.014528660271383947
+    drawn: 0.04832402234636871
+    expected: 0.049186332844550436
+    standard_error: 0.0018071675557156431
   Very Severe:
-    drawn: 0.016736401673640166
-    expected: 0.026644112825645657
-    standard_error: 0.010416876409523958
+    drawn: 0.02115921787709497
+    expected: 0.021079856933378768
+    standard_error: 0.0012004275473521228
 figures:
   zones: report/hazard/liquefaction/fig/lateral-spreading-zones-study-area.png
   change: report/hazard/liquefaction/fig/lateral-spreading-change-study-area.png

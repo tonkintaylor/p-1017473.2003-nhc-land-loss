@@ -21,7 +21,33 @@
   show figure.caption: set text(size: 9pt)
   set table(stroke: 0.4pt + luma(70%), inset: 5pt)
   show table: set text(size: 9pt)
+  // A reference to an appendix, lettered by appendices.typ, reads "Appendix A";
+  // to a part of one, "Section A.3".
+  show ref: it => {
+    let el = it.element
+    if el != none and el.func() == heading and el.numbering == "A.1" {
+      let label = if el.level == 1 [Appendix] else [Section]
+      let number = numbering("A.1", ..counter(heading).at(el.location()))
+      link(el.location(), [#label~#number])
+    } else {
+      it
+    }
+  }
   body
+}
+
+// Whether review notes are shown. Compile a copy without them with
+// `--input review=false`.
+#let show-review = sys.inputs.at("review", default: "true") != "false"
+
+// A note for the reviewer, left in place where the point arises so the draft
+// can be reviewed by reading it top to bottom. Remove each one once resolved.
+#let review(body) = if show-review {
+  block(
+    width: 100%, inset: 6pt, radius: 2pt,
+    fill: rgb("#fff4c2"), stroke: 0.6pt + rgb("#d9a400"),
+    text(size: 9pt)[*Review:* #body],
+  )
 }
 
 // A number with thousands separators, rounded to `digits` decimal places.

@@ -1,0 +1,1 @@
+The appendices cite sources from `doc/references.bib`, with a References list at the end. The liquefaction damage appendix cites the T+T Liquefaction Vulnerability Study (2013) for LSN and the land damage category descriptions, and the NLM final technical report. Points for the reviewer are left in the text as `#review` notes, which `show-review` in `lib.typ` hides.

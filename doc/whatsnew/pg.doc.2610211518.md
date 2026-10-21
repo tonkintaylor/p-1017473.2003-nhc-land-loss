@@ -1,0 +1,1 @@
+Add the bridges and culverts appendix to the technical report appendices: how crossings are placed where an insured accessway crosses a named watercourse and drawn as a culvert or a bridge, with a map of them over the four territorial authorities. Its map and numbers come from two new scripts under `exposure/culverts_bridges/report/`.

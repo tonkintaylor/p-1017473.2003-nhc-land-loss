@@ -1,0 +1,39 @@
+meta:
+  written: '2026-10-21'
+  commit: 965542d
+  realisation_id: 0
+  runs:
+    wellington-city: '2026-10-14'
+    porirua: '2026-10-14'
+    lower-hutt: '2026-10-14'
+    upper-hutt: '2026-10-14'
+settings:
+  culvert_probability: 0.8
+study_area:
+  crossings: 203
+  claims: 203
+  by_structure:
+    culvert: 155
+    bridge: 48
+  by_source:
+    lines: 200
+    polygons: 3
+  by_authority:
+    Lower Hutt City:
+      crossings: 75
+      culvert: 59
+      bridge: 16
+    Porirua City:
+      crossings: 34
+      culvert: 24
+      bridge: 10
+    Upper Hutt City:
+      crossings: 47
+      culvert: 35
+      bridge: 12
+    Wellington City:
+      crossings: 47
+      culvert: 37
+      bridge: 10
+figures:
+  map: report/exposure/culverts_bridges/fig/crossings-study-area.png

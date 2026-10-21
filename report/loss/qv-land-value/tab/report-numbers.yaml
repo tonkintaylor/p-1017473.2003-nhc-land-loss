@@ -1,0 +1,110 @@
+meta:
+  written: '2026-10-21'
+  commit: 965542d
+  extents:
+  - Wellington City
+  - Lower Hutt City
+  - Porirua City
+  - Upper Hutt City
+settings:
+  insured_ratio: 0.2
+  uninsured_ratio: 0.02
+  max_uninsured_m2: 4000.0
+  valuation_date: '2025-09-01'
+  gst_rate: 0.15
+  councils:
+    Porirua City:
+      valuation_date: '2025-09-01'
+      index: 1.0
+    Upper Hutt City:
+      valuation_date: '2025-06-01'
+      index: 0.9906
+    Lower Hutt City:
+      valuation_date: '2025-08-01'
+      index: 0.9969
+    Wellington City:
+      valuation_date: '2024-09-01'
+      index: 0.963
+sources:
+  claims: 119250
+  by_source:
+    qv: 118933
+    suburb median: 317
+  non_residential: 120
+rates:
+  properties: 119061
+  overall:
+    average_rate: 770.1574383751464
+    footprint_rate: 1958.9142868051458
+    ring_rate: 391.7828573610292
+    insured_rate: 908.0320820279964
+    liquefaction_factor: 1.1423982818607217
+    footprint_factor: 2.4730632587239687
+  by_area:
+    under 500 m²:
+      properties: 31271
+      average_rate: 1400.5550046262413
+      footprint_rate: 2843.881434859574
+      ring_rate: 568.7762869719148
+      insured_rate: 1458.322754039869
+      liquefaction_factor: 1.015844605159451
+      footprint_factor: 1.9968567890952849
+    500-800 m²:
+      properties: 56490
+      average_rate: 748.0738926160438
+      footprint_rate: 1858.2319995296357
+      ring_rate: 371.6463999059272
+      insured_rate: 859.0853516680368
+      liquefaction_factor: 1.1208799986136793
+      footprint_factor: 2.4513544817874107
+    800-1,500 m²:
+      properties: 23846
+      average_rate: 492.8013078702538
+      footprint_rate: 1656.6009110936293
+      ring_rate: 331.3201822187259
+      insured_rate: 722.8821955406997
+      liquefaction_factor: 1.3881060550571411
+      footprint_factor: 3.241156451013013
+    1,500-4,000 m²:
+      properties: 3972
+      average_rate: 279.55422665597627
+      footprint_rate: 1543.062220073125
+      ring_rate: 308.612444014625
+      insured_rate: 620.5321247990992
+      liquefaction_factor: 2.091375028779545
+      footprint_factor: 5.166024421049416
+    4,000 m² or more:
+      properties: 3482
+      average_rate: 28.577068656803426
+      footprint_rate: 970.6170292162114
+      ring_rate: 194.12340584324232
+      insured_rate: 360.8162935961526
+      liquefaction_factor: 11.70558868272548
+      footprint_factor: 32.10797798183157
+examples:
+  valuer:
+    value: 600000.0
+    area_m2: 3000.0
+    footprint_m2: 150.0
+    ring_m2: 500.0
+    outer_m2: 2350.0
+    footprint_rate: 2020.20202020202
+    ring_rate: 404.04040404040404
+    outer_rate: 40.4040404040404
+    insured_rate: 777.000777000777
+    average_rate: 200.0
+    footprint_value: 303030.30303030304
+  typical:
+    value: 460000.0
+    area_m2: 600.0
+    footprint_m2: 170.0
+    ring_m2: 340.0
+    outer_m2: 90.0
+    footprint_rate: 1918.2652210175145
+    ring_rate: 383.65304420350293
+    outer_rate: 38.36530442035029
+    insured_rate: 895.1904364748401
+    average_rate: 766.6666666666666
+    footprint_value: 326105.08757297747
+figures:
+  examples: report/loss/qv-land-value/fig/qv-tier-examples.png
