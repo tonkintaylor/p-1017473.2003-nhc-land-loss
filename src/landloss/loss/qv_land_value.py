@@ -46,7 +46,6 @@ Sensitive:
 import numpy as np
 import pandas as pd
 
-from landloss.domain.gst import add_gst
 from landloss.domain.loss_contract import (
     CLAIM_ID_COLUMN,
     LAND_FOOTPRINT_AREA_COLUMN,
@@ -98,16 +97,18 @@ QV_USE_COLUMN = "property_use"
 QV_CAPITAL_VALUE_COLUMN = "qv_capital_value_indexed_nzd"
 
 # Each claim's land value as the tiers spread it, and where it came from: its
-# own roll record, its suburb's median value, or the run's.
-LAND_VALUE_COLUMN = "land_value_excl_gst_nzd"
+# own roll record, its suburb's median value, or the run's. The QV value is
+# taken as including GST (2026-10-22), so it is compared as it stands with the
+# GST-inclusive repair cost and never grossed up.
+LAND_VALUE_COLUMN = "land_value_incl_gst_nzd"
 VALUE_SOURCE_COLUMN = "land_value_source"
 FROM_ROLL = "qv"
 FROM_SUBURB = "suburb median"
 FROM_RUN = "run median"
 
-# What damaged_land_rates writes on each land row, all including GST: the
-# footprint's full rate, the insured land's average, and the rate the row's
-# damaged land is valued at.
+# What damaged_land_rates writes on each land row, all including GST, as the QV
+# value is: the footprint's full rate, the insured land's average, and the rate
+# the row's damaged land is valued at.
 FOOTPRINT_RATE_COLUMN = "footprint_rate_incl_gst_nzd_per_m2"
 INSURED_RATE_COLUMN = "insured_land_rate_incl_gst_nzd_per_m2"
 DAMAGED_LAND_RATE_COLUMN = "damaged_land_rate_incl_gst_nzd_per_m2"
@@ -264,7 +265,7 @@ def claim_land_values(land: pd.DataFrame, qv_value: pd.Series) -> pd.DataFrame:
             :func:`residential_land_values`.
 
     Returns:
-        Indexed by claim id: :data:`LAND_VALUE_COLUMN`, in dollars excluding
+        Indexed by claim id: :data:`LAND_VALUE_COLUMN`, in dollars including
         GST, and :data:`VALUE_SOURCE_COLUMN`.
     """
     claims = land.groupby(CLAIM_ID_COLUMN).agg(
@@ -357,7 +358,7 @@ def damaged_land_rates(
     Returns:
         ``land`` with :data:`FOOTPRINT_RATE_COLUMN`, :data:`INSURED_RATE_COLUMN`,
         :data:`DAMAGED_LAND_RATE_COLUMN` and :data:`VALUE_SOURCE_COLUMN` added,
-        the rates including GST.
+        the rates including GST as the QV value does, so not grossed up.
     """
     claims = land.groupby(CLAIM_ID_COLUMN).agg(
         # The footprint is the claim's, written on each of its rows; the
@@ -367,15 +368,13 @@ def damaged_land_rates(
         area=(LAND_PROPERTY_AREA_COLUMN, "first"),
     )
     value = values[LAND_VALUE_COLUMN].reindex(claims.index)
-    full = add_gst(
-        footprint_rate(
-            value,
-            claims["footprint"],
-            claims["insured"],
-            claims["area"],
-            insured_ratio=insured_ratio,
-            uninsured_ratio=uninsured_ratio,
-        )
+    full = footprint_rate(
+        value,
+        claims["footprint"],
+        claims["insured"],
+        claims["area"],
+        insured_ratio=insured_ratio,
+        uninsured_ratio=uninsured_ratio,
     )
     footprint = claims["footprint"].clip(lower=0)
     insured = np.maximum(claims["insured"], footprint)

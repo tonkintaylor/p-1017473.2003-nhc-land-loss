@@ -524,7 +524,8 @@ def basis_note(claims, fixed_cap_nzd):
         "A fixed cap replaces the land cover cap (land value and sub-caps): a claim "
         f"is paid its repair cost up to the cap ({cap_label(fixed_cap_nzd)} here), "
         "less the excess,\nthe cap per dwelling. Capital "
-        "value from the QV roll, per dwelling; dollars excluding GST."
+        "value from the QV roll, including GST, per dwelling; other dollars "
+        "exclude GST."
     )
 
 
@@ -964,8 +965,8 @@ def plot_scenarios(claims, grouped, labels, caps_nzd, policy, out):
         "Each bar: the total a band's claims are settled under the cap, against the "
         "total under the Act. Each cap replaces the land cover cap (land value and "
         "sub-caps),\nper dwelling, less the excess. Every damaged property in "
-        f"{places}, one modelled event. Capital value from the QV roll, per "
-        "dwelling; dollars excluding GST.",
+        f"{places}, one modelled event. Capital value from the QV roll, "
+        "including GST, per dwelling; other dollars exclude GST.",
         out,
     )
 

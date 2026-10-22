@@ -53,7 +53,7 @@ Damaged land is insured land, so only tiers 1 and 2 price it:
   area loss counts is the larger of the two.
 
 **Example.** Take a 3,000 m² section with a QV land value of $600,000, a 150 m²
-house and 650 m² of insured land. Rates exclude GST:
+house and 650 m² of insured land. Rates include GST, as the QV value does:
 
 - `R` = 600,000 ÷ (150 + 0.2 × 500 + 0.02 × 2,350) = **$2,020/m²** under the
   house, about $303,000 in all. The rest of the insured land is $404/m², and
@@ -115,8 +115,10 @@ reach an access way on it.
   non-residential (an institution's grounds, a park, a commercial block) is
   valued as though it were not on the roll, because its value is not a
   house's: one 11-dwelling claim sat on a $208m unit of 13 ha.
-- **GST.** The QV value is taken as excluding GST, and the rates are grossed up
-  for the Act's comparison, as before.
+- **GST.** The QV value is taken as including GST (2026-10-22), so the rates
+  are not grossed up: they are compared as they stand with the GST-inclusive
+  repair cost, like for like. Before 2026-10-22 the value was taken as
+  excluding GST and grossed up by 15%.
 - **Footprint.** This is the buildings the insured land is buffered off,
   merged per claim, so a garage overlapping the house counts once. Exposure
   writes it as a layer (`claim-footprints<suffix>.geoparquet`), and vul's

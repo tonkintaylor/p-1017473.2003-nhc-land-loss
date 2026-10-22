@@ -130,7 +130,7 @@ def load_qv_land_values(*, extent: str) -> pd.Series:
             exposure wrote.
 
     Returns:
-        The land value in dollars excluding GST, indexed by claim id, for the
+        The land value in dollars including GST, indexed by claim id, for the
         claims whose value can be read off the roll and is not a non-residential
         unit's (:func:`~landloss.loss.qv_land_value.residential_land_values`).
     """

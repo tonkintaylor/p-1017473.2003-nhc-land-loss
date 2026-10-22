@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from landloss.domain import loss_contract
-from landloss.domain.gst import add_gst
 from landloss.loss.qv_land_value import (
     DAMAGED_LAND_RATE_COLUMN,
     FOOTPRINT_RATE_COLUMN,
@@ -208,9 +207,10 @@ def rated(rows, value=280_000.0):
 
 
 # $280,000 over the property's weighted area, 100 + ring ratio x 300 + outer
-# ratio x 600 m2, is the footprint rate excluding GST.
+# ratio x 600 m2, is the footprint rate. The QV value is taken as including
+# GST, so the rate is not grossed up.
 WEIGHTED = 100 + INSURED_RATIO * 300 + UNINSURED_RATIO * 600
-FULL = add_gst(280_000.0 / WEIGHTED)
+FULL = 280_000.0 / WEIGHTED
 INSURED_AVERAGE = FULL * (100 + INSURED_RATIO * 300) / 400
 
 
@@ -254,9 +254,7 @@ def test_all_the_insured_land_damaged_is_worth_its_two_tiers():
     out = rated([("c1", 400.0, 0.0, 0.0)])
     insured_value = out[DAMAGED_LAND_RATE_COLUMN].iloc[0] * 400
     insured_weight = 100 + INSURED_RATIO * 300
-    assert insured_value == pytest.approx(
-        add_gst(280_000.0) * insured_weight / WEIGHTED
-    )
+    assert insured_value == pytest.approx(280_000.0 * insured_weight / WEIGHTED)
 
 
 # ---------------------------------------------------------------------------

@@ -25,7 +25,9 @@ build proceeds against it rather than waiting.
   `include_imminent_damage` are the settings under test.
 - [x] Work **GST-inclusive throughout**, because that is the basis the Act
   compares market value, undepreciated value and repair cost on. The sub-caps
-  are stated excluding GST and are grossed up at the point of use.
+  are stated excluding GST and are grossed up at the point of use. The QV land
+  value is taken as already including GST (2026-10-22), so it is not grossed
+  up.
 - [~] **Price the land structures**, which this module owns: `vul` emits a
   damage state for walls, culverts and bridges rather than a cost, so both the
   repair cost and the undepreciated value are worked out here. Retaining wall

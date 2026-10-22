@@ -19,9 +19,9 @@ claim property:
 
 A section the insured land covers wholly has no outer tier to take value, so its
 liquefaction factor is about 1; a large section with a small insured area rises
-well above it. The factors are rates before GST at the common valuation date;
-GST and the land value sensitivity scale every tier alike, so they do not move
-a factor.
+well above it. The factors are rates at the common valuation date, including
+GST as the QV value does; the land value sensitivity scales every tier alike,
+so it does not move a factor.
 
 Writes, for the extent in ``config.QV_TIER_EXTENT`` (the figures are
 ``gen_qv_average_rate.py``'s, over the four councils):
@@ -32,8 +32,8 @@ Writes, for the extent in ``config.QV_TIER_EXTENT`` (the figures are
   ``qv-tier-factors<suffix>.qgs`` styling both by the liquefaction factor;
   and, when ``config.QV_TIER_WRITE_TIER_LAYER`` is set, the tier layer: each
   property cut into its footprint, the rest of its insured land and its
-  uninsured remainder, each with the QV rate per m² it is valued at, before
-  GST. The pieces tile the property and their rates times their areas add back
+  uninsured remainder, each with the QV rate per m² it is valued at,
+  including GST. The pieces tile the property and their rates times their areas add back
   to its QV land value.
 
 Sensitive:
@@ -234,8 +234,8 @@ def tier_pieces(insured, footprints, properties, factors):
         factors: :func:`tier_factors`, for each claim's full rate.
 
     Returns:
-        One row per claim and tier: the claim, the tier, its rate per m² before
-        GST, its area, and its polygon.
+        One row per claim and tier: the claim, the tier, its rate per m²
+        including GST, its area, and its polygon.
     """
     claims = factors.index
     full = factors[FULL_RATE_COLUMN]
@@ -362,7 +362,7 @@ def write_qgis(insured, factors, suburbs, suffix, *, tiers=None):
         layers.append(
             {
                 "path": str(tier_path),
-                "name": "QV rate per m² by tier, before GST (SENSITIVE)",
+                "name": "QV rate per m² by tier, including GST (SENSITIVE)",
                 "field": TIER_RATE_COLUMN,
                 "cmap": "YlOrRd",
                 "bins": 8,
