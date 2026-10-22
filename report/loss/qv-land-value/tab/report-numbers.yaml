@@ -1,6 +1,6 @@
 meta:
-  written: '2026-10-21'
-  commit: 965542d
+  written: '2026-10-22'
+  commit: d7c5341
   extents:
   - Wellington City
   - Lower Hutt City
@@ -107,4 +107,5 @@ examples:
     average_rate: 766.6666666666666
     footprint_value: 326105.08757297747
 figures:
-  examples: report/loss/qv-land-value/fig/qv-tier-examples.png
+  valuer: report/loss/qv-land-value/fig/qv-tier-example-valuer.png
+  typical: report/loss/qv-land-value/fig/qv-tier-example-typical.png

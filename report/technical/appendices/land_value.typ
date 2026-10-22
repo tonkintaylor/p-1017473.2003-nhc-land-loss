@@ -11,7 +11,7 @@
 // The QV rating roll is sensitive: state only counts, medians and the worked
 // examples, never a property's value.
 
-#import "../lib.typ": inputs-table, model-figure, num, pct, review
+#import "../lib.typ": inputs-table, limitations-table, model-figure, num, pct, review
 
 #let d = yaml("/report/loss/qv-land-value/tab/report-numbers.yaml")
 #let s = d.settings
@@ -24,29 +24,22 @@
 
 = Calculation of land value <land-value>
 
-#review[This appendix was agreed at one to two pages, with about half a page
-each of limitations and future improvements. Trim once the content is settled.]
-
 == Context
 
-NHC settles damage to insured land at the lesser of the cost of repair and the
-land cover cap, and the main part of the cap is the value of the damaged
-insured land. This appendix describes how the model puts a value per square
-metre on damaged land. How much land is damaged comes from @liquefaction and the
-landslide appendix; the comparison with the cost of repair is in
-@cost-estimation.
+This appendix describes how the model puts a value per square metre on damaged
+insured land, which makes up the main part of the land cover cap. How much land
+is damaged comes from @liquefaction and the landslide appendix; the comparison
+with the cost of repair is in @cost-estimation.
 
-Each property's land value is taken from its QV rating valuation. Dividing that
-value by the property's area gives an average over the whole section, but on a
-large section most of that area is garden, bush or paddock that adds little to
-the value. The average therefore undervalues the ground under and around the
-house, which is where damaged insured land lies. Valuers treat a section the
-same way: the house site carries most of the value, and the rest of the section
-is worth a fraction of its rate per square metre. NHC has advised that it has
-no set rule for valuing part of a section, and that a higher rate should apply
-to the land under and around the dwelling. The model therefore spreads each
-property's land value over three tiers that step down from the house outwards,
-and values damaged land at the rate of the tier it lies in.
+Each property's land value is taken from its QV rating valuation. Averaged over
+the whole section, it undervalues the ground under and around the house, where
+damaged insured land lies, because on a large section most of the area is
+garden, bush or paddock that adds little to the value. NHC has advised that it
+has no set rule for valuing part of a section, but that a higher rate should
+apply to the land under and around the dwelling, which is how valuers treat a
+section too. The model therefore spreads each property's land value over three
+tiers that step down from the house, and values damaged land at the rate of the
+tier it lies in.
 
 == Inputs
 
@@ -71,11 +64,7 @@ insured land write-up.]
 A property's land value is the sum of the land values of the rating units on
 it. The four councils revalued on different dates in a falling market, so each
 value is brought to a common date of 1 September 2025 using the QV House Price
-Index for the greater Wellington region. QV published an annual change of
-−4.5% for the 12 months to July 2025 and −3.3% for the 12 months to October
-2025; between the two, the change for the 12 months to September 2025 is taken
-as −3.7%, applied month by month from each council's revaluation date
-(@lv-index).
+Index for the greater Wellington region (@lv-index).
 
 #figure(
   table(
@@ -96,29 +85,23 @@ as −3.7%, applied month by month from each council's revaluation date
     bring them to 1 September 2025.],
 ) <lv-index>
 
-A property that is not on the rating roll, or is on it only as non-residential
-units such as an institution's grounds or a commercial block, takes the median
-land value of the properties in its suburb. Land a title shares with others,
+A property whose land value cannot be read off the rating roll takes the median
+land value of the properties in its suburb. This includes a property whose
+rating units are recorded only as non-residential, for example a dwelling on
+an institution's or a commercial title, since that value is not a house's. Land a title shares with others,
 such as an access lot or a subdivision's reserve, is left out of the property's
-area. Land values exclude GST, which is added when the value is compared with
-the cost of repair.
-
-#review[This may not be correct. The model treats QV rating land values as
-excluding GST and adds GST before comparing them with the cost of repair.
-Confirm whether rating valuations include or exclude GST, and whether adding
-it is right for the land cover cap.]
+area. The QV land value is taken as including GST.
 
 === Three tiers of land
 
 Each property's land is split into three tiers, stepping down from the house
-(@lv-tiers). The rate under the house, _R_, is set so that the three tiers add
-back to the property's land value _V_:
+(@lv-tiers). The rate under the house, $R$, is set so that the three tiers add
+back to the property's land value $V$:
 
-_R_ = _V_ ÷ (_A_#sub[house] + #s.insured_ratio × _A_#sub[insured] +
-#s.uninsured_ratio × _A_#sub[rest])
+$ R = V / (A_"house" + #s.insured_ratio A_"insured" + #s.uninsured_ratio A_"rest") $
 
-where _A_#sub[house] is the area of the building footprints, _A_#sub[insured]
-the rest of the insured land and _A_#sub[rest] the rest of the section, counted up to
+where $A_"house"$ is the area of the building footprints, $A_"insured"$ the rest
+of the insured land and $A_"rest"$ the rest of the section, counted up to
 #num(s.max_uninsured_m2) m².
 
 #figure(
@@ -126,11 +109,11 @@ the rest of the insured land and _A_#sub[rest] the rest of the section, counted 
     columns: 3,
     align: (left, left, right),
     table.header([*Tier*], [*Land*], [*Rate*]),
-    [1], [Under the house: the building footprints on the property], [_R_],
+    [1], [Under the house: the building footprints on the property], [$R$],
     [2], [The rest of the insured land: the land around the house and the
-      accessway], [#s.insured_ratio × _R_],
+      accessway], [$#s.insured_ratio R$],
     [3], [The rest of the section, up to #num(s.max_uninsured_m2) m²],
-    [#s.uninsured_ratio × _R_],
+    [$#s.uninsured_ratio R$],
     [--], [Any land beyond that], [Nil],
   ),
   caption: [The three tiers each property's land value is spread over.],
@@ -156,33 +139,60 @@ paddock and leave the land around its house at a few dollars a square metre.
 
 === Valuing damaged land
 
-Damaged land is insured land, so only the first two tiers value it:
+The model counts only damage within the insured land; damage elsewhere on the
+property contributes nothing to the land cover cap. Only the first two tiers
+therefore value damaged land:
 
 - Landslide damage is located on the property, so the part of it under the
-  house is valued at _R_ and the rest at #s.insured_ratio × _R_.
+  house is valued at $R$ and the rest at $#s.insured_ratio R$.
 - Liquefaction damage has no location within the insured land, so it is valued
   at the insured land's average rate: the first two tiers together, weighted by
   area. That is its expected value if the damage is spread evenly over the
   insured land.
-- Where both damage the same insured land, the rate of the cause that damages
-  more of it applies.
+- Where a property has both landslide and liquefaction damage, its damaged area
+  is taken as the larger of the two, and valued at the rate of the cause that
+  damaged it.
 
-@lv-examples works the tiers through two sections. The first is
-a #num(ex.area_m2) m² section with land worth #money(ex.value), a
-#num(ex.footprint_m2) m² house and #num(ex.ring_m2) m² more of insured land.
-The rate under the house is #rate(ex.footprint_rate), #money(ex.footprint_value)
-in all; the rest of the insured land is #rate(ex.ring_rate) and the rest of the
-section #rate(ex.outer_rate). Liquefaction damage on it would be valued at
-#rate(ex.insured_rate), against a section average of #rate(ex.average_rate).
-The second is a typical section, with the median area, house and insured land
-of the properties in the study, at the median average rate: there
-#pct(ty.footprint_value / ty.value) of the land value lies under the house.
+@lv-example-table works the tiers through a #num(ex.area_m2) m² section with
+land worth #money(ex.value), a #num(ex.footprint_m2) m² house and
+#num(ex.ring_m2) m² more of insured land, which @lv-example-valuer draws.
+Liquefaction damage on it would be valued at #rate(ex.insured_rate), the
+insured land's average, against a section average of #rate(ex.average_rate).
+
+#figure(
+  table(
+    columns: 4,
+    align: (left, right, right, right),
+    table.header([*Tier*], [*Area (m²)*], [*Rate*], [*Value*]),
+    [Under the house], num(ex.footprint_m2), rate(ex.footprint_rate),
+    money(ex.footprint_m2 * ex.footprint_rate),
+    [Rest of the insured land], num(ex.ring_m2), rate(ex.ring_rate),
+    money(ex.ring_m2 * ex.ring_rate),
+    [Rest of the section], num(ex.outer_m2), rate(ex.outer_rate),
+    money(calc.min(ex.outer_m2, s.max_uninsured_m2) * ex.outer_rate),
+    [Whole section], num(ex.area_m2), rate(ex.average_rate), money(ex.value),
+  ),
+  caption: [The three tiers on a #num(ex.area_m2) m² section with land worth
+    #money(ex.value), including GST.],
+) <lv-example-table>
 
 #model-figure(
-  d.figures.examples,
-  [The three tiers on two sections. Each bar is a tier: its width is the
-    tier's area and its height the rate it is valued at.],
-) <lv-examples>
+  d.figures.valuer,
+  [The three tiers on the #num(ex.area_m2) m² section of @lv-example-table.
+    Each bar is a tier: its width is the tier's area and its height the rate it
+    is valued at.],
+) <lv-example-valuer>
+
+On a typical section, with the median area, house and insured land of the
+properties in the study at the median average rate, the tiers put
+#pct(ty.footprint_value / ty.value) of the land value under the house
+(@lv-example-typical).
+
+#model-figure(
+  d.figures.typical,
+  [The three tiers on a typical section of #num(ty.area_m2) m² with land worth
+    #money(ty.value).],
+) <lv-example-typical>
 
 == Results
 
@@ -193,72 +203,101 @@ suburb's median, #num(src.non_residential) of them because they are on the roll
 only as non-residential units.
 
 @lv-rates gives the median rates over the #num(r.properties) properties on the
-roll, by the size of the property. The correction factor is the rate damaged
-land is valued at, as a multiple of the property's average rate. It is close to
-one for liquefaction on small sections, where the insured land is most of the
-section, and grows with the size of the section, as intended.
+roll, by the size of the property.
 
 #let bands = r.by_area.pairs()
 #figure(
   table(
-    columns: 6,
-    align: (left, right, right, right, right, right),
+    columns: 5,
+    align: (left, right, right, right, right),
     table.header(
       [*Property area*], [*Properties*], [*Average rate*],
-      [*Liquefaction rate*], [*Under the house*], [*Liquefaction factor*],
+      [*Liquefaction rate*], [*Under the house*],
     ),
     ..bands.map(((band, b)) => (
       band, num(b.properties), rate(b.average_rate), rate(b.insured_rate),
-      rate(b.footprint_rate), [#num(b.liquefaction_factor, digits: 2)×],
+      rate(b.footprint_rate),
     )).flatten(),
     [All], num(r.properties), rate(r.overall.average_rate),
     rate(r.overall.insured_rate), rate(r.overall.footprint_rate),
-    [#num(r.overall.liquefaction_factor, digits: 2)×],
   ),
-  caption: [Median rates by property area, excluding GST: the property's
-    average rate, the rate liquefaction damage is valued at, the rate under the
-    house, and the median liquefaction correction factor.],
+  caption: [Median rates by property area, including GST: the property's
+    average rate, the rate liquefaction damage is valued at, and the rate under
+    the house.],
 ) <lv-rates>
 
 == Validation <lv-validation>
 
-A valuer reviewed the first of the two examples. With the ratios first
-proposed, 0.5 and 0.15, the example put about
+A valuer reviewed the example in @lv-example-valuer. With the ratios first
+proposed, 0.5 and 0.15, it put about
 #money({
   let full = ex.value / (ex.footprint_m2 + 0.5 * ex.ring_m2 + 0.15 * calc.min(ex.outer_m2, s.max_uninsured_m2))
   calc.round(full * ex.footprint_m2, digits: -3)
 }) of its land value under the house. The valuer expected about \$300,000
-there, about \$2,000/m². One example fixes one combination of the two ratios,
-not both: the rate on the rest of the insured land was kept near the
-\$400/m² it had, and value was taken off the rest of the section, which gives
-the ratios of #s.insured_ratio and #s.uninsured_ratio now used.
+there, about \$2,000/m², and the ratios were revised to #s.insured_ratio and
+#s.uninsured_ratio to match.
 
 #review[The valuer's review (13 October 2026) is the only check of the ratios.
 Name the valuer, or describe their role, if that can be shared.]
 
-== Limitations
+== Limitations and future improvements
 
-// T-153 / L-79, L-78, L-80, liquefaction average, both causes, 4,000 m² cap, T-24.
-- The tier ratios are judgement, set from one valuer's example of a large
-  section, and have not been checked on suburban sections, where they put
-  #pct(ty.footprint_value / ty.value) of a typical section's value under the
-  house.
-- The values are rating valuations, not market valuations of damaged land. NHC
-  uses adjusted rating values to settle claims only for uniform land affected
-  by flooding or inundation, not for landslide claims.
-- Liquefaction damage is valued at the insured land's average rate, because the
-  model does not say where on the insured land it lies.
-- Where landslide and liquefaction damage the same land, the rate of the larger
-  applies to all of it.
-- The #num(s.max_uninsured_m2) m² limit on the third tier is a judgement.
-- One regional house price index brings all four councils' values to a common
-  date, although values in each council moved differently.
+// T-153 / L-79, L-78, L-80, liquefaction average, both causes, 4,000 m² cap,
+// T-24.
+Beyond the limitations stated in the main report, several others may affect the
+overall conclusions of the study. @lv-limitations-table lists each, its likely effect on the
+modelled losses, and the improvement that would address it.
 
-== Future improvements
+#figure(
+  limitations-table(
+    (
+      [The tier ratios are judgement, set from one valuer's example of a large
+        section, and have not been checked on suburban sections, where they put
+        #pct(ty.footprint_value / ty.value) of a typical section's value under
+        the house.],
+      [*Unknown.*],
+      [Have a registered valuer review the tier ratios across a range of
+        sections, including typical suburban ones.],
+    ),
+    (
+      [The values are rating valuations, not market valuations of damaged land.
+        NHC uses adjusted rating values to settle claims only for uniform land
+        affected by flooding or inundation, not for landslide claims.],
+      [*Unknown.*],
+      [Agree the use of rating valuations with NHC.],
+    ),
+    (
+      [Liquefaction damage is valued at the insured land's average rate,
+        because the model does not say where on the insured land it lies.],
+      [*Mixed.* Correct on average, but over or under for any one property.],
+      [Value liquefaction damage by where it lies on the property, if the
+        damage model is extended to locate it.],
+    ),
+    (
+      [Where a property has both landslide and liquefaction damage, the larger
+        damaged area and its cause's rate are used, rather than each valued
+        separately.],
+      [*Under-prediction* where the two damage different parts of the insured
+        land.],
+      [Combine the two causes by location, once liquefaction damage is
+        located.],
+    ),
+    (
+      [The #num(s.max_uninsured_m2) m² limit on the third tier is a
+        judgement.],
+      [*Unknown.* It affects only properties larger than about
+        #num(s.max_uninsured_m2) m².],
+      [Confirm the limit with a registered valuer.],
+    ),
+    (
+      [One regional house price index brings all four councils' values to a
+        common date, although values in each council moved differently.],
+      [*Mixed.*],
+      [Agree the index factors with a registered valuer.],
+    ),
+  ),
+  caption: [Limitations, their impact on losses and future improvements.],
+) <lv-limitations-table>
 
-// T-153, T-24, L-80.
-- Have a registered valuer review the tier ratios across a range of sections,
-  including typical suburban ones.
-- Agree the index factors with a registered valuer.
-- Value liquefaction damage by where it lies on the property, if the damage
-  model is extended to locate it.
+#review[The impacts on losses in @lv-limitations-table are a first draft. Check the direction
+given for each.]

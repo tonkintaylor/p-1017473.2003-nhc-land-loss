@@ -45,7 +45,6 @@ import rioxarray
 import shapely
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 from rasterio.enums import Resampling
 from shapely.geometry import box
 
@@ -99,6 +98,7 @@ NLM_GRIDS = {
 NEAR_COLOUR = "#d7301f"
 MIDDLE_COLOUR = "#fdae61"
 FAR_COLOUR = "#4575b4"
+BOUNDARY_COLOUR = "#4d4d4d"
 FACE_STYLES = {
     "river": {"color": "#08519c", "linewidth": 1.6},
     "coast": {"color": "#252525", "linewidth": 1.2},
@@ -107,7 +107,7 @@ FACE_STYLES = {
     "lagoon": {"color": "#807dba", "linewidth": 1.0},
 }
 FACE_LABELS = {
-    "river": "River (named, or kept by ID)",
+    "river": "River",
     "coast": "Coastline",
     "lake": "Lake of 5 ha or more",
     "swamp": "Swamp of 5 ha or more",
@@ -199,37 +199,22 @@ def face_handles(faces):
 
 
 def plot_zones(faces, zones, extent, name):
-    """Draw the free faces and the near and middle zones buffered from them."""
+    """Draw the free faces over the study area's boundary.
+
+    The near and middle zones are not drawn: at this scale a 100 m buffer is too
+    thin to read (Maxim Millen, 2026-10-22). ``zones`` is kept in the signature
+    so the call matches the other figures.
+    """
     fig, ax = plt.subplots(figsize=(7.5, 6.6))
-    clipped = gpd.clip(zones, extent)
-    colours = {"near": NEAR_COLOUR, "middle": MIDDLE_COLOUR}
-    for _, row in clipped.iterrows():
-        gpd.GeoSeries([row.geometry], crs=zones.crs).plot(
-            ax=ax, color=colours[row["zone_name"]], alpha=0.35, zorder=3
-        )
+    extent.boundary.plot(ax=ax, color=BOUNDARY_COLOUR, linewidth=1.0, zorder=3)
     draw_faces(ax, faces)
     style_basemap_ax(ax, extent)
-
     handles = [
-        Patch(
-            color=NEAR_COLOUR,
-            alpha=0.35,
-            label=f"Near zone, within {NEAR_FIELD_M:.0f} m",
-        ),
-        Patch(
-            color=MIDDLE_COLOUR,
-            alpha=0.35,
-            label=f"Middle zone, {NEAR_FIELD_M:.0f} to {FAR_FIELD_M:.0f} m",
-        ),
-        Patch(
-            facecolor="none",
-            edgecolor="#999999",
-            label=f"Far zone, beyond {FAR_FIELD_M:.0f} m",
-        ),
         *face_handles(faces),
+        Line2D([], [], color=BOUNDARY_COLOUR, linewidth=1.0, label="Study area"),
     ]
     ax.legend(handles=handles, loc="upper left", fontsize=7.5, framealpha=0.92)
-    ax.set_title(f"Lateral spreading zones, {name}", fontsize=10)
+    ax.set_title(f"Free faces, {name}", fontsize=10)
     return fig
 
 
@@ -242,7 +227,7 @@ def plot_change(before, after, faces, zones, extent):
 
     for ax, grid, title in (
         (axes[0], before, "NLM P(at least Major)"),
-        (axes[1], after, "After the lateral spreading correction"),
+        (axes[1], after, "After the lateral spreading adjustment"),
     ):
         image = ax.imshow(
             grid.to_numpy(),
@@ -287,7 +272,7 @@ def plot_correction():
     """Draw the corrected P(at least Major) against the NLM's, for each zone."""
     p = np.linspace(0, 0.5, 501)
     fig, ax = plt.subplots(figsize=(6.4, 5.2))
-    ax.plot(p, p, color="#999999", linestyle="--", linewidth=1, label="No correction")
+    ax.plot(p, p, color="#999999", linestyle="--", linewidth=1, label="No adjustment")
     for weight, colour, label in (
         (0.0, NEAR_COLOUR, f"Near zone (within {NEAR_FIELD_M:.0f} m)"),
         (
@@ -324,8 +309,8 @@ def plot_correction():
     ax.set_xlim(0, 0.5)
     ax.set_ylim(0, 0.5)
     ax.set_xlabel("NLM P(at least Major)")
-    ax.set_ylabel("Corrected P(at least Major)")
-    ax.set_title("The correction, by zone", fontsize=10)
+    ax.set_ylabel("Adjusted P(at least Major)")
+    ax.set_title("The adjustment, by zone", fontsize=10)
     ax.xaxis.set_major_formatter(mpl.ticker.PercentFormatter(1.0, decimals=0))
     ax.yaxis.set_major_formatter(mpl.ticker.PercentFormatter(1.0, decimals=0))
     ax.grid(color="#eeeeee")

@@ -9,15 +9,13 @@
 // exposure/land/report/gen_report_numbers.py. The limitations and
 // improvements carry their register IDs in comments.
 
-#import "../lib.typ": inputs-table, model-figure, num, pct, review
+#import "../lib.typ": inputs-table, limitations-table, model-figure, num, pct, review
 
 #let d = yaml("/report/exposure/culverts_bridges/tab/report-numbers.yaml")
 #let x = d.study_area
 #let land = yaml("/report/exposure/land/tab/report-numbers.yaml").settings
 
 = Estimation of locations of bridges and culverts <crossings>
-
-#review[Maxim estimated less than a page: one map and a paragraph.]
 
 == Context
 
@@ -46,10 +44,11 @@ insured. Any named watercourse counts, whether it is mapped as a centreline or,
 for wider rivers, as an area, and a crossing found on both is counted once.
 Only crossings lying wholly within the property's insured land are kept.
 
-Each crossing is taken to be a culvert with a probability of
-#pct(d.settings.culvert_probability) and a bridge otherwise, sampled for each
-simulated earthquake. How they are damaged is described with each hazard, and
-how they are costed in @cost-estimation.
+For each simulated earthquake, every crossing is modelled as either a culvert
+(#pct(d.settings.culvert_probability) probability) or a bridge
+(#pct(1 - d.settings.culvert_probability) probability). The applicable hazard
+section describes how each crossing type is damaged, and @cost-estimation
+describes how the resulting damage is costed.
 
 == Results
 
@@ -66,26 +65,49 @@ centrelines.
     earthquake.],
 ) <crossings-map>
 
-#review[Consider checking a sample of the crossings against aerial imagery, to
-see how many are real and what share are bridges.]
-
-== Limitations
+== Limitations and future improvements
 
 // Named-only floor (s7 method), CULVERT_PROBABILITY judgement, I-18 driveway
 // routing, coverage filter.
-- Only named watercourses are mapped, so crossings of the many small unnamed
-  and piped streams are missed, and the number of crossings is a lower bound.
-- The split between culverts and bridges is judgement, not fitted to
-  observations.
-- The accessway is a modelled route rather than a surveyed one, so a crossing
-  may be placed where the real driveway does not go, or missed where it does.
-- A crossing lying partly outside the insured land, such as one at the road
-  boundary, is left out.
+Beyond the limitations stated in the main report, several others may affect the
+overall conclusions of the study. @crossings-limitations-table lists each, its likely effect on the
+modelled losses, and the improvement that would address it.
 
-== Future improvements
+#figure(
+  limitations-table(
+    (
+      [Only named watercourses are mapped. Crossings of the many small unnamed
+        and piped streams are missed, and the number of crossings is a lower
+        bound.],
+      [*Under-prediction* of bridge and culvert losses.],
+      [Include unnamed watercourses, for example from the LINZ Topo50 river
+        centrelines.],
+    ),
+    (
+      [The split between culverts and bridges is judgement, not fitted to
+        observations.],
+      [*Unknown.* Both are costed alike, so the split matters only where they
+        are damaged differently.],
+      [Set the share of bridges from a sample checked against aerial imagery.],
+    ),
+    (
+      [The accessway is a modelled route rather than a surveyed one, so a
+        crossing may be placed where the real driveway does not go, or missed
+        where it does.],
+      [*Mixed.* Crossings are both added and missed.],
+      [Route the modelled accessways along the property's real access to the
+        street rather than in a straight line.],
+    ),
+    (
+      [A crossing lying partly outside the insured land, such as one at the
+        road boundary, is left out.],
+      [*Under-prediction*, where such a crossing is in fact insured.],
+      [Check a sample of crossings at the property boundary against aerial
+        imagery and property titles.],
+    ),
+  ),
+  caption: [Limitations, their impact on losses and future improvements.],
+) <crossings-limitations-table>
 
-- Include unnamed watercourses, for example from the LINZ Topo50 river
-  centrelines.
-- Route the modelled accessways along the property's real access to the street
-  rather than in a straight line.
-- Set the share of bridges from a sample checked against aerial imagery.
+#review[The impacts on losses in @crossings-limitations-table are a first draft. Check the direction
+given for each.]

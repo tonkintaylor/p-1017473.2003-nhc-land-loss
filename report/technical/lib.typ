@@ -97,6 +97,17 @@
   caption: caption,
 )
 
+// An appendix's limitations, each with its likely effect on the modelled losses
+// and the improvement that would address it, numbered. Each row is
+// ([limitation], [impact], [improvement]); an impact opens with its direction
+// in bold, such as *Over-prediction*, *Mixed* or *Unknown*.
+#let limitations-table(..rows) = table(
+  columns: (auto, 2.2fr, 1.5fr, 1.8fr),
+  align: (right, left, left, left),
+  table.header([*\#*], [*Limitation*], [*Impact on losses*], [*Improvement*]),
+  ..rows.pos().enumerate().map(((i, row)) => (str(i + 1), ..row)).flatten(),
+)
+
 // Where an input came from, and under what licence.
 #let inputs-table(..rows) = table(
   columns: (2.2fr, 2fr, 1fr),

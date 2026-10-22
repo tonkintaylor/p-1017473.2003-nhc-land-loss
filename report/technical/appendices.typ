@@ -30,6 +30,15 @@
 
 #set heading(numbering: "A.1")
 
+// Tables and figures are numbered within their appendix, Table B.1, Figure B.1,
+// so each appendix reads the same on its own as in the whole.
+#set figure(numbering: n => numbering("A.1", counter(heading).get().first(), n))
+#show heading.where(level: 1): it => {
+  counter(figure.where(kind: table)).update(0)
+  counter(figure.where(kind: image)).update(0)
+  it
+}
+
 #review[The appendices are lettered from A here. Match the letters to those the
 main report refers to once the full set is in.]
 

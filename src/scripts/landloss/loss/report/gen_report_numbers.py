@@ -90,7 +90,8 @@ if hasattr(sys.stdout, "reconfigure"):
 OUT_PATH = REPORT_DIR / "loss" / "qv-land-value" / "tab" / "report-numbers.yaml"
 # The figures the appendix shows, by the key it refers to them by.
 FIGURES = {
-    "examples": FIG_DIR / "qv-tier-examples.png",
+    "valuer": FIG_DIR / "qv-tier-example-valuer.png",
+    "typical": FIG_DIR / "qv-tier-example-typical.png",
 }
 WORLD_ID = 0
 REALISATION_ID = 0

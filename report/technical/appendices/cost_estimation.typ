@@ -7,7 +7,7 @@
 // The calibration rows are those s3_repair_rate_calibration last wrote. The
 // limitations and improvements carry their register IDs in comments.
 
-#import "../lib.typ": inputs-table, num, pct, review
+#import "../lib.typ": inputs-table, limitations-table, num, pct, review
 
 #let d = yaml("/report/loss/costs/tab/report-numbers.yaml")
 #let w = d.walls
@@ -24,17 +24,10 @@
 
 = Calculation of cost estimation <cost-estimation>
 
-#review[The transcript budgeted about two pages for retaining walls and one for
-liquefaction. This draft also covers landslide-damaged land and bridges and
-culverts, which the model costs too. Trim once the content is settled.]
-
 == Context
 
-For each claim, the model estimates what the damage would cost to repair and
-compares it with the land cover cap, which is built from the value of the
-damaged land (@land-value) and the undepreciated value of any damaged retaining
-walls, bridges and culverts. This appendix describes how the repair cost and
-the undepreciated values are estimated for each kind of damage:
+This appendix describes how the repair cost, and the undepreciated value that
+feeds the land cover cap, are estimated for each kind of damage:
 
 + Retaining walls (@cost-walls).
 + Land damaged by landslides (@cost-landslide).
@@ -42,7 +35,11 @@ the undepreciated values are estimated for each kind of damage:
 + Bridges and culverts (@cost-crossings).
 
 The costs of each kind of damage on a claim are added together, with the
-costs of running the job (@cost-on-costs), and GST is added.
+costs of running the job (@cost-on-costs). All costs are estimated excluding
+GST, and GST at #pct(p.gst_rate) is added before they are compared with the
+land cover cap. The land values in the cap are taken as already including GST
+(@land-value), so the two are compared like for like. The costing tool rates are current prices; only the Canterbury
+liquefaction costs, which are in #q.cost_year dollars, are escalated.
 
 == Inputs
 
@@ -107,13 +104,18 @@ follows its height (@cost-timber).
 #review[The height bands for the timber pile sizes were set as a first cut,
 not taken from a design guide. Check whether they need a source.]
 
-The undepreciated value of a damaged wall is the rate for its own type times
-its face area, with no deduction for age. Its repair cost is that of the wall
-it is rebuilt as. A failed wall is rebuilt as the timber pole wall its height
-calls for, except a reinforced concrete block wall, which goes back like for
-like. A replacement is built to a more substantial current standard than the
-wall it replaces, which the rates do not allow for, so the repair cost carries
-a further #pct(w.spec_uplift).
+The undepreciated value of a damaged wall is calculated by multiplying the
+applicable unit rate for its existing wall type by its face area, with no
+allowance for depreciation or age.
+
+The repair cost is based on the wall type used for the repair. In most cases, a
+failed wall is replaced with a timber pole wall of the required height. The
+exception is a reinforced concrete block wall, which is replaced on a
+like-for-like basis.
+
+Because replacement walls are generally built to a more substantial standard
+than the walls they replace, and this difference is not reflected in the unit
+rates, a further #pct(w.spec_uplift) is added to the calculated repair cost.
 
 The face area is the wall's retained height times the length rebuilt: the
 damaged length, plus #num(w.margin_m) m at each end to tie into the sound wall,
@@ -170,11 +172,13 @@ Liquefaction damage is costed from the ground lost (@liquefaction):
   spread;
 - #per-m2(q.rates.inundated_nzd_per_m2) of land covered by ejecta, beyond the
   first #num(q.rates.volunteer_cleared_m2) m², which volunteers cleared for
-  nothing in Canterbury;
+  nothing in Canterbury (explained in @cost-validation);
 - a fixed cost per claim, averaging #money(q.rates.per_claim_nzd), which
   varies from claim to claim.
 
-A property in the None state costs nothing. The rates are in #q.cost_year
+A property in the None state costs nothing. The Canterbury costs exclude any
+claim that included retaining wall, bridge or culvert repair, so they stand for
+land repair alone. The rates are in #q.cost_year
 dollars, excluding GST, and were set so that a #num(q.section_m2) m² section
 losing the middle of each state's range of ground costs what NHC's Canterbury
 claimants in that state typically cost (@cost-validation). They are brought to
@@ -200,7 +204,9 @@ The costing tool prices professional fees separately from the walls: consent,
 design, engineering, health and safety, project management and survey, which
 come to #money(o.fees_total). A claim with wall works is charged
 #pct(o.fees_share) of what its walls cost to build, or #money(o.fees_total) if
-that is more. The same claims are charged #pct(o.mob_demob_share) of the walls
+that is more. A share is used rather than the flat total because a large wall
+needs more design, engineering and supervision than the flat fee allows, while
+a small one still needs a consent. The same claims are charged #pct(o.mob_demob_share) of the walls
 and fees, at least #money(o.mob_demob_min), to set up and clear the site.
 Project management is a further #pct(o.project_management_share) of the walls,
 fees, site set-up and any bridge or culvert. A contingency of
@@ -245,15 +251,6 @@ wall itself, which is typical of a small wall.
     high, failed over #num(ex-damaged) m and rebuilt over #num(ex-length) m.],
 ) <cost-example>
 
-=== From repair cost to settlement
-
-All costs are estimated excluding GST, and GST at #pct(p.gst_rate) is added
-before they are compared with the land cover cap. The wall and the bridge and
-culvert parts of the cap are each limited to #money(p.wall_sub_cap) and
-#money(p.crossing_sub_cap) per dwelling. The settlement is the lesser of the
-repair cost and the cap, less an excess of #money(p.excess_per_dwelling) per
-dwelling, up to #money(p.excess_max).
-
 == Validation <cost-validation>
 
 #if q.calibration != none [
@@ -280,10 +277,19 @@ dwelling, up to #money(p.excess_max).
       modelled cost of a #num(q.section_m2) m² section, excluding GST.],
   ) <cost-liq-calibration>
 
-  The fit is within about 10% from Minor to Severe. The modelled cost rises
-  less steeply than Canterbury's beyond that, and is well below it for Very
-  Severe, which had only
-  #num(q.calibration.at(-1).canterbury_claims) Canterbury claims.
+  The first #num(q.rates.volunteer_cleared_m2) m² of ejecta on each site is
+  taken to have been cleared for nothing, as volunteers, notably the Student
+  Volunteer Army, did across Canterbury. It is about the area of ejecta a
+  Moderate site is given, and with it a Moderate claim costs no more than a
+  Minor one, as the Canterbury medians show (@cost-liq-calibration). The fit
+  is about as good for any area from 200 to 300 m².
+
+  #review[You noted that the #num(q.rates.volunteer_cleared_m2) m² comes from
+  the NHC costing spreadsheet as the area that can be cleared by hand. The
+  copy of the costing tool (version 1.10) has an hourly rate for hand loading
+  of inundation but no #num(q.rates.volunteer_cleared_m2) m² area, and the
+  model records the figure as calibration judgement. Point to where the
+  spreadsheet gives it, and that will be cited here.]
 ]
 
 #if q.comparison != none [
@@ -304,41 +310,88 @@ checked against settled claims.
 #review[Consider checking a sample of modelled wall repair costs against the
 costs in T+T's claim reports, if time allows.]
 
-== Limitations
+== Limitations and future improvements
 
-// L-30, L-62/L-63, Q-10/L-29, Q-11, L-34, L-31, L-23/L-74, L-40, L-25, L-76.
-- The wall rates are a snapshot of rates NHC revises every four months, and are
-  thought more likely to be too low than too high. Fixed costs per job mean a
-  small wall costs relatively more than its area suggests.
-- The site ratings are set from the driveway, the slope and the debris volume,
-  with thresholds that are judgement, rather than from a site visit.
-- Each wall type is mapped to a single costing tool rate, from
-  #money(calc.min(..w.types.filter(t => t.rate != none).map(t => t.rate))) to
-  #money(calc.max(..w.types.filter(t => t.rate != none).map(t => t.rate))) per
-  m², so the mapping is one of the larger assumptions in the wall costs.
-- The #pct(w.spec_uplift) allowance for rebuilding to a higher standard is a
-  flat judgement.
-- A partly damaged wall is rebuilt over its damaged length plus a margin; repairs
-  short of rebuilding are not modelled.
-- The landslide reinstatement wall's height and length are set from the size of
-  the landslide by judgement, and landslide land repair has no costing schedule
-  of its own yet.
-- The liquefaction costs are from Canterbury, escalated by a labour cost index
-  only, and carry the effect of volunteers clearing ejecta for nothing.
-- The liquefaction costs exclude increased liquefaction and flooding
-  vulnerability, which were a large share of what NHC paid in Canterbury.
-- Every bridge and culvert is priced at one span, since nothing gives each
-  crossing's span.
+// L-30, L-62/L-63, Q-10/L-29, Q-11, L-34, L-31, L-23/L-74, L-40, L-25, L-76;
+// T-38, Q-10, Q-11, I-13, landslide schedule.
+Beyond the limitations stated in the main report, several others may affect the
+overall conclusions of the study. @cost-limitations-table lists each, its likely effect on the
+modelled losses, and the improvement that would address it.
 
-== Future improvements
+#figure(
+  limitations-table(
+    (
+      [The wall rates are a snapshot of rates NHC revises every four months,
+        and are thought more likely to be too low than too high. Fixed costs per
+        job mean a small wall costs relatively more than its area suggests.],
+      [*Under-prediction* of wall repair costs.],
+      [Update the wall rates from NHC's costing tool at each four-monthly
+        revision.],
+    ),
+    (
+      [The site ratings are set from the driveway, the slope and the debris
+        volume, with thresholds that are judgement, rather than from a site
+        visit.],
+      [*Unknown.*],
+      [Replace the site rating thresholds with figures from NHC's cost
+        assessors.],
+    ),
+    (
+      [Each wall type is mapped to a single costing tool rate, from
+        #money(calc.min(..w.types.filter(t => t.rate != none).map(t => t.rate)))
+        to
+        #money(calc.max(..w.types.filter(t => t.rate != none).map(t => t.rate)))
+        per m², so the mapping is one of the larger assumptions in the wall
+        costs.],
+      [*Mixed.*],
+      [Price walls with the costing tool's detailed build-up once wall
+        dimensions are known well enough to justify it.],
+    ),
+    (
+      [The #pct(w.spec_uplift) allowance for rebuilding to a higher standard is
+        a flat judgement.],
+      [*Unknown.*],
+      [Confirm the allowance with NHC's cost assessors.],
+    ),
+    (
+      [A partly damaged wall is rebuilt over its damaged length plus a margin;
+        repairs short of rebuilding are not modelled.],
+      [*Over-prediction* where a repair would do.],
+      [Add a repair option for walls with minor damage.],
+    ),
+    (
+      [The landslide reinstatement wall's height and length are set from the
+        size of the landslide by judgement. Landslide land repair is costed as
+        debris clearing and that wall only, rather than from a landslip repair
+        schedule.],
+      [*Unknown.*],
+      [Price landslide land repair from T+T's landslip cost schedule.],
+    ),
+    (
+      [The liquefaction costs are from Canterbury, escalated by a labour cost
+        index only, and carry the effect of volunteers clearing ejecta for
+        nothing.],
+      [*Under-prediction* where volunteers would not be available.],
+      [Replace the escalation with an index that follows plant and materials as
+        well as labour.],
+    ),
+    (
+      [The liquefaction costs exclude increased liquefaction and flooding
+        vulnerability, which were a large share of what NHC paid in
+        Canterbury.],
+      [*Under-prediction* of liquefaction losses.],
+      [Include increased vulnerability if it is brought into the study's
+        scope.],
+    ),
+    (
+      [Every bridge and culvert is priced at one span, since nothing gives each
+        crossing's span.],
+      [*Mixed.*],
+      [Estimate each crossing's span from the watercourse width.],
+    ),
+  ),
+  caption: [Limitations, their impact on losses and future improvements.],
+) <cost-limitations-table>
 
-// T-38/L-30, Q-10, Q-11, T-27, I-13, landslide schedule, L-23.
-- Update the wall rates from NHC's costing tool at each four-monthly revision.
-- Replace the site rating thresholds with figures from NHC's cost assessors.
-- Confirm whether the Canterbury liquefaction costs already include retaining
-  wall, bridge and culvert damage, so they are not counted twice.
-- Price walls with the costing tool's detailed build-up once wall dimensions are
-  known well enough to justify it.
-- Price landslide land repair from T+T's landslip cost schedule.
-- Replace the liquefaction escalation with an index that follows plant and
-  materials as well as labour.
+#review[The impacts on losses in @cost-limitations-table are a first draft. Check the direction
+given for each.]

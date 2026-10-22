@@ -29,7 +29,9 @@ roll in ``config.QV_RATE_EXTENTS``:
 - ``qv-rate-<average|footprint|ring|insured>.png``: the four rates;
 - ``qv-tier-factor-by-<landform|ta|area>.png``: the two factors, at the loss
   module's tier ratios;
-- ``qv-tier-examples.png``: the two examples.
+- ``qv-tier-examples.png``: the two examples;
+- ``qv-tier-example-<valuer|typical>.png``: each example on its own, for the
+  report, without titles and with larger text.
 
 Sensitive:
     The rates and factors are derived from each property's QV land value. The
@@ -396,7 +398,7 @@ def rate_figure(groupings, value, title, values_what, out):
     ]
     axes[-1].set_xticks(ticks)
     axes[-1].xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"${v:,.0f}"))
-    axes[-1].set_xlabel("$/m², excluding GST", color=INK)
+    axes[-1].set_xlabel("$/m², including GST", color=INK)
     fig.suptitle(
         f"{title}, per claim property", x=0.01, ha="left", fontsize=12, color=INK
     )
@@ -441,9 +443,32 @@ def typical_section(table):
 
 
 def draw_example(
-    ax, example, *, insured_ratio=INSURED_RATIO, uninsured_ratio=UNINSURED_RATIO
+    ax,
+    example,
+    *,
+    insured_ratio=INSURED_RATIO,
+    uninsured_ratio=UNINSURED_RATIO,
+    fontsize=8,
+    title=True,
+    narrow_share=0.15,
+    beside_offset=(5, -36),
+    tier_fontsize=None,
+    right_margin=0.0,
+    show_factor=True,
 ):
-    """Draw the three tiers of an example as bars, rate against area."""
+    """Draw the three tiers of an example as bars, rate against area.
+
+    ``fontsize`` sets the labels' size and ``title`` whether the panel carries
+    its own description, which a report figure leaves to its caption. A tier
+    narrower than ``narrow_share`` of the section is labelled beside its bar
+    rather than above it, which larger text needs sooner, at ``beside_offset``
+    points from the bar's top corner. ``tier_fontsize`` sets the tier labels
+    apart from the rest. ``right_margin``, a share of the section, leaves room
+    past its edge for the labels of a narrow last tier and of the two average
+    lines, which then run the full width; the x axis stops at the section's
+    edge. ``show_factor`` adds the insured average's multiple of the section
+    average to its label.
+    """
     value, area = example["value"], example["area"]
     footprint, insured = example["footprint"], example["insured"]
     ring, outer = insured - footprint, area - insured
@@ -467,46 +492,53 @@ def draw_example(
             edgecolor=SURFACE,
             linewidth=1.2,
         )
-        narrow = width < 0.15 * area
+        narrow = width < narrow_share * area
         ax.annotate(
             f"{label}\n{width:,.0f} m² at ${rate:,.0f}/m²\n= ${width * rate:,.0f}",
             (left + (width if narrow else width / 2), rate),
-            xytext=(5, -36) if narrow else (0, 4),
+            xytext=beside_offset if narrow else (0, 4),
             textcoords="offset points",
             ha="left" if narrow else "center",
             va="bottom",
-            fontsize=8,
+            fontsize=tier_fontsize or fontsize,
             color=INK,
             # The average lines pass behind a label rather than through it.
             bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5},
             zorder=5,
         )
         left += width
+    right = area * (1 + right_margin)
     ax.axhline(average, color=INK, lw=1, ls="--")
     ax.annotate(
         f"Section average ${average:,.0f}/m²",
-        (area, average),
+        (right, average),
         xytext=(-4, 4),
         textcoords="offset points",
         ha="right",
-        fontsize=8,
+        fontsize=fontsize,
         color=INK,
     )
     ax.axhline(insured_rate, color=INSURED_LINE, lw=1.4)
+    factor = (
+        f" ({insured_rate / average:.1f}x the section average)" if show_factor else ""
+    )
     ax.annotate(
-        f"Insured land's average ${insured_rate:,.0f}/m² "
-        f"({insured_rate / average:.1f}x the section average), for liquefaction",
-        (area, insured_rate),
+        f"Insured land's average ${insured_rate:,.0f}/m²{factor}, for liquefaction",
+        (right, insured_rate),
         xytext=(-4, 4),
         textcoords="offset points",
         ha="right",
-        fontsize=8,
+        fontsize=fontsize,
         color=INK,
     )
-    ax.set_xlim(0, area)
+    ax.set_xlim(0, right)
     ax.set_ylim(0, full * 1.25)
-    ax.set_xlabel("Area of the section (m²)", color=INK)
-    ax.set_ylabel("Land value per m², excluding GST", color=INK)
+    if right_margin:
+        ticks = [tick for tick in ax.get_xticks() if 0 <= tick <= area]
+        ax.set_xticks(ticks)
+        ax.spines["bottom"].set_bounds(0, area)
+    ax.set_xlabel("Area of the section (m²)", color=INK, fontsize=fontsize + 1)
+    ax.set_ylabel("Land value per m², including GST", color=INK, fontsize=fontsize + 1)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"${v:,.0f}"))
     ax.set_facecolor(SURFACE)
@@ -514,7 +546,9 @@ def draw_example(
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color(MUTED)
-    ax.tick_params(colors=MUTED, labelcolor=INK)
+    ax.tick_params(colors=MUTED, labelcolor=INK, labelsize=fontsize)
+    if not title:
+        return
     ax.set_title(
         f"{example['name']}: ${value:,.0f} of land on {area:,.0f} m², a "
         f"{footprint:,.0f} m² house and {ring:,.0f} m² more of insured land;\n"
@@ -548,9 +582,35 @@ def example_figure(examples, out):
         "three add back to the land value. The typical section is the median "
         "area,\nhouse and insured land of the claim properties, at the median "
         f"average rate, over {', '.join(config.QV_RATE_EXTENT_NAMES)}. "
-        "Excluding GST.",
+        "Including GST.",
         out,
     )
+
+
+def report_example_figures(examples, outs):
+    """Draw each example on its own for the report: no title, larger text.
+
+    The report's caption and text carry the context, so the panel keeps only
+    the tiers and the two averages, at a size that reads on the page.
+    """
+    for example, out in zip(examples, outs, strict=True):
+        fig, ax = plt.subplots(figsize=(8, 4.6))
+        draw_example(
+            ax,
+            example,
+            fontsize=10,
+            title=False,
+            narrow_share=0.25,
+            beside_offset=(5, 4),
+            tier_fontsize=8.5,
+            right_margin=0.3,
+            show_factor=False,
+        )
+        fig.patch.set_facecolor(SURFACE)
+        fig.tight_layout()
+        fig.savefig(out, dpi=DPI, facecolor=SURFACE, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Wrote {out}")
 
 
 def factor_figure(table, column, groups, colours, out, *, by):
@@ -660,8 +720,14 @@ def main(*, extents):
         factor_figure(
             rows, column, groups, colours, FIG_DIR / f"{FACTOR_STEM}-{key}.png", by=by
         )
-    example_figure(
-        [VALUER_EXAMPLE, typical_section(table)], FIG_DIR / "qv-tier-examples.png"
+    examples = [VALUER_EXAMPLE, typical_section(table)]
+    example_figure(examples, FIG_DIR / "qv-tier-examples.png")
+    report_example_figures(
+        examples,
+        [
+            FIG_DIR / "qv-tier-example-valuer.png",
+            FIG_DIR / "qv-tier-example-typical.png",
+        ],
     )
 
 
