@@ -356,10 +356,17 @@ PROFESSIONAL_FEES_EXCL_GST_NZD = {
 }
 PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD = sum(PROFESSIONAL_FEES_EXCL_GST_NZD.values())
 
+# The least a claim's professional fees can be, before GST. NHC's feedback
+# (2026-10-23) was that the costing tool's own fee total above, $5,100, is
+# light, so the floor is set at $8,000 instead; the tool's table is kept as the
+# record of what the fees cover.
+PROFESSIONAL_FEES_MIN_EXCL_GST_NZD = 8_000.0
+
 # Professional fees as a share of the walls they are for (Perrie Gilbert,
-# 2026-10-12): 20% of what the claim's walls cost to build, with the costing
-# tool's own fee total as the floor. A large wall needs more design, engineering
-# and supervision than the flat fee allows; a small one still needs a consent.
+# 2026-10-12): 20% of what the claim's walls cost to build, with
+# PROFESSIONAL_FEES_MIN_EXCL_GST_NZD as the floor. A large wall needs more
+# design, engineering and supervision than the flat fee allows; a small one
+# still needs a consent.
 PROFESSIONAL_FEES_SHARE = 0.20
 
 # The on-costs a claim's works carry beyond the walls and their fees, and the
@@ -504,15 +511,15 @@ def professional_fees_incl_gst_nzd(
     *,
     policy: PolicySettings,
     share: float = PROFESSIONAL_FEES_SHARE,
-    floor_excl_gst_nzd: float = PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
+    floor_excl_gst_nzd: float = PROFESSIONAL_FEES_MIN_EXCL_GST_NZD,
 ) -> np.ndarray:
     """Return a claim's professional fees, including GST.
 
     Consent, design, engineering, health and safety, project management and
     survey: :data:`PROFESSIONAL_FEES_SHARE` of what the claim's walls cost to
     build, as built -- site multiplier, specification uplift and all -- and
-    never less than the costing tool's own total,
-    :data:`PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD`, which takes no multiplier.
+    never less than :data:`PROFESSIONAL_FEES_MIN_EXCL_GST_NZD`, which takes no
+    multiplier.
     Mileage is excluded on instruction.
 
     **Fees are per claim, not per wall or per cost line.** A claim gets one

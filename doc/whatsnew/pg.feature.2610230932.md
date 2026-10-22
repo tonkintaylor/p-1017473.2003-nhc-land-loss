@@ -1,0 +1,1 @@
+Professional fees on a claim with wall works are now never less than $8,000 excluding GST, up from the costing tool's own fee total of $5,100, on NHC's feedback that the tool's total is light. They are still 20% of the wall cost where that is more. The settlement, the loss viewer, the calculation walkthrough and the cost appendix all use the new floor.

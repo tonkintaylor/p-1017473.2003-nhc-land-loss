@@ -300,10 +300,16 @@
 
 <main>
 <aside id="config">
-  <div id="taBox" hidden>
-    <h2>Area</h2>
-    <label title="The CSV holds several territorial authorities; every figure and the map follow this choice">Territorial authority
-      <select id="taFilter"><option value="">All</option></select></label>
+  <div id="taBox">
+    <h2>Claims shown</h2>
+    <div class="note" style="margin-top:0">Every figure, chart and the map follow these
+      choices. They change which claims are shown, not what any claim is paid.</div>
+    <label id="taLabel" hidden title="The CSV holds several territorial authorities">Territorial authority
+      <select id="taFilter" class="showFilter"><option value="">All</option></select></label>
+    <label title="Which kinds of damage the claim has, as the map colours them by claim type">Damage type
+      <select id="typeFilter" class="showFilter"><option value="">All</option></select></label>
+    <label id="lvLabel" hidden title="The property's QV rating land value, indexed to September 2025, over its dwellings, in bands. Taken as including GST, as QV gives it.">Land value per dwelling (QV)
+      <select id="lvFilter" class="showFilter"><option value="">All</option></select></label>
   </div>
 
   <div class="baseblock">
@@ -351,7 +357,7 @@
   <div class="note" style="margin-top:4px">Fixed on every claim with wall works, on top of
     the walls as built (site and specification allowances and the wall rate scaling all in),
     each on the one before:
-    <br>Professional fees (20% of the walls, at least $5,100)
+    <br>Professional fees (20% of the walls, at least $8,000)
     <br>Mob/demob (higher of $5,000 or 15% of the walls and professional fees)
     <br>Project management (10% of the walls, professional fees, mob/demob and
     any culvert or bridge &mdash; so on a claim with only a crossing too)
@@ -511,6 +517,12 @@ const STACK = [TYPE.liq, TYPE.wall, TYPE.slide, TYPE.crossing, TYPE.combo];
 const TYPE_TIP = {[TYPE.wall]: "Ground that came down with the claim's own damaged "
   + "retaining wall counts as wall damage, not landslide, so a claim whose only "
   + "landslide ground came with its own wall is retaining wall only."};
+// A land value band as the CSV carries it, its lower bound in dollars, labelled
+// for the filter; -1 is a property with no value on the QV roll.
+const LV_BAND_STEP = 100000, LV_BAND_TOP = 1000000;
+const lvBandLabel = b => b < 0 ? "Not on the QV roll"
+  : b >= LV_BAND_TOP ? `${money(LV_BAND_TOP)} and over`
+  : `${money(b)} to ${money(b + LV_BAND_STEP)}`;
 const typeLabel = t => TYPE_TIP[t] ? `<span title="${TYPE_TIP[t]}">${t}</span>` : t;
 const BASES = ["Paid the repair cost", "Capped", "Excess took it all"];
 // The page works wholly excluding GST (2026-10-12): every rate, value, cap,
@@ -582,7 +594,7 @@ const pct = d3.format(".0%");
 // and survey) -- FEES_SHARE of what the walls cost to build, never less than
 // the tool's total -- and the rate for loading, carting and tipping landslide
 // spoil, both excluding GST (landloss.loss.pricing).
-const FEES_EXCL_GST = 5100;
+const FEES_EXCL_GST = 8000;
 const FEES_SHARE = 0.20;
 const SPOIL_RATE_EXCL_GST = 150;
 // The on-costs, the second built on the first
@@ -1004,7 +1016,7 @@ function lines(sel, rows, liqOn) {
     ["Walls replaced", d3.sum(rows, r => r.wall)],
     ["New walls", d3.sum(rows, r => r.newWall)],
     ["Fees and consents", d3.sum(rows, r => r.fees),
-     "20% of the walls, min $5,100"],
+     "20% of the walls, min $8,000"],
     ["Mob/demob", d3.sum(rows, r => r.mob),
      "15% of the walls and fees, min $5,000"],
     ["Crossings", d3.sum(rows, r => r.crossing)],
@@ -1308,7 +1320,7 @@ function claimDetail(b, s) {
     // damaged wall holds (T-124); a slip that only buried it is cleared, not walled.
     [nz(b.new_wall_count) > 1 ? `New walls built (${count(nz(b.new_wall_count))}, one per slip that scarred the claim)`
        : "New wall built", money(b.newWall)],
-    ["Professional fees incl. consents (20% of walls, min $5,100)", money(b.fees)],
+    ["Professional fees incl. consents (20% of walls, min $8,000)", money(b.fees)],
     ["Mob/demob (15% of walls and fees, min $5,000)", money(b.mob)],
     ["Crossings", money(b.crossing)],
     ["Project management (10% of above)", money(b.pm)],
@@ -1545,8 +1557,10 @@ function render({resettle = true, reread = false, requick = false} = {}) {
   // A CSV of several territorial authorities shows one of them or all; the
   // whole page, totals and map, follows. The same test keeps the baseline and
   // scenario rows index for index.
-  const ta = val("taFilter");
-  const keep = r => !ta || r.territorial_authority === ta;
+  const ta = val("taFilter"), dmg = val("typeFilter"), lv = val("lvFilter");
+  const keep = r => (!ta || r.territorial_authority === ta)
+    && (!dmg || r.type === dmg)
+    && (lv === "" || String(r.land_value_band_nzd) === lv);
   const rows = ROWS.filter(keep), scRows = SC_ROWS.filter(keep);
   SHOWN = {base: rows, scen: scRows};
   const histOf = val("histOf");
@@ -1702,7 +1716,17 @@ function load(text) {
   const pick = document.getElementById("taFilter");
   pick.innerHTML = '<option value="">All</option>' +
     authorities.map(a => `<option value="${a}">${a}</option>`).join("");
-  document.getElementById("taBox").hidden = authorities.length < 2;
+  document.getElementById("taLabel").hidden = authorities.length < 2;
+  // The damage types in the order the charts stack them, and the land value
+  // bands the CSV carries, lowest first; a CSV from before the bands were
+  // carried hides that filter.
+  document.getElementById("typeFilter").innerHTML = '<option value="">All</option>' +
+    STACK.map(t => `<option value="${t}">${t}</option>`).join("");
+  const bands = Array.from(new Set(RAW.map(r => r.land_value_band_nzd)
+    .filter(v => v != null))).sort(d3.ascending);
+  document.getElementById("lvFilter").innerHTML = '<option value="">All</option>' +
+    bands.map(b => `<option value="${b}">${lvBandLabel(b)}</option>`).join("");
+  document.getElementById("lvLabel").hidden = bands.length === 0;
   const dropBox = document.getElementById("drop");
   dropBox.classList.add("loaded");
   dropBox.innerHTML = `${RAW.length.toLocaleString()} properties loaded` +
@@ -1776,10 +1800,11 @@ window.addEventListener("drop", e => {
 // A policy or sensitivity control changes the answer, so it re-settles --
 // debounced, because it is the expensive one. Everything else changes what is
 // shown rather than what is owed, so it repaints only.
-d3.selectAll("#config input, #config select:not(#taFilter)").on("input", rerender);
-// Choosing an authority changes what is shown, not what is owed, so nothing is
-// re-settled; the markers are rebuilt for the claims shown and the map reframed.
-d3.select("#taFilter").on("input", () => {
+d3.selectAll("#config input, #config select:not(.showFilter)").on("input", rerender);
+// Choosing an authority, a damage type or a land value band changes what is
+// shown, not what is owed, so nothing is re-settled; the markers are rebuilt for
+// the claims shown and the map reframed.
+d3.selectAll(".showFilter").on("input", () => {
   SELECTED = null;
   MARKERS = null;
   REFIT = true;

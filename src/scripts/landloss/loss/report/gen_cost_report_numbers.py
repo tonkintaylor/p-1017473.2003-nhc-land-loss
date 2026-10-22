@@ -134,6 +134,7 @@ def on_costs():
     return {
         "fees": dict(pricing.PROFESSIONAL_FEES_EXCL_GST_NZD),
         "fees_total": pricing.PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
+        "fees_min": pricing.PROFESSIONAL_FEES_MIN_EXCL_GST_NZD,
         "fees_share": pricing.PROFESSIONAL_FEES_SHARE,
         "mob_demob_share": pricing.MOB_DEMOB_SHARE,
         "mob_demob_min": pricing.MOB_DEMOB_MIN_EXCL_GST_NZD,

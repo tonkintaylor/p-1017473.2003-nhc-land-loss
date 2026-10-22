@@ -42,8 +42,9 @@ assumption named here:
   damaged wall, or by one new wall where it has none (2026-09-29).
 - **Professional fees are charged once per claim that involves a wall** --
   consent, design, engineering, health and safety, project management and
-  survey: 20% of what the claim's walls cost to build, never less than $5,100
-  excluding GST, the costing tool's own fee total (2026-10-12). A wall is what
+  survey: 20% of what the claim's walls cost to build, never less than $8,000
+  excluding GST (2026-10-12; the floor raised from the costing tool's own fee
+  total, $5,100, on NHC's feedback, 2026-10-23). A wall is what
   gets designed and consented:
   clearing spoil on its own does not attract them, and neither does a Canterbury
   liquefaction cost, that being a settled amount rather than a works estimate.

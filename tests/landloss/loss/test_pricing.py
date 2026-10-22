@@ -836,10 +836,10 @@ def test_fees_are_a_fifth_of_the_wall_cost_above_the_floor():
     )
 
 
-def test_fees_never_fall_below_the_costing_tools_total():
-    # $5,100 before GST, with no site multiplier on the floor.
+def test_fees_never_fall_below_the_floor():
+    # $8,000 before GST, with no site multiplier on the floor.
     fees = professional_fees_incl_gst_nzd(np.array([0.0, 10_000.0]), policy=ACT)
-    assert fees == pytest.approx([5_100.0 * 1.15] * 2)
+    assert fees == pytest.approx([8_000.0 * 1.15] * 2)
 
 
 def test_a_negative_wall_cost_is_refused():

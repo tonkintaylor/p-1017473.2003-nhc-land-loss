@@ -202,9 +202,9 @@ The undepreciated value is the replacement cost.
 
 The costing tool prices professional fees separately from the walls: consent,
 design, engineering, health and safety, project management and survey, which
-come to #money(o.fees_total). A claim with wall works is charged
-#pct(o.fees_share) of what its walls cost to build, or #money(o.fees_total) if
-that is more. A share is used rather than the flat total because a large wall
+come to #money(o.fees_total). NHC considered that total light, so a claim with
+wall works is charged #pct(o.fees_share) of what its walls cost to build, or
+#money(o.fees_min) if that is more. A share is used rather than the flat total because a large wall
 needs more design, engineering and supervision than the flat fee allows, while
 a small one still needs a consent. The same claims are charged #pct(o.mob_demob_share) of the walls
 and fees, at least #money(o.mob_demob_min), to set up and clear the site.
@@ -221,7 +221,7 @@ what NHC settled and so already stands for everything that claim cost.
 #let ex-area = ex-height * ex-length
 #let ex-site = w.markup.M + w.markup.E + w.markup.M
 #let ex-wall = ex-rate * ex-area * (1 + ex-site) * (1 + w.spec_uplift)
-#let ex-fees = calc.max(o.fees_share * ex-wall, o.fees_total)
+#let ex-fees = calc.max(o.fees_share * ex-wall, o.fees_min)
 #let ex-mob = calc.max(o.mob_demob_share * (ex-wall + ex-fees), o.mob_demob_min)
 #let ex-pm = o.project_management_share * (ex-wall + ex-fees + ex-mob)
 #let ex-before = ex-wall + ex-fees + ex-mob + ex-pm

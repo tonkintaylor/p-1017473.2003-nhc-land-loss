@@ -1271,8 +1271,8 @@ REPAIR_NOTES = [
         "to overlap (L-44), no more than the insured area."
     ),
     (
-        "D1. The six professional fees from the tool's fee table, $5,100 "
-        "excluding GST, charged once on a claim that involves a wall and added "
+        "D1. The professional fees: 20% of the walls, never less than $8,000 "
+        "excluding GST (NHC's floor; the tool's own fee table totals $5,100), charged once on a claim that involves a wall and added "
         "before the site multiplier, so a difficult site costs more to design "
         "as well as to build. Mileage is excluded, and they never reach the "
         "undepreciated value. A claim that carries the fees also carries the "

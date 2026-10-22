@@ -1,6 +1,6 @@
 meta:
-  written: '2026-10-21'
-  commit: 965542d
+  written: '2026-10-23'
+  commit: eac721a
 walls:
   rates_as_at: '2026-09-23'
   types:
@@ -93,6 +93,7 @@ on_costs:
     Project management costs: 1000.0
     Survey costs: 1000.0
   fees_total: 5100.0
+  fees_min: 8000.0
   fees_share: 0.2
   mob_demob_share: 0.15
   mob_demob_min: 5000.0

@@ -61,6 +61,7 @@ from landloss.domain.loss_contract import (
     RW_ID_COLUMN,
     RW_LENGTH_COLUMN,
 )
+from landloss.exposure.land.land_value import load_base_rates
 from landloss.hazard.landslide.urban.realisation import FAILED_WITH_POLYGON
 from landloss.hazard.liquefaction.land_damage import LD_STATES
 from landloss.io.area_of_interest import (
@@ -68,18 +69,23 @@ from landloss.io.area_of_interest import (
     get_area_of_interest,
     get_study_areas,
 )
+from landloss.io.qv_rating_roll import get_qv_rating_roll
 from landloss.loss import claims as loss_claims
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     INUNDATION_REMOVAL_RATE_EXCL_GST_NZD_PER_M3,
     LIQ_COST_ESCALATION,
+    PROFESSIONAL_FEES_MIN_EXCL_GST_NZD,
     PROFESSIONAL_FEES_SHARE,
-    PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD,
     RATING_MARKUP,
     contingency_incl_gst_nzd,
     on_costs_incl_gst_nzd,
 )
+from landloss.loss.qv_land_value import QV_LAND_VALUE_COLUMN, qv_land_value_by_claim
 from landloss.vul.loss_input import PARENT_RW_ID_COLUMN
+from scripts.landloss.exposure.land.steps.s5_insured_land_extent.gen_insured_land import (
+    valuation_links_path,
+)
 from scripts.landloss.loss.steps.s0_land_cover_cap.s0_gen_land_cover_cap import (
     wall_udv_by_claim,
 )
@@ -142,6 +148,15 @@ NO_DAMAGE_LIQ_STATE = LD_STATES.index("None") + 1
 # 10 hands loss one or the other, and which depends on the code vul ran on, not
 # on this script, so it is read off the data (liquefaction_method).
 LOOKUP_METHOD = "Canterbury cost per damage state"
+# The land value bands the viewer filters claims by (NHC, 2026-10-23): the QV
+# land value per dwelling in steps of LAND_VALUE_BAND_STEP_NZD, with one open
+# band from LAND_VALUE_BAND_TOP_NZD up. The CSV carries each claim's band, its
+# lower bound, never the value itself, as the roll is sensitive; a property with
+# no value on the roll is NO_LAND_VALUE_BAND. The page's LV_BAND_STEP and
+# LV_BAND_TOP label them and must match.
+LAND_VALUE_BAND_STEP_NZD = 100_000
+LAND_VALUE_BAND_TOP_NZD = 1_000_000
+NO_LAND_VALUE_BAND = -1
 AREA_METHOD = "Priced from the ground lost, at rates fitted to claimant-only costs"
 
 
@@ -664,6 +679,35 @@ def damaged_wall_length_by_claim(rw: pd.DataFrame) -> pd.Series:
     return lengths.groupby(damaged[CLAIM_ID_COLUMN]).sum().round(4)
 
 
+def land_value_bands(
+    dwellings: pd.Series, *, extent: str, roll: pd.DataFrame, base_rates: pd.DataFrame
+) -> pd.Series:
+    """Return each claim's QV land value band, per dwelling.
+
+    The roll's indexed land value over the property, as the land cover cap
+    reads it (:func:`~landloss.loss.qv_land_value.qv_land_value_by_claim`),
+    divided by the claim's dwellings, as the equity figures band capital
+    value. Taken as including GST, as QV gives it.
+
+    Args:
+        dwellings: The dwellings on each claim, indexed by claim id.
+        extent: The extent whose valuation links join the roll to the claims.
+        roll: The QV rating roll.
+        base_rates: The land value base rates, carrying each authority's index.
+
+    Returns:
+        The band's lower bound in dollars per claim, on ``dwellings.index``;
+        :data:`NO_LAND_VALUE_BAND` where the roll has no value.
+    """
+    value = qv_land_value_by_claim(
+        roll, pd.read_parquet(valuation_links_path(extent=extent)), base_rates
+    )[QV_LAND_VALUE_COLUMN]
+    per_dwelling = value.reindex(dwellings.index) / dwellings.clip(lower=1)
+    band = (per_dwelling // LAND_VALUE_BAND_STEP_NZD) * LAND_VALUE_BAND_STEP_NZD
+    band = band.clip(upper=LAND_VALUE_BAND_TOP_NZD)
+    return band.fillna(NO_LAND_VALUE_BAND).astype(int)
+
+
 def viewer_rows(
     claims: pd.DataFrame, wall_value: pd.Series, liq_state: pd.Series
 ) -> pd.DataFrame:
@@ -793,7 +837,7 @@ def settled_in_python(
         walled,
         np.maximum(
             PROFESSIONAL_FEES_SHARE * (wall + new_wall),
-            PROFESSIONAL_FEES_TOTAL_EXCL_GST_NZD * gst,
+            PROFESSIONAL_FEES_MIN_EXCL_GST_NZD * gst,
         ),
         0.0,
     )
@@ -928,6 +972,13 @@ def main(*, extent, world_ids, realisation_ids):
         rows[column] = rows[column].fillna(0).astype(int)
     rows["damaged_wall_length_m"] = (
         damaged_wall_length_by_claim(rw).reindex(rows.index).fillna(0.0)
+    )
+    print("  Reading the QV rating roll (sensitive) for the land value bands ...")
+    rows["land_value_band_nzd"] = land_value_bands(
+        rows["dwellings"],
+        extent=extent,
+        roll=get_qv_rating_roll(),
+        base_rates=load_base_rates(),
     )
     method = liquefaction_method(claims, realisation_id, extent=extent)
     print(f"  Liquefaction costs: {method}")

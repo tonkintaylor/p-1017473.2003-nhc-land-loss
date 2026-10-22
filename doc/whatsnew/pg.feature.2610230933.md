@@ -1,0 +1,1 @@
+The loss viewer can now show the claims of one damage type, or of one QV land value band per dwelling ($100,000 bands up to $1,000,000), as NHC asked, beside the territorial authority choice. The viewer CSV carries each claim's band, never its land value.
