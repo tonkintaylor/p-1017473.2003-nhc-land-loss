@@ -1,0 +1,1 @@
+Add the `writing-technical-appendices` skill: how the technical report appendices are written, numbered, reviewed and built, with scripts to turn the appendices into one Word file each and to read a reviewer's tracked changes and comments.
