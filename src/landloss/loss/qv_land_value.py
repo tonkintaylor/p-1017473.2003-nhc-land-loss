@@ -29,13 +29,20 @@ with no location, so it takes the insured land's average, which is its expected
 value if it is spread evenly. A polygon with both is valued by the larger, as
 :func:`~landloss.loss.claims.damaged_area_m2` counts the larger area.
 
-**Not on the roll.** A property whose land value cannot be read off the roll,
-or whose roll value is a non-residential unit's (:func:`residential_land_values`),
+**Not a claim.** A property whose every rating unit is non-residential
+(:func:`non_residential_claims`) is not a claim, and
+:func:`drop_non_residential_claims` takes it out of the land table before
+anything is valued (Perrie Gilbert, 2026-10-23). Most are a sliver of a
+neighbour's house over a reserve or commercial boundary, which the insured land
+step's crossing rule gives a claim of its own; the house keeps its own claim
+next door.
+
+**Not on the roll.** A property whose land value cannot be read off the roll
 takes the median land value of the properties in its suburb that can, and is
 then tiered the same way; with no such property in its suburb, the median over
 the whole run. The median value, not the median rate times the property's area:
-a house on a large or non-residential title sits on a typical residential site,
-and a 58 ha title at a suburb's rate would be worth billions.
+a house on a large title sits on a typical residential site, and a 58 ha title
+at a suburb's rate would be worth billions.
 
 Sensitive:
     The roll is QV's, supplied as sensitive data
@@ -253,6 +260,42 @@ def residential_land_values(by_claim: pd.DataFrame) -> pd.Series:
         "non-residential and are valued as though off the roll"
     )
     return by_claim.loc[~non_residential, QV_LAND_VALUE_COLUMN]
+
+
+def non_residential_claims(by_claim: pd.DataFrame) -> pd.Index:
+    """Return the claims whose rating units are all non-residential.
+
+    Args:
+        by_claim: From :func:`qv_land_value_by_claim`.
+
+    Returns:
+        Their claim ids.
+    """
+    return by_claim.index[by_claim[QV_USE_COLUMN] == NON_RESIDENTIAL]
+
+
+def drop_non_residential_claims(
+    tables: dict[str, pd.DataFrame], non_residential: pd.Index
+) -> dict[str, pd.DataFrame]:
+    """Return the loss tables without the non-residential claims.
+
+    Every table loses the claims' rows, the walls and crossings as well as the
+    land, so nothing downstream meets a wall whose claim is gone.
+
+    Args:
+        tables: The contract's tables by name, each carrying the claim id.
+        non_residential: From :func:`non_residential_claims`.
+
+    Returns:
+        The same tables less every row of those claims.
+    """
+    land = tables["land"]
+    dropped = land.loc[land[CLAIM_ID_COLUMN].isin(non_residential), CLAIM_ID_COLUMN]
+    print(f"  {dropped.nunique():,} claims on non-residential land only are not claims")
+    return {
+        name: table.loc[~table[CLAIM_ID_COLUMN].isin(non_residential)]
+        for name, table in tables.items()
+    }
 
 
 def claim_land_values(land: pd.DataFrame, qv_value: pd.Series) -> pd.DataFrame:

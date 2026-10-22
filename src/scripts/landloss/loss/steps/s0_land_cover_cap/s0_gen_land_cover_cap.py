@@ -120,7 +120,7 @@ def land_cover_cap_path(world_id: int, realisation_id: int, *, extent: str) -> P
     return WORK_DIR / f"{stem}{suffix}.parquet"
 
 
-def load_qv_land_values(*, extent: str) -> pd.Series:
+def load_qv_land_values(*, extent: str) -> tuple[pd.Series, pd.Index]:
     """Return the indexed QV land value of each claim property, read from T:.
 
     Read once per run: the roll does not change between realisations.
@@ -130,16 +130,22 @@ def load_qv_land_values(*, extent: str) -> pd.Series:
             exposure wrote.
 
     Returns:
-        The land value in dollars including GST, indexed by claim id, for the
-        claims whose value can be read off the roll and is not a non-residential
-        unit's (:func:`~landloss.loss.qv_land_value.residential_land_values`).
+        ``(values, non_residential)``: the land value in dollars including GST,
+        indexed by claim id, for the claims whose value can be read off the
+        roll and is not a non-residential unit's
+        (:func:`~landloss.loss.qv_land_value.residential_land_values`); and the
+        claims on non-residential land only, which are not claims
+        (:func:`~landloss.loss.qv_land_value.non_residential_claims`).
     """
     links = pd.read_parquet(valuation_links_path(extent=extent))
     print("Reading the QV rating roll from T: ...", flush=True)
     values = qv_land_value.qv_land_value_by_claim(
         get_qv_rating_roll(), links, load_base_rates()
     )
-    return qv_land_value.residential_land_values(values)
+    return (
+        qv_land_value.residential_land_values(values),
+        qv_land_value.non_residential_claims(values),
+    )
 
 
 def value_land(land: pd.DataFrame, qv_values: pd.Series) -> pd.DataFrame:
@@ -305,7 +311,7 @@ def main(*, extent, world_ids, realisation_ids):
         realisation_ids: Which modelled earthquakes to cap.
     """
     policy = PolicySettings()
-    qv_values = load_qv_land_values(extent=extent)
+    qv_values, non_residential = load_qv_land_values(extent=extent)
 
     for world_id in world_ids:
         for realisation_id in realisation_ids:
@@ -319,6 +325,7 @@ def main(*, extent, world_ids, realisation_ids):
                 )
                 for name in LOSS_TABLES
             }
+            tables = qv_land_value.drop_non_residential_claims(tables, non_residential)
 
             caps = loss_claims.land_by_claim(value_land(tables["land"], qv_values))
             caps[RW_UDV_COLUMN] = (

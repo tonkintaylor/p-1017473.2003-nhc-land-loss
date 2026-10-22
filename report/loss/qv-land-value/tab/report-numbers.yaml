@@ -1,6 +1,6 @@
 meta:
-  written: '2026-10-22'
-  commit: d7c5341
+  written: '2026-10-23'
+  commit: fd95a94
   extents:
   - Wellington City
   - Lower Hutt City
@@ -26,61 +26,61 @@ settings:
       valuation_date: '2024-09-01'
       index: 0.963
 sources:
-  claims: 119250
+  claims: 119130
   by_source:
     qv: 118933
-    suburb median: 317
+    suburb median: 197
   non_residential: 120
 rates:
-  properties: 119061
+  properties: 118933
   overall:
-    average_rate: 770.1574383751464
-    footprint_rate: 1958.9142868051458
-    ring_rate: 391.7828573610292
-    insured_rate: 908.0320820279964
-    liquefaction_factor: 1.1423982818607217
-    footprint_factor: 2.4730632587239687
+    average_rate: 770.3180643922103
+    footprint_rate: 1957.8003610159149
+    ring_rate: 391.560072203183
+    insured_rate: 907.5655510191398
+    liquefaction_factor: 1.142130610253223
+    footprint_factor: 2.472366285535624
   by_area:
     under 500 m²:
-      properties: 31271
-      average_rate: 1400.5550046262413
-      footprint_rate: 2843.881434859574
-      ring_rate: 568.7762869719148
-      insured_rate: 1458.322754039869
-      liquefaction_factor: 1.015844605159451
-      footprint_factor: 1.9968567890952849
+      properties: 31240
+      average_rate: 1400.3095195188703
+      footprint_rate: 2843.3365872869776
+      ring_rate: 568.6673174573956
+      insured_rate: 1457.8943570831445
+      liquefaction_factor: 1.0158043794094622
+      footprint_factor: 1.9967738500927406
     500-800 m²:
-      properties: 56490
-      average_rate: 748.0738926160438
-      footprint_rate: 1858.2319995296357
-      ring_rate: 371.6463999059272
-      insured_rate: 859.0853516680368
-      liquefaction_factor: 1.1208799986136793
-      footprint_factor: 2.4513544817874107
+      properties: 56479
+      average_rate: 748.0402277769242
+      footprint_rate: 1858.1205346660988
+      ring_rate: 371.62410693321976
+      insured_rate: 859.0115954806449
+      liquefaction_factor: 1.1208592596762506
+      footprint_factor: 2.451303294037493
     800-1,500 m²:
-      properties: 23846
-      average_rate: 492.8013078702538
-      footprint_rate: 1656.6009110936293
-      ring_rate: 331.3201822187259
-      insured_rate: 722.8821955406997
-      liquefaction_factor: 1.3881060550571411
-      footprint_factor: 3.241156451013013
+      properties: 23833
+      average_rate: 492.77835403971136
+      footprint_rate: 1656.2776977647518
+      ring_rate: 331.2555395529504
+      insured_rate: 722.8034722168377
+      liquefaction_factor: 1.3880323541551849
+      footprint_factor: 3.2408522737880885
     1,500-4,000 m²:
-      properties: 3972
-      average_rate: 279.55422665597627
-      footprint_rate: 1543.062220073125
-      ring_rate: 308.612444014625
-      insured_rate: 620.5321247990992
-      liquefaction_factor: 2.091375028779545
-      footprint_factor: 5.166024421049416
+      properties: 3965
+      average_rate: 279.5226072034579
+      footprint_rate: 1541.8201317045618
+      ring_rate: 308.3640263409124
+      insured_rate: 619.9371070910463
+      liquefaction_factor: 2.0896996552332907
+      footprint_factor: 5.162783144131206
     4,000 m² or more:
-      properties: 3482
-      average_rate: 28.577068656803426
-      footprint_rate: 970.6170292162114
-      ring_rate: 194.12340584324232
-      insured_rate: 360.8162935961526
-      liquefaction_factor: 11.70558868272548
-      footprint_factor: 32.10797798183157
+      properties: 3416
+      average_rate: 28.334770882892546
+      footprint_rate: 962.8378207445539
+      ring_rate: 192.56756414891083
+      insured_rate: 356.3255912345567
+      liquefaction_factor: 11.430496613194034
+      footprint_factor: 31.3467518097196
 examples:
   valuer:
     value: 600000.0

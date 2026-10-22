@@ -112,9 +112,13 @@ reach an access way on it.
   residential site, and a 58 ha title at its suburb's rate came to $2.8 billion,
   which the tiers then put on its house site at millions of dollars a m².
 - **Non-residential units.** A property whose rating units are all
-  non-residential (an institution's grounds, a park, a commercial block) is
-  valued as though it were not on the roll, because its value is not a
-  house's: one 11-dwelling claim sat on a $208m unit of 13 ha.
+  non-residential (an institution's grounds, a park, a commercial block) is not
+  a claim (2026-10-23): steps 0 and 1 drop it, with its walls and crossings,
+  before anything is valued. Most are a sliver of a neighbour's house over the
+  boundary, which exposure's crossing rule gives a claim of its own while the
+  house keeps its claim next door; 120 over the four councils. Before
+  2026-10-23 they were valued as though not on the roll, because the value is
+  not a house's: one 11-dwelling claim sat on a $208m unit of 13 ha.
 - **GST.** The QV value is taken as including GST (2026-10-22), so the rates
   are not grossed up: they are compared as they stand with the GST-inclusive
   repair cost, like for like. Before 2026-10-22 the value was taken as

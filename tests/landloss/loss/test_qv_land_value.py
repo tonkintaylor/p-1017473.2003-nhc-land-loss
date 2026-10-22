@@ -23,7 +23,9 @@ from landloss.loss.qv_land_value import (
     VALUE_SOURCE_COLUMN,
     claim_land_values,
     damaged_land_rates,
+    drop_non_residential_claims,
     footprint_rate,
+    non_residential_claims,
     qv_capital_value_by_claim,
     qv_land_value_by_claim,
     residential_land_values,
@@ -173,6 +175,27 @@ def test_a_non_residential_roll_value_is_left_for_the_suburb_median():
         index=pd.Index(["c1", "c2", "c3"], name=CLAIM),
     )
     assert residential_land_values(by_claim).index.tolist() == ["c1", "c3"]
+
+
+def test_a_claim_on_non_residential_land_only_is_not_a_claim():
+    by_claim = pd.DataFrame(
+        {
+            QV_LAND_VALUE_COLUMN: [600_000.0, 208_000_000.0],
+            QV_USE_COLUMN: ["residential", "non-residential"],
+        },
+        index=pd.Index(["c1", "c2"], name=CLAIM),
+    )
+    tables = {
+        "land": pd.DataFrame(
+            {CLAIM: ["c1", "c1", "c2", "c3"], "land_id": [1, 2, 3, 4]}
+        ),
+        "rw": pd.DataFrame({CLAIM: ["c2", "c3"], "rw_id": [7, 8]}),
+    }
+    kept = drop_non_residential_claims(tables, non_residential_claims(by_claim))
+    # c3 is not on the roll at all, so it stays, for its suburb's median; c2's
+    # wall goes with it.
+    assert kept["land"][CLAIM].tolist() == ["c1", "c1", "c3"]
+    assert kept["rw"][CLAIM].tolist() == ["c3"]
 
 
 # ---------------------------------------------------------------------------

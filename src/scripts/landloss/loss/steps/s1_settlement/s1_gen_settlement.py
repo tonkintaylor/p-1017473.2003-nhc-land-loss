@@ -116,6 +116,7 @@ from landloss.domain.loss_contract import (
 from landloss.exposure.rw.beta_population import classify_wall_size
 from landloss.io.area_of_interest import extent_suffix
 from landloss.loss import claims as loss_claims
+from landloss.loss import qv_land_value
 from landloss.loss.policy import PolicySettings
 from landloss.loss.pricing import (
     LIQ_COST_ESCALATION,
@@ -1010,7 +1011,7 @@ def main(*, extent, world_ids, realisation_ids):
         realisation_ids: Which modelled earthquakes to settle.
     """
     policy = PolicySettings()
-    qv_values = load_qv_land_values(extent=extent)
+    qv_values, non_residential = load_qv_land_values(extent=extent)
 
     for world_id in world_ids:
         for realisation_id in realisation_ids:
@@ -1024,6 +1025,8 @@ def main(*, extent, world_ids, realisation_ids):
                 )
                 for name in LOSS_TABLES
             }
+            # The same claims step 0 capped: none on non-residential land only.
+            tables = qv_land_value.drop_non_residential_claims(tables, non_residential)
             land = value_land(tables["land"], qv_values)
             rw = tables["rw"]
 

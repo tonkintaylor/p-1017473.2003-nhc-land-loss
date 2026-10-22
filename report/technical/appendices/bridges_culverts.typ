@@ -39,16 +39,25 @@ so the model estimates where they are.
 A bridge or culvert is there to carry an accessway over water, so the model
 places one wherever a property's insured accessway crosses a watercourse. The
 accessway is modelled as a #num(land.driveway_width_m) m wide route from the
-main dwelling to the road, of which the first #num(land.insured_access_m) m is
-insured. Any named watercourse counts, whether it is mapped as a centreline or,
+main dwelling to the road, of which the first #num(land.insured_access_m) m
+from the dwelling is insured. Any named watercourse counts, whether it is mapped as a centreline or,
 for wider rivers, as an area, and a crossing found on both is counted once.
 Only crossings lying wholly within the property's insured land are kept.
 
-For each simulated earthquake, every crossing is modelled as either a culvert
+For each simulated earthquake, every crossing is sampled as either a culvert
 (#pct(d.settings.culvert_probability) probability) or a bridge
-(#pct(1 - d.settings.culvert_probability) probability). The applicable hazard
-section describes how each crossing type is damaged, and @cost-estimation
-describes how the resulting damage is costed.
+(#pct(1 - d.settings.culvert_probability) probability). The split is
+engineering judgement: there is no record of private bridges and culverts to
+set it from, and nothing about a crossing in the data says which it is. The
+applicable hazard section describes how each crossing type is damaged, and
+@cost-estimation describes how the resulting damage is costed.
+
+#review[Virginie notes that NHC, in their review of the draft report, asked
+what evidence supports the #pct(d.settings.culvert_probability) /
+#pct(1 - d.settings.culvert_probability) split. The code records it as
+engineering judgement fitted to nothing. Add the reasoning behind it here (for
+example, that most private crossings of small streams are piped), or say it is
+a placeholder pending a sample check.]
 
 == Results
 
@@ -77,7 +86,8 @@ modelled losses, and the improvement that would address it.
   limitations-table(
     (
       [Only named watercourses are mapped. Crossings of the many small unnamed
-        and piped streams are missed, and the number of crossings is a lower
+        and piped streams are not included in the data source, the LINZ NZ
+        River Name Lines and Polygons. Hence, the number of crossings is a lower
         bound.],
       [*Under-prediction* of bridge and culvert losses.],
       [Include unnamed watercourses, for example from the LINZ Topo50 river
@@ -88,7 +98,8 @@ modelled losses, and the improvement that would address it.
         observations.],
       [*Unknown.* Both are costed alike, so the split matters only where they
         are damaged differently.],
-      [Set the share of bridges from a sample checked against aerial imagery.],
+      [Set the share of culverts and bridges from a sample checked against
+        aerial imagery, or against a sample of past NHC land claims.],
     ),
     (
       [The accessway is a modelled route rather than a surveyed one, so a
@@ -96,14 +107,15 @@ modelled losses, and the improvement that would address it.
         where it does.],
       [*Mixed.* Crossings are both added and missed.],
       [Route the modelled accessways along the property's real access to the
-        street rather than in a straight line.],
+        street rather than in a straight line between the dwelling and the
+        road.],
     ),
     (
       [A crossing lying partly outside the insured land, such as one at the
-        road boundary, is left out.],
+        road boundary, is excluded.],
       [*Under-prediction*, where such a crossing is in fact insured.],
-      [Check a sample of crossings at the property boundary against aerial
-        imagery and property titles.],
+      [Check a sample of crossings located at the property boundary against
+        aerial imagery and property titles.],
     ),
   ),
   caption: [Limitations, their impact on losses and future improvements.],

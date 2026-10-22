@@ -12,11 +12,16 @@ code or the run it came from rather than typed in. The YAML has five parts:
 - ``sources``: over the four territorial authorities, how many claims take
   their land value from the roll, from their suburb's median, or from the
   run's median, decided as loss step 0 decides it; and how many are on the
-  roll only as non-residential units. Each authority's run covers its bounding
+  roll only as non-residential units, which step 0 drops and are not counted
+  among the claims. Each authority's run covers its bounding
   box, so a claim is counted only in the authority its insured land lies in.
-- ``rates``: medians over the claim properties on the roll of the average rate,
-  the three tier rates and the two correction factors, overall and per area
-  band, as ``validations/gen_qv_average_rate.py`` computes them.
+- ``rates``: medians over the claims that take their land value from the roll
+  -- the same claims ``sources`` counts as such, so the appendix's counts agree
+  -- of the average rate, the three tier rates and the two correction factors,
+  overall and per area band, as ``validations/gen_qv_average_rate.py`` computes
+  them. That script's own table also holds the properties valued as though off
+  the roll (non-residential) and assigns an authority by address rather than by
+  insured land, so it is cut to these claims here.
 - ``examples``: the valuer's example and the typical section, worked through
   the tiers.
 
@@ -45,16 +50,16 @@ from landloss.domain.loss_contract import (
     LAND_SUBURB_COLUMN,
 )
 from landloss.exposure.land.land_value import COMMON_VALUATION_DATE, load_base_rates
-from landloss.exposure.land.residential_use import NON_RESIDENTIAL
 from landloss.io.area_of_interest import get_area_of_interest
 from landloss.io.qv_rating_roll import get_qv_rating_roll
 from landloss.loss.qv_land_value import (
+    FROM_ROLL,
     INSURED_RATIO,
     MAX_UNINSURED_M2,
-    QV_USE_COLUMN,
     UNINSURED_RATIO,
     VALUE_SOURCE_COLUMN,
     claim_land_values,
+    non_residential_claims,
     qv_land_value_by_claim,
     residential_land_values,
 )
@@ -126,9 +131,16 @@ def settings():
 
 
 def sources(roll, base_rates, extents):
-    """Return how many claims take their land value from each source."""
+    """Return how many claims take their land value from each source.
+
+    Returns:
+        ``(numbers, from_roll)``: the counts for the YAML, and the ids of the
+        claims that take their value from the roll, which the rates are taken
+        over.
+    """
     counts = {}
     non_residential = 0
+    from_roll = set()
     for extent in extents:
         land = pd.read_parquet(
             world_loss_input_path("land", WORLD_ID, REALISATION_ID, extent=extent),
@@ -143,18 +155,21 @@ def sources(roll, base_rates, extents):
         by_claim = qv_land_value_by_claim(
             roll, pd.read_parquet(valuation_links_path(extent=extent)), base_rates
         )
+        dropped = non_residential_claims(by_claim)
+        non_residential += int(
+            land.loc[land[CLAIM_ID_COLUMN].isin(dropped), CLAIM_ID_COLUMN].nunique()
+        )
+        land = land[~land[CLAIM_ID_COLUMN].isin(dropped)]
         values = claim_land_values(land, residential_land_values(by_claim))
         for source, count in values[VALUE_SOURCE_COLUMN].value_counts().items():
             counts[str(source)] = counts.get(str(source), 0) + int(count)
-        in_run = by_claim.index.isin(land[CLAIM_ID_COLUMN])
-        non_residential += int(
-            (by_claim.loc[in_run, QV_USE_COLUMN] == NON_RESIDENTIAL).sum()
-        )
-    return {
+        from_roll |= set(values.index[values[VALUE_SOURCE_COLUMN] == FROM_ROLL])
+    numbers = {
         "claims": sum(counts.values()),
         "by_source": counts,
         "non_residential": non_residential,
     }
+    return numbers, from_roll
 
 
 def medians(table):
@@ -200,7 +215,15 @@ def main(*, extents):
     """Compute the numbers and write the YAML."""
     table = load_properties(extents)
     print("Reading the QV rating roll again for the value sources ...", flush=True)
-    by_source = sources(get_qv_rating_roll(), load_base_rates(), extents)
+    by_source, from_roll = sources(get_qv_rating_roll(), load_base_rates(), extents)
+    # The rates over the same claims the text counts as valued from the roll.
+    table = table[table.index.isin(from_roll)]
+    if len(table) != by_source["by_source"].get(FROM_ROLL, 0):
+        msg = (
+            f"the rates cover {len(table):,} claims but "
+            f"{by_source['by_source'].get(FROM_ROLL, 0):,} are valued from the roll"
+        )
+        raise ValueError(msg)
     numbers = {
         "meta": {
             "written": dt.datetime.now().astimezone().date().isoformat(),
