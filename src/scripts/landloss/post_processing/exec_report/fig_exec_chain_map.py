@@ -2,8 +2,10 @@
 
     uv run --frozen python src/scripts/landloss/post_processing/exec_report/fig_exec_chain_map.py
 
-Four panels of the same 600 by 450 m window, for the exec report, read left
-to right and top to bottom:
+Four panels of the same window, for the exec report, read left to right and
+top to bottom, one figure per entry in ``config.CHAIN_WINDOWS``: Porirua's 600
+by 450 m window, and the Alicetown and Trentham suburbs read out of the
+whole-city Hutt runs:
 
 1. **Exposure**: what is insured. Property boundaries, buildings, the insured
    land, the insured retaining walls by type and the culverts and bridges.
@@ -24,9 +26,9 @@ the liquefaction cost to its insured land. These are repair costs before the
 cap and excess, and the professional fees are left off; the run prints the
 window's totals for the caption.
 
-Every layer is read through its step's path function for ``config.EXTENT``,
-so run the chain (``gen_all.py``) and the loss module (``loss/gen_loss.py``)
-over that extent first. Liquefaction cracks and ejecta are not drawn: the
+Every layer is read through its step's path function for the extent a window
+is read out of, so run the chain (``gen_all.py``) and the loss module
+(``loss/gen_loss.py``) over that extent first. Liquefaction cracks and ejecta are not drawn: the
 model gives them as areas per property, with no location. The basemap and the
 LINZ building and property layers are fetched over the network.
 """
@@ -52,6 +54,7 @@ from shapely.geometry import box, shape
 from landloss.common.utils.plot import style_basemap_ax
 from landloss.domain import constants
 from landloss.hazard.landslide.urban.geometry import amplification_factor
+from landloss.io.area_of_interest import get_area_of_interest
 from landloss.io.readers import get_nz_building_outlines, get_nz_property_boundaries
 from scripts.landloss.exposure.culverts_bridges.steps.s7_crossing_population.gen_crossing_population import (
     crossing_population_path,
@@ -84,13 +87,29 @@ from scripts.landloss.vul.steps.s10_property_damage.gen_property_damage import (
 )
 
 FIG_DIR = REPORT_DIR / "exec" / "chain" / "fig"
-FIG_NAME = "exec-chain-map.png"
+# Porirua's figure keeps the name it was first written under; every other
+# window's carries its name from config.CHAIN_WINDOWS.
+FIG_NAME = "exec-chain-map{suffix}.png"
+UNSUFFIXED_FIGURE = "porirua"
 DPI = 300
 NZTM = constants.DEFAULT_CRS
 
-# A4 portrait at report width: two 4:3 map panels across, each with its key
-# beneath it.
+# A4 portrait at report width: two map panels across, each with its key
+# beneath it. The size is a 4:3 window's; a window of another shape keeps the
+# width, and the map rows take their height from it.
 FIGSIZE = (7.4, 8.1)
+# The rows' height ratios: a map row's per unit of the window's height over its
+# width, and a key row's.
+MAP_ROW_UNITS = 4.0
+KEY_ROW_UNITS = 1.2
+# The lines a key row of KEY_ROW_UNITS holds. A window whose longest key runs
+# longer, as one showing more liquefaction states does, gets taller key rows.
+KEY_ROW_LINES = 7
+# The lines of each key that do not depend on the window: panel 1's whole key,
+# and panels 2 and 3 before their liquefaction states.
+EXPOSURE_KEY_LINES = 7
+HAZARD_KEY_FIXED_LINES = 3
+DAMAGE_KEY_FIXED_LINES = 5
 FONT_SIZE = 7
 RULE = "-" * 72
 
@@ -177,55 +196,72 @@ COST_CMAP = "YlOrRd"
 # ----------------------------------------------------------------------------
 
 
-def window_frame():
+def resolve_window(window):
+    """A window as an NZTM box, from a box or the name of an extent."""
+    if isinstance(window, str):
+        return get_area_of_interest(window).bbox(NZTM)
+    return window
+
+
+def window_frame(window):
     """The window as a one-row frame, for the panels to be held to."""
-    return gpd.GeoDataFrame(geometry=[box(*config.WINDOW_NZTM)], crs=NZTM)
+    return gpd.GeoDataFrame(geometry=[box(*window)], crs=NZTM)
 
 
-def clip(frame, margin_m=0.0):
+def clip(frame, window, margin_m=0.0):
     """The rows of a frame that touch the window, in NZTM."""
     frame = frame.to_crs(NZTM)
-    minx, miny, maxx, maxy = config.WINDOW_NZTM
+    minx, miny, maxx, maxy = window
     return frame.cx[
         minx - margin_m : maxx + margin_m, miny - margin_m : maxy + margin_m
     ].copy()
 
 
-def read_raster(path):
+def read_raster(path, window):
     """One band of a raster over the window, with its plotting extent.
 
     Read a cell beyond the window on every side, so the cells snapped to the
     grid still reach the frame; the axes and the PGA zones are clipped to it.
     """
     margin = 100.0
-    minx, miny, maxx, maxy = config.WINDOW_NZTM
+    minx, miny, maxx, maxy = window
     minx, miny, maxx, maxy = minx - margin, miny - margin, maxx + margin, maxy + margin
     with rasterio.open(path) as source:
-        window = from_bounds(minx, miny, maxx, maxy, source.transform)
-        window = window.round_offsets().round_lengths()
-        values = source.read(1, window=window, boundless=True, fill_value=np.nan)
-        bounds = rasterio.windows.bounds(window, source.transform)
-        transform = source.window_transform(window)
+        cells = from_bounds(minx, miny, maxx, maxy, source.transform)
+        cells = cells.round_offsets().round_lengths()
+        values = source.read(1, window=cells, boundless=True, fill_value=np.nan)
+        bounds = rasterio.windows.bounds(cells, source.transform)
+        transform = source.window_transform(cells)
     left, bottom, right, top = bounds
     return values.astype(float), (left, right, bottom, top), transform
 
 
-def read_layers(extent, world_id, realisation_id):
-    """Read every layer the four panels draw, clipped to the window."""
+def read_layers(extent, window, world_id, realisation_id):
+    """Read every layer the four panels draw, clipped to the window.
+
+    The window and the extent it is read out of are carried with the layers,
+    so every panel is held to the same ground.
+    """
     w, r = world_id, realisation_id
-    bbox = config.WINDOW_NZTM
-    land = clip(gpd.read_parquet(insured_land_path(extent=extent)))
+    land = clip(gpd.read_parquet(insured_land_path(extent=extent)), window)
     vul_land = clip(
-        gpd.read_parquet(world_loss_input_path("land", w, r, extent=extent))
+        gpd.read_parquet(world_loss_input_path("land", w, r, extent=extent)), window
     )
-    slides = clip(gpd.read_parquet(combined_realisation_path(w, r, extent=extent)))
-    walls = clip(gpd.read_parquet(wall_population_path(w, extent=extent)))
-    vul_walls = clip(gpd.read_parquet(world_loss_input_path("rw", w, r, extent=extent)))
-    crossings = clip(gpd.read_parquet(crossing_population_path(r, extent=extent)))
+    slides = clip(
+        gpd.read_parquet(combined_realisation_path(w, r, extent=extent)), window
+    )
+    walls = clip(gpd.read_parquet(wall_population_path(w, extent=extent)), window)
+    vul_walls = clip(
+        gpd.read_parquet(world_loss_input_path("rw", w, r, extent=extent)), window
+    )
+    crossings = clip(
+        gpd.read_parquet(crossing_population_path(r, extent=extent)), window
+    )
     vul_crossings = pd.concat(
         [
             clip(
-                gpd.read_parquet(world_loss_input_path(table, w, r, extent=extent))
+                gpd.read_parquet(world_loss_input_path(table, w, r, extent=extent)),
+                window,
             ).rename(columns={column: "crossing_id"})
             for table, column in (("bridges", "bridge_id"), ("culverts", "culvert_id"))
         ],
@@ -234,10 +270,13 @@ def read_layers(extent, world_id, realisation_id):
     ground = clip(
         gpd.read_parquet(
             ground_map_path(extent=extent), columns=["is_flatland", "geometry"]
-        )
+        ),
+        window,
     )
     settlement = pd.read_parquet(settlement_path(w, r, extent=extent))
     return {
+        "extent": extent,
+        "window": window,
         "land": land,
         "vul_land": vul_land,
         "slides": slides,
@@ -247,10 +286,10 @@ def read_layers(extent, world_id, realisation_id):
         "vul_crossings": gpd.GeoDataFrame(vul_crossings, crs=NZTM),
         "ground": ground,
         "settlement": settlement[settlement["claim_id"].isin(land["claim_id"])],
-        "buildings": get_nz_building_outlines(bbox=bbox, crs=NZTM),
-        "properties": get_nz_property_boundaries(bbox=bbox, crs=NZTM),
-        "ld_state": read_raster(ld_state_path(r, extent=extent)),
-        "pga": read_raster(pga_path(r, extent=extent)),
+        "buildings": get_nz_building_outlines(bbox=window, crs=NZTM),
+        "properties": get_nz_property_boundaries(bbox=window, crs=NZTM),
+        "ld_state": read_raster(ld_state_path(r, extent=extent), window),
+        "pga": read_raster(pga_path(r, extent=extent), window),
     }
 
 
@@ -296,7 +335,7 @@ def landslide_on_insured_land(slides, land):
     return pieces[pieces.area > 0]
 
 
-def amplified_pga_zones(pga, ground):
+def amplified_pga_zones(pga, ground, window):
     """The site PGA times the topographic amplification, as zones with a value.
 
     The PGA grid steps only with the site class, and the slope fragility
@@ -327,7 +366,7 @@ def amplified_pga_zones(pga, ground):
         pieces["pga_g"] * amplification_factor(pieces["is_flatland"].to_numpy(bool))
     ).round(2)
     zones = pieces.dissolve(by="amplified_pga_g").reset_index()
-    return gpd.clip(zones, box(*config.WINDOW_NZTM))
+    return gpd.clip(zones, box(*window))
 
 
 def share_of_claim(sizes, claim_ids):
@@ -383,17 +422,17 @@ def item_costs(layers, slide_pieces):
 # ----------------------------------------------------------------------------
 
 
-def start_panel(ax, kind):
+def start_panel(ax, kind, window):
     """Hold a panel to the window over the imagery, veiled for panels 2 to 4."""
     style_basemap_ax(
         ax,
-        window_frame(),
+        window_frame(window),
         basemap=BASEMAP,
         arrow_kwargs={"scale": 0.16, "label_size": 5},
         scalebar_kwargs={"font_size": 5},
     )
     if VEIL_ALPHA[kind]:
-        minx, miny, maxx, maxy = config.WINDOW_NZTM
+        minx, miny, maxx, maxy = window
         ax.add_patch(
             Rectangle(
                 (minx, miny),
@@ -443,6 +482,32 @@ def label_crossings(ax, crossings):
             )
 
 
+def cell_ld_states(ld_state):
+    """The land damage states the hazard panel draws on its 100 m cells."""
+    values = ld_state[0]
+    return sorted(
+        int(state) for state in np.unique(values[values >= LD_LOWEST_STATE_SHOWN])
+    )
+
+
+def property_ld_states(vul_land):
+    """The land damage states the fragility panel fills properties with."""
+    states = vul_land["Liq_LD_state"].fillna(0)
+    return sorted(
+        int(state) for state in states[states >= LD_LOWEST_STATE_SHOWN].unique()
+    )
+
+
+def key_row_units(layers):
+    """The key rows' height ratio: KEY_ROW_UNITS, or more for a longer key."""
+    lines = max(
+        EXPOSURE_KEY_LINES,
+        HAZARD_KEY_FIXED_LINES + len(cell_ld_states(layers["ld_state"])),
+        DAMAGE_KEY_FIXED_LINES + len(property_ld_states(layers["vul_land"])),
+    )
+    return KEY_ROW_UNITS * max(1.0, lines / KEY_ROW_LINES)
+
+
 def draw_ld_cells(ax, ld_state):
     """The land damage state drawn on 100 m cells, translucent, state 2 and up."""
     values, extent, _ = ld_state
@@ -458,12 +523,12 @@ def draw_ld_cells(ax, ld_state):
         interpolation="nearest",
         zorder=1,
     )
-    return sorted(int(state) for state in np.unique(values[np.isfinite(values)]))
+    return cell_ld_states(ld_state)
 
 
 def draw_exposure(ax, layers):
     """Panel 1: what is insured."""
-    start_panel(ax, "exposure")
+    start_panel(ax, "exposure", layers["window"])
     layers["land"].plot(
         ax=ax, facecolor=INSURED_LAND_COLOUR, alpha=0.3, edgecolor="none", zorder=2
     )
@@ -525,7 +590,7 @@ def draw_exposure(ax, layers):
 
 def draw_hazard(ax, layers):
     """Panel 2: what the earthquake does to the ground."""
-    start_panel(ax, "hazard")
+    start_panel(ax, "hazard", layers["window"])
     states = draw_ld_cells(ax, layers["ld_state"])
     slides = layers["slides"]
     by_class = {
@@ -551,7 +616,9 @@ def draw_hazard(ax, layers):
             ax=ax, facecolor="none", edgecolor=INUNDATED_COLOUR, linewidth=0.7, zorder=6
         )
 
-    pga = amplified_pga_zones(layers["pga"], layers["ground"])["amplified_pga_g"]
+    pga = amplified_pga_zones(layers["pga"], layers["ground"], layers["window"])[
+        "amplified_pga_g"
+    ]
     ax.text(
         0.02,
         0.03,
@@ -590,7 +657,7 @@ def draw_hazard(ax, layers):
 
 def draw_damage(ax, layers, slide_pieces):
     """Panel 3: the state of the insured assets."""
-    start_panel(ax, "damage")
+    start_panel(ax, "damage", layers["window"])
     land = layers["vul_land"]
     states = land["Liq_LD_state"]
     liquefied = land[states.fillna(0) >= LD_LOWEST_STATE_SHOWN]
@@ -644,7 +711,7 @@ def draw_damage(ax, layers, slide_pieces):
     label_crossings(ax, layers["crossings"])
 
     n_damaged = int(walls["damaged"].sum())
-    shown = sorted(int(state) for state in liquefied["Liq_LD_state"].unique())
+    shown = property_ld_states(land)
     return [
         Line2D(
             [],
@@ -683,7 +750,7 @@ def draw_damage(ax, layers, slide_pieces):
 
 def draw_cost(ax, layers, costs):
     """Panel 4: what it costs, every item on one scale."""
-    start_panel(ax, "cost")
+    start_panel(ax, "cost", layers["window"])
     cmap = plt.get_cmap(COST_CMAP, len(COST_BREAKS_NZD))
     norm = BoundaryNorm(COST_BREAKS_NZD, cmap.N, extend="max")
 
@@ -800,7 +867,7 @@ def describe(layers, slide_pieces, costs):
     settlement = layers["settlement"]
     print(RULE)
     print(
-        f"Window {config.WINDOW_NZTM}, extent {config.EXTENT}, "
+        f"Window {layers['window']}, extent {layers['extent']}, "
         f"w{config.WORLD_ID:03d} r{config.REALISATION_ID:03d}"
     )
     print(
@@ -866,11 +933,18 @@ def plot_chain_map(layers):
     describe(layers, slide_pieces, costs)
 
     plt.rcParams.update({"font.size": FONT_SIZE})
-    fig = plt.figure(figsize=FIGSIZE)
+    minx, miny, maxx, maxy = layers["window"]
+    map_units = MAP_ROW_UNITS * (maxy - miny) / (maxx - minx)
+    key_units = key_row_units(layers)
+    rows = [map_units, key_units, map_units, key_units]
+    # A 4:3 window gives the rows FIGSIZE was set for; another shape scales the
+    # height by its rows against those.
+    reference = 2 * (MAP_ROW_UNITS * 0.75 + KEY_ROW_UNITS)
+    fig = plt.figure(figsize=(FIGSIZE[0], FIGSIZE[1] * sum(rows) / reference))
     grid = fig.add_gridspec(
         4,
         2,
-        height_ratios=[3, 1.2, 3, 1.2],
+        height_ratios=rows,
         hspace=0.06,
         wspace=0.06,
         left=0.01,
@@ -916,21 +990,32 @@ def plot_chain_map(layers):
     return fig
 
 
-def main(*, extent, world_id, realisation_id):
-    """Read the layers, draw the figure and write it."""
-    layers = read_layers(extent, world_id, realisation_id)
-    fig = plot_chain_map(layers)
+def main(*, windows, world_id, realisation_id):
+    """Read the layers, draw the figure and write it, for each window.
+
+    Args:
+        windows: By figure name, (the extent whose outputs are read, the
+            window drawn as an NZTM box or an extent's name).
+        world_id: The exposure world drawn.
+        realisation_id: The modelled earthquake drawn.
+    """
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    out = FIG_DIR / FIG_NAME
-    fig.savefig(out, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(RULE)
-    print(f"Wrote {out}")
+    for name, (extent, window_spec) in windows.items():
+        layers = read_layers(
+            extent, resolve_window(window_spec), world_id, realisation_id
+        )
+        fig = plot_chain_map(layers)
+        suffix = "" if name == UNSUFFIXED_FIGURE else f"-{name}"
+        out = FIG_DIR / FIG_NAME.format(suffix=suffix)
+        fig.savefig(out, dpi=DPI, bbox_inches="tight")
+        plt.close(fig)
+        print(RULE)
+        print(f"Wrote {out}")
 
 
 if __name__ == "__main__":
     main(
-        extent=config.EXTENT,
+        windows=config.CHAIN_WINDOWS,
         world_id=config.WORLD_ID,
         realisation_id=config.REALISATION_ID,
     )
