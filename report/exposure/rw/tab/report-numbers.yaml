@@ -1,0 +1,508 @@
+meta:
+  written: '2026-10-22'
+  commit: eac721a
+  world_id: 0
+  runs:
+    wellington-city: '2026-10-14'
+    porirua: '2026-10-14'
+    lower-hutt: '2026-10-14'
+    upper-hutt: '2026-10-14'
+settings:
+  pip_drop_m: 0.7
+  pip_offsets_m:
+  - 1.0
+  - 3.0
+  - 5.0
+  pif_join_m: 2.0
+  min_pif_pips: 3
+  min_pif_length_m: 3.0
+  building_reach_m: 100.0
+  near_pair_m: 3.0
+  max_pair_m: 30.0
+  adjacent_step_m:
+    soil_like: 0.7
+    weak_rock: 3.0
+    stronger_rock: 3.0
+  slope_thresholds:
+  - height_from_m: 0.5
+    soil_like: 35
+    weak_rock: 45
+    stronger_rock: 53
+  - height_from_m: 3.5
+    soil_like: 32
+    weak_rock: 40
+    stronger_rock: 48
+  slope_bands_m:
+  - 0.5
+  - 3.5
+  wall_max_bends: 3
+  wall_min_segment_m: 3.0
+  wall_max_length_m: 50.0
+  height_reach_m: 2.0
+  height_quantile: 0.7
+  small_max_height_m: 1.0
+  medium_max_height_m: 2.5
+  base_p: 0.458
+  points_per_doubling: 20.0
+  boundary_distance_m: 2.0
+  gns_floor: 0.95
+  gns_only_p: 0.7
+  claim_holdout_share: 0.3
+  points:
+  - attribute: verticality
+    bin: under 0.4
+    lower: .nan
+    upper: 0.4
+    points: -20
+    reason: 'A batter, not a step: the drop in the first cell is under 40% of the
+      drop within three (GNS rate 0.13, x0.54)'
+  - attribute: verticality
+    bin: 0.4 to 0.5
+    lower: 0.4
+    upper: 0.5
+    points: -5
+    reason: Between a batter and a step
+  - attribute: verticality
+    bin: 0.5 and over
+    lower: 0.5
+    upper: .nan
+    points: 10
+    reason: 'A step: most of the drop is in the first cell (GNS rate up to 0.33)'
+  - attribute: height
+    bin: under 1.0 m
+    lower: .nan
+    upper: 1.0
+    points: -5
+    reason: A low face (0.7 to 1.0 m) is less often a wall worth building
+  - attribute: height
+    bin: 1.0 to 2.5 m
+    lower: 1.0
+    upper: 2.5
+    points: 0
+    reason: The usual residential wall
+  - attribute: height
+    bin: 2.5 to 5 m
+    lower: 2.5
+    upper: 5.0
+    points: 5
+    reason: A tall face needs retaining; kept small because GNS sees tall walls more
+      easily
+  - attribute: height
+    bin: 5 to 8 m
+    lower: 5.0
+    upper: 8.0
+    points: -20
+    reason: Rarely retained in full on a residential lot (replaces the tall face taper)
+  - attribute: height
+    bin: 8 m and over
+    lower: 8.0
+    upper: .nan
+    points: -60
+    reason: A cut slope or natural face, not a wall
+  - attribute: length
+    bin: under 5 m
+    lower: .nan
+    upper: 5.0
+    points: -5
+    reason: Often a fragment of a face (the lead, 2026-10-07)
+  - attribute: length
+    bin: 5 m and over
+    lower: 5.0
+    upper: .nan
+    points: 0
+    reason: .nan
+  - attribute: building
+    bin: under 2 m
+    lower: .nan
+    upper: 2.0
+    points: 10
+    reason: Walls hold house platforms (GNS rate 0.30 within 2 m)
+  - attribute: building
+    bin: 2 to 5 m
+    lower: 2.0
+    upper: 5.0
+    points: 5
+    reason: .nan
+  - attribute: building
+    bin: 5 to 20 m
+    lower: 5.0
+    upper: 20.0
+    points: 0
+    reason: .nan
+  - attribute: building
+    bin: 20 m and over
+    lower: 20.0
+    upper: .nan
+    points: -20
+    reason: Far from a building (GNS rate 0.06 at 20 to 50 m); also where no building
+      is within the search distance
+  - attribute: setting
+    bin: road_frontage
+    lower: .nan
+    upper: .nan
+    points: 20
+    reason: Mostly within 2 m of a road parcel's boundary (GNS rate 0.48 against 0.20);
+      below the raw value, as frontage walls are easy to see
+  - attribute: setting
+    bin: property_boundary
+    lower: .nan
+    upper: .nan
+    points: 10
+    reason: Mostly within 2 m of a non-road property boundary (GNS rate 0.32 against
+      0.17)
+  - attribute: class
+    bin: fill
+    lower: .nan
+    upper: .nan
+    points: 5
+    reason: 'Ground step 5 fill: the front of a platform'
+  - attribute: class
+    bin: cut_and_fill
+    lower: .nan
+    upper: .nan
+    points: 5
+    reason: 'Ground step 5 cut and fill: a benched face with fill at its crest'
+  - attribute: class
+    bin: natural
+    lower: .nan
+    upper: .nan
+    points: -15
+    reason: 'Ground step 5 natural: a bank, not an earthwork (GNS rate 0.14)'
+  - attribute: rock_cut
+    bin: cut in rock over 2.0 m
+    lower: 2.0
+    upper: .nan
+    points: -20
+    reason: A cut in unweathered or moderately weathered rock deeper than 2.0 m stands
+      unsupported (the lead, 2026-10-07)
+  - attribute: soil_cut
+    bin: cut in soil
+    lower: .nan
+    upper: .nan
+    points: 10
+    reason: A cut in soil (alluvium, loess, colluvium, fill, or highly or completely
+      weathered or crushed rock) needs retaining (the lead, 2026-10-07)
+  - attribute: age
+    bin: pre_1970
+    lower: .nan
+    upper: .nan
+    points: -10
+    reason: Share of the property's walls before 1970
+  - attribute: age
+    bin: '1970_1991'
+    lower: .nan
+    upper: .nan
+    points: -5
+    reason: Share 1970 to 1991
+  - attribute: age
+    bin: '1992_2004'
+    lower: .nan
+    upper: .nan
+    points: 0
+    reason: Share 1992 to 2004
+  - attribute: age
+    bin: 2005_on
+    lower: .nan
+    upper: .nan
+    points: 10
+    reason: Share 2005 on
+  - attribute: nhc_land_attrs
+    bin: flagged
+    lower: .nan
+    upper: .nan
+    points: 5
+    reason: 'NHC land attributes says the property has a retaining wall: a yes/no
+      with no count, agreeing with GNS no better than chance (kappa 0.03)'
+  age_bins:
+  - pre_1970
+  - '1970_1991'
+  - '1992_2004'
+  - 2005_on
+  age_bin_starts:
+  - 1970.0
+  - 1992.5
+  - 2005.0
+  type_height_bands:
+  - under_1_5_m
+  - 1_5_to_2_5_m
+  - over_2_5_m
+  rebuilt_share: 0.2
+  type_shares:
+  - age_bin: pre_1970
+    height_band: under_1_5_m
+    brick_rock: 0.2
+    reinforced_concrete_pre_1992: 0.2
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.1
+    concrete_block: 0.1
+    timber_pole_post_1992: 0.0
+    garden_timber: 0.35
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: pre_1970
+    height_band: 1_5_to_2_5_m
+    brick_rock: 0.1
+    reinforced_concrete_pre_1992: 0.55
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.2
+    concrete_block: 0.1
+    timber_pole_post_1992: 0.0
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: pre_1970
+    height_band: over_2_5_m
+    brick_rock: 0.1
+    reinforced_concrete_pre_1992: 0.6
+    crib_gabion: 0.0
+    timber_pole_pre_1992: 0.25
+    concrete_block: 0.05
+    timber_pole_post_1992: 0.0
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: '1970_1991'
+    height_band: under_1_5_m
+    brick_rock: 0.05
+    reinforced_concrete_pre_1992: 0.05
+    crib_gabion: 0.1
+    timber_pole_pre_1992: 0.35
+    concrete_block: 0.2
+    timber_pole_post_1992: 0.0
+    garden_timber: 0.25
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: '1970_1991'
+    height_band: 1_5_to_2_5_m
+    brick_rock: 0.05
+    reinforced_concrete_pre_1992: 0.05
+    crib_gabion: 0.1
+    timber_pole_pre_1992: 0.55
+    concrete_block: 0.25
+    timber_pole_post_1992: 0.0
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: '1970_1991'
+    height_band: over_2_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.15
+    crib_gabion: 0.1
+    timber_pole_pre_1992: 0.5
+    concrete_block: 0.25
+    timber_pole_post_1992: 0.0
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: '1992_2004'
+    height_band: under_1_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.0
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.0
+    concrete_block: 0.2
+    timber_pole_post_1992: 0.4
+    garden_timber: 0.35
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: '1992_2004'
+    height_band: 1_5_to_2_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.0
+    crib_gabion: 0.1
+    timber_pole_pre_1992: 0.0
+    concrete_block: 0.3
+    timber_pole_post_1992: 0.55
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.05
+  - age_bin: '1992_2004'
+    height_band: over_2_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.0
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.0
+    concrete_block: 0.15
+    timber_pole_post_1992: 0.65
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.15
+  - age_bin: 2005_on
+    height_band: under_1_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.0
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.0
+    concrete_block: 0.15
+    timber_pole_post_1992: 0.45
+    garden_timber: 0.35
+    reinforced_concrete_post_1992: 0.0
+  - age_bin: 2005_on
+    height_band: 1_5_to_2_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.0
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.0
+    concrete_block: 0.15
+    timber_pole_post_1992: 0.65
+    garden_timber: 0.05
+    reinforced_concrete_post_1992: 0.1
+  - age_bin: 2005_on
+    height_band: over_2_5_m
+    brick_rock: 0.0
+    reinforced_concrete_pre_1992: 0.0
+    crib_gabion: 0.05
+    timber_pole_pre_1992: 0.0
+    concrete_block: 0.1
+    timber_pole_post_1992: 0.55
+    garden_timber: 0.0
+    reinforced_concrete_post_1992: 0.3
+  frontage_multipliers:
+  - wall_type: brick_rock
+    road_frontage_multiplier: 1.5
+  - wall_type: reinforced_concrete_pre_1992
+    road_frontage_multiplier: 1.5
+  - wall_type: crib_gabion
+    road_frontage_multiplier: 0.5
+  - wall_type: timber_pole_pre_1992
+    road_frontage_multiplier: 1.0
+  - wall_type: concrete_block
+    road_frontage_multiplier: 1.5
+  - wall_type: timber_pole_post_1992
+    road_frontage_multiplier: 1.0
+  - wall_type: garden_timber
+    road_frontage_multiplier: 0.3
+  - wall_type: reinforced_concrete_post_1992
+    road_frontage_multiplier: 1.0
+  type_labels:
+  - wall_type: brick_rock
+    label: Brick or rock masonry
+    nhc_rate_item: 'Rock: Mortar Bed'
+    covers: Brick and stone gravity walls, and brick linings up a cut
+  - wall_type: reinforced_concrete_pre_1992
+    label: Reinforced concrete, before July 1992
+    nhc_rate_item: Reinforced Concrete
+    covers: Mass and precast concrete gravity walls (about 1900 to the 1960s) and
+      reinforced concrete cantilevers
+  - wall_type: crib_gabion
+    label: Crib or gabion
+    nhc_rate_item: Concrete Crib
+    covers: Concrete and timber crib walls and gabion baskets; a gabion would take
+      the Gabion Basket rate
+  - wall_type: timber_pole_pre_1992
+    label: Timber pole, before July 1992
+    nhc_rate_item: 'Timber Pole: 175mm SED to 350mm SED, by height'
+    covers: Timber pole walls built before the Building Act 1991 took effect, unengineered
+      or decayed
+  - wall_type: concrete_block
+    label: Concrete block
+    nhc_rate_item: Concrete Block
+    covers: Concrete block masonry cantilevers
+  - wall_type: timber_pole_post_1992
+    label: Timber pole, July 1992 on
+    nhc_rate_item: 'Timber Pole: 175mm SED to 350mm SED, by height'
+    covers: Timber pole walls built since the Building Act 1991, engineered where
+      over 1.5 m
+  - wall_type: garden_timber
+    label: Garden timber
+    nhc_rate_item: 'Timber Pole: 175mm SED'
+    covers: Half-round and sleeper walls under 1.5 m, built without a consent
+  - wall_type: reinforced_concrete_post_1992
+    label: Reinforced concrete, July 1992 on
+    nhc_rate_item: Mechanically Stabilised Earth (MSE)
+    covers: MSE, soil-nailed and large reinforced concrete walls
+study_area:
+  candidates: 227891
+  candidates_by_kind:
+    steep: 217966
+    mapped_only: 9493
+    with_mapped_wall: 20616
+  expected_walls: 90810.0
+  drawn_walls: 90866
+  drawn_length_km: 1218.0
+  insured_walls: 44703
+  by_type:
+    Garden timber: 18634
+    Timber pole, July 1992 on: 17449
+    Concrete block: 15075
+    Timber pole, before July 1992: 13663
+    Reinforced concrete, before July 1992: 12451
+    Brick or rock masonry: 6816
+    Crib or gabion: 5668
+    Reinforced concrete, July 1992 on: 1110
+  by_size:
+    medium: 83684
+    small: 6400
+    large: 782
+  height_m:
+    median: 1.41
+    p10: 1.07
+    p90: 1.77
+  share_under_1_5_m: 0.65
+by_authority:
+  Wellington City:
+    candidates: 119591
+    candidates_by_kind:
+      steep: 109670
+      mapped_only: 9489
+      with_mapped_wall: 20612
+    expected_walls: 56612.0
+    drawn_walls: 56486
+    drawn_length_km: 753.7
+    insured_walls: 33579
+  Porirua City:
+    candidates: 30341
+    candidates_by_kind:
+      steep: 30341
+      mapped_only: 0
+      with_mapped_wall: 0
+    expected_walls: 10044.0
+    drawn_walls: 10054
+    drawn_length_km: 141.7
+    insured_walls: 3708
+  Lower Hutt City:
+    candidates: 42137
+    candidates_by_kind:
+      steep: 42133
+      mapped_only: 4
+      with_mapped_wall: 4
+    expected_walls: 13488.0
+    drawn_walls: 13552
+    drawn_length_km: 185.9
+    insured_walls: 4917
+  Upper Hutt City:
+    candidates: 35822
+    candidates_by_kind:
+      steep: 35822
+      mapped_only: 0
+      with_mapped_wall: 0
+    expected_walls: 10666.0
+    drawn_walls: 10774
+    drawn_length_km: 136.7
+    insured_walls: 2499
+validation:
+  coverage:
+  - dataset: GNS SLIDE
+    extent: Urban Wellington City
+    record: Mapped wall lines
+    properties: 80676
+    flagged: 16513
+    share_flagged: 0.2047
+  - dataset: NHC NZMM
+    extent: Four councils
+    record: Y/N flag per property
+    properties: 156640
+    flagged: 4634
+    share_flagged: 0.0296
+  - dataset: Claim reports
+    extent: Claimed properties
+    record: Walls listed on site
+    properties: 1411
+    flagged: 371
+    share_flagged: 0.2629
+  claims_recall:
+  - claim_report: lists a wall
+    properties: 371
+    nhc_flagged: 0.2335
+    properties_gns_mapped: 235
+    gns_flagged: 0.3362
+    nhc_flagged_where_gns_mapped: 0.2609
+    either_flagged_where_gns_mapped: 0.5106
+  - claim_report: lists none
+    properties: 1040
+    nhc_flagged: 0.1718
+    properties_gns_mapped: 709
+    gns_flagged: 0.2821
+    nhc_flagged_where_gns_mapped: 0.1867
+    either_flagged_where_gns_mapped: 0.4076

@@ -1,0 +1,273 @@
+meta:
+  written: '2026-10-22'
+  commit: eac721a
+  world_id: 0
+  realisation_id: 0
+  runs:
+    wellington-city: '2026-10-14'
+    porirua: '2026-10-14'
+    lower-hutt: '2026-10-14'
+    upper-hutt: '2026-10-14'
+settings:
+  scenario_mw: 8.1
+  site_distance_km: 25.0
+  mm_threshold: 7
+  hancox_area:
+    slope: 0.96
+    intercept: -3.7
+  hancox_area_affected_km2: 11912.0
+  hancox_distance:
+    slope: 0.464
+    intercept: -1.32
+  hancox_distance_km: 274.0
+  slope_class_edges_deg:
+  - 0.0
+  - 15.5
+  - 25.5
+  - 35.5
+  - 45.5
+  - 90.0
+  slope_shares_printed:
+    gentle: 0.01
+    moderate: 0.09
+    steep: 0.39
+    very_steep: 0.4
+    extremely_steep: 0.2
+  slope_shares:
+    gentle: 0.01
+    moderate: 0.09
+    steep: 0.39
+    very_steep: 0.34
+    extremely_steep: 0.17
+  marc:
+    r0_km: 22.5
+    fault_type: R
+    modal_slope_deg: 22.0
+    share_factor: 2.3
+    event_total_km2: 18.0
+  large:
+    min_source_area_m2: 700.0
+    max_source_area_m2: 35000.0
+    size_exponent: 2.1
+    aspect_ratio: 2.0
+    crest_weight: 0.5
+    min_displacement_m: 1.0
+    max_displacement_m: 40.0
+    min_displacement_slope_deg: 10.0
+    max_displacement_slope_deg: 45.0
+    volume_alpha: 0.074
+    volume_gamma: 1.46
+  kingsbury:
+    weights:
+      slope: 4
+      modification: 4
+      height: 2
+      geology: 2
+      landslides: 2
+      groundwater: 1
+    max_rating: 150
+    zone_breaks:
+    - 20.0
+    - 60.0
+    - 100.0
+    - 140.0
+  runout:
+    cut_coefficient: 0.78
+    cut_exponent: 0.5
+    downslope_slope: 0.77
+    downslope_intercept: 0.087
+    steep_downslope_deg: 20.0
+    max_runout_h:
+    - 2.0
+    - 3.0
+    - 4.0
+    steep_runout_downslope_deg: 35.0
+    min_deposit_depth_m: 0.3
+    seismic_runout_m:
+      1: 0.5
+      2: 0.5
+      3: 1.0
+      4: 2.0
+      5: 3.0
+    repose_angle_deg: 35.0
+    min_evacuated_width_h: 0.5
+    min_evacuated_width_m: 1.0
+  fragility:
+    topographic_amplification: 1.3
+    urban_rate: medium
+    localised_points:
+    - point: zone_3
+      rating: 80
+      im: pga_g
+      p15: 0.7
+      p50: 2.0
+      set_by: the project lead, 2026-10-12
+      basis: Kingsbury zone 3 (moderate) mid rating; p15 0.7 g and p50 2.0 g set by
+        the lead (dispersion 1.01); on site PGA
+    - point: zone_5
+      rating: 145
+      im: pga_g
+      p15: 0.3
+      p50: 0.6
+      set_by: the project lead, 2026-10-12
+      basis: Kingsbury zone 5 (very high) mid rating; p50 0.6 g set by the lead; p15
+        half the p50 (dispersion 0.67); on site PGA
+    tall_wall_m: 2.0
+    tall_factor: 0.85
+    fill_factor: 0.85
+    cut_factor: 1.15
+    wall_curves:
+    - label: Garden timber
+      p15: 0.3
+      p50: 0.6
+    - label: Brick or rock masonry
+      p15: 0.3721
+      p50: 0.8149
+    - label: Crib or gabion
+      p15: 0.4616
+      p50: 1.1069
+    - label: Timber pole, before July 1992
+      p15: 0.5726
+      p50: 1.5034
+    - label: Concrete block
+      p15: 0.7103
+      p50: 2.042
+    - label: Reinforced concrete, before July 1992
+      p15: 0.8811
+      p50: 2.7736
+    - label: Timber pole, July 1992 on
+      p15: 1.093
+      p50: 3.7672
+    - label: Reinforced concrete, July 1992 on
+      p15: 1.3558
+      p50: 5.1167
+study_area:
+  landslides:
+    large:
+      count: 775
+      area_km2:
+        evacuated land: 3.78
+        inundated land: 3.7
+    urban:
+      count: 89310
+      area_km2:
+        evacuated land: 30.27
+        imminent land: 7.38
+        inundated land: 23.0
+  walls:
+    on_failed_or_standing: 44703
+    failed: 26373
+    failed_share: 0.59
+    failed_length_km: 335.1
+    failed_share_by_type:
+      Reinforced concrete, July 1992 on: 0.195
+      Timber pole, July 1992 on: 0.294
+      Reinforced concrete, before July 1992: 0.367
+      Concrete block: 0.467
+      Timber pole, before July 1992: 0.606
+      Crib or gabion: 0.732
+      Brick or rock masonry: 0.853
+      Garden timber: 0.941
+  land:
+    properties_damaged: 49217
+    evacuated_ha: 342.1
+    inundated_ha: 228.8
+    imminent_ha: 65.4
+    median_evacuated_m2: 49.0
+by_authority:
+  Wellington City:
+    landslides:
+      large:
+        count: 330
+        area_km2:
+          evacuated land: 0.83
+          inundated land: 0.8
+      urban:
+        count: 81298
+        area_km2:
+          evacuated land: 13.34
+          imminent land: 3.17
+          inundated land: 9.8
+    walls:
+      on_failed_or_standing: 33579
+      failed: 20089
+      failed_share: 0.598
+      failed_length_km: 250.5
+    land:
+      properties_damaged: 35179
+      evacuated_ha: 248.7
+      inundated_ha: 163.6
+      imminent_ha: 46.7
+      median_evacuated_m2: 51.0
+  Porirua City:
+    landslides:
+      large:
+        count: 166
+        area_km2:
+          evacuated land: 0.4
+          inundated land: 0.37
+      urban:
+        count: 16927
+        area_km2:
+          evacuated land: 3.27
+          imminent land: 0.76
+          inundated land: 2.38
+    walls:
+      on_failed_or_standing: 3708
+      failed: 2104
+      failed_share: 0.567
+      failed_length_km: 28.2
+    land:
+      properties_damaged: 5051
+      evacuated_ha: 27.7
+      inundated_ha: 18.1
+      imminent_ha: 5.5
+      median_evacuated_m2: 36.0
+  Lower Hutt City:
+    landslides:
+      large:
+        count: 410
+        area_km2:
+          evacuated land: 1.05
+          inundated land: 1.04
+      urban:
+        count: 28583
+        area_km2:
+          evacuated land: 7.79
+          imminent land: 1.98
+          inundated land: 6.06
+    walls:
+      on_failed_or_standing: 4917
+      failed: 2892
+      failed_share: 0.588
+      failed_length_km: 39.4
+    land:
+      properties_damaged: 6451
+      evacuated_ha: 49.5
+      inundated_ha: 36.3
+      imminent_ha: 10.1
+      median_evacuated_m2: 52.0
+  Upper Hutt City:
+    landslides:
+      large:
+        count: 595
+        area_km2:
+          evacuated land: 1.5
+          inundated land: 1.49
+      urban:
+        count: 22026
+        area_km2:
+          evacuated land: 5.87
+          imminent land: 1.47
+          inundated land: 4.77
+    walls:
+      on_failed_or_standing: 2499
+      failed: 1288
+      failed_share: 0.515
+      failed_length_km: 16.9
+    land:
+      properties_damaged: 2536
+      evacuated_ha: 16.2
+      inundated_ha: 10.9
+      imminent_ha: 3.1
+      median_evacuated_m2: 42.0

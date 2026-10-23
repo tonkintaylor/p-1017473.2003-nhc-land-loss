@@ -42,10 +42,19 @@
 #review[The appendices are lettered from A here. Match the letters to those the
 main report refers to once the full set is in.]
 
+#include "appendices/ground_model.typ"
+
+#pagebreak()
+#include "appendices/retaining_walls.typ"
+
+#pagebreak()
 #include "appendices/bridges_culverts.typ"
 
 #pagebreak()
 #include "appendices/liquefaction_damage.typ"
+
+#pagebreak()
+#include "appendices/landslide_damage.typ"
 
 #pagebreak()
 #include "appendices/cost_estimation.typ"
