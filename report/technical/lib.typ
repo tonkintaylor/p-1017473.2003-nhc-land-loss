@@ -19,6 +19,9 @@
   show heading.where(level: 2): set block(above: 1.3em, below: 0.6em)
   show heading.where(level: 3): set text(size: 10pt)
   show figure.caption: set text(size: 9pt)
+  // A table's caption sits above it, a figure's below (Virginie Lacrosse's
+  // review, 2026-10-23).
+  show figure.where(kind: table): set figure.caption(position: top)
   set table(stroke: 0.4pt + luma(70%), inset: 5pt)
   show table: set text(size: 9pt)
   // A reference to an appendix, lettered by appendices.typ, reads "Appendix A";

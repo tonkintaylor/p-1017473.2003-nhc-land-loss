@@ -45,16 +45,21 @@ in.
 
 == Inputs
 
-#inputs-table(
-  [Land value of each rating unit],
-  [QV rating valuations for Wellington City, Lower Hutt City, Porirua City and
-    Upper Hutt City], [QV, supplied to the project; sensitive],
-  [Change in value since each council's revaluation],
-  [QV House Price Index, greater Wellington region], [Published],
-  [Property boundaries], [LINZ NZ Property Boundaries], [CC BY 4.0],
-  [Building outlines], [LINZ NZ Building Outlines], [CC BY 4.0],
-  [Insured land of each property], [This study's insured land extent], [--],
-)
+@lv-inputs-table lists the inputs to the land value model.
+
+#figure(
+  inputs-table(
+    [Land value of each rating unit],
+    [QV rating valuations for Wellington City, Lower Hutt City, Porirua City and
+      Upper Hutt City], [QV, supplied to the project; sensitive],
+    [Change in value since each council's revaluation],
+    [QV House Price Index, greater Wellington region], [Published],
+    [Property boundaries], [LINZ NZ Property Boundaries], [CC BY 4.0],
+    [Building outlines], [LINZ NZ Building Outlines], [CC BY 4.0],
+    [Insured land of each property], [This study's insured land extent], [--],
+  ),
+  caption: [Inputs to the land value model.],
+) <lv-inputs-table>
 
 #review[Check the LINZ building outlines dataset name and licence against the
 insured land write-up.]

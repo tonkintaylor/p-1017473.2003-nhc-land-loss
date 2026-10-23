@@ -80,6 +80,10 @@ the repository and have no coding experience.
   "Appendix C", never by name.
 - Tables and figures are numbered within their appendix (Table B.1, Figure D.2).
   `appendices.typ` does this; do not number by hand.
+- Every table, the inputs table included, is a captioned `#figure` with its
+  caption **above** it (Virginie Lacrosse's review); a figure's caption sits
+  below. `lib.typ` places them, and `tidy_docx.py` moves them above in Word,
+  where pandoc puts them below.
 - Each appendix runs: Context; Inputs (`inputs-table`); Method, with a
   subsection per step; Results; Validation; Limitations and future improvements.
 - Formulas are Typst maths (`$ R = V / (...) $`); they reach Word as equations.
@@ -207,7 +211,11 @@ Cross-references between appendices keep their text in the separate Word files
 but do not link across files.
 
 **Rebuilding overwrites `report/technical/appendices-docx/`.** Reviewed copies
-belong somewhere else, such as the author's Projects folder.
+belong somewhere else, such as the author's Projects folder. On 2026-10-23 a
+rebuild destroyed comments the author had put in those files, so
+`split_docx.py` now refuses to run while any file there carries comments or
+tracked changes. Before rebuilding, also ask whether anyone has been editing
+the copies there; a file with plain edits and no comments is not caught.
 
 Check the result by looking at it: render PDF pages to PNG (`typst compile
 --ppi 80 … page-{0p}.png`), and export each Word file to PDF through Word (COM

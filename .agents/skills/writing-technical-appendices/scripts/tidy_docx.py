@@ -3,7 +3,8 @@
     python tidy_docx.py <in.html> <out.docx>
 
 Converts the Typst HTML with pandoc, then: adds a title, fits images to the
-text width, borders the tables, and shades the review notes.
+text width, borders the tables, puts table captions above their tables, and
+shades the review notes.
 """
 
 import datetime as dt
@@ -83,6 +84,26 @@ def border_tables(document):
                 rpr.append(el)
 
 
+TABLE_CAPTION = re.compile(r"^Table\s[A-Z]\.\d+:")
+
+
+def captions_above_tables(document):
+    """Move each table's caption above it, as the PDF has it.
+
+    Pandoc writes a caption after its table, whatever the HTML order, so a
+    paragraph reading "Table B.2: ..." that follows a table is moved before it.
+    """
+    for par in list(document.element.body.iter(qn("w:p"))):
+        text = "".join(x.text or "" for x in par.iter(qn("w:t")))
+        previous = par.getprevious()
+        if (
+            TABLE_CAPTION.match(text)
+            and previous is not None
+            and previous.tag == qn("w:tbl")
+        ):
+            previous.addprevious(par)
+
+
 def fit_images(document):
     """Scale any image wider than the text down to the text width."""
     for shape in document.inline_shapes:
@@ -125,6 +146,7 @@ def main(html_path, out_path, subtitle=SUBTITLE):
     add_title(document, subtitle)
     fit_images(document)
     border_tables(document)
+    captions_above_tables(document)
     for paragraph in document.paragraphs:
         if paragraph.text.startswith("Review:"):
             shade(paragraph, REVIEW_FILL)

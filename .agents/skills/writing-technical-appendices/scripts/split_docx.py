@@ -4,11 +4,17 @@
 
 Each appendix runs from its level-two heading to the next, and takes a
 References list holding only the works it cites.
+
+It refuses to run, writing nothing, while any Word file in ``out_dir`` carries
+comments or tracked changes: a reviewer may have marked up a copy in place, and
+rebuilding would destroy their work (as it did on 2026-10-23). Move the
+reviewed file out first.
 """
 
 import re
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 from tidy_docx import main as to_docx
@@ -21,8 +27,29 @@ def plain(html):
     return re.sub(r"<[^>]+>", "", html).strip()
 
 
+def reviewed(path):
+    """Return whether a Word file carries comments or tracked changes."""
+    with zipfile.ZipFile(path) as z:
+        names = z.namelist()
+        document = z.read("word/document.xml").decode("utf-8")
+        comments = (
+            z.read("word/comments.xml").decode("utf-8")
+            if "word/comments.xml" in names
+            else ""
+        )
+    return "<w:comment " in comments or "<w:ins " in document or "<w:del " in document
+
+
 def main(html_path, out_dir):
     """Write one Word file per appendix into ``out_dir``."""
+    out = Path(out_dir)
+    marked = [path.name for path in sorted(out.glob("*.docx")) if reviewed(path)]
+    if marked:
+        print(
+            "Not rebuilding: these carry comments or tracked changes, and would be "
+            "overwritten. Move them out of the folder first:\n  " + "\n  ".join(marked)
+        )
+        sys.exit(1)
     html = Path(html_path).read_text(encoding="utf-8")
     head, body = html.split("<body>", 1)
     body, tail = body.rsplit("</body>", 1)
@@ -36,7 +63,6 @@ def main(html_path, out_dir):
     starts = [
         m for m in HEADING.finditer(content) if re.match(r"[A-Z] ", plain(m.group(1)))
     ]
-    out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     for i, m in enumerate(starts):
         end = starts[i + 1].start() if i + 1 < len(starts) else len(content)

@@ -25,14 +25,19 @@ so the model estimates where they are.
 
 == Inputs
 
-#inputs-table(
-  [Named watercourses, as centrelines], [LINZ NZ River Name Lines (Pilot)],
-  [CC BY 4.0],
-  [Named watercourses, as areas], [LINZ NZ River Name Polygons (Pilot)],
-  [CC BY 4.0],
-  [Insured accessway of each property], [This study's insured land extent],
-  [--],
-)
+@crossings-inputs-table lists the inputs to the estimate of bridge and culvert locations.
+
+#figure(
+  inputs-table(
+    [Named watercourses, as centrelines], [LINZ NZ River Name Lines (Pilot)],
+    [CC BY 4.0],
+    [Named watercourses, as areas], [LINZ NZ River Name Polygons (Pilot)],
+    [CC BY 4.0],
+    [Insured accessway of each property], [This study's insured land extent],
+    [--],
+  ),
+  caption: [Inputs to the estimate of bridge and culvert locations.],
+) <crossings-inputs-table>
 
 == Method
 

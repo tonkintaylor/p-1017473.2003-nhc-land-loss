@@ -43,16 +43,21 @@ liquefaction costs, which are in #q.cost_year dollars, are escalated.
 
 == Inputs
 
-#inputs-table(
-  [Retaining wall and site clearing rates],
-  [NHC's costing tool, as at #date(w.rates_as_at)], [NHC, supplied to the project],
-  [Liquefaction land claim costs], [NHC's settled costs from the Canterbury
-    earthquake sequence, claimants only], [NHC, supplied to the project],
-  [Construction cost growth since 2011],
-  [Stats NZ Labour Cost Index, construction salary and wage rates],
-  [CC BY 4.0],
-  [Bridge and culvert replacement cost], [T+T judgement], [--],
-)
+@cost-inputs-table lists the inputs to the cost estimate.
+
+#figure(
+  inputs-table(
+    [Retaining wall and site clearing rates],
+    [NHC's costing tool, as at #date(w.rates_as_at)], [NHC, supplied to the project],
+    [Liquefaction land claim costs], [NHC's settled costs from the Canterbury
+      earthquake sequence, claimants only], [NHC, supplied to the project],
+    [Construction cost growth since 2011],
+    [Stats NZ Labour Cost Index, construction salary and wage rates],
+    [CC BY 4.0],
+    [Bridge and culvert replacement cost], [T+T judgement], [--],
+  ),
+  caption: [Inputs to the cost estimate.],
+) <cost-inputs-table>
 
 == Method
 

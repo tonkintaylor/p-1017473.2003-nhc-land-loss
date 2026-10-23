@@ -208,6 +208,11 @@ report/exposure/rw/rwt-age/tab/*.csv
 # src/scripts/landloss/reviewer/gen_reviewer_rw.py rather than kept.
 report/reviewer/
 
+# The Word copies of the technical appendices, one per appendix, for review.
+# Rebuilt from the Typst by the writing-technical-appendices skill's
+# split_docx.py; reviewed copies are kept outside the repository.
+report/technical/appendices-docx/
+
 # Claim report data stays local. The claims lists may be committed; anything
 # read from the reports themselves (claimant names, report paths carrying claim
 # numbers, damage extents, walls, costs) may not.

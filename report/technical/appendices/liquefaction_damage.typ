@@ -52,19 +52,24 @@ The damaged land is costed in @cost-estimation, and valued in @land-value.
 
 == Inputs
 
-#inputs-table(
-  [Probability of at least Moderate, and of at least Major, land damage, on a
-    100 m grid],
-  [National Liquefaction Model, 2026 pre-release update; 2,500-year return
-    period and median groundwater],
-  [Internal],
-  [Named rivers], [LINZ NZ River Name Lines], [CC BY 4.0],
-  [Rivers, lakes, swamps and lagoons], [LINZ Topo50 water polygons], [CC BY 4.0],
-  [Coastline], [LINZ NZ Coastlines (Topo 1:50k)], [CC BY 4.0],
-  [Land damage states and fragility curves],
-  [Canterbury earthquake sequence land damage observations], [Internal],
-  [Insured land of each property], [This study's insured land extent], [--],
-)
+@liq-inputs-table lists the inputs to the liquefaction damage model.
+
+#figure(
+  inputs-table(
+    [Probability of at least Moderate, and of at least Major, land damage, on a
+      100 m grid],
+    [National Liquefaction Model, 2026 pre-release update; 2,500-year return
+      period and median groundwater],
+    [Internal],
+    [Named rivers], [LINZ NZ River Name Lines], [CC BY 4.0],
+    [Rivers, lakes, swamps and lagoons], [LINZ Topo50 water polygons], [CC BY 4.0],
+    [Coastline], [LINZ NZ Coastlines (Topo 1:50k)], [CC BY 4.0],
+    [Land damage states and fragility curves],
+    [Canterbury earthquake sequence land damage observations], [Internal],
+    [Insured land of each property], [This study's insured land extent], [--],
+  ),
+  caption: [Inputs to the liquefaction damage model.],
+) <liq-inputs-table>
 
 == Method
 
