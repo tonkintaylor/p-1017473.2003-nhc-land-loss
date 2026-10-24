@@ -7,7 +7,7 @@ copier_version="9.4.1"
 if [ -f "README.md" ]; then
     rm README.md
 fi
-if ! uvx --python 3.12 copier@$copier_version copy "git+$template_url" . --trust --vcs-ref master
+if ! uvx --python 3.13 copier@$copier_version copy "git+$template_url" . --trust --vcs-ref master
 then
     echo "Error: Could not copy the template repository"
     exit

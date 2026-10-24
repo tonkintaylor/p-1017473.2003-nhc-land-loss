@@ -1,7 +1,7 @@
 # NHC land loss project
 
 <!-- badges: start -->
-![Python Version](<https://img.shields.io/badge/python-3.13.2-green>)
+![Python Version](<https://img.shields.io/badge/python-3.13.17-green>)
 [![Confluence](<https://img.shields.io/badge/Not_Configured-Confluence-lightgrey>)](<https://tonkintaylor.atlassian.net/wiki/home>)
 ![Licence](<https://img.shields.io/badge/licence-proprietary-red>)
 [![Ruff](<https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json>)](<https://github.com/astral-sh/ruff>)
