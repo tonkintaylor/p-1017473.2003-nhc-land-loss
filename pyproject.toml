@@ -50,7 +50,7 @@ doc = [
     "tomli>=2.2.1",
     "towncrier>=25.8.0",
 ]
-uv = [ "uv==0.10.2" ]
+uv = [ "uv==0.13.5" ]
 
 [project.scripts]
 # example = "landloss.scripts.example:myfunc"
@@ -66,10 +66,11 @@ sources = [ "src" ]
 
 [tool.uv]
 default-groups = ["dev", "test", "doc"]
-required-version = ">=0.10.2"
+required-version = ">=0.13.5"
 link-mode = "copy"
 exclude-newer = "7 days"
-exclude-newer-package = { rastr = false, ruru = false }
+exclude-newer-package = { rastr = false, ruru = false, certifi = "1 day", pip = "1 day", uv = "1 day", sigstore = "1 day" }
+constraint-dependencies = ["certifi>=2026.10.19", "pip>=26.2.2", "uv>=0.13.5", "sigstore>=4.5.1"]
 
 [tool.towncrier]
 directory = "doc/whatsnew"
